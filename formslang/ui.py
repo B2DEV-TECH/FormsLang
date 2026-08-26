@@ -78,13 +78,21 @@ INDEX_HTML = r"""<!doctype html>
   /* ── layout ──────────────────────────────────────────── */
   main { display: grid; grid-template-columns: 330px 1fr; height: calc(100% - 52px); }
   aside { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: #0B0E13; }
-  .filters { display: flex; gap: 4px; padding: 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  .filters button {
+  /* Two filter rows, never one: "converted" and "decided" are different
+     questions, and putting them in the same row of buttons taught people
+     they were the same question. */
+  .filters { display: flex; flex-direction: column; gap: 7px; padding: 10px; border-bottom: 1px solid var(--line); }
+  .frow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .flabel {
+    font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    color: #4a5260; flex: 0 0 66px;
+  }
+  .frow button {
     background: transparent; border: 1px solid var(--line); color: var(--grey);
     font: 11px var(--mono); text-transform: uppercase; letter-spacing: .06em;
     padding: 4px 8px; border-radius: 4px;
   }
-  .filters button.on { border-color: var(--gold); color: var(--gold); }
+  .frow button.on { border-color: var(--gold); color: var(--gold); }
   .search { padding: 8px 10px; border-bottom: 1px solid var(--line); }
   .search input {
     width: 100%; background: var(--black); border: 1px solid var(--line); color: var(--bone);
@@ -115,7 +123,9 @@ INDEX_HTML = r"""<!doctype html>
   section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .head { padding: 14px 18px; border-bottom: 1px solid var(--line); }
   .head h1 { margin: 0; font: 600 17px var(--mono); letter-spacing: -0.01em; }
-  .head .meta { margin-top: 6px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--grey); font-size: 12px; }
+  .head .where { margin-top: 3px; font-size: 12px; color: #5c6472; }
+  .head .where b { color: var(--grey); font-weight: 500; }
+  .head .meta { margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--grey); font-size: 12px; }
   .panes { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
   .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .pane + .pane { border-left: 1px solid var(--line); }
@@ -174,14 +184,17 @@ INDEX_HTML = r"""<!doctype html>
   <div class="spacer"></div>
   <div class="counts" id="counts"></div>
   <span class="chip provider" id="provider">—</span>
-  <button class="btn" id="btn-propose-all">Convert pending</button>
+  <button class="btn" id="btn-propose-all">Convert unconverted</button>
   <button class="btn primary" id="btn-export">Export approved</button>
 </header>
 <div id="bar"></div>
 
 <main>
   <aside>
-    <div class="filters" id="filters"></div>
+    <div class="filters">
+      <div class="frow"><span class="flabel">Conversion</span><span id="f-conv"></span></div>
+      <div class="frow"><span class="flabel">Your call</span><span id="f-call"></span></div>
+    </div>
     <div class="search"><input id="q" placeholder="filter by name, block or built-in…" spellcheck="false"></div>
     <div id="list"></div>
   </aside>
@@ -189,16 +202,17 @@ INDEX_HTML = r"""<!doctype html>
   <section>
     <div class="head">
       <h1 id="t-title">—</h1>
+      <div class="where" id="t-where"></div>
       <div class="meta" id="t-meta"></div>
     </div>
     <div class="panes">
       <div class="pane">
-        <h2><span>Oracle Forms — source</span><span id="t-lines"></span></h2>
+        <h2><span>Oracle Forms — what runs today</span><span id="t-lines"></span></h2>
         <pre class="code" id="src"></pre>
       </div>
       <div class="pane">
         <h2>
-          <span>Oracle APEX — proposal</span>
+          <span>Oracle APEX — what would replace it · editable</span>
           <span class="conf" id="t-conf"></span>
         </h2>
         <textarea class="code" id="out" spellcheck="false" placeholder="No proposal yet."></textarea>
@@ -220,10 +234,26 @@ INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const STATES = ["all", "pending", "proposed", "approved", "needs_work", "rejected"];
+
+/* Two independent axes. A unit can be converted and still undecided, so the
+   two questions get two rows of buttons and never share a word. */
+const CONV = [["all", "all"], ["unconverted", "not converted"], ["converted", "converted"]];
+const CALL = [["all", "all"], ["pending", "undecided"], ["approved", "approved"],
+              ["needs_work", "needs work"], ["rejected", "rejected"]];
 const MARK = { approved: "✓", rejected: "✕", needs_work: "⚠", pending: "●" };
+/* What the catalog verdict means, on hover -- the colours alone taught nobody. */
+const VERDICT_HELP = {
+  AUTO: "AUTO — direct APEX equivalent. Machine converts, you review.",
+  ASSISTED: "ASSISTED — the intent translates, the form does not. Read this one carefully.",
+  MANUAL: "MANUAL — no APEX equivalent. Needs a redesign decision, not a translation.",
+  DROP: "DROP — solves a problem APEX does not have. It disappears, and that is a gain.",
+  UNKNOWN: "UNKNOWN — not in the catalog yet. Priced expensive on purpose.",
+};
+const help = (v) => VERDICT_HELP[v] || "Program unit — no trigger verdict applies.";
+const CALL_LABEL = { pending: "undecided", needs_work: "needs work" };
+const label = (s) => CALL_LABEL[s] || s;
 let state = { tasks: [], stats: {}, session: {}, provider: "" };
-let filter = "all", query = "", selected = null, polling = null;
+let conv = "all", call = "all", query = "", selected = null, polling = null;
 
 function esc(s) {
   return (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -245,25 +275,31 @@ async function api(path, body) {
 
 /* ── rendering ─────────────────────────────────────────── */
 function matches(t) {
-  if (filter === "pending" && t.state !== "pending") return false;
-  if (filter === "proposed" && !t.proposal) return false;
-  if (["approved", "rejected", "needs_work"].includes(filter) && t.state !== filter) return false;
+  if (conv === "unconverted" && t.proposal) return false;
+  if (conv === "converted" && !t.proposal) return false;
+  if (call !== "all" && t.state !== call) return false;
   if (!query) return true;
   const hay = [t.title, t.module, t.kind, t.verdict, ...(t.builtins || []).map((b) => b.name)].join(" ").toLowerCase();
   return hay.includes(query);
 }
+const filtered = () => state.tasks.filter(matches);
+const filtering = () => conv !== "all" || call !== "all" || !!query;
 
-function renderFilters() {
-  $("filters").innerHTML = STATES.map((s) =>
-    `<button data-f="${s}" class="${s === filter ? "on" : ""}">${s.replace("_", " ")}</button>`
-  ).join("");
-  $("filters").querySelectorAll("button").forEach((b) =>
-    b.onclick = () => { filter = b.dataset.f; renderFilters(); renderList(); }
+function renderRow(id, defs, current, set) {
+  $(id).innerHTML = defs.map(([value, text]) =>
+    `<button data-v="${value}" class="${value === current ? "on" : ""}">${text}</button>`).join("");
+  $(id).querySelectorAll("button").forEach((b) =>
+    b.onclick = () => { set(b.dataset.v); renderFilters(); renderList(); renderDetail(); }
   );
 }
 
+function renderFilters() {
+  renderRow("f-conv", CONV, conv, (v) => (conv = v));
+  renderRow("f-call", CALL, call, (v) => (call = v));
+}
+
 function renderList() {
-  const rows = state.tasks.filter(matches);
+  const rows = filtered();
   $("list").innerHTML = rows.map((t) => `
     <div class="row ${t.id === selected ? "sel" : ""}" data-id="${t.id}">
       <div class="state st-${t.state}">${MARK[t.state] || "●"}</div>
@@ -271,7 +307,7 @@ function renderList() {
         <div class="title">${esc(t.title)}</div>
         <div class="sub">${esc(t.module)} · ${t.lines} lines${t.proposal ? "" : " · not converted"}</div>
       </div>
-      <div class="verdict v-${t.verdict || "DROP"}">${t.verdict || "PU"}</div>
+      <div class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PU"}</div>
     </div>`).join("") || `<div class="empty">Nothing matches this filter.</div>`;
   $("list").querySelectorAll(".row").forEach((r) => (r.onclick = () => select(r.dataset.id)));
 }
@@ -279,12 +315,19 @@ function renderList() {
 function renderCounts() {
   const s = state.stats;
   $("counts").innerHTML = `
-    <span>tasks <b>${s.tasks || 0}</b></span>
-    <span>converted <b>${s.proposed || 0}</b></span>
+    <span>converted <b>${s.proposed || 0}</b>/${s.tasks || 0}</span>
+    <span>undecided <b>${s.pending || 0}</b></span>
     <span class="ok">approved <b>${s.approved || 0}</b></span>
     <span class="no">rejected <b>${s.rejected || 0}</b></span>`;
-  const done = (s.approved || 0) + (s.rejected || 0);
-  $("bar").style.width = s.tasks ? (100 * done / s.tasks) + "%" : "0";
+  // Progress is decisions made, not conversions run: the model finishing is
+  // not the job finishing.
+  const decided = (s.tasks || 0) - (s.pending || 0);
+  $("bar").style.width = s.tasks ? (100 * decided / s.tasks) + "%" : "0";
+
+  const left = s.unproposed || 0;
+  const btn = $("btn-propose-all");
+  btn.disabled = left === 0;
+  btn.textContent = left ? `Convert ${left} unconverted` : "All converted";
 }
 
 function withLineNumbers(code) {
@@ -294,16 +337,28 @@ function withLineNumbers(code) {
 
 function renderDetail() {
   const t = state.tasks.find((x) => x.id === selected);
-  if (!t) { $("t-title").textContent = "—"; $("src").innerHTML = ""; $("out").value = ""; $("notes").innerHTML = ""; return; }
+  if (!t) {
+    $("t-title").textContent = "—";
+    $("t-where").textContent = "";
+    $("src").innerHTML = ""; $("out").value = ""; $("t-meta").innerHTML = "";
+    $("notes").innerHTML = `<div class="empty">Nothing selected.</div>`;
+    return;
+  }
 
   $("t-title").textContent = t.title;
+  const rows = filtered();
+  const pos = rows.findIndex((x) => x.id === t.id);
+  // The one line that says what this screen is, on every unit.
+  $("t-where").innerHTML =
+    (pos >= 0 ? `Unit <b>${pos + 1}</b> of <b>${rows.length}</b>${filtering() ? " in this view" : ""} · ` : "") +
+    `one ${esc(t.kind)} · left is <b>what runs today</b>, right is <b>what would replace it</b>`;
   const p = t.proposal;
   $("t-meta").innerHTML = [
-    `<span class="verdict v-${t.verdict || "DROP"}">${t.verdict || "PROGRAM UNIT"}</span>`,
+    `<span class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PROGRAM UNIT"}</span>`,
     `<span>${esc(t.module)}</span>`,
     t.apex_hint ? `<span>→ ${esc(t.apex_hint)}</span>` : "",
     p && p.apex_target ? `<span class="chip">${esc(p.apex_target)}</span>` : "",
-    t.state !== "pending" ? `<span class="st-${t.state}">${t.state.replace("_", " ")}${t.reviewer ? " by " + esc(t.reviewer) : ""}</span>` : "",
+    t.state !== "pending" ? `<span class="st-${t.state}">${label(t.state)}${t.reviewer ? " by " + esc(t.reviewer) : ""}</span>` : "",
   ].filter(Boolean).join("");
   $("t-lines").textContent = t.lines + " lines";
   $("src").innerHTML = withLineNumbers(t.source);
@@ -343,7 +398,7 @@ function select(id) {
 }
 
 function move(delta) {
-  const rows = state.tasks.filter(matches);
+  const rows = filtered();
   if (!rows.length) return;
   const i = rows.findIndex((t) => t.id === selected);
   select(rows[Math.min(rows.length - 1, Math.max(0, i + delta))].id);
@@ -396,12 +451,10 @@ function poll() {
       return;
     }
     clearInterval(polling);
-    $("btn-propose-all").disabled = false;
-    $("btn-propose-all").textContent = "Convert pending";
     if (job.error) toast(job.error, true);
-    else if (job.total) toast(`Converted ${job.done} unit(s).`);
+    else if (job.total) toast(`Converted ${job.done} unit(s). Now read them.`);
     const keep = selected;
-    await refresh();
+    await refresh();  // restores the button's own label from the new counts
     if (keep) { selected = keep; renderList(); renderDetail(); }
   }, 700);
 }
