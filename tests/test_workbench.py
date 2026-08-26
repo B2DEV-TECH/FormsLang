@@ -185,6 +185,29 @@ def test_a_second_job_is_refused_while_one_runs(tmp_path, sample_xml):
         store.close()
 
 
+def test_the_ui_script_only_reaches_for_elements_that_exist():
+    """A typo'd id is a silent blank panel, not an error anyone would see."""
+    import re
+
+    from formslang.ui import INDEX_HTML
+
+    markup = re.sub(r"<script>.*?</script>", "", INDEX_HTML, flags=re.S)
+    declared = set(re.findall(r'id="([^"]+)"', markup))
+    used = set(re.findall(r"getElementById\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
+    used |= set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
+    assert used, "the review screen has no script left in it"
+    assert not (used - declared), f"script reaches for missing ids: {sorted(used - declared)}"
+
+
+def test_the_ui_carries_no_external_reference():
+    """The screen shows customer source; it must not phone anywhere."""
+    from formslang.ui import INDEX_HTML
+
+    lowered = INDEX_HTML.lower()
+    for marker in ("http://", "https://", "//cdn", "fonts.googleapis", "integrity="):
+        assert marker not in lowered, f"external reference in the review UI: {marker}"
+
+
 def test_resumed_session_exports_next_to_its_own_file(tmp_path):
     """A reviewer resuming a session must not scatter SQL into their cwd."""
     db = tmp_path / "deep" / "DEMO.session.db"
