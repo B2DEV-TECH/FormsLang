@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# FormsLang output -- may contain customer source code. Never commit.
+formslang-out/
+*-out/
+out/
+*.fmb
+*.mmb
+*.olb
+*.pll
+*_fmb.xml
+*_mmb.xml
+*_olb.xml
+assessment.html
+assessment.json
+
+# Local tooling
+.env
+.vscode/
+.idea/

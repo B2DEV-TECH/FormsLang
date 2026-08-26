@@ -1,0 +1,35 @@
+FormsLang - Proprietary Software License
+
+Copyright (c) 2026 B2DEV TECH. All rights reserved.
+
+This software and its source code are the confidential and proprietary
+property of B2DEV TECH. They are NOT open source and are NOT licensed for
+public use, copying, modification or redistribution.
+
+No permission is granted to any person to use, copy, modify, merge, publish,
+distribute, sublicense or sell copies of this software, in whole or in part,
+except under a separate written agreement signed by B2DEV TECH.
+
+Access to this repository does not transfer any ownership, licence or right
+of use. Any use outside an explicit written agreement is unauthorised.
+
+TRADEMARKS
+Oracle, Oracle Forms, Oracle APEX and Oracle Database are trademarks or
+registered trademarks of Oracle Corporation. FormsLang and B2DEV TECH are
+neither affiliated with nor endorsed by Oracle Corporation. FormsLang does
+not redistribute any Oracle software: it invokes an Oracle Forms
+installation that the user has licensed and installed themselves.
+
+CUSTOMER DATA
+Oracle Forms modules processed by this software remain the property of their
+owners. FormsLang runs locally and does not transmit source code anywhere,
+except to an AI provider explicitly configured by the user for the
+AI-assisted conversion features.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

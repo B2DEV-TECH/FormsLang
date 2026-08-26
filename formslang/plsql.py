@@ -1,0 +1,193 @@
+"""Static analysis of the PL/SQL embedded in a Forms module.
+
+This is not a full PL/SQL parser -- it is a lexical extractor calibrated to
+answer the three questions that decide migration cost:
+
+1. Which Forms built-ins does this code use?
+2. Which screen references (``:BLOCK.ITEM``, ``:GLOBAL.X``) does it carry?
+3. How much business logic (SQL, cursors, branching) lives here?
+
+Comments and string literals are blanked out before any scan. Without that,
+a commented-out ``-- HOST('...')`` would count as an operating-system
+dependency and poison the whole assessment.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from collections import Counter
+from dataclasses import dataclass, field
+
+from . import rules
+
+# Line comment, block comment and string literal.
+_LINE_COMMENT = re.compile(r"--[^\n]*")
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+_STRING = re.compile(r"'(?:[^']|'')*'")
+
+# Subprogram call: identifier (optionally dotted) followed by a parenthesis.
+_CALL = re.compile(r"\b([A-Za-z_][A-Za-z0-9_$#]*(?:\.[A-Za-z_][A-Za-z0-9_$#]*)?)\s*\(")
+# Built-ins used without parentheses (e.g. COMMIT_FORM;  EXIT_FORM;)
+_BARE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_$#]*)\s*;")
+# Screen references: :BLOCK.ITEM, :GLOBAL.X, :SYSTEM.X, :PARAMETER.X, :ITEM
+_BIND = re.compile(r":([A-Za-z_][A-Za-z0-9_$#]*(?:\.[A-Za-z_][A-Za-z0-9_$#]*)?)")
+
+_SQL_VERBS = {
+    "select": re.compile(r"\bselect\b", re.IGNORECASE),
+    "insert": re.compile(r"\binsert\s+into\b", re.IGNORECASE),
+    "update": re.compile(r"\bupdate\s+\w", re.IGNORECASE),
+    "delete": re.compile(r"\bdelete\b", re.IGNORECASE),
+    "cursor": re.compile(r"\bcursor\s+\w", re.IGNORECASE),
+    "execute_immediate": re.compile(r"\bexecute\s+immediate\b", re.IGNORECASE),
+}
+_BRANCH = re.compile(r"\b(if|elsif|case|when|loop|while|for)\b", re.IGNORECASE)
+_EXCEPTION = re.compile(r"\bexception\b", re.IGNORECASE)
+_WHITESPACE = re.compile(r"\s+")
+
+# A body shorter than this carries no signal: "NULL;" is everywhere and
+# proves nothing about code reuse.
+_MIN_FINGERPRINT_CHARS = 24
+
+# Words a lexical extractor would read as a "call" but that are syntax.
+_NOT_A_CALL = {
+    "IF", "ELSIF", "WHILE", "FOR", "LOOP", "CASE", "WHEN", "AND", "OR", "NOT",
+    "IN", "OUT", "VALUES", "INTO", "FROM", "WHERE", "SELECT", "INSERT",
+    "UPDATE", "DELETE", "SET", "DECLARE", "BEGIN", "END", "RETURN", "RAISE",
+    "EXCEPTION", "THEN", "ELSE", "IS", "AS", "NULL", "EXIT", "GOTO", "ORDER",
+    "GROUP", "HAVING", "UNION", "CONNECT", "START", "BY", "ON", "USING",
+    # Standard SQL/PL-SQL functions: portable, not Forms built-ins.
+    "NVL", "NVL2", "DECODE", "SUBSTR", "INSTR", "LENGTH", "UPPER", "LOWER",
+    "INITCAP", "TRIM", "LTRIM", "RTRIM", "LPAD", "RPAD", "REPLACE",
+    "TO_CHAR", "TO_DATE", "TO_NUMBER", "TRUNC", "ROUND", "MOD", "ABS",
+    "GREATEST", "LEAST", "COUNT", "SUM", "MIN", "MAX", "AVG", "SYSDATE",
+    "ADD_MONTHS", "MONTHS_BETWEEN", "LAST_DAY", "NEXT_DAY", "COALESCE",
+    "SIGN", "POWER", "CEIL", "FLOOR", "CHR", "ASCII", "RAWTOHEX", "USERENV",
+    "REGEXP_REPLACE", "REGEXP_SUBSTR", "REGEXP_INSTR", "REGEXP_LIKE",
+    "EXTRACT", "CAST", "TABLE", "EXISTS", "SQLCODE", "SQLERRM",
+}
+
+
+@dataclass
+class CodeAnalysis:
+    """Result of scanning one block of PL/SQL."""
+
+    lines: int = 0
+    builtins: Counter[str] = field(default_factory=Counter)
+    unknown_calls: Counter[str] = field(default_factory=Counter)
+    system_vars: Counter[str] = field(default_factory=Counter)
+    globals_used: Counter[str] = field(default_factory=Counter)
+    item_refs: Counter[str] = field(default_factory=Counter)
+    sql_verbs: Counter[str] = field(default_factory=Counter)
+    branches: int = 0
+    has_exception_block: bool = False
+
+    def verdict_counts(self) -> Counter[str]:
+        """How many built-in occurrences fall under each verdict."""
+        out: Counter[str] = Counter()
+        for name, n in self.builtins.items():
+            out[rules.classify_builtin(name)[0]] += n
+        return out
+
+    def blockers(self) -> list[tuple[str, str, int]]:
+        """Built-ins classified as MANUAL -- what blocks automation."""
+        out = []
+        for name, n in self.builtins.items():
+            verdict, target = rules.classify_builtin(name)
+            if verdict == rules.MANUAL:
+                out.append((name, target, n))
+        return sorted(out, key=lambda t: -t[2])
+
+    def merge(self, other: "CodeAnalysis") -> None:
+        self.lines += other.lines
+        self.builtins.update(other.builtins)
+        self.unknown_calls.update(other.unknown_calls)
+        self.system_vars.update(other.system_vars)
+        self.globals_used.update(other.globals_used)
+        self.item_refs.update(other.item_refs)
+        self.sql_verbs.update(other.sql_verbs)
+        self.branches += other.branches
+        self.has_exception_block = self.has_exception_block or other.has_exception_block
+
+
+def strip_noise(code: str) -> str:
+    """Blank out comments and literals while preserving line breaks."""
+
+    def blank(m: re.Match[str]) -> str:
+        return re.sub(r"[^\n]", " ", m.group(0))
+
+    code = _BLOCK_COMMENT.sub(blank, code)
+    code = _STRING.sub(blank, code)
+    code = _LINE_COMMENT.sub(blank, code)
+    return code
+
+
+def fingerprint(code: str) -> str:
+    """Stable hash of a code body, ignoring comments and formatting.
+
+    Only literal copy-paste collides. String literals, identifiers and column
+    names are preserved, so two blocks that differ in a message or a table
+    name are correctly seen as different work. Returns "" for bodies too
+    small to mean anything.
+
+    This is what lets the portfolio tell "541 forms of unique logic" apart
+    from "one boilerplate block pasted into 541 forms" -- a distinction worth
+    a large fraction of the migration budget.
+    """
+    if not code or not code.strip():
+        return ""
+    body = _BLOCK_COMMENT.sub(" ", code)
+    body = _LINE_COMMENT.sub(" ", body)
+    body = _WHITESPACE.sub(" ", body).strip().upper()
+    if len(body) < _MIN_FINGERPRINT_CHARS:
+        return ""
+    return hashlib.sha1(body.encode("utf-8")).hexdigest()[:16]
+
+
+def _is_forms_builtin(name: str) -> bool:
+    upper = name.upper()
+    if upper in rules.BUILTINS:
+        return True
+    return any(upper.startswith(p.upper()) for p in rules.CLIENT_SIDE_PREFIXES)
+
+
+def analyze(code: str) -> CodeAnalysis:
+    """Scan a PL/SQL body and return what matters for the migration."""
+    res = CodeAnalysis()
+    if not code or not code.strip():
+        return res
+
+    res.lines = code.count("\n") + 1
+    clean = strip_noise(code)
+
+    for raw in _CALL.findall(clean):
+        name = raw.upper()
+        if name in _NOT_A_CALL or name.split(".")[0] in _NOT_A_CALL:
+            continue
+        if _is_forms_builtin(name):
+            res.builtins[name] += 1
+        else:
+            res.unknown_calls[name] += 1
+
+    for raw in _BARE.findall(clean):
+        name = raw.upper()
+        if name in rules.BUILTINS:
+            res.builtins[name] += 1
+
+    for raw in _BIND.findall(clean):
+        ref = raw.upper()
+        if ref.startswith("SYSTEM."):
+            res.system_vars[ref] += 1
+        elif ref.startswith("GLOBAL."):
+            res.globals_used[ref] += 1
+        else:
+            res.item_refs[ref] += 1
+
+    for verb, pattern in _SQL_VERBS.items():
+        n = len(pattern.findall(clean))
+        if n:
+            res.sql_verbs[verb] = n
+
+    res.branches = len(_BRANCH.findall(clean))
+    res.has_exception_block = bool(_EXCEPTION.search(clean))
+    return res
