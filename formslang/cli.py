@@ -3,8 +3,11 @@
     formslang assess <dir|file>...   -> convert, analyze and write the report
     formslang inspect <file.fmb>     -> detail of a single module, in the terminal
     formslang catalog                -> catalog size and coverage
+    formslang convert <file.fmb>     -> AI proposals for every code body, headless
+    formslang workbench <file.fmb>   -> the review UI, in the browser
+    formslang ai                     -> which provider is configured, and does it answer
 
-Conversion runs in parallel because each module is an independent Java
+Assessment runs in parallel because each module is an independent Java
 process: the bottleneck is process I/O, not Python CPU.
 """
 
@@ -17,12 +20,15 @@ import sys
 from pathlib import Path
 
 from . import __version__, rules
+from .ai import PROVIDERS, check_provider, provider_from_env
 from .assess import (
     HOURS_PER_POINT_DEFAULT,
     TIERS,
     PortfolioAssessment,
     assess_module,
 )
+from .convert import build_tasks, propose_many
+from .model import FormModule
 from .oracle import (
     OracleToolchainError,
     Toolchain,
@@ -32,6 +38,8 @@ from .oracle import (
 )
 from .parser import parse_xml
 from .report import write_reports
+from .store import Store
+from .workbench import Workbench, serve
 
 MODULE_EXT = {".fmb", ".mmb"}
 SCAN_EXT = MODULE_EXT | {".xml"}
@@ -210,6 +218,131 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_module(path: Path, out_dir: Path, oracle_home: str | None) -> FormModule:
+    """Parse a module, converting it through Oracle first if needed."""
+    if path.suffix.lower() == ".xml":
+        return parse_xml(path)
+    tc = detect_toolchain(oracle_home)
+    xml, log = convert_module(path, out_dir / "xml", tc, overwrite=False)
+    return parse_xml(xml, convert_log=log)
+
+
+def _work_dir(args: argparse.Namespace) -> Path:
+    """Where session and export files belong.
+
+    An explicit --out always wins. Otherwise a resumed session keeps its own
+    folder, so approved SQL lands beside the session it came from instead of
+    in the caller's current directory.
+    """
+    if args.out:
+        return Path(args.out)
+    target = Path(args.path)
+    if target.suffix.lower() == ".db":
+        return target.resolve().parent
+    return Path("formslang-out")
+
+
+def _open_session(args: argparse.Namespace) -> tuple[Store, int]:
+    """Open (or create) the session for the given module. Returns (store, new)."""
+    target = Path(args.path)
+    out_dir = _work_dir(args)
+
+    if target.suffix.lower() == ".db":
+        store = Store(target)
+        if not store.session():
+            store.init_session(target.stem, str(target))
+        return store, 0
+
+    mod = _load_module(target, out_dir, args.oracle_home)
+    store = Store(out_dir / f"{mod.name}.session.db")
+    store.init_session(mod.name, str(target))
+    added = store.add_tasks(build_tasks(mod))
+    return store, added
+
+
+def cmd_convert(args: argparse.Namespace) -> int:
+    """Headless conversion: propose for everything still unconverted."""
+    try:
+        store, added = _open_session(args)
+    except OracleToolchainError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    provider = provider_from_env(args.provider)
+    if args.model:
+        provider.model = args.model
+
+    pending = store.pending_tasks()
+    if args.limit:
+        pending = pending[: args.limit]
+
+    print(f"Session     : {store.path}")
+    print(f"Provider    : {provider.describe()}")
+    print(f"Tasks       : {store.stats()['tasks']} ({added} new)")
+    print(f"To convert  : {len(pending)}\n")
+    if not pending:
+        print("Nothing to convert. Open the workbench to review.")
+        store.close()
+        return 0
+
+    def progress(i: int, total: int, task, proposal) -> None:
+        mark = "ok  " if proposal.ok else "FAIL"
+        conf = f"{proposal.confidence:.2f}" if proposal.ok else "----"
+        print(f"[{i:>4}/{total}] {mark} {conf}  {task.title}")
+
+    results = propose_many(pending, provider, on_progress=progress)
+    for task_id, proposal in results.items():
+        store.save_proposal(task_id, proposal)
+
+    failed = sum(1 for p in results.values() if not p.ok)
+    low = sum(1 for p in results.values() if p.ok and p.confidence < 0.5)
+    print("\n" + "=" * 64)
+    print(f"Converted   : {len(results) - failed}   Failed: {failed}")
+    print(f"Low confidence (<0.50): {low} -- these need a human first")
+    print("=" * 64)
+    print(f"Review with : formslang workbench {store.path}")
+    store.close()
+    return 0
+
+
+def cmd_workbench(args: argparse.Namespace) -> int:
+    """Open the review UI for a module or an existing session."""
+    try:
+        store, added = _open_session(args)
+    except OracleToolchainError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    provider = provider_from_env(args.provider)
+    if args.model:
+        provider.model = args.model
+
+    stats = store.stats()
+    print(f"Module      : {store.session().get('title', '')}")
+    print(f"Tasks       : {stats['tasks']} ({added} new, {stats['unproposed']} unconverted)")
+    wb = Workbench(store, provider, _work_dir(args) / "export")
+    try:
+        serve(wb, host=args.host, port=args.port, open_browser=not args.no_browser)
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_ai(args: argparse.Namespace) -> int:
+    """Show the configured provider and, on request, prove it answers."""
+    provider = provider_from_env(args.provider)
+    print(f"Provider    : {provider.describe()}")
+    print(f"Endpoint    : {provider.base_url or '(default)'}")
+    print(f"Key         : {'set' if provider.api_key else 'NOT SET'}")
+    print(f"Available   : {', '.join(sorted(PROVIDERS))}")
+    if not args.check:
+        print("\nAdd --check to send one short request and confirm it answers.")
+        return 0
+    ok, detail = check_provider(provider)
+    print(f"\nCheck       : {'OK' if ok else 'FAILED'} -- {detail}")
+    return 0 if ok else 1
+
+
 def cmd_catalog(_args: argparse.Namespace) -> int:
     c = rules.catalog_size()
     print(f"FormsLang {__version__} -- conversion catalog")
@@ -257,6 +390,32 @@ def build_parser() -> argparse.ArgumentParser:
 
     c = sub.add_parser("catalog", help="Forms->APEX catalog coverage")
     c.set_defaults(func=cmd_catalog)
+
+    def add_session_args(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument("path", help=".fmb/.xml module, or an existing .session.db")
+        # No default: resuming a session should write next to that session file,
+        # not into whatever directory the reviewer happened to be standing in.
+        sp.add_argument("-o", "--out", default=None, help="working directory")
+        sp.add_argument("--oracle-home", default=None, help="explicit ORACLE_HOME")
+        sp.add_argument("--provider", default="", help="override FORMSLANG_AI_PROVIDER")
+        sp.add_argument("--model", default="", help="override the provider's model")
+
+    cv = sub.add_parser("convert", help="AI proposals for every code body (headless)")
+    add_session_args(cv)
+    cv.add_argument("--limit", type=int, default=0, help="convert only the first N")
+    cv.set_defaults(func=cmd_convert)
+
+    w = sub.add_parser("workbench", help="review proposals in the browser")
+    add_session_args(w)
+    w.add_argument("--port", type=int, default=8765, help="port to listen on")
+    w.add_argument("--host", default="127.0.0.1", help="bind address (loopback only)")
+    w.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    w.set_defaults(func=cmd_workbench)
+
+    ai = sub.add_parser("ai", help="show and test the AI provider configuration")
+    ai.add_argument("--provider", default="", help="override FORMSLANG_AI_PROVIDER")
+    ai.add_argument("--check", action="store_true", help="send one short request")
+    ai.set_defaults(func=cmd_ai)
     return p
 
 

@@ -17,13 +17,12 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Code Generators",
 ]
-# The analysis core runs on the Python standard library alone: it must work
-# on locked-down machines inside a customer network, with no package install.
+# FormsLang runs on the Python standard library alone -- analysis, AI calls,
+# session storage and the review UI included. It has to work on locked-down
+# machines inside a customer network, where installing a package is a ticket.
 dependencies = []
 
 [project.optional-dependencies]
-# Only the AI-assisted conversion layer needs a network client.
-ai = ["httpx>=0.27"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]

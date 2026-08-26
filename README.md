@@ -9,7 +9,8 @@ costs — measured from your own code, not estimated from a spreadsheet.
 
 > **Status: alpha, in development.** The assessment engine is working and has
 > been run end to end on a real production portfolio. The AI-assisted
-> conversion workbench is next.
+> conversion workbench runs and is under active development; every proposal
+> it produces is a draft for a human to approve, never a finished migration.
 
 ---
 
@@ -40,10 +41,12 @@ every code body; blocks that appear in more than one module are solved once
 at portfolio level and only reviewed in the copies. Both totals are shown —
 raw and deduplicated — so the correction is visible, not hidden.
 
-**4. Nothing leaves your machine.**
+**4. Nothing leaves your machine unless you send it.**
 The analysis runs locally against a local Oracle Forms install. The HTML
 report is a single self-contained file: no CDN, no remote fonts, no
-telemetry.
+telemetry. The review UI is served on the loopback interface only. The one
+thing that ever crosses the network is an AI conversion request, to the
+provider you configured yourself — and with `ollama` not even that.
 
 ## The verdict taxonomy
 
@@ -66,8 +69,10 @@ cd formslang
 pip install -e .
 ```
 
-The analysis core has **zero third-party dependencies** — standard library
-only, so it runs on a locked-down machine inside a customer network.
+FormsLang has **zero third-party dependencies** — standard library only, all
+of it: `urllib` for the AI calls, `sqlite3` for the session, `http.server`
+for the review UI. It runs on a locked-down machine inside a customer
+network, where installing a package is a ticket.
 
 ### Oracle Forms toolchain
 
@@ -97,6 +102,62 @@ formslang inspect "D:\legacy\forms\ORDERS.fmb"
 # What the catalog currently covers
 formslang catalog
 ```
+
+## AI-assisted conversion
+
+Assessment tells you the size of the job. The workbench does the job — one
+code body at a time, with a human deciding on every one.
+
+```bash
+# Which provider is configured, and does it answer?
+formslang ai --check
+
+# Headless: draft a proposal for every code body in a module
+formslang convert "D:\legacy\forms\ORDERS.fmb" -o out
+
+# Review them in the browser (creates the session if there isn't one)
+formslang workbench out\ORDERS.session.db
+```
+
+The workbench opens a review screen on `127.0.0.1:8765`: original Forms code
+on the left, the proposed APEX code on the right and editable, with the
+verdict, the confidence, the open questions the model raised and the
+built-ins it had to deal with. Approve, reject, or send back for work —
+keyboard `a` / `r` / `w`, `j` / `k` to move, `p` to convert the current unit.
+Every decision, with its reviewer and comment, is written to the session file
+as it happens. Export produces `approved.sql` plus a `session.json` audit
+trail of who approved what, and from which model answer.
+
+### Configuring a provider
+
+| Variable | Meaning |
+|---|---|
+| `FORMSLANG_AI_PROVIDER` | `anthropic`, `openai`, `azure_openai`, `google`, `ollama`, or `echo` |
+| `FORMSLANG_AI_MODEL` | model name; each provider has a sane default |
+| `FORMSLANG_AI_KEY` | API key — read from the environment, never stored, never logged |
+| `FORMSLANG_AI_BASE_URL` | override the endpoint (self-hosted, gateway, proxy) |
+| `FORMSLANG_AI_DEPLOYMENT` · `FORMSLANG_AI_API_VERSION` | Azure OpenAI only |
+
+The default is `echo`: an offline stub that answers with a well-formed
+proposal of confidence `0.00` saying plainly that no model ran. Nothing is
+sent anywhere until you configure a provider on purpose. For portfolios that
+may not leave the building, `ollama` keeps the code on the machine.
+
+### What the model is told
+
+The system prompt is a doctrine, not a hint. It carries the Forms→APEX
+mapping rules, and three honesty rules that matter more than the mapping:
+never invent an APEX API; never silently drop code you cannot convert; when
+the source is ambiguous, say so in `open_questions` and cap the confidence.
+A low-confidence proposal is doing its job — it is the one that most needs a
+human.
+
+### Copy-paste is converted once here too
+
+Deduplication is not just a line in the report. Within a run, the first
+proposal for a given fingerprint is reused for every identical body, and each
+reuse is labelled as such in the notes so a reviewer is never shown recycled
+work as if it were fresh. Failed answers are never cached.
 
 `assess` writes two files into `-o`:
 
@@ -139,7 +200,12 @@ formslang/
 ├── plsql.py     # lexical analysis + code fingerprinting
 ├── assess.py    # scoring, tiers, portfolio deduplication
 ├── report.py    # self-contained HTML + JSON
-└── cli.py       # assess / inspect / catalog
+├── ai.py        # provider layer (urllib only) + offline stub
+├── convert.py   # conversion tasks, the doctrine prompt, answer parsing
+├── store.py     # SQLite session: proposals, decisions, audit trail
+├── ui.py        # the review screen, one self-contained HTML string
+├── workbench.py # loopback HTTP server behind the review screen
+└── cli.py       # assess / inspect / catalog / convert / workbench / ai
 ```
 
 Two parser details that break naive readers, both handled:
@@ -168,7 +234,7 @@ carrying a single line of customer code.
 - [x] Forms→APEX classification catalog
 - [x] Portfolio assessment with copy-paste deduplication
 - [x] Self-contained HTML / JSON report
-- [ ] AI-assisted conversion workbench (proposal + approval per hunk)
+- [x] AI-assisted conversion workbench (proposal + approval per hunk)
 - [ ] APEX artifact generation
 - [ ] Semantic diff and merge across module versions
 

@@ -23,6 +23,12 @@ out/
 assessment.html
 assessment.json
 
+# Conversion sessions hold the original code bodies verbatim. Never commit.
+*.session.db
+*.session.db-journal
+approved.sql
+session.json
+
 # Local tooling
 .env
 .vscode/
