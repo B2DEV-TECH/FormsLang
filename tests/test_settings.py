@@ -1,0 +1,183 @@
+"""Settings: the file on disk, the precedence rules, and the key that never
+comes back.
+
+Every promise in docs/SPEC.md §5-§6 about configuration is pinned here. The
+suite runs against an isolated ``FORMSLANG_CONFIG_DIR`` (see conftest), so
+nothing on the developer's machine leaks in and nothing leaks out.
+"""
+
+from __future__ import annotations
+
+import json
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
+
+import pytest
+
+from formslang.ai import EchoProvider, provider_from_env
+from formslang.config import config_path, load_config, save_config
+from formslang.convert import build_tasks
+from formslang.parser import parse_xml
+from formslang.store import Store
+from formslang.workbench import Handler, Workbench
+
+
+@pytest.fixture()
+def server(tmp_path, sample_xml):
+    store = Store(tmp_path / "s.db")
+    store.init_session("DEMO_ORDER", str(sample_xml))
+    store.add_tasks(build_tasks(parse_xml(sample_xml)))
+    wb = Workbench(store, EchoProvider(), tmp_path / "export")
+
+    handler = type("BoundHandler", (Handler,), {"workbench": wb})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_port}"
+    try:
+        yield base, wb
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        store.close()
+
+
+def _get(base, path):
+    try:
+        with urllib.request.urlopen(base + path, timeout=10) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def _post(base, path, payload):
+    req = urllib.request.Request(
+        base + path,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+# -- the file on disk ------------------------------------------------------
+
+
+def test_settings_round_trip_survives_a_restart():
+    save_config({"provider": "ollama", "model": "llama3.3", "api_key": "k"})
+    assert load_config() == {"provider": "ollama", "model": "llama3.3", "api_key": "k"}
+
+
+def test_unknown_keys_are_dropped_on_load_and_on_save():
+    save_config({"provider": "ollama", "evil": "payload", "shell": "rm -rf"})
+    path = config_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw == {"provider": "ollama"}
+    # A hand-edited file cannot smuggle keys in either.
+    path.write_text(json.dumps({"provider": "echo", "surprise": "x"}), encoding="utf-8")
+    assert load_config() == {"provider": "echo"}
+
+
+def test_a_corrupt_config_file_is_not_an_error():
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{ this is not json", encoding="utf-8")
+    assert load_config() == {}
+    path.write_text('["a list, not a dict"]', encoding="utf-8")
+    assert load_config() == {}
+
+
+def test_the_environment_wins_over_the_config_file(monkeypatch):
+    save_config({"provider": "ollama", "model": "llama3.3"})
+    monkeypatch.setenv("FORMSLANG_AI_PROVIDER", "echo")
+    provider = provider_from_env()
+    assert provider.type_id == "echo"
+    monkeypatch.delenv("FORMSLANG_AI_PROVIDER")
+    assert provider_from_env().type_id == "ollama"
+
+
+# -- the HTTP surface ------------------------------------------------------
+
+
+def test_get_settings_never_leaks_the_key(server):
+    base, _wb = server
+    status, saved = _post(base, "/api/settings", {"provider": "anthropic", "api_key": "SECRET-KEY-123"})
+    assert status == 200
+    assert saved["has_key"] is True
+    assert saved["key_source"] == "config"
+    # The key is on disk...
+    assert load_config()["api_key"] == "SECRET-KEY-123"
+    # ...and in no answer the browser can ask for.
+    for path in ("/api/settings", "/api/state", "/api/providers"):
+        status, body = _get(base, path)
+        assert status == 200
+        assert b"SECRET" not in body, path
+
+
+def test_saving_settings_swaps_the_live_provider(server):
+    base, wb = server
+    status, data = _post(base, "/api/settings", {"provider": "ollama", "model": "llama3.3"})
+    assert status == 200
+    assert data["provider"] == "ollama"
+    assert data["model"] == "llama3.3"
+    assert wb.provider.type_id == "ollama"
+    # The choice is on disk, so a restart comes back to the same provider.
+    assert load_config() == {"provider": "ollama", "model": "llama3.3"}
+
+
+def test_an_unknown_provider_is_refused_and_nothing_is_saved(server):
+    base, wb = server
+    status, data = _post(base, "/api/settings", {"provider": "skynet"})
+    assert status == 400
+    assert "unknown AI provider" in data["error"]
+    assert wb.provider.type_id == "echo"
+    assert load_config() == {}
+
+
+def test_an_empty_key_forgets_the_stored_one(server):
+    base, _wb = server
+    _post(base, "/api/settings", {"provider": "anthropic", "api_key": "SECRET-KEY-123"})
+    status, data = _post(base, "/api/settings", {"api_key": ""})
+    assert status == 200
+    assert data["has_key"] is False
+    assert data["key_source"] == ""
+    assert "api_key" not in load_config()
+
+
+def test_an_absent_key_field_keeps_the_stored_one(server):
+    base, _wb = server
+    _post(base, "/api/settings", {"provider": "anthropic", "api_key": "SECRET-KEY-123"})
+    # Saving the model again, key field untouched: the key must survive.
+    status, data = _post(base, "/api/settings", {"provider": "anthropic", "model": "claude-x"})
+    assert status == 200
+    assert data["has_key"] is True
+    assert load_config()["api_key"] == "SECRET-KEY-123"
+
+
+def test_no_settings_change_while_a_conversion_is_running(server):
+    base, wb = server
+    wb.job = {"running": True, "done": 0, "total": 3, "error": ""}
+    status, data = _post(base, "/api/settings", {"provider": "ollama"})
+    assert status == 400
+    assert "wait for it to finish" in data["error"]
+
+
+def test_settings_test_round_trips_the_offline_provider(server):
+    base, _wb = server
+    status, data = _post(base, "/api/settings/test", {"provider": "echo"})
+    assert status == 200
+    assert data["ok"] is True
+
+
+def test_terminal_refuses_anything_not_whitelisted(server):
+    base, _wb = server
+    # An API provider has no terminal; neither does an arbitrary command.
+    for attempt in ("anthropic", "cmd.exe", "powershell", "", "claude; rm -rf /"):
+        status, data = _post(base, "/api/terminal", {"provider": attempt})
+        assert status == 400, attempt
+        assert "no terminal setup" in data["error"], attempt

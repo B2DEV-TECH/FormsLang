@@ -1,0 +1,11 @@
+{
+  "workspace": {
+    "name": "FORMSLANG"
+  },
+  "app": {
+    "id": 100,
+    "databaseSession": {
+      "parsingSchema": "FORMSLANG"
+    }
+  }
+}

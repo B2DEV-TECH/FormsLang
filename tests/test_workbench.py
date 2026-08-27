@@ -10,6 +10,7 @@ import argparse
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -68,6 +69,20 @@ def _post(base, path, payload):
         return e.code, json.loads(e.read())
 
 
+def _upload(base, name, payload):
+    req = urllib.request.Request(
+        base + "/api/upload?name=" + urllib.parse.quote(name),
+        data=payload,
+        headers={"Content-Type": "application/octet-stream"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
 def _wait_for_job(wb, timeout=10.0):
     deadline = threading.Event()
     threading.Timer(timeout, deadline.set).start()
@@ -86,10 +101,35 @@ def test_index_is_served(server):
 
 
 def test_a_foreign_host_header_is_refused(server):
-    """DNS rebinding is the one real attack on a loopback server."""
+    """DNS rebinding is one of the two real attacks on a loopback server."""
     base, _ = server
     assert _get(base, "/", host="attacker.example.com")[0] == 403
     assert _get(base, "/api/state", host="attacker.example.com")[0] == 403
+
+
+def test_a_cross_site_content_type_is_refused(server):
+    """The other real attack: a plain HTML form can smuggle JSON as
+    text/plain with no CORS preflight. Demanding the real content type
+    turns that CSRF into a 415 before any route runs."""
+    base, wb = server
+    smuggled = b'{"provider": "anthropic", "base_url": "http://evil.example"}'
+    for path in ("/api/settings", "/api/propose", "/api/terminal"):
+        req = urllib.request.Request(
+            base + path, data=smuggled,
+            headers={"Content-Type": "text/plain"}, method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(req, timeout=10)
+        assert err.value.code == 415, path
+    # The upload route takes bytes, not JSON -- but only as octet-stream.
+    req = urllib.request.Request(
+        base + "/api/upload?name=x.fmb", data=b"AB",
+        headers={"Content-Type": "text/plain"}, method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.urlopen(req, timeout=10)
+    assert err.value.code == 415
+    assert wb.provider.type_id == "echo", "the smuggled settings must not land"
 
 
 def test_state_reports_the_session(server):
@@ -169,8 +209,10 @@ def test_export_writes_where_the_workbench_was_told_to(server, tmp_path):
     _post(base, "/api/decision", {"task_id": task_id, "state": APPROVED, "code": "null;"})
     code, body = _post(base, "/api/export", {})
     assert code == 200
-    assert Path(body["sql"]).parent == tmp_path / "export"
+    assert Path(body["sql"]).parent.parent == tmp_path / "export"
     assert Path(body["sql"]).exists() and Path(body["json"]).exists()
+    assert Path(body["zip"]).parent == tmp_path / "export"
+    assert Path(body["zip"]).exists() and Path(body["project"]).is_dir()
 
 
 def test_a_second_job_is_refused_while_one_runs(tmp_path, sample_xml):
@@ -191,7 +233,7 @@ def test_the_ui_script_only_reaches_for_elements_that_exist():
 
     from formslang.ui import INDEX_HTML
 
-    markup = re.sub(r"<script>.*?</script>", "", INDEX_HTML, flags=re.S)
+    markup = re.sub(r"<script>.*?</script>", "", INDEX_HTML, flags=re.DOTALL)
     declared = set(re.findall(r'id="([^"]+)"', markup))
     used = set(re.findall(r"getElementById\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
     used |= set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
@@ -201,11 +243,192 @@ def test_the_ui_script_only_reaches_for_elements_that_exist():
 
 def test_the_ui_carries_no_external_reference():
     """The screen shows customer source; it must not phone anywhere."""
+    import re
+
     from formslang.ui import INDEX_HTML
 
     lowered = INDEX_HTML.lower()
-    for marker in ("http://", "https://", "//cdn", "fonts.googleapis", "integrity="):
+    for marker in ("https://", "//cdn", "fonts.googleapis", "integrity="):
         assert marker not in lowered, f"external reference in the review UI: {marker}"
+    # The SVG namespace in the favicon is an identifier, never fetched;
+    # any other http URL in the page would be a real reference.
+    urls = re.findall(r"http://[^\s'\"\)%>]+", lowered)
+    assert urls and all(u.startswith("http://www.w3.org/") for u in urls), urls
+
+
+def test_the_picker_has_a_primary_native_file_action_and_drop_target():
+    from formslang.ui import INDEX_HTML
+
+    assert "Select FMB / XML" in INDEX_HTML
+    assert 'accept=".fmb,.mmb,.xml"' in INDEX_HTML
+    assert 'class="dropzone"' in INDEX_HTML
+    assert "uploadModule" in INDEX_HTML
+
+
+# -- picking the module to convert ---------------------------------------
+
+
+@pytest.fixture()
+def picker(tmp_path, sample_xml):
+    """A workbench with nothing open yet, rooted at a folder of modules."""
+    forms = tmp_path / "forms"
+    (forms / "sub").mkdir(parents=True)
+    (forms / "ORDERS.xml").write_text(sample_xml.read_text(encoding="utf-8"), encoding="utf-8")
+    (forms / "LEGACY.fmb").write_bytes(b"\x00binary\x00")
+    (forms / "notes.txt").write_text("not a module", encoding="utf-8")
+
+    store = Store(tmp_path / "empty.session.db")
+    wb = Workbench(
+        store, EchoProvider(), tmp_path / "out" / "export",
+        out_dir=tmp_path / "out", browse_root=forms,
+    )
+    try:
+        yield wb, forms
+    finally:
+        wb.store.close()
+
+
+def test_browse_lists_modules_and_folders_and_nothing_else(picker):
+    wb, forms = picker
+    listing = wb.browse()
+
+    assert [d["name"] for d in listing["dirs"]] == ["sub"]
+    assert sorted(m["name"] for m in listing["modules"]) == ["LEGACY.fmb", "ORDERS.xml"]
+    assert "notes.txt" not in json.dumps(listing)
+    # Names travel; code does not. Reading a module takes an explicit open.
+    assert "TriggerText" not in json.dumps(listing)
+    assert listing["parent"] == str(forms.parent)
+
+
+def test_browse_refuses_something_that_is_not_a_folder(picker):
+    wb, forms = picker
+    with pytest.raises(ValueError, match="not a folder"):
+        wb.browse(str(forms / "ORDERS.xml"))
+
+
+def test_opening_a_module_replaces_what_is_on_screen(picker):
+    wb, forms = picker
+    assert wb.store.stats()["tasks"] == 0
+
+    result = wb.open_module(str(forms / "ORDERS.xml"))
+
+    assert result["title"] == "DEMO_ORDER"
+    assert result["added"] > 0
+    assert wb.store.stats()["tasks"] == result["added"]
+    assert wb.state()["session"]["title"] == "DEMO_ORDER"
+
+
+def test_the_session_lands_in_our_folder_never_beside_the_customer_source(picker):
+    """Conversion output must not appear inside the customer's tree."""
+    wb, forms = picker
+    wb.open_module(str(forms / "ORDERS.xml"))
+
+    assert (wb.out_dir / "DEMO_ORDER.session.db").exists()
+    assert not list(forms.glob("*.db"))
+    assert wb.export_dir.parent == wb.out_dir
+
+
+def test_reopening_the_same_module_resumes_instead_of_duplicating(picker):
+    wb, forms = picker
+    first = wb.open_module(str(forms / "ORDERS.xml"))
+    again = wb.open_module(str(forms / "ORDERS.xml"))
+
+    assert again["added"] == 0
+    assert again["stats"]["tasks"] == first["stats"]["tasks"]
+
+
+def test_opening_something_that_is_not_a_forms_module_is_refused(picker):
+    wb, forms = picker
+    with pytest.raises(ValueError, match="not a Forms module"):
+        wb.open_module(str(forms / "notes.txt"))
+    with pytest.raises(ValueError, match="not a file"):
+        wb.open_module(str(forms / "nope.fmb"))
+
+
+def test_no_module_swap_while_a_conversion_is_running(picker):
+    """Swapping the store mid-job would have the job writing into the old one."""
+    wb, forms = picker
+    wb.job = {"running": True, "done": 0, "total": 3, "error": ""}
+    with pytest.raises(ValueError, match="wait for it to finish"):
+        wb.open_module(str(forms / "ORDERS.xml"))
+    with pytest.raises(ValueError, match="wait for it to finish"):
+        wb.set_provider("echo")
+
+
+def test_the_browser_and_the_open_are_reachable_over_http(server, tmp_path, sample_xml):
+    base, _wb = server
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    (other / "SECOND.xml").write_text(sample_xml.read_text(encoding="utf-8"), encoding="utf-8")
+
+    status, raw = _get(base, "/api/browse?dir=" + str(other).replace("\\", "%5C"))
+    assert status == 200
+    assert [m["name"] for m in json.loads(raw)["modules"]] == ["SECOND.xml"]
+
+    status, body = _post(base, "/api/open", {"path": str(other / "SECOND.xml")})
+    assert status == 200
+    assert body["title"] == "DEMO_ORDER"
+
+    status, body = _post(base, "/api/open", {"path": str(other / "ghost.fmb")})
+    assert status == 400
+    assert "not a file" in body["error"]
+
+
+def test_a_browser_selected_xml_is_staged_and_opened(server, sample_xml):
+    base, wb = server
+    status, body = _upload(base, "SELECTED.xml", sample_xml.read_bytes())
+
+    assert status == 200
+    assert body["title"] == "DEMO_ORDER"
+    assert (wb.out_dir / "uploads" / "SELECTED.xml").exists()
+    assert wb.state()["session"]["source_path"].endswith("SELECTED.xml")
+
+
+def test_an_unsafe_or_unsupported_upload_name_is_refused(server):
+    base, _ = server
+    status, body = _upload(base, "notes.txt", b"not a form")
+    assert status == 400
+    assert ".fmb" in body["error"]
+
+
+# -- picking the model ---------------------------------------------------
+
+
+def test_the_model_can_be_swapped_mid_session(server):
+    base, wb = server
+    status, body = _post(base, "/api/provider", {"provider": "ollama", "model": "llama3.3"})
+
+    assert status == 200
+    assert "llama3.3" in body["provider"]
+    assert wb.provider.type_id == "ollama"
+    assert json.loads(_get(base, "/api/state")[1])["model"] == "llama3.3"
+
+
+def test_an_unknown_model_choice_is_refused_and_the_old_one_survives(server):
+    base, wb = server
+    status, body = _post(base, "/api/provider", {"provider": "not_a_provider"})
+
+    assert status == 400
+    assert "unknown AI provider" in body["error"]
+    assert wb.provider.type_id == "echo"  # still the one that was working
+
+
+def test_the_api_key_never_reaches_the_browser(server, monkeypatch):
+    """The key lives in the server's environment and stays there."""
+    base, wb = server
+    monkeypatch.setenv("FORMSLANG_AI_KEY", "sk-do-not-leak-me")
+
+    _post(base, "/api/provider", {"provider": "anthropic", "model": "claude-sonnet-4-6"})
+    seen = _get(base, "/api/state")[1].decode() + _get(base, "/api/providers")[1].decode()
+
+    assert "sk-do-not-leak-me" not in seen
+    assert wb.provider.api_key == "sk-do-not-leak-me"  # the server does hold it
+
+
+def test_the_picker_is_offered_every_provider(server):
+    base, _ = server
+    ids = [p["id"] for p in json.loads(_get(base, "/api/providers")[1])["providers"]]
+    assert {"anthropic", "claude_cli", "codex_cli", "echo", "ollama"} <= set(ids)
 
 
 def test_resumed_session_exports_next_to_its_own_file(tmp_path):

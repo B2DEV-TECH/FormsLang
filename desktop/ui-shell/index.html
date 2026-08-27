@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FormsLang</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; background: #07090D; color: #EEF1F6;
+    font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  .boot { text-align: center; animation: rise .5s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .boot svg { width: 84px; height: 84px; filter: drop-shadow(0 8px 34px rgba(245,166,64,.35)); }
+  h1 { margin: 18px 0 4px; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+  p { margin: 0; color: #9AA3B2; font-size: 13px; }
+  .bar { width: 200px; height: 3px; margin: 22px auto 0; border-radius: 3px; background: #1B212C; overflow: hidden; }
+  .bar i { display: block; width: 40%; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #C07F22, #F5A640); animation: slide 1.1s ease-in-out infinite alternate; }
+  @keyframes slide { from { transform: translateX(-40%); } to { transform: translateX(320%); } }
+  .fail, body[data-state="dead"] .live { display: none; }
+  body[data-state="dead"] .fail { display: block; color: #F87171; margin-top: 18px; max-width: 46ch; }
+  footer { position: fixed; bottom: 16px; left: 0; right: 0; text-align: center; color: #5B6472; font-size: 11px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+</head>
+<body>
+  <div class="boot">
+    <svg viewBox="0 0 512 512" aria-hidden="true"><rect x="16" y="16" width="480" height="480" rx="96" fill="#0B0E13"/><g transform="translate(52 52) scale(.80)"><path fill="#F5A640" fill-rule="evenodd" d="M112 72H322V104H112C90 104 72 122 72 144V368C72 390 90 408 112 408H322V440H112C72 440 40 408 40 368V144C40 104 72 72 112 72ZM290 72H322V440H290Z"/><rect x="322" y="112" width="92" height="24" rx="2" fill="#F5A640"/><rect x="322" y="160" width="132" height="24" rx="2" fill="#F5A640"/><rect x="322" y="208" width="104" height="24" rx="2" fill="#F5A640"/><rect x="322" y="256" width="148" height="24" rx="2" fill="#F5A640"/><rect x="322" y="304" width="116" height="24" rx="2" fill="#F5A640"/><rect x="322" y="352" width="140" height="24" rx="2" fill="#F5A640"/></g></svg>
+    <h1>FormsLang</h1>
+    <div class="live">
+      <p>Starting the local engine&hellip;</p>
+      <div class="bar"><i></i></div>
+    </div>
+    <p class="fail">The engine did not start. Close the app and try again &mdash; the log lives in the FormsLang folder under LocalAppData.</p>
+  </div>
+  <footer>&copy; B2DEV TECH &middot; free to use, not to copy &middot; everything runs on this machine</footer>
+</body>
+</html>

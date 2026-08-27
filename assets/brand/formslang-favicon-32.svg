@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="32"
+   height="32"
+   viewBox="0 0 512 512"
+   version="1.1"
+   id="svg7"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs7" />
+  <rect
+     width="512"
+     height="512"
+     rx="96"
+     fill="#07090C"
+     id="rect1" />
+  <g
+     transform="translate(52 52) scale(.80)"
+     id="g7">
+    <path
+       fill="#F5A640"
+       fill-rule="evenodd"
+       d="M112 72H322V104H112C90 104 72 122 72 144V368C72 390 90 408 112 408H322V440H112C72 440 40 408 40 368V144C40 104 72 72 112 72ZM290 72H322V440H290Z"
+       id="path1" />
+    <rect
+       x="322"
+       y="112"
+       width="92"
+       height="24"
+       rx="2"
+       fill="#F5A640"
+       id="rect2" />
+    <rect
+       x="322"
+       y="160"
+       width="132"
+       height="24"
+       rx="2"
+       fill="#F5A640"
+       id="rect3" />
+    <rect
+       x="322"
+       y="208"
+       width="104"
+       height="24"
+       rx="2"
+       fill="#F5A640"
+       id="rect4" />
+    <rect
+       x="322"
+       y="256"
+       width="148"
+       height="24"
+       rx="2"
+       fill="#F5A640"
+       id="rect5" />
+    <rect
+       x="322"
+       y="304"
+       width="116"
+       height="24"
+       rx="2"
+       fill="#F5A640"
+       id="rect6" />
+    <rect
+       x="322"
+       y="352"
+       width="140"
+       height="24"
+       rx="2"
+       fill="#F5A640"
+       id="rect7" />
+  </g>
+</svg>

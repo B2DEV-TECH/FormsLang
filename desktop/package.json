@@ -1,0 +1,14 @@
+{
+  "name": "formslang-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "tauri": "tauri",
+    "icon:render": "node scripts/render-icon.mjs",
+    "icon": "npm run icon:render && tauri icon icon-1024.png -o src-tauri/icons"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "sharp": "^0.33"
+  }
+}

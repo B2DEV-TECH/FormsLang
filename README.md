@@ -1,11 +1,23 @@
-# FormsLang
+<p align="center">
+  <img src="assets/brand/formslang-readme-banner.svg" alt="FormsLang" width="840">
+</p>
+
+<p align="center">
+  <a href="https://b2dev.tech"><img src="https://img.shields.io/badge/B2DEV%20TECH-b2dev.tech-F5A640" alt="B2DEV TECH"></a>
+  <img src="https://img.shields.io/badge/python-%E2%89%A5%203.10-3776AB" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/dependencies-zero%20%C2%B7%20stdlib%20only-2E7D32" alt="Zero dependencies">
+  <img src="https://img.shields.io/badge/license-source--available-555" alt="Source-available license">
+</p>
 
 **Oracle Forms analysis and AI-assisted conversion to Oracle APEX.**
-A product of [B2DEV TECH](https://b2dev.tech).
+A product of [B2DEV TECH](https://b2dev.tech). Source-available: free to use,
+not to copy — see [LICENSE](LICENSE).
 
 FormsLang reads your `.fmb` modules, classifies every trigger and built-in
 against a Forms→APEX catalog, and tells you what the migration actually
-costs — measured from your own code, not estimated from a spreadsheet.
+costs — measured from your own code, not estimated from a spreadsheet. Then
+its workbench does the migration with you: one code body at a time, an AI
+proposal on every unit, a human decision on every proposal.
 
 > **Status: alpha, in development.** The assessment engine is working and has
 > been run end to end on a real production portfolio. The AI-assisted
@@ -23,6 +35,22 @@ average, or a vendor's optimistic demo on the simplest form in the system.
 FormsLang answers it by counting. It converts each module through Oracle's
 own XML toolchain, parses the result, and prices every trigger, built-in and
 program unit against a catalog of what happens to it in APEX.
+
+## Measured on real code
+
+The engine has been run end to end against a production ERP portfolio of
+**541 Forms modules** (a customer system; the modules themselves are not
+distributed and are not part of this repository).
+
+- 541 / 541 modules converted and parsed, **zero failures**
+- 2,492 blocks · 34,844 items · 21,186 triggers · 6,372 program units
+- 746,718 lines of PL/SQL
+- **59% of all code bodies in the system are literal copies of just 700
+  distinct blocks** — the signature of a system built by cloning a template
+  form, and the single largest lever in its migration budget
+
+That last number is the reason deduplication exists in the scoring. Counting
+each copy in full would have inflated the estimate by more than half.
 
 ## What makes the numbers defensible
 
@@ -46,7 +74,8 @@ The analysis runs locally against a local Oracle Forms install. The HTML
 report is a single self-contained file: no CDN, no remote fonts, no
 telemetry. The review UI is served on the loopback interface only. The one
 thing that ever crosses the network is an AI conversion request, to the
-provider you configured yourself — and with `ollama` not even that.
+provider you chose yourself — and with a local or CLI provider, not even
+that.
 
 ## The verdict taxonomy
 
@@ -61,7 +90,43 @@ them is economic, not technical.
 | `DROP` | Solves a problem APEX does not have. It disappears — and that is a gain. |
 | `UNKNOWN` | Catalog debt. Weighted expensive, named in the report, never silently cheap. |
 
-## Install
+## Two ways to run it
+
+### The desktop app (Windows)
+
+FormsLang ships as a desktop application: a native window around the same
+engine, compiled into a single self-contained executable and installed like
+any other program (MSI or setup `.exe`). Launch it and the workbench is
+simply there — no Python, no terminal, no configuration.
+
+The window is only a view. Underneath, the engine listens on a loopback port
+chosen at launch, and everything — sessions, proposals, decisions, exports —
+stays on your machine, exactly as in the CLI.
+
+The installer bundles FormsLang and nothing else. Opening `.fmb` files has
+the same requirement it has everywhere: your own licensed Oracle Forms
+installation on the machine — see
+[Oracle Forms toolchain](#oracle-forms-toolchain). Without one, the app
+works on already-converted Forms2XML `.xml` files.
+
+Build the installers from source:
+
+```bash
+pip install pyinstaller
+python -m PyInstaller --noconfirm --onefile --console \
+  --name formslang-engine --collect-data formslang --paths . \
+  --distpath packaging/dist --workpath packaging/build \
+  --specpath packaging packaging/sidecar_entry.py
+
+cp packaging/dist/formslang-engine.exe \
+   desktop/src-tauri/binaries/formslang-engine-x86_64-pc-windows-msvc.exe
+cd desktop && npm install && npm run tauri build
+```
+
+PyInstaller and Tauri are build-time tools only; what ships still has zero
+runtime dependencies.
+
+### The CLI
 
 ```bash
 git clone <this repo>
@@ -76,9 +141,15 @@ network, where installing a package is a ticket.
 
 ### Oracle Forms toolchain
 
-Converting `.fmb` to XML requires an Oracle Forms installation **you have
-licensed and installed yourself**. FormsLang redistributes no Oracle
-software; it locates your `ORACLE_HOME` and invokes your own tools.
+> ⚠️ **Converting `.fmb` files requires a valid Oracle license — yours, not
+> ours.** The `.fmb` → XML step runs Oracle's own `Forms2XML` tool, which
+> is part of the Oracle Forms product. FormsLang ships **no Oracle
+> software** — no jars, no binaries, no derived code — and downloads none.
+> It only locates and invokes an Oracle Forms installation that **you**
+> have licensed from Oracle and installed yourself, and complying with the
+> terms of that Oracle license is entirely your responsibility. No Oracle
+> install, no license? Use the XML path below — it involves no Oracle
+> software at all.
 
 FormsLang looks for the toolchain in this order:
 explicit `--oracle-home` → the `ORACLE_HOME` environment variable → common
@@ -103,7 +174,21 @@ formslang inspect "D:\legacy\forms\ORDERS.fmb"
 formslang catalog
 ```
 
-## AI-assisted conversion
+`assess` writes two files into `-o`:
+
+- `assessment.html` — the report you send to a decision maker
+- `assessment.json` — the same data, for your own tooling
+
+Useful flags: `--limit N` (dry run on a sample), `--no-recursive`,
+`--overwrite` (reconvert cached XML), `--hours-per-point` (your own measured
+calibration), `--oracle-home`.
+
+**Your source tree is never written to.** Oracle's `Forms2XML` emits the XML
+next to the `.fmb`, so FormsLang copies each module into a temporary
+directory, converts it there, and moves only the result into your output
+folder.
+
+## The workbench
 
 Assessment tells you the size of the job. The workbench does the job — one
 code body at a time, with a human deciding on every one.
@@ -117,31 +202,77 @@ formslang convert "D:\legacy\forms\ORDERS.fmb" -o out
 
 # Review them in the browser (creates the session if there isn't one)
 formslang workbench out\ORDERS.session.db
+
+# Or start at a folder and select the exact .fmb in the browser
+formslang workbench "D:\legacy\forms" -o out
 ```
 
-The workbench opens a review screen on `127.0.0.1:8765`: original Forms code
-on the left, the proposed APEX code on the right and editable, with the
-verdict, the confidence, the open questions the model raised and the
-built-ins it had to deal with. Approve, reject, or send back for work —
-keyboard `a` / `r` / `w`, `j` / `k` to move, `p` to convert the current unit.
-Every decision, with its reviewer and comment, is written to the session file
-as it happens. Export produces `approved.sql` plus a `session.json` audit
-trail of who approved what, and from which model answer.
+The workbench opens a review screen on `127.0.0.1:8765` (the desktop app
+picks its own port). **Open a module…** at the top left selects the `.fmb`
+(or an already converted Forms2XML `.xml`) you want to work on. Each module
+gets its own resumable session under the FormsLang output directory; no
+session or generated artifact is written beside the customer's source.
 
-### Configuring a provider
+The screen shows the original Forms code on the left — syntax-highlighted,
+with its verdict, confidence, the open questions the model raised and the
+built-ins it had to deal with — and the proposed APEX code on the right,
+editable. Approve, reject, or send back for work. Everything has a key:
+
+| Key | Action |
+|---|---|
+| `j` / `k` | next / previous unit |
+| `p` | propose a conversion for the current unit |
+| `a` / `r` / `w` | approve / reject / send back for work |
+| `o` | open a Forms module |
+| `/` | search |
+
+Every decision, with its reviewer and comment, is written to the session
+file as it happens. **Propose all** drafts the whole module in one pass;
+review remains one unit at a time.
+
+## AI-assisted conversion
+
+### Providers
+
+Everything is configured in the app: the gear in the workbench header (or
+the provider chip) opens Settings, where every provider shows what it needs
+and whether this machine has it — a missing API key or an uninstalled CLI
+is a label, not a surprise at request time. Pick a provider, paste a key or
+open the setup terminal for a CLI, press **Test**, save.
+
+| Provider | Kind | What it needs |
+|---|---|---|
+| Claude Code CLI · Codex CLI | your installed CLI | nothing — rides the subscription you already authenticated (an **Open setup terminal** button handles first sign-in) |
+| Anthropic · OpenAI · Azure OpenAI · Google | HTTP API | an API key, pasted once in Settings |
+| Ollama | local HTTP | a local model; code never leaves the machine |
+| Offline (`echo`) | stub | nothing; the default |
+
+Settings are written to `%APPDATA%\FormsLang\config.json` on Windows
+(`~/.config/formslang/config.json` elsewhere) — never inside your project.
+The API key is **write-only**: it travels browser → server once when you
+save or test it, is stored in that local file, and never appears in any
+response, log, or error message again. Saving an empty key forgets the
+stored one. Full rules in [docs/SPEC.md](docs/SPEC.md).
+
+Environment variables remain the power-user and CI route, and they **always
+win** over the settings file:
 
 | Variable | Meaning |
 |---|---|
-| `FORMSLANG_AI_PROVIDER` | `anthropic`, `openai`, `azure_openai`, `google`, `ollama`, or `echo` |
+| `FORMSLANG_AI_PROVIDER` | `claude_cli`, `codex_cli`, `anthropic`, `openai`, `azure_openai`, `google`, `ollama`, or `echo` |
 | `FORMSLANG_AI_MODEL` | model name; each provider has a sane default |
-| `FORMSLANG_AI_KEY` | API key — read from the environment, never stored, never logged |
+| `FORMSLANG_AI_KEY` | API key — overrides any stored one; never logged, never sent to the browser |
 | `FORMSLANG_AI_BASE_URL` | override the endpoint (self-hosted, gateway, proxy) |
 | `FORMSLANG_AI_DEPLOYMENT` · `FORMSLANG_AI_API_VERSION` | Azure OpenAI only |
+| `FORMSLANG_CONFIG_DIR` | override where `config.json` lives |
 
 The default is `echo`: an offline stub that answers with a well-formed
 proposal of confidence `0.00` saying plainly that no model ran. Nothing is
-sent anywhere until you configure a provider on purpose. For portfolios that
-may not leave the building, `ollama` keeps the code on the machine.
+sent anywhere until you choose a provider on purpose — the workbench asks
+once with a banner, it never assumes. For portfolios that may not leave the
+building, `ollama` keeps the code on the machine. And a provider is never
+required: the right pane is an editor, so you can write the APEX
+replacement yourself and approve it.
 
 ### What the model is told
 
@@ -159,35 +290,36 @@ proposal for a given fingerprint is reused for every identical body, and each
 reuse is labelled as such in the notes so a reviewer is never shown recycled
 work as if it were fresh. Failed answers are never cached.
 
-`assess` writes two files into `-o`:
+## Exporting for APEX 26.1
 
-- `assessment.html` — the report you send to a decision maker
-- `assessment.json` — the same data, for your own tooling
+Choose **Export APEX 26.1**, then set the application name, alias, application
+ID and page number. Workspace and parsing schema are optional so a package can
+be generated and validated before a target database is available. The export
+folder contains:
 
-Useful flags: `--limit N` (dry run on a sample), `--no-recursive`,
-`--overwrite` (reconvert cached XML), `--hours-per-point` (your own measured
-calibration), `--oracle-home`.
+- `<alias>.apex.zip` — the APEXlang 26.1 package for SQLcl validation/import
+- `<alias>/` — the same application as an expanded, reviewable APEXlang tree
+- `<alias>-review/` — `approved.sql`, `session.json` and the mapping manifest
 
-**Your source tree is never written to.** Oracle's `Forms2XML` emits the XML
-next to the `.fmb`, so FormsLang copies each module into a temporary
-directory, converts it there, and moves only the result into your output
-folder.
+The ZIP is deliberately separate from the audit artifacts. Only approved
+proposals are included, and they are emitted as disabled page-process
+candidates until their execution point and condition are confirmed in Page
+Designer. Regions and page items are a migration scaffold; schema binding,
+LOVs, validations and application navigation still require functional review.
 
-## Measured on real code
+Validation is offline and needs SQLcl 26.1, but no database connection:
 
-The engine has been run end to end against a production ERP portfolio of
-**541 Forms modules** (a customer system; the modules themselves are not
-distributed and are not part of this repository).
+```text
+apex validate -input my-app.apex.zip
+```
 
-- 541 / 541 modules converted and parsed, **zero failures**
-- 2,492 blocks · 34,844 items · 21,186 triggers · 6,372 program units
-- 746,718 lines of PL/SQL
-- **59% of all code bodies in the system are literal copies of just 700
-  distinct blocks** — the signature of a system built by cloning a template
-  form, and the single largest lever in its migration budget
+Import is the step that needs an Oracle database connection and an APEX 26.1
+workspace/schema:
 
-That last number is the reason deduplication exists in the scoring. Counting
-each copy in full would have inflated the estimate by more than half.
+```text
+sql user/password@service
+apex import -input my-app.apex.zip
+```
 
 ## Architecture
 
@@ -200,12 +332,18 @@ formslang/
 ├── plsql.py     # lexical analysis + code fingerprinting
 ├── assess.py    # scoring, tiers, portfolio deduplication
 ├── report.py    # self-contained HTML + JSON
-├── ai.py        # provider layer (urllib only) + offline stub
+├── ai.py        # provider layer (urllib only) + CLI providers + offline stub
+├── config.py    # the settings file the in-app Settings screen writes
 ├── convert.py   # conversion tasks, the doctrine prompt, answer parsing
 ├── store.py     # SQLite session: proposals, decisions, audit trail
+├── apexlang.py  # APEXlang 26.1 project and import ZIP generation
 ├── ui.py        # the review screen, one self-contained HTML string
 ├── workbench.py # loopback HTTP server behind the review screen
 └── cli.py       # assess / inspect / catalog / convert / workbench / ai
+
+desktop/         # Tauri 2 shell: native window, engine sidecar, MSI/NSIS
+packaging/       # PyInstaller entry: freezes the engine into one .exe
+assets/brand/    # the FormsLang brand kit (SVG)
 ```
 
 Two parser details that break naive readers, both handled:
@@ -224,9 +362,12 @@ Two parser details that break naive readers, both handled:
 pytest
 ```
 
-The fixtures are synthetic: they reproduce the exact shape Forms2XML emits —
-namespace, attribute-held code, double-escaped newlines, mojibake — without
-carrying a single line of customer code.
+The suite covers the parser, the catalog, the scoring, the session store,
+the APEX export and the workbench's DOM contract — including that the review
+screen stays fully self-contained: zero external URLs, zero CDN, zero remote
+fonts. The fixtures are synthetic: they reproduce the exact shape Forms2XML
+emits — namespace, attribute-held code, double-escaped newlines, mojibake —
+without carrying a single line of customer code.
 
 ## Roadmap
 
@@ -235,13 +376,23 @@ carrying a single line of customer code.
 - [x] Portfolio assessment with copy-paste deduplication
 - [x] Self-contained HTML / JSON report
 - [x] AI-assisted conversion workbench (proposal + approval per hunk)
-- [ ] APEX artifact generation
+- [x] APEXlang 26.1 project and import ZIP generation
+- [x] Windows desktop app (bundled engine, MSI / NSIS installers)
 - [ ] Semantic diff and merge across module versions
 
 ## Legal
 
-Proprietary software. See [LICENSE](LICENSE). Not open source.
+FormsLang is **source-available** software, © 2026 [B2DEV TECH](https://b2dev.tech).
+You may use it, including commercially, and read its source; you may not
+copy, redistribute or republish it. The code you migrate with it — and every
+APEX artifact it generates from your code — is yours. See
+[LICENSE](LICENSE) for the exact terms.
+
+**Oracle licensing.** FormsLang contains and redistributes no Oracle
+software. Converting `.fmb` files invokes Oracle's `Forms2XML` from an
+Oracle Forms installation that you must have licensed from Oracle yourself;
+using FormsLang neither grants, replaces nor extends any Oracle license.
+Working from pre-converted XML requires no Oracle software at all.
 
 Oracle, Oracle Forms and Oracle APEX are trademarks of Oracle Corporation.
-FormsLang is neither affiliated with nor endorsed by Oracle Corporation and
-redistributes no Oracle software.
+FormsLang is neither affiliated with nor endorsed by Oracle Corporation.

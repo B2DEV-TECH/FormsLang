@@ -33,3 +33,16 @@ session.json
 .env
 .vscode/
 .idea/
+
+# Desktop shell -- build output only; sources in desktop/ ARE committed
+desktop/node_modules/
+desktop/icon-1024.png
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/
+
+# Frozen engine build output
+packaging/build/
+packaging/dist/
+*.apex.zip
+uploads/

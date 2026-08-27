@@ -14,6 +14,19 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Every test gets an empty settings directory.
+
+    Without this, a real ``config.json`` on the developer's machine would
+    leak into the suite -- the offline default, for one, would stop being
+    the default.
+    """
+    config_home = tmp_path / "formslang-config"
+    monkeypatch.setenv("FORMSLANG_CONFIG_DIR", str(config_home))
+    return config_home
+
 SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Module xmlns="http://xmlns.oracle.com/Forms" version="12.2.1.4.0">
   <FormModule Name="DEMO_ORDER" Title="Order entry" FirstNavigationBlockName="ORDERS">

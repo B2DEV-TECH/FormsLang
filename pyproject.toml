@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Oracle Forms analysis and AI-assisted conversion to Oracle APEX"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
+license = { text = "B2DEV TECH Source-Available License" }
 authors = [{ name = "B2DEV TECH" }]
 keywords = ["oracle", "forms", "apex", "migration", "plsql", "legacy"]
 classifiers = [
@@ -30,6 +30,19 @@ formslang = "formslang.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["formslang*"]
+
+[tool.setuptools.package-data]
+formslang = [
+    "templates/apexlang26/*.apx",
+    "templates/apexlang26/.apex/*.json",
+    "templates/apexlang26/deployments/*.json",
+    "templates/apexlang26/pages/*.apx",
+    "templates/apexlang26/shared-components/*.apx",
+    "templates/apexlang26/shared-components/static-files/icons/*.png",
+    "templates/apexlang26/shared-components/themes/universal-theme/*.apx",
+    "templates/apexlang26/supporting-objects/*.apx",
+    "templates/apexlang26/supporting-objects/*.sql",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -253,6 +253,12 @@ def _open_session(args: argparse.Namespace) -> tuple[Store, int]:
             store.init_session(target.stem, str(target))
         return store, 0
 
+    if target.is_dir():
+        # Started on a folder: open with nothing loaded and let the reviewer
+        # pick the module in the browser.
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return Store(out_dir / "_workbench.session.db"), 0
+
     mod = _load_module(target, out_dir, args.oracle_home)
     store = Store(out_dir / f"{mod.name}.session.db")
     store.init_session(mod.name, str(target))
@@ -317,14 +323,23 @@ def cmd_workbench(args: argparse.Namespace) -> int:
     if args.model:
         provider.model = args.model
 
+    target = Path(args.path)
+    work = _work_dir(args)
     stats = store.stats()
-    print(f"Module      : {store.session().get('title', '')}")
+    print(f"Module      : {store.session().get('title', '') or '(pick one in the browser)'}")
     print(f"Tasks       : {stats['tasks']} ({added} new, {stats['unproposed']} unconverted)")
-    wb = Workbench(store, provider, _work_dir(args) / "export")
+    wb = Workbench(
+        store,
+        provider,
+        work / "export",
+        out_dir=work,
+        browse_root=target if target.is_dir() else target.parent,
+        oracle_home=args.oracle_home,
+    )
     try:
         serve(wb, host=args.host, port=args.port, open_browser=not args.no_browser)
     finally:
-        store.close()
+        wb.store.close()  # open_module may have swapped the store since
     return 0
 
 

@@ -1,35 +1,51 @@
-FormsLang - Proprietary Software License
+FormsLang — B2DEV TECH Source-Available License
+Version 1.0, August 2026
 
-Copyright (c) 2026 B2DEV TECH. All rights reserved.
+Copyright (c) 2026 B2DEV TECH — Geraldo Viana Jr (b2dev.tech)
+All rights reserved.
 
-This software and its source code are the confidential and proprietary
-property of B2DEV TECH. They are NOT open source and are NOT licensed for
-public use, copying, modification or redistribution.
+FormsLang is source-available: the code is public so you can audit exactly
+what runs against your Oracle Forms modules. It is not open source.
 
-No permission is granted to any person to use, copy, modify, merge, publish,
-distribute, sublicense or sell copies of this software, in whole or in part,
-except under a separate written agreement signed by B2DEV TECH.
+1. GRANT OF USE
+   Permission is granted, free of charge, to any person or organization to
+   download, install, run and use FormsLang, including for commercial and
+   internal business purposes, and to read its source code.
 
-Access to this repository does not transfer any ownership, licence or right
-of use. Any use outside an explicit written agreement is unauthorised.
+2. RESTRICTIONS
+   Except as allowed by section 1, no other right is granted. In particular
+   you may NOT, in whole or in part:
+   a) copy, redistribute, republish, mirror, sell, rent, sublicense or
+      otherwise make the software or its source code available to third
+      parties;
+   b) distribute modified or derivative versions of the software;
+   c) remove or alter the B2DEV TECH attribution, copyright or license
+      notices;
+   d) use the FormsLang or B2DEV TECH names or logos to endorse or promote
+      derived products without prior written permission.
 
-TRADEMARKS
-Oracle, Oracle Forms, Oracle APEX and Oracle Database are trademarks or
-registered trademarks of Oracle Corporation. FormsLang and B2DEV TECH are
-neither affiliated with nor endorsed by Oracle Corporation. FormsLang does
-not redistribute any Oracle software: it invokes an Oracle Forms
-installation that the user has licensed and installed themselves.
+3. INTERNAL MODIFICATIONS
+   You may modify the software for your own internal use only. Modified
+   versions must keep this license and attribution and must not be
+   distributed.
 
-CUSTOMER DATA
-Oracle Forms modules processed by this software remain the property of their
-owners. FormsLang runs locally and does not transmit source code anywhere,
-except to an AI provider explicitly configured by the user for the
-AI-assisted conversion features.
+4. TERMINATION
+   Any breach of section 2 or 3 terminates this license automatically.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+5. ORACLE SOFTWARE
+   FormsLang contains and redistributes no Oracle software and is neither
+   affiliated with nor endorsed by Oracle Corporation. Converting .fmb
+   modules invokes Oracle's Forms2XML tool from an Oracle Forms
+   installation licensed to you by Oracle; this license grants no rights
+   whatsoever to any Oracle product, and obtaining and complying with the
+   required Oracle licenses is solely your responsibility. Oracle, Oracle
+   Forms and Oracle APEX are trademarks of Oracle Corporation.
+
+6. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED. IN NO EVENT SHALL B2DEV TECH BE LIABLE FOR ANY CLAIM, DAMAGES
+   OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+Every conversion proposal FormsLang produces from YOUR Forms modules is
+yours: this license claims no rights over your code or over the APEX
+artifacts it generates for you.
