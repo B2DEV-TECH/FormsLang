@@ -375,6 +375,12 @@ INDEX_HTML = r"""<!doctype html>
     padding: 9px 10px; border-radius: 6px; font: 12px var(--mono); text-transform: none; transition: border-color .14s;
   }
   .export-form input:focus { outline: none; border-color: var(--gold-deep); }
+  .exports-list { display: grid; gap: 8px; padding: 12px 18px 18px; }
+  .exports-list .exp-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  .exports-list .exp-row.fresh { border-color: var(--gold-line); background: var(--gold-soft); }
+  .exports-list .exp-name { font: 12px var(--mono); overflow-wrap: anywhere; }
+  .exports-list .exp-meta { margin-left: auto; white-space: nowrap; color: var(--ink-dim); font: 10px var(--mono); letter-spacing: .05em; }
+  .exports-list .empty { color: var(--ink-dim); padding: 8px 2px; }
   @media (max-width: 760px) {
     .modal { padding: 10px; } .sheet { max-height: calc(100vh - 20px); }
     .picker-hero, .picker-files, .export-form { grid-template-columns: 1fr; }
@@ -396,6 +402,7 @@ INDEX_HTML = r"""<!doctype html>
   <span class="chip provider" id="provider" title="Pick the model that converts">—</span>
   <button class="btn" id="btn-settings" title="Settings — model, API key, CLI">&#9881;</button>
   <button class="btn" id="btn-propose-all">Convert unconverted</button>
+  <button class="btn" id="btn-exports" title="Exported ZIPs — open in folder">Exports</button>
   <button class="btn primary" id="btn-export">Export APEX 26.1</button>
 </header>
 <div id="bar"></div>
@@ -461,7 +468,7 @@ INDEX_HTML = r"""<!doctype html>
           <span class="or">or press <kbd class="key">O</kbd></span>
         </div>
         <div class="local"><i>&#10003;</i> Runs entirely on this machine — code goes only to the model you configure.</div>
-        <div class="local legal">FormsLang &copy; B2DEV TECH &middot; b2dev.tech &mdash; free to use, not to copy or redistribute.</div>
+        <div class="local legal">FormsLang &middot; created by Geraldo Viana Jr &middot; Apache-2.0 open source &middot; b2dev.tech</div>
       </div>
     </div>
   </section>
@@ -768,6 +775,7 @@ function poll() {
     }
     clearInterval(polling);
     if (job.error) toast(job.error, true);
+    else if (job.failed) toast(`${job.failed} of ${job.total} conversion(s) failed — ${job.last_error}`, true);
     else if (job.total) toast(`Converted ${job.done} unit(s). Now read them.`);
     const keep = selected;
     await refresh();  // restores the button's own label from the new counts
@@ -1068,8 +1076,34 @@ function exportApex() {
       });
       closeModal();
       toast(`APEXlang ZIP ready: ${r.zip}`);
+      showExports(r.zip.split(/[\/]/).pop());
     } catch (e) { toast(e.message, true); }
   };
+}
+
+async function showExports(freshName) {
+  let data;
+  try { data = await api("/api/exports"); } catch (e) { toast(e.message, true); return; }
+  openModal("Exported APEX applications");
+  $("modal-path").textContent = data.dir || "";
+  $("modal-hint").textContent =
+    "Each ZIP imports straight into APEX 26.1 — App Builder or SQLcl. Show in folder selects the file on disk.";
+  $("modal-foot").style.display = "none";
+  const size = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
+  const rows = (data.exports || []).map((e) => `
+    <div class="exp-row${e.name === freshName ? " fresh" : ""}">
+      <span class="exp-name">${esc(e.name)}</span>
+      <span class="exp-meta">${size(e.size)} &middot; ${esc(new Date(e.mtime * 1000).toLocaleString())}</span>
+      <button class="btn" data-reveal="${esc(e.name)}">Show in folder</button>
+    </div>`).join("");
+  $("modal-body").innerHTML =
+    `<div class="exports-list">${rows || '<div class="empty">No exports yet — press Export APEX 26.1 first.</div>'}</div>`;
+  $("modal-body").querySelectorAll("[data-reveal]").forEach((b) => {
+    b.onclick = async () => {
+      try { await api("/api/exports/open", { name: b.dataset.reveal }); }
+      catch (e) { toast(e.message, true); }
+    };
+  });
 }
 
 /* ── wiring ────────────────────────────────────────────── */
@@ -1087,6 +1121,7 @@ $("btn-needs").onclick = () => decide("needs_work");
 $("btn-propose").onclick = () => propose(false);
 $("btn-propose-all").onclick = () => propose(true);
 $("btn-export").onclick = exportApex;
+$("btn-exports").onclick = () => showExports();
 $("q").oninput = (e) => { query = e.target.value.toLowerCase(); renderList(); };
 
 document.addEventListener("keydown", (e) => {

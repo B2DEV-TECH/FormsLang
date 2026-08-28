@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import threading
 import urllib.error
 import urllib.parse
@@ -105,6 +106,37 @@ def test_a_foreign_host_header_is_refused(server):
     base, _ = server
     assert _get(base, "/", host="attacker.example.com")[0] == 403
     assert _get(base, "/api/state", host="attacker.example.com")[0] == 403
+
+
+def test_a_keyless_http_provider_refuses_to_start_a_run(server):
+    """An HTTP provider with no API key would 401 on every task. The run
+    must be refused up front, with the fix in the message."""
+    from formslang.ai import build_provider
+
+    base, wb = server
+    wb.provider = build_provider("anthropic")  # isolated config: no key anywhere
+    status, data = _post(base, "/api/propose", {"all": True})
+    assert status == 400
+    assert "needs an API key" in data["error"]
+    assert not wb.job_state()["running"]
+
+
+def test_failed_proposals_are_counted_in_the_job(server):
+    """A run where the provider errors must say so -- never report the
+    failures as converted units."""
+    from formslang.ai import EchoProvider, ProviderError
+
+    class FailingProvider(EchoProvider):
+        def complete(self, messages, max_tokens=4096):
+            raise ProviderError("HTTP 401: x-api-key header is required")
+
+    base, wb = server
+    wb.provider = FailingProvider()
+    status, _data = _post(base, "/api/propose", {"all": True})
+    assert status == 200
+    job = _wait_for_job(wb)
+    assert job["failed"] == job["total"] > 0
+    assert "401" in job["last_error"]
 
 
 def test_a_cross_site_content_type_is_refused(server):
@@ -443,3 +475,40 @@ def test_resumed_session_exports_next_to_its_own_file(tmp_path):
 def test_explicit_out_still_wins(tmp_path):
     args = argparse.Namespace(path=str(tmp_path / "x.session.db"), out="chosen")
     assert _work_dir(args) == Path("chosen")
+
+
+# -- exported ZIPs: the list and the reveal --------------------------------
+
+
+def test_exports_are_listed_newest_first(server):
+    base, wb = server
+    status, body = _get(base, "/api/exports")
+    assert status == 200
+    assert json.loads(body) == {"exports": [], "dir": str(wb.export_dir)}
+
+    wb.export_dir.mkdir(parents=True, exist_ok=True)
+    old = wb.export_dir / "old-app.apex.zip"
+    new = wb.export_dir / "new-app.apex.zip"
+    old.write_bytes(b"PK-old")
+    new.write_bytes(b"PK-new-longer")
+    stamp = old.stat().st_mtime
+    os.utime(old, (stamp - 100, stamp - 100))
+    (wb.export_dir / "notes.txt").write_text("not a zip", encoding="utf-8")
+
+    status, body = _get(base, "/api/exports")
+    data = json.loads(body)
+    assert status == 200
+    assert [e["name"] for e in data["exports"]] == ["new-app.apex.zip", "old-app.apex.zip"]
+    assert data["exports"][0]["size"] == len(b"PK-new-longer")
+
+
+def test_reveal_refuses_traversal_and_misses(server):
+    base, wb = server
+    wb.export_dir.mkdir(parents=True, exist_ok=True)
+    # A secret OUTSIDE the export dir, named like an export.
+    secret = wb.export_dir.parent / "secret.apex.zip"
+    secret.write_bytes(b"PK")
+    for name in ("../secret.apex.zip", "..\secret.apex.zip", "ghost.apex.zip", "notes.txt", ""):
+        status, data = _post(base, "/api/exports/open", {"name": name})
+        assert status == 400, name
+        assert "no such export" in data["error"], name

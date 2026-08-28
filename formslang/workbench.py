@@ -28,6 +28,9 @@ from urllib.parse import parse_qs
 from .ai import (
     ENV_FOR,
     PROVIDERS,
+    CliProvider,
+    EchoProvider,
+    OllamaProvider,
     Provider,
     build_provider,
     check_provider,
@@ -75,7 +78,10 @@ class Workbench:
         self.browse_root = Path(browse_root or Path.cwd()).resolve()
         self.oracle_home = oracle_home
         self._lock = threading.Lock()
-        self.job = {"running": False, "done": 0, "total": 0, "error": ""}
+        self.job = {
+            "running": False, "done": 0, "failed": 0, "total": 0,
+            "error": "", "last_error": "",
+        }
         self.module = self._module_from_session()
 
     # -- read ------------------------------------------------------------
@@ -209,6 +215,43 @@ class Workbench:
         self.module = module
         return export_apexlang(self.store, module, self.export_dir, config).to_dict()
 
+    def list_exports(self) -> dict:
+        """Every APEXlang ZIP built so far, newest first."""
+        exports = []
+        if self.export_dir.is_dir():
+            for path in self.export_dir.glob("*.apex.zip"):
+                info = path.stat()
+                exports.append(
+                    {
+                        "name": path.name,
+                        "path": str(path),
+                        "size": info.st_size,
+                        "mtime": info.st_mtime,
+                    }
+                )
+        exports.sort(key=lambda e: e["mtime"], reverse=True)
+        return {"exports": exports, "dir": str(self.export_dir)}
+
+    def reveal_export(self, name: str) -> dict:
+        """Open the OS file manager with one exported ZIP selected.
+
+        Only a bare ``*.apex.zip`` name that exists inside the export
+        directory is accepted -- ``Path(name).name`` throws away any
+        directory part, so a traversal attempt turns into a miss.
+        """
+        clean = Path(str(name or "")).name
+        target = self.export_dir / clean
+        if not clean.endswith(".apex.zip") or not target.is_file():
+            raise ValueError("no such export -- build one with Export APEX 26.1")
+        spot = str(target.resolve())
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", f"/select,{spot}"])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", spot])
+        else:
+            subprocess.Popen(["xdg-open", str(target.resolve().parent)])
+        return {"ok": True, "path": spot}
+
     # -- provider --------------------------------------------------------
 
     def set_provider(self, type_id: str, model: str = "") -> str:
@@ -325,10 +368,21 @@ class Workbench:
 
     def start_job(self, task_ids: list[str]) -> bool:
         """Run the conversions off the request thread. One job at a time."""
+        # Refuse to start a run that can only fail: an HTTP provider with no
+        # key would produce one 401 per task and nothing to review.
+        needs_key = not isinstance(self.provider, (CliProvider, EchoProvider, OllamaProvider))
+        if needs_key and not getattr(self.provider, "api_key", ""):
+            raise ValueError(
+                f"{self.provider.label} needs an API key. Open Settings (the gear), "
+                "paste the key and press Test — or pick a CLI provider instead."
+            )
         with self._lock:
             if self.job["running"]:
                 return False
-            self.job = {"running": True, "done": 0, "total": len(task_ids), "error": ""}
+            self.job = {
+                "running": True, "done": 0, "failed": 0, "total": len(task_ids),
+                "error": "", "last_error": "",
+            }
         threading.Thread(target=self._run_job, args=(task_ids,), daemon=True).start()
         return True
 
@@ -364,6 +418,9 @@ class Workbench:
                     seen.setdefault(task.fingerprint, task_id)
                 with self._lock:
                     self.job["done"] += 1
+                    if not result.ok:
+                        self.job["failed"] += 1
+                        self.job["last_error"] = result.error
         except Exception as e:  # noqa: BLE001 - a job must not take the server down
             with self._lock:
                 self.job["error"] = f"{type(e).__name__}: {e}"
@@ -444,6 +501,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/browse":
                 where = parse_qs(query).get("dir", [""])[0]
                 self._json(wb.browse(where))
+            elif path == "/api/exports":
+                self._json(wb.list_exports())
             else:
                 self._json({"error": "not found"}, 404)
         except ValueError as e:
@@ -529,6 +588,9 @@ class Handler(BaseHTTPRequestHandler):
 
             elif self.path == "/api/export":
                 self._json({"ok": True, **wb.export(body), "stats": wb.store.stats()})
+
+            elif self.path == "/api/exports/open":
+                self._json(wb.reveal_export(str(body.get("name") or "")))
 
             else:
                 self._json({"error": "not found"}, 404)

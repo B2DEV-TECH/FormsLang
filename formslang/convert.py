@@ -78,6 +78,9 @@ HONESTY RULES -- these outrank everything above
 - `confidence` is your estimate that an Oracle engineer would approve this
   unchanged. 0.9+ means mechanical. Anything touching architecture,
   external systems or global state is below 0.5.
+- Write every human-readable string -- `apex_target`, `notes`,
+  `open_questions` and code comments -- in English, whatever language the
+  source code, its comments or the user's environment use.
 
 OUTPUT
 
