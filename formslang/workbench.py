@@ -1,8 +1,9 @@
 """Local HTTP server behind the conversion workbench.
 
 Standard library only, bound to the loopback interface, no authentication
-and no remote access by design: the server holds the customer's source code
-and the only thing allowed to reach it is a browser on the same machine.
+and no remote access by design: the server holds the source code under
+review and the only thing allowed to reach it is a browser on the same
+machine.
 
 The Host header is checked on every request, and every POST must carry the
 right Content-Type. Together those close the two attacks a localhost server
@@ -179,7 +180,7 @@ class Workbench:
                 module = parse_xml(target)
             else:
                 # Oracle writes the XML next to the .fmb, so convert in our
-                # own directory and never touch the customer's tree.
+                # own directory and never touch the source tree.
                 toolchain = detect_toolchain(self.oracle_home)
                 xml, log = convert_module(target, self.out_dir / "xml", toolchain, overwrite=False)
                 module = parse_xml(xml, convert_log=log)
@@ -349,7 +350,7 @@ class Workbench:
         binary = shutil.which(binary_name)
         if binary is None:
             raise ValueError(f"{binary_name!r} is not installed. {PROVIDERS[provider_id].install_hint}")
-        home = str(Path.home())  # never the customer's source tree
+        home = str(Path.home())  # never the source tree under review
         if os.name == "nt":
             subprocess.Popen(
                 ["cmd.exe", "/k", binary],
@@ -658,9 +659,9 @@ def serve(
 ) -> None:
     """Block, serving the workbench, until Ctrl+C."""
     if host not in {"127.0.0.1", "localhost", "::1"}:
-        # Not a default -- a rule. The workbench holds customer source and
-        # has no authentication, so it binds the loopback interface or not
-        # at all.
+        # Not a default -- a rule. The workbench holds the source under
+        # review and has no authentication, so it binds the loopback
+        # interface or not at all.
         raise ValueError(f"the workbench binds loopback only, not {host!r}")
     handler = type("BoundHandler", (Handler,), {"workbench": workbench})
     httpd = ThreadingHTTPServer((host, port), handler)

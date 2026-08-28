@@ -9,7 +9,7 @@ build/
 .pytest_cache/
 .ruff_cache/
 
-# FormsLang output -- may contain customer source code. Never commit.
+# FormsLang output -- may contain the source code being analyzed. Never commit.
 formslang-out/
 *-out/
 out/

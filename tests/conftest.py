@@ -2,7 +2,7 @@
 
 The fixture module below is synthetic: it reproduces the shape Forms2XML
 emits (namespace, attribute-held code, double-escaped newlines, cp1252
-mojibake) without carrying a single line of customer code.
+mojibake) without carrying a single line of third-party code.
 """
 
 from __future__ import annotations

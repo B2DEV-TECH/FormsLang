@@ -13,7 +13,7 @@ by a test in `tests/`.
 A senior Oracle developer opens a `.fmb`, reviews every trigger and program
 unit against an AI-drafted APEX proposal (or writes the replacement by
 hand), and leaves with an APEX 26.1 import ZIP — without the tool ever being
-hard to use, and without a single line of customer code leaving the machine
+hard to use, and without a single line of your source code leaving the machine
 unless they explicitly chose a model.
 
 Five pillars, in priority order:

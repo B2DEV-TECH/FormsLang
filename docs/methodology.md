@@ -123,11 +123,10 @@ Tiers are bands over the deduplicated per-module points:
 | `COMPLEX` | 300–700 | Heavy business logic in the screen; review case by case |
 | `REWRITE` | > 700 | Converting costs about as much as rewriting |
 
-The boundaries were set against the observed distribution of a real
-541-module production ERP portfolio, where they produce a spread of
-38 / 314 / 150 / 39 modules. They are a starting point, not a law — a
-portfolio with a very different profile may deserve different bands, and
-moving them is a one-line change in `assess.py`.
+The boundaries are a starting heuristic over the point model, not a law. A
+portfolio with a different profile may well deserve different bands: calibrate
+them against conversions you have measured yourself, and move them — it is a
+one-line change in `assess.py`.
 
 ## 8. What FormsLang does not claim
 

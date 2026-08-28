@@ -5,7 +5,7 @@ installed on the machine. Nothing is redistributed: we locate an ORACLE_HOME
 that the user installed themselves and invoke their own tools.
 
 Golden rule: conversion NEVER writes into the source directory. Forms2XML
-emits the XML next to the .fmb, so to keep the customer's tree untouched we
+emits the XML next to the .fmb, so to keep the source tree untouched we
 copy the module into a temporary directory, convert it there, and move the
 result into the output directory.
 """

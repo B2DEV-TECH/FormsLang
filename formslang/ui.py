@@ -2,8 +2,8 @@
 
 No build step, no framework, no CDN. The page ships inside the Python
 package and is served from localhost, because the data on screen is the
-customer's source code and it has no business travelling to a CDN to fetch a
-font.
+source code under review and it has no business travelling to a CDN to fetch
+a font.
 
 Everything the page shows comes from ``/api/state``; the page itself holds
 no data and no secrets.
@@ -21,7 +21,7 @@ INDEX_HTML = r"""<!doctype html>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%23F5A640' fill-rule='evenodd' d='M112 72H322V104H112C90 104 72 122 72 144V368C72 390 90 408 112 408H322V440H112C72 440 40 408 40 368V144C40 104 72 72 112 72ZM290 72H322V440H290Z'/%3E%3Crect x='322' y='112' width='92' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='160' width='132' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='208' width='104' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='256' width='148' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='304' width='116' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='352' width='140' height='24' rx='2' fill='%23F5A640'/%3E%3C/svg%3E">
 <style>
   /* FormsLang commits to one visual world: a dark review room where the
-     customer's code is the brightest thing on screen. Single theme, chosen. */
+     code under review is the brightest thing on screen. Single theme, chosen. */
   :root {
     --gold: #F5A640;
     --gold-deep: #C07F22;
@@ -221,7 +221,7 @@ INDEX_HTML = r"""<!doctype html>
   pre.code { padding: 12px 14px 12px 0; font: 12.5px/1.65 var(--mono); color: #CBD3DF; tab-size: 4; }
   pre.code .ln { display: inline-block; width: 48px; padding-right: 13px; text-align: right; color: #38404F; user-select: none; }
   /* PL/SQL, lit like a code editor: keywords gold, strings green-grey,
-     comments sunk, bind variables violet — the customer's code is the star. */
+     comments sunk, bind variables violet — the code under review is the star. */
   .k { color: var(--gold); }
   .s { color: #A3C9A8; }
   .c { color: #4E586A; font-style: italic; }

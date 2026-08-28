@@ -20,7 +20,7 @@ classifiers = [
 ]
 # FormsLang runs on the Python standard library alone -- analysis, AI calls,
 # session storage and the review UI included. It has to work on locked-down
-# machines inside a customer network, where installing a package is a ticket.
+# machines where installing a package is a change request.
 dependencies = []
 
 [project.optional-dependencies]

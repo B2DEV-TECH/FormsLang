@@ -22,10 +22,11 @@ costs — measured from your own code, not estimated from a spreadsheet. Then
 its workbench does the migration with you: one code body at a time, an AI
 proposal on every unit, a human decision on every proposal.
 
-> **Status: alpha, in development.** The assessment engine is working and has
-> been run end to end on a real production portfolio. The AI-assisted
-> conversion workbench runs and is under active development; every proposal
-> it produces is a draft for a human to approve, never a finished migration.
+> **Status: alpha, in development.** The parser, the assessment workflow, the
+> review workbench and the export components are available for technical
+> evaluation. Every proposal the workbench produces remains subject to human
+> review and functional validation — a draft to approve, never a finished
+> migration.
 
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"
@@ -58,21 +59,18 @@ FormsLang answers it by counting. It converts each module through Oracle's
 own XML toolchain, parses the result, and prices every trigger, built-in and
 program unit against a catalog of what happens to it in APEX.
 
-## Measured on real code
+## Repeated code is a first-class concern
 
-The engine has been run end to end against a production ERP portfolio of
-**541 Forms modules** (a customer system; the modules themselves are not
-distributed and are not part of this repository).
+While developing the parser, I found that repeated PL/SQL bodies must be
+treated as a first-class architectural concern. Oracle Forms applications are
+frequently created from templates, which can cause identical triggers and
+program units to appear across multiple modules.
 
-- 541 / 541 modules converted and parsed, **zero failures**
-- 2,492 blocks · 34,844 items · 21,186 triggers · 6,372 program units
-- 746,718 lines of PL/SQL
-- **59% of all code bodies in the system are literal copies of just 700
-  distinct blocks** — the signature of a system built by cloning a template
-  form, and the single largest lever in its migration budget
-
-That last number is the reason deduplication exists in the scoring. Counting
-each copy in full would have inflated the estimate by more than half.
+FormsLang therefore normalizes and fingerprints code bodies so repeated logic
+can be identified and reviewed consistently wherever it appears. That is also
+why deduplication exists in the scoring: counting every copy at full price
+inflates any estimate built on the count, so a body solved once is charged
+once and the correction is shown rather than hidden.
 
 ## What makes the numbers defensible
 
@@ -158,8 +156,8 @@ pip install -e .
 
 FormsLang has **zero third-party dependencies** — standard library only, all
 of it: `urllib` for the AI calls, `sqlite3` for the session, `http.server`
-for the review UI. It runs on a locked-down machine inside a customer
-network, where installing a package is a ticket.
+for the review UI. It runs on a locked-down machine where installing a
+package is a change request.
 
 ### Oracle Forms toolchain
 
@@ -187,7 +185,7 @@ of the pipeline entirely.
 
 ```bash
 # Assess a whole portfolio: convert, analyze, write the report
-formslang assess "D:\legacy\forms" -o out -j 8 --title "ERP portfolio"
+formslang assess "D:\legacy\forms" -o out -j 8 --title "Forms portfolio"
 
 # One module, in the terminal
 formslang inspect "D:\legacy\forms\ORDERS.fmb"
@@ -233,7 +231,7 @@ The workbench opens a review screen on `127.0.0.1:8765` (the desktop app
 picks its own port). **Open a module…** at the top left selects the `.fmb`
 (or an already converted Forms2XML `.xml`) you want to work on. Each module
 gets its own resumable session under the FormsLang output directory; no
-session or generated artifact is written beside the customer's source.
+session or generated artifact is written beside your source.
 
 The screen shows the original Forms code on the left — syntax-highlighted,
 with its verdict, confidence, the open questions the model raised and the
@@ -392,9 +390,10 @@ pytest
 The suite covers the parser, the catalog, the scoring, the session store,
 the APEX export and the workbench's DOM contract — including that the review
 screen stays fully self-contained: zero external URLs, zero CDN, zero remote
-fonts. The fixtures are synthetic: they reproduce the exact shape Forms2XML
-emits — namespace, attribute-held code, double-escaped newlines, mojibake —
-without carrying a single line of customer code.
+fonts. The fixtures are synthetic: they reproduce the structure and edge cases
+Forms2XML produces — namespace, attribute-held code, double-escaped newlines,
+encoding problems — and the repository carries no third-party Forms modules,
+proprietary business rules, credentials or production data.
 
 ## Roadmap
 

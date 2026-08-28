@@ -7,8 +7,8 @@ every decision, every proposal and every version of the code exactly where
 they left it.
 
 Every decision is kept, including the ones that were later changed. What was
-approved, when, and against which model answer is the audit trail a customer
-is entitled to ask for.
+approved, when, and against which model answer is the audit trail any
+review process is entitled to ask for.
 """
 
 from __future__ import annotations

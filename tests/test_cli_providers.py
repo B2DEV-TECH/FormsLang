@@ -2,7 +2,7 @@
 
 These providers spawn a coding agent, so the tests that matter are the ones
 about containment: the prompt must not reach the command line, the agent must
-not start inside the customer's tree, and a missing binary must say how to fix
+not start inside the source tree, and a missing binary must say how to fix
 it rather than blow up somewhere deep.
 
 No test here needs the binaries installed -- ``subprocess.run`` is replaced.
@@ -51,8 +51,8 @@ MESSAGES = [Message("system", "You convert Forms to APEX."), Message("user", "PR
 def test_the_prompt_travels_on_stdin_not_on_the_command_line(fake_cli, monkeypatch):
     """Windows caps a command line at ~32k; a trigger body can exceed it.
 
-    It is also the difference between customer code in a process listing and
-    customer code in a pipe.
+    It is also the difference between analyzed code in a process listing and
+    analyzed code in a pipe.
     """
     monkeypatch.setattr(ai.subprocess, "run", lambda argv, **kw: _answer(fake_cli, argv, kw, '{"result":"ok"}'))
     ClaudeCliProvider().complete([Message("user", "SECRET_BODY")])
@@ -64,7 +64,7 @@ def test_the_prompt_travels_on_stdin_not_on_the_command_line(fake_cli, monkeypat
 def test_the_agent_starts_in_an_empty_scratch_folder(fake_cli, monkeypatch, tmp_path):
     """These are coding agents: whatever folder they start in, they will read.
 
-    Starting them in the project would hand them CLAUDE.md and a customer's
+    Starting them in the project would hand them CLAUDE.md and a user's
     source tree to wander through.
     """
     seen = {}
@@ -121,7 +121,7 @@ def test_claude_runs_headless_and_leaves_no_session_behind(fake_cli, monkeypatch
     argv = fake_cli[-1]["argv"]
     assert "-p" in argv                                  # print mode, not a REPL
     assert argv[argv.index("--output-format") + 1] == "json"
-    assert "--no-session-persistence" in argv            # customer code stays out of ~/.claude
+    assert "--no-session-persistence" in argv            # analyzed code stays out of ~/.claude
     assert "--strict-mcp-config" in argv                 # the user's MCP servers stay out of this
     assert argv[argv.index("--model") + 1] == "opus"
     assert argv[argv.index("--system-prompt") + 1] == MESSAGES[0].content
@@ -163,7 +163,7 @@ def test_codex_writes_its_answer_to_a_file_because_stdout_is_noisy(fake_cli, mon
     assert CodexCliProvider().complete(MESSAGES) == "BEGIN :P0_CREATED := SYSDATE; END;"
     argv = fake_cli[-1]["argv"]
     assert argv[1] == "exec"
-    assert "--ephemeral" in argv                    # no session file holding customer code
+    assert "--ephemeral" in argv                    # no session file holding analyzed code
     assert argv[argv.index("-s") + 1] == "read-only"
     assert argv[-1] == "-"                          # prompt on stdin
     assert Path(argv[argv.index("-o") + 1]).parent == Path(fake_cli[-1]["cwd"])

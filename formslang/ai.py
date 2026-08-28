@@ -2,10 +2,10 @@
 
 One job: send messages, get text back. Every backend speaks raw HTTP over
 ``urllib`` from the standard library -- no SDK, no ``requests``, no
-``httpx``. That is deliberate: FormsLang runs inside customer networks where
-installing packages is a change request, and the code being sent is the
-customer's own source. Fewer moving parts is a security argument, not a
-style preference.
+``httpx``. That is deliberate: FormsLang runs inside restricted corporate
+networks where installing packages is a change request, and the code being
+sent is the source under analysis. Fewer moving parts is a security argument,
+not a style preference.
 
 Backends: Anthropic, OpenAI, Azure OpenAI, Google, Ollama (local models --
 the only option when the code may not leave the building) and Echo, an
@@ -237,9 +237,9 @@ class GoogleProvider(Provider):
 class OllamaProvider(Provider):
     """Local model over the Ollama HTTP API.
 
-    The only backend where the customer's source code never leaves the
-    machine -- which for some portfolios is the difference between using AI
-    and not being allowed to.
+    The only backend where the source code never leaves the machine --
+    which for some portfolios is the difference between using AI and not
+    being allowed to.
     """
 
     type_id = "ollama"
@@ -266,14 +266,15 @@ class OllamaProvider(Provider):
 class CliProvider(Provider):
     """Drive an agent CLI as a subprocess instead of calling an endpoint.
 
-    Three rules make this safe enough to point at customer code:
+    Three rules make this safe enough to point at the source under
+    analysis:
 
     * The prompt goes in on **stdin**, never on the command line. A single
       Forms trigger can be thousands of characters and Windows truncates a
       long argument list without saying so.
     * The process runs in an **empty scratch directory**. These CLIs are
-      coding agents: started inside the customer's tree they would read
-      project instruction files and wander into source we never meant to
+      coding agents: started inside the source tree they would read
+      project instruction files and wander into code we never meant to
       send. An empty cwd is the cheapest way to mean it.
     * Credentials are the CLI's business. FormsLang neither reads, stores nor
       forwards them, and ``describe()`` has nothing to leak.
@@ -360,7 +361,7 @@ class ClaudeCliProvider(CliProvider):
             "-p",
             "--output-format", "json",
             "--strict-mcp-config",        # do not load the user's MCP servers
-            "--no-session-persistence",   # customer code must not land in a session file
+            "--no-session-persistence",   # analyzed code must not land in a session file
             "--exclude-dynamic-system-prompt-sections",
         ]
         if self.model:
@@ -398,7 +399,7 @@ class CodexCliProvider(CliProvider):
             self.resolve(),
             "exec",
             "--skip-git-repo-check",
-            "--ephemeral",              # no session file holding customer code
+            "--ephemeral",              # no session file holding analyzed code
             "-s", "read-only",          # it has no business writing anything
             "--color", "never",
             "-o", str(workdir / "answer.txt"),

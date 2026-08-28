@@ -130,8 +130,8 @@ def fingerprint(code: str) -> str:
     name are correctly seen as different work. Returns "" for bodies too
     small to mean anything.
 
-    This is what lets the portfolio tell "541 forms of unique logic" apart
-    from "one boilerplate block pasted into 541 forms" -- a distinction worth
+    This is what lets an assessment tell "N modules of unique logic" apart
+    from "one boilerplate block pasted into N modules" -- a distinction worth
     a large fraction of the migration budget.
     """
     if not code or not code.strip():

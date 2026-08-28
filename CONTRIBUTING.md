@@ -15,9 +15,9 @@ easiest to merge.
   spec and the test in the same PR.
 - **English everywhere.** Code, comments, docs, commit messages and AI
   prompt text are all in English.
-- **Never commit customer material.** No `.fmb`, no Forms2XML `.xml`
-  extracted from a real system, no proprietary PL/SQL. Test fixtures must
-  be synthetic.
+- **Never commit third-party material.** No `.fmb`, no Forms2XML `.xml`
+  extracted from any real system, no proprietary PL/SQL, no production data.
+  Test fixtures must be synthetic.
 
 ## Getting started
 
@@ -43,7 +43,7 @@ the engine is frozen into the sidecar binary.
 ## Reporting bugs
 
 Open a GitHub issue with the FormsLang version, your OS, what you did,
-what you expected and what happened instead. Never attach customer Forms
+what you expected and what happened instead. Never attach third-party Forms
 modules or proprietary code — reproduce with a synthetic module (the
 `tests/` fixtures show the shape).
 

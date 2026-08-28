@@ -1,6 +1,6 @@
 """The local server: routes, refusals, and where files land.
 
-The workbench holds customer source, so the tests that matter most here are
+The workbench holds the source under review, so the tests that matter most here are
 the ones about what it refuses.
 """
 
@@ -274,7 +274,7 @@ def test_the_ui_script_only_reaches_for_elements_that_exist():
 
 
 def test_the_ui_carries_no_external_reference():
-    """The screen shows customer source; it must not phone anywhere."""
+    """The screen shows the source under review; it must not phone anywhere."""
     import re
 
     from formslang.ui import INDEX_HTML
@@ -350,8 +350,8 @@ def test_opening_a_module_replaces_what_is_on_screen(picker):
     assert wb.state()["session"]["title"] == "DEMO_ORDER"
 
 
-def test_the_session_lands_in_our_folder_never_beside_the_customer_source(picker):
-    """Conversion output must not appear inside the customer's tree."""
+def test_the_session_lands_in_our_folder_never_beside_the_source(picker):
+    """Conversion output must not appear inside the source tree."""
     wb, forms = picker
     wb.open_module(str(forms / "ORDERS.xml"))
 
