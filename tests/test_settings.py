@@ -17,7 +17,8 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from formslang.ai import EchoProvider, provider_from_env
-from formslang.config import config_path, load_config, save_config
+from formslang import secrets
+from formslang.config import config_path, key_location, load_config, save_config
 from formslang.convert import build_tasks
 from formslang.parser import parse_xml
 from formslang.store import Store
@@ -73,6 +74,55 @@ def test_settings_round_trip_survives_a_restart():
     assert load_config() == {"provider": "ollama", "model": "llama3.3", "api_key": "k"}
 
 
+def test_the_api_key_never_reaches_the_settings_file():
+    """The whole point of the credential store: config.json holds no secret."""
+    save_config({"provider": "anthropic", "model": "claude-x", "api_key": "SECRET-KEY-123"})
+    raw = config_path().read_text(encoding="utf-8")
+    assert "SECRET-KEY-123" not in raw
+    assert "api_key" not in json.loads(raw)
+    # ...and it is still the key everything else reads.
+    assert load_config()["api_key"] == "SECRET-KEY-123"
+    assert key_location() == "keychain"
+
+
+def test_a_legacy_plaintext_key_is_moved_out_of_the_file():
+    """An upgrade must not leave a key sitting in plaintext."""
+    from formslang.config import migrate_plaintext_key
+
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"provider": "anthropic", "api_key": "OLD-PLAINTEXT-KEY"}),
+        encoding="utf-8",
+    )
+    # It is honoured before the migration, so nobody is locked out...
+    assert load_config()["api_key"] == "OLD-PLAINTEXT-KEY"
+    assert key_location() == "file"
+    assert migrate_plaintext_key() == "moved"
+    # ...and gone from disk after it.
+    raw = path.read_text(encoding="utf-8")
+    assert "OLD-PLAINTEXT-KEY" not in raw
+    assert json.loads(raw) == {"provider": "anthropic"}
+    assert load_config()["api_key"] == "OLD-PLAINTEXT-KEY"
+    assert key_location() == "keychain"
+
+
+def test_without_a_credential_store_a_key_is_refused_not_downgraded(monkeypatch, server):
+    """No silent fallback to plaintext: the save fails and says what to do."""
+    base, _wb = server
+    monkeypatch.setenv("FORMSLANG_SECRET_BACKEND", "none")
+    status, data = _post(base, "/api/settings", {"provider": "anthropic", "api_key": "SECRET-KEY-123"})
+    assert status == 400
+    assert "environment variable" in data["error"]
+    # Nothing was written at all -- not the key, and not the provider that came
+    # with it, so a refused save never leaves a half-applied settings file.
+    assert not config_path().exists()
+    # And the UI is told, so it can say so before the user types anything.
+    status, state = _get(base, "/api/settings")
+    assert status == 200
+    assert json.loads(state)["secure_storage"]["available"] is False
+
+
 def test_unknown_keys_are_dropped_on_load_and_on_save():
     save_config({"provider": "ollama", "evil": "payload", "shell": "rm -rf"})
     path = config_path()
@@ -109,8 +159,8 @@ def test_get_settings_never_leaks_the_key(server):
     status, saved = _post(base, "/api/settings", {"provider": "anthropic", "api_key": "SECRET-KEY-123"})
     assert status == 200
     assert saved["has_key"] is True
-    assert saved["key_source"] == "config"
-    # The key is on disk...
+    assert saved["key_source"] == "keychain"
+    # The key is in the credential store...
     assert load_config()["api_key"] == "SECRET-KEY-123"
     # ...and in no answer the browser can ask for.
     for path in ("/api/settings", "/api/state", "/api/providers"):

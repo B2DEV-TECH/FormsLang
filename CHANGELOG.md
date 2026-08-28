@@ -53,6 +53,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the way back and the client saw a dropped connection instead of the
   status it had just been sent.
 
+### Security
+
+- **API keys are no longer written to `config.json`.** The credential now
+  goes to the operating system's own store — Windows Credential Manager,
+  the macOS Keychain, or the Secret Service (libsecret) on Linux — through
+  the new `formslang.secrets` module. No third-party package is involved:
+  `ctypes` on Windows, and on the others the tool the platform already
+  ships, given the secret on stdin so it never appears in a process
+  listing.
+- **No silent fallback to plaintext.** Where the platform offers no
+  credential store, saving a key is refused with *"Secure credential
+  storage is not available. Use an environment variable instead."* and
+  nothing is written at all, so a refused save cannot leave a
+  half-applied settings file. The Settings screen disables the key field
+  and shows the same message before the user types anything.
+- A key left in `config.json` by an earlier version is still honoured, so
+  an upgrade locks nobody out; it is moved into the credential store and
+  stripped from the file the first time the workbench starts.
+- The README's privacy claims now match what the code does: AI conversion
+  requests go only to the provider the user selected, and a new privacy
+  notice states that proposals may include the selected Oracle Forms
+  source code and that hosted API and CLI providers process it under
+  their own account, retention, and data-processing policies.
+
 ## [0.1.0] — 2026-08-27
 
 ### Added

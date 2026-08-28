@@ -6,13 +6,22 @@ the in-app Settings screen writes, so a choice made in the UI survives a
 restart: ``%APPDATA%\\FormsLang\\config.json`` on Windows,
 ``$XDG_CONFIG_HOME/formslang/config.json`` elsewhere.
 
-The API key is the delicate entry. Keeping it here is a deliberate,
-documented trade -- the alternative (environment-only) is what made the
-product hard to use. The rules that make it acceptable: the file is written
-atomically with owner-only permissions where the OS supports them, the key
-is never logged, and it never travels to the browser (``/api/settings``
-reports only that a key exists). ``FORMSLANG_CONFIG_DIR`` overrides the
-directory, which is also how the tests keep their hands off a real config.
+The API key is the one setting that never lands in that file. It goes to the
+operating system's credential store instead -- Windows Credential Manager,
+the macOS Keychain, the Secret Service on Linux -- through
+:mod:`formslang.secrets`. When the platform offers no such store, saving a
+key fails and the user is told to use ``FORMSLANG_AI_KEY``; there is no quiet
+fallback to plaintext. Everything else about the key is unchanged: it is
+never logged, and it never travels to the browser (``/api/settings`` reports
+only that a key exists, and where it lives).
+
+Versions before this one did write the key into ``config.json``. Such a file
+is still read, so nobody is locked out by an upgrade, and
+:func:`migrate_plaintext_key` moves the value into the credential store and
+strips it from disk.
+
+``FORMSLANG_CONFIG_DIR`` overrides the directory, which is also how the tests
+keep their hands off a real config.
 """
 
 from __future__ import annotations
@@ -21,9 +30,27 @@ import json
 import os
 from pathlib import Path
 
+from . import secrets
+from .secrets import SecureStorageUnavailable  # re-exported for callers
+
 # The whole vocabulary of the settings file. Anything else is dropped on
 # load and on save, so a hand-edited file cannot smuggle surprises in.
 SETTING_KEYS = ("provider", "model", "api_key", "base_url", "deployment", "api_version")
+
+# What may actually be written to disk. The key is deliberately absent.
+FILE_KEYS = tuple(k for k in SETTING_KEYS if k != "api_key")
+
+__all__ = [
+    "SETTING_KEYS",
+    "FILE_KEYS",
+    "SecureStorageUnavailable",
+    "config_dir",
+    "config_path",
+    "load_config",
+    "save_config",
+    "key_location",
+    "migrate_plaintext_key",
+]
 
 
 def config_dir() -> Path:
@@ -41,8 +68,8 @@ def config_path() -> Path:
     return config_dir() / "config.json"
 
 
-def load_config() -> dict:
-    """The saved settings, or ``{}`` -- a missing or broken file is not an error."""
+def _read_file() -> dict:
+    """The raw settings file, filtered to the known keys. ``{}`` if unusable."""
     try:
         raw = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
@@ -56,13 +83,35 @@ def load_config() -> dict:
     }
 
 
-def save_config(settings: dict) -> Path:
-    """Write the settings atomically, keeping only the known keys."""
-    clean = {
-        k: str(settings[k]).strip()
-        for k in SETTING_KEYS
-        if str(settings.get(k) or "").strip()
-    }
+def _legacy_key(stored: dict | None = None) -> str:
+    """A plaintext key left in ``config.json`` by a version before this one."""
+    cfg = _read_file() if stored is None else stored
+    return str(cfg.get("api_key") or "").strip()
+
+
+def load_config() -> dict:
+    """The saved settings, or ``{}`` -- a missing or broken file is not an error.
+
+    The API key is filled in from the credential store, so every caller keeps
+    reading it the way it always has. A legacy plaintext key is still honoured
+    until :func:`migrate_plaintext_key` has moved it.
+    """
+    cfg = _read_file()
+    key = secrets.get_key() or cfg.get("api_key", "")
+    cfg.pop("api_key", None)
+    if key:
+        cfg["api_key"] = key
+    return cfg
+
+
+def key_location() -> str:
+    """Where the saved key lives: ``keychain``, ``file`` (legacy), or ``""``."""
+    if secrets.get_key():
+        return "keychain"
+    return "file" if _legacy_key() else ""
+
+
+def _write_file(clean: dict) -> Path:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
@@ -73,3 +122,47 @@ def save_config(settings: dict) -> Path:
         pass
     os.replace(tmp, path)
     return path
+
+
+def save_config(settings: dict) -> Path:
+    """Write the settings atomically, keeping only the known keys.
+
+    ``settings`` is the complete desired state: a key in it is stored, a key
+    absent from it is forgotten. The value goes to the credential store, never
+    to the file, and a failure there raises
+    :class:`~formslang.secrets.SecureStorageUnavailable` before anything is
+    written -- a saved provider must never imply a saved key.
+    """
+    key = str(settings.get("api_key") or "").strip()
+    if key != secrets.get_key():
+        if key:
+            secrets.set_key(key)  # raises when there is nowhere safe to put it
+        else:
+            secrets.delete_key()
+
+    clean = {
+        k: str(settings[k]).strip()
+        for k in FILE_KEYS
+        if str(settings.get(k) or "").strip()
+    }
+    return _write_file(clean)
+
+
+def migrate_plaintext_key() -> str:
+    """Move a legacy plaintext key out of ``config.json`` into the OS store.
+
+    Returns what happened: ``""`` when there was nothing to move, ``moved``
+    when the key is now in the store and gone from disk, or ``blocked`` when
+    the platform has no store -- in which case the file is left exactly as it
+    was, because losing the user's key is worse than leaving it where it is.
+    """
+    stored = _read_file()
+    legacy = _legacy_key(stored)
+    if not legacy:
+        return ""
+    try:
+        secrets.set_key(legacy)
+    except (SecureStorageUnavailable, ValueError):
+        return "blocked"
+    _write_file({k: v for k, v in stored.items() if k in FILE_KEYS})
+    return "moved"

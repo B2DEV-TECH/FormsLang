@@ -21,10 +21,17 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     Without this, a real ``config.json`` on the developer's machine would
     leak into the suite -- the offline default, for one, would stop being
-    the default.
+    the default. The same goes for the credential store: the suite must
+    never touch the developer's real keychain.
     """
     config_home = tmp_path / "formslang-config"
     monkeypatch.setenv("FORMSLANG_CONFIG_DIR", str(config_home))
+    # The API key lives in the OS credential store, which a test suite has
+    # no business writing to: a process-local backend, emptied per test.
+    monkeypatch.setenv("FORMSLANG_SECRET_BACKEND", "memory")
+    from formslang import secrets  # after the sys.path line above
+
+    secrets.reset_memory_backend()
     return config_home
 
 SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>

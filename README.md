@@ -92,10 +92,11 @@ raw and deduplicated — so the correction is visible, not hidden.
 **4. Nothing leaves your machine unless you send it.**
 The analysis runs locally against a local Oracle Forms install. The HTML
 report is a single self-contained file: no CDN, no remote fonts, no
-telemetry. The review UI is served on the loopback interface only. The one
-thing that ever crosses the network is an AI conversion request, to the
-provider you chose yourself — and with a local or CLI provider, not even
-that.
+telemetry. The review UI is served on the loopback interface only. AI conversion
+requests are sent only to the provider explicitly selected by the user.
+Ollama can keep the entire conversion local. Claude Code CLI, Codex CLI,
+and hosted API providers may transmit the selected source code under their
+respective account, retention, and data-processing policies.
 
 ## The verdict taxonomy
 
@@ -268,12 +269,24 @@ open the setup terminal for a CLI, press **Test**, save.
 | Ollama | local HTTP | a local model; code never leaves the machine |
 | Offline (`echo`) | stub | nothing; the default |
 
+**Privacy notice:** AI proposals may include the selected Oracle Forms
+source code. Before using a hosted API or CLI provider, confirm that you
+are authorized to process the source through that service and review the
+provider's training, retention, and data-processing policies. Use Ollama or
+manual conversion when the source cannot leave the local environment.
+
 Settings are written to `%APPDATA%\FormsLang\config.json` on Windows
 (`~/.config/formslang/config.json` elsewhere) — never inside your project.
-The API key is **write-only**: it travels browser → server once when you
-save or test it, is stored in that local file, and never appears in any
-response, log, or error message again. Saving an empty key forgets the
-stored one. Full rules in [docs/SPEC.md](docs/SPEC.md).
+The API key is **write-only through the UI**: it travels browser → server
+when you save or test it, and never appears in a browser response, a log, or
+an error message. It is **not** written to that configuration file — it goes
+to the operating system's credential store: Windows Credential Manager, the
+macOS Keychain, or the Secret Service (libsecret) on Linux. Where the
+platform offers no such store, FormsLang **refuses to save the key** rather
+than falling back to plaintext, and asks you to set `FORMSLANG_AI_KEY`
+instead. For sensitive environments, environment variables and CLI providers
+remain the recommended route. Saving an empty key forgets the stored one.
+Full rules in [docs/SPEC.md](docs/SPEC.md).
 
 Environment variables remain the power-user and CI route, and they **always
 win** over the settings file:

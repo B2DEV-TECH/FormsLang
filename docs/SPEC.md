@@ -107,10 +107,13 @@ environment variables in a terminal before launch.
   `$XDG_CONFIG_HOME/formslang/config.json` (default
   `~/.config/formslang/config.json`) elsewhere. `FORMSLANG_CONFIG_DIR`
   overrides the directory (also how tests isolate themselves).
-- **Contents:** only these keys — `provider`, `model`, `api_key`,
-  `base_url`, `deployment`, `api_version`. Unknown keys are dropped on
-  load and on save. Written atomically (temp file + rename), owner-only
-  permissions where the OS supports it.
+- **Contents:** only these keys — `provider`, `model`, `base_url`,
+  `deployment`, `api_version`. `api_key` is **not** among them: the
+  credential lives in the OS store (§5.2), never in this file. Unknown keys
+  are dropped on load and on save. Written atomically (temp file + rename),
+  owner-only permissions where the OS supports it — a best-effort measure
+  that is not equivalent protection on every operating system, which is
+  exactly why no secret is kept here.
 - **Precedence:** environment variables **always win** over the file. The
   file is what the Settings screen writes; the environment stays the
   power-user and CI override. The UI labels any setting that an
@@ -127,12 +130,31 @@ environment variables in a terminal before launch.
 3. Saving an empty key deletes the stored one ("forget key").
 4. CLI providers need no key at all — credentials stay wherever the CLI
    keeps them; FormsLang neither reads nor stores them.
+5. The key is **never written to `config.json`**. It is stored in the
+   operating system's credential store — Windows Credential Manager, the
+   macOS Keychain, the Secret Service (libsecret) on Linux — through
+   `formslang.secrets`. Enforced by test.
+6. There is **no fallback to plaintext**. When the platform offers no
+   credential store, saving fails with *"Secure credential storage is not
+   available. Use an environment variable instead."* and nothing at all is
+   written, so a refused save never leaves a half-applied settings file.
+   `FORMSLANG_AI_KEY` is the documented route in that case, and the
+   Settings screen says so before the user types anything.
+7. The secret never travels on a command line. The Unix backends are given
+   it on stdin, so it cannot surface in a process listing; the Windows
+   backend calls `advapi32` directly. No third-party package is involved on
+   any platform — the analysis core keeps its zero-dependency rule.
+8. A key left in `config.json` by an earlier version is still honoured, so
+   an upgrade locks nobody out. It is moved into the credential store and
+   stripped from the file the first time the workbench starts; if there is
+   no store to move it to, the file is left untouched rather than losing
+   the user's key, and the UI reports the key as living in the old file.
 
 ### 5.3 HTTP API
 
 | Route | Verb | Behavior |
 |---|---|---|
-| `/api/settings` | GET | Redacted settings: provider, model, endpoint fields, `has_key`, key source, config path, active env overrides |
+| `/api/settings` | GET | Redacted settings: provider, model, endpoint fields, `has_key`, key source (`env`, `keychain`, `file`, or none), credential-store availability, config path, active env overrides |
 | `/api/settings` | POST | Save any subset of the six keys; validates the provider id first; rebuilds the live provider; returns the redacted state |
 | `/api/settings/test` | POST | Round-trip test ("say ok") of the values in the form — nothing is saved; falls back to stored values for fields left blank |
 | `/api/terminal` | POST | Open a **native** terminal window running a whitelisted CLI (`claude` or `codex`) so the user can sign in. The command comes from a fixed server-side table; no browser input ever reaches a command line |
@@ -146,6 +168,11 @@ environment variables in a terminal before launch.
   key field, endpoint fields where they apply (Ollama, Azure), a **Test**
   button with the round-trip result, and — for CLI providers — an **Open
   setup terminal** button.
+- The key line names where the key actually is: the environment, the OS
+  credential store, or the old config file awaiting migration. When the
+  platform has no credential store the field is disabled and the sheet
+  shows the environment-variable message instead of letting the user type
+  a key it would have to refuse.
 - **First-run banner:** when a module is open and the provider is still
   the offline stub, a single dismissible banner says conversions are
   placeholders and offers the Settings sheet. FormsLang never silently

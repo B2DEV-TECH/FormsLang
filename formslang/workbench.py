@@ -40,7 +40,15 @@ from .ai import (
     setting,
 )
 from .apexlang import export_apexlang
-from .config import config_path, load_config, save_config
+from . import secrets
+from .config import (
+    SecureStorageUnavailable,
+    config_path,
+    key_location,
+    load_config,
+    migrate_plaintext_key,
+    save_config,
+)
 from .convert import Proposal, build_tasks, propose
 from .oracle import OracleToolchainError, convert_module, detect_toolchain, expected_xml_name
 from .parser import parse_xml
@@ -79,6 +87,9 @@ class Workbench:
         self.browse_root = Path(browse_root or Path.cwd()).resolve()
         self.oracle_home = oracle_home
         self._lock = threading.Lock()
+        # An upgrade must not leave a key sitting in plaintext: move it
+        # into the OS credential store the first time we come up.
+        migrate_plaintext_key()
         # Same shape a live run reports, so a reader never has to guess
         # whether a field is missing or empty.
         self.job = {
@@ -286,7 +297,13 @@ class Workbench:
             "deployment": setting("deployment", cfg),
             "api_version": setting("api_version", cfg),
             "has_key": bool(setting("api_key", cfg)),
-            "key_source": "env" if env_key else ("config" if cfg.get("api_key") else ""),
+            "key_source": "env" if env_key else key_location(),
+            "secure_storage": {
+                "available": secrets.available(),
+                "backend": secrets.backend_name(),
+                "label": secrets.backend_label(),
+                "message": secrets.UNAVAILABLE_MESSAGE,
+            },
             "config_path": str(config_path()),
             "env_overrides": sorted(
                 name for name, var in ENV_FOR.items()
@@ -300,6 +317,9 @@ class Workbench:
         The API key is write-only: sending a value stores it, sending an
         empty string forgets it, not sending the field keeps whatever is
         stored. Nothing about the key comes back in the answer.
+
+        The key goes to the OS credential store. When the platform has none,
+        the save is refused rather than downgraded to plaintext.
         """
         with self._lock:
             if self.job["running"]:
@@ -316,7 +336,10 @@ class Workbench:
                         cfg[name] = value
                     else:
                         cfg.pop(name, None)
-            save_config(cfg)
+            try:
+                save_config(cfg)
+            except (SecureStorageUnavailable, ValueError) as e:
+                raise ValueError(str(e)) from None
             self.provider = provider_from_env()
         return self.settings_state()
 

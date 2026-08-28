@@ -300,6 +300,7 @@ INDEX_HTML = r"""<!doctype html>
   .settings-form .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .keyline { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-faint); flex-wrap: wrap; }
   .keyline i { font-style: normal; color: var(--green); }
+  .keyline.warn i, .keyline.warn span { color: var(--red); }
   .keyline .forget {
     background: none; border: none; color: var(--ink-dim);
     text-decoration: underline; font-size: 11px; padding: 0;
@@ -1114,14 +1115,22 @@ async function openSettings() {
   const form = (p) => {
     const bits = [];
     if (p.needs_key) {
+      const store = cfg.secure_storage || {};
+      const vault = store.label || "the OS credential store";
+      const sealed = store.available || cfg.key_source === "env";
       bits.push(`<label>API key
-        <input type="password" data-f="api_key" spellcheck="false" autocomplete="off"
+        <input type="password" data-f="api_key" spellcheck="false" autocomplete="off" ${sealed ? "" : "disabled"}
                placeholder="${cfg.has_key ? "saved — leave blank to keep it" : "paste your API key"}"></label>`);
       const src = cfg.key_source === "env" ? "from the environment — wins over anything saved here"
-                : cfg.has_key ? "saved in the local config file" : "not set yet";
+                : cfg.key_source === "keychain" ? `saved in ${vault}`
+                : cfg.key_source === "file" ? "in the old config file — save it again to move it into " + vault
+                : "not set yet";
       bits.push(`<div class="keyline"><i>${cfg.has_key ? "&#10003;" : "&#9702;"}</i><span>Key: ${esc(src)}</span>` +
-        (cfg.key_source === "config" ? `<button type="button" class="forget" data-forget>forget saved key</button>` : "") +
+        (cfg.key_source === "keychain" || cfg.key_source === "file"
+          ? `<button type="button" class="forget" data-forget>forget saved key</button>` : "") +
         `</div>`);
+      if (!sealed)
+        bits.push(`<div class="keyline warn"><i>&#9888;</i><span>${esc(store.message || "")}</span></div>`);
     }
     if (p.kind === "http" && p.id !== "echo" && p.id !== "azure_openai") {
       bits.push(`<label>Endpoint override (optional)
