@@ -34,10 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to 60 seconds per unit, and the screen now accounts for every second of
   it: a moving bar under the top bar, a strip naming the unit being read
   with the provider and elapsed time, a spinner on the queued units in the
-  list, and an overlay on the APEX pane of the unit whose answer is still
-  being written. `GET /api/job` reports `current`, `current_id`, `queue`
-  and `provider` for it. A run started before the window was opened is
-  picked up on load.
+  list, and an overlay on the APEX pane of the unit whose answer is about
+  to land. A unit merely waiting in line keeps its editor and gets an
+  "in queue · N ahead" tag instead — a run over fifty units must not lock
+  fifty panes. `GET /api/job` reports `current`, `current_id`, `queue` and
+  `provider` for it, in the same shape whether or not a run is live. A run
+  started before the window was opened is picked up on load. Opening a
+  module, building the export ZIP and testing a provider show their own
+  busy state.
 
 ### Fixed
 
