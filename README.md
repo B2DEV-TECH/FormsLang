@@ -3,15 +3,18 @@
 </p>
 
 <p align="center">
-  <a href="https://b2dev.tech"><img src="https://img.shields.io/badge/B2DEV%20TECH-b2dev.tech-F5A640" alt="B2DEV TECH"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/B2DEV-TECH/FormsLang?color=F5A640" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/python-%E2%89%A5%203.10-3776AB" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/dependencies-zero%20%C2%B7%20stdlib%20only-2E7D32" alt="Zero dependencies">
-  <img src="https://img.shields.io/badge/license-source--available-555" alt="Source-available license">
+  <a href="https://github.com/B2DEV-TECH/FormsLang/stargazers"><img src="https://img.shields.io/github/stars/B2DEV-TECH/FormsLang?style=flat&color=555" alt="GitHub stars"></a>
+  <img src="https://img.shields.io/github/last-commit/B2DEV-TECH/FormsLang?color=555" alt="Last commit">
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-2E7D32" alt="PRs welcome"></a>
 </p>
 
-**Oracle Forms analysis and AI-assisted conversion to Oracle APEX.**
-A product of [B2DEV TECH](https://b2dev.tech). Source-available: free to use,
-not to copy — see [LICENSE](LICENSE).
+**FormsLang is an open-source toolkit for analyzing Oracle Forms
+applications and assisting modernization and migration initiatives toward
+Oracle APEX and modern Oracle architectures.** Apache-2.0 licensed — see
+[LICENSE](LICENSE).
 
 FormsLang reads your `.fmb` modules, classifies every trigger and built-in
 against a Forms→APEX catalog, and tells you what the migration actually
@@ -23,6 +26,14 @@ proposal on every unit, a human decision on every proposal.
 > been run end to end on a real production portfolio. The AI-assisted
 > conversion workbench runs and is under active development; every proposal
 > it produces is a draft for a human to approve, never a finished migration.
+
+## Creator
+
+FormsLang was created by **[Geraldo Viana Jr](https://github.com/gevianajr)**,
+Oracle developer and founder of **[B2DEV TECH](https://b2dev.tech)**. The
+project is maintained under the [B2DEV-TECH](https://github.com/B2DEV-TECH)
+GitHub organization and released as Open Source software for the Oracle
+developer community. See [AUTHORS.md](AUTHORS.md).
 
 ---
 
@@ -129,8 +140,8 @@ runtime dependencies.
 ### The CLI
 
 ```bash
-git clone <this repo>
-cd formslang
+git clone https://github.com/B2DEV-TECH/FormsLang.git
+cd FormsLang
 pip install -e .
 ```
 
@@ -301,6 +312,10 @@ folder contains:
 - `<alias>/` — the same application as an expanded, reviewable APEXlang tree
 - `<alias>-review/` — `approved.sql`, `session.json` and the mapping manifest
 
+The **Exports** button in the workbench header lists every ZIP built so
+far, newest first, each with a *Show in folder* action that selects the
+file in your file manager; the same panel opens after every export.
+
 The ZIP is deliberately separate from the audit artifacts. Only approved
 proposals are included, and they are emitted as disabled page-process
 candidates until their execution point and condition are confirmed in Page
@@ -380,13 +395,35 @@ without carrying a single line of customer code.
 - [x] Windows desktop app (bundled engine, MSI / NSIS installers)
 - [ ] Semantic diff and merge across module versions
 
+## Community
+
+Contributions, bug reports and ideas are welcome:
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — how to fork, branch, test and
+  open a pull request.
+- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** — Contributor Covenant 2.1.
+- **[SECURITY.md](SECURITY.md)** — report vulnerabilities privately, never
+  in a public issue.
+- **[CHANGELOG.md](CHANGELOG.md)** — what changed, release by release.
+
+If FormsLang helped you size or run a Forms migration, a GitHub star helps
+other Oracle developers find it.
+
+## Project status
+
+FormsLang is under **active development**. The engine, the CLI flags, the
+HTTP API of the local workbench and the export formats may still evolve
+between releases; nothing here is promised stable yet. The changelog
+records every visible change, and [releases](https://github.com/B2DEV-TECH/FormsLang/releases)
+carry the installers.
+
 ## Legal
 
-FormsLang is **source-available** software, © 2026 [B2DEV TECH](https://b2dev.tech).
-You may use it, including commercially, and read its source; you may not
-copy, redistribute or republish it. The code you migrate with it — and every
-APEX artifact it generates from your code — is yours. See
-[LICENSE](LICENSE) for the exact terms.
+FormsLang is **Open Source** software, copyright © 2026 Geraldo Viana Jr,
+licensed under the [Apache License 2.0](LICENSE). You may use, modify and
+redistribute it, including commercially, under the terms of that license;
+the [NOTICE](NOTICE) file travels with every copy. The code you migrate
+with it — and every APEX artifact it generates from your code — is yours.
 
 **Oracle licensing.** FormsLang contains and redistributes no Oracle
 software. Converting `.fmb` files invokes Oracle's `Forms2XML` from an
@@ -394,5 +431,6 @@ Oracle Forms installation that you must have licensed from Oracle yourself;
 using FormsLang neither grants, replaces nor extends any Oracle license.
 Working from pre-converted XML requires no Oracle software at all.
 
-Oracle, Oracle Forms and Oracle APEX are trademarks of Oracle Corporation.
-FormsLang is neither affiliated with nor endorsed by Oracle Corporation.
+Oracle, Java and related trademarks are registered trademarks of Oracle
+and/or its affiliates. FormsLang is an independent Open Source project and
+is not affiliated with or endorsed by Oracle Corporation.

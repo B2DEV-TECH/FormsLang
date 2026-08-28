@@ -42,7 +42,7 @@ Five pillars, in priority order:
 |---|---|
 | A local review workbench + conversion engine (Python stdlib only) | A cloud service — there is no server, no account, no telemetry |
 | A driver for the user's own Oracle Forms2XML and their own AI credentials | A redistributor of Oracle software (none is shipped, ever) |
-| Source-available, free to use (B2DEV TECH license) | Open-source in the OSI sense — copying and redistribution are not granted |
+| Open Source under the Apache License 2.0 (created by Geraldo Viana Jr) | Unattributed — the LICENSE and NOTICE files travel with every copy |
 | An accelerant for a migration a human still owns | An automatic migrator whose output goes to production unread |
 
 ## 3. Architecture
@@ -158,7 +158,7 @@ environment variables in a terminal before launch.
 | No external resources in the UI | Single self-contained document | `test_the_ui_carries_no_external_reference` |
 | Terminal launch cannot be weaponized | Fixed whitelist, browser sends an id, never a command | `test_terminal_refuses_anything_not_whitelisted` |
 | CLI providers can't wander into source trees | Subprocess runs in an empty scratch directory, prompt on stdin | `tests/test_cli_providers.py` |
-| Oracle ships nothing with FormsLang | No Oracle jars, binaries or artwork in the repo or the packages | LICENSE §5, repo audit |
+| Oracle ships nothing with FormsLang | No Oracle jars, binaries or artwork in the repo or the packages | NOTICE + README Legal, repo audit |
 
 ## 7. Out of scope for this version (roadmap)
 

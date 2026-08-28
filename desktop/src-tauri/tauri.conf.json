@@ -34,7 +34,7 @@
     ],
     "externalBin": ["binaries/formslang-engine"],
     "publisher": "B2DEV TECH",
-    "copyright": "(c) 2026 B2DEV TECH - free to use, not to copy",
+    "copyright": "(c) 2026 Geraldo Viana Jr - Apache-2.0",
     "shortDescription": "Oracle Forms to APEX review workbench"
   }
 }

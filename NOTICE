@@ -1,0 +1,17 @@
+FormsLang
+Copyright 2026 Geraldo Viana Jr
+
+FormsLang was created by Geraldo Viana Jr, founder of B2DEV TECH
+(https://b2dev.tech), and is maintained under the B2DEV-TECH GitHub
+organization.
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+FormsLang contains and redistributes no Oracle software. Converting .fmb
+modules invokes Oracle's Forms2XML tool from an Oracle Forms installation
+licensed to the user by Oracle; obtaining and complying with the required
+Oracle licenses is solely the user's responsibility.
+
+Oracle, Java, Oracle Forms and Oracle APEX are registered trademarks of
+Oracle and/or its affiliates. FormsLang is an independent open source
+project and is not affiliated with or endorsed by Oracle Corporation.

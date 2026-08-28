@@ -3,7 +3,7 @@ name = "formslang-desktop"
 version = "0.1.0"
 description = "FormsLang desktop shell (B2DEV TECH)"
 edition = "2021"
-license = "LicenseRef-B2DEV-Source-Available"
+license = "Apache-2.0"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

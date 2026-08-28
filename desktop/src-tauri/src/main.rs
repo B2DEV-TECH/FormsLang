@@ -1,4 +1,4 @@
-// FormsLang desktop -- B2DEV TECH. Free to use, not to copy.
+// FormsLang desktop -- created by Geraldo Viana Jr. Apache-2.0.
 //
 // The window is a shell: the Python engine (a frozen sidecar) starts on a
 // free loopback port and the webview navigates to it as soon as it answers.
