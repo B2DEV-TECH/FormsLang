@@ -137,6 +137,13 @@ INDEX_HTML = r"""<!doctype html>
     background: rgba(9,12,17,.93);
   }
   .pane-busy[hidden] { display: none; }
+  .qtag {
+    font: 10px var(--mono); letter-spacing: .1em; color: var(--gold);
+    border: 1px solid var(--gold-line); border-radius: 4px; padding: 2px 6px;
+    background: var(--gold-soft); animation: pulse 1.6s ease-in-out infinite;
+  }
+  .qtag[hidden] { display: none; }
+  @keyframes pulse { 50% { opacity: .45; } }
   .pane-busy strong { font: 600 14px var(--sans); color: var(--ink); }
   .pane-busy span.sub { font-size: 12.5px; color: var(--ink-dim); max-width: 330px; line-height: 1.55; }
   .pane-busy .tick { font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
@@ -483,6 +490,7 @@ INDEX_HTML = r"""<!doctype html>
       <div class="pane">
         <h2>
           <span>Oracle APEX — what would replace it · editable</span>
+          <span class="qtag" id="out-queued" hidden>in queue</span>
           <span class="conf" id="t-conf"></span>
         </h2>
         <textarea class="code" id="out" spellcheck="false" placeholder="No proposal yet — write the APEX replacement here yourself, or press P to ask the model."></textarea>
@@ -862,18 +870,23 @@ function paintBusyPane() {
   const box = $("out-busy");
   if (!box) return;
   const queue = new Set(running() ? (job.queue || []) : []);
-  const mine = running() && selected && selected === job.current_id;
-  const on = !!(mine || (selected && queue.has(selected)));
-  box.hidden = !on;
-  if (!on) return;
+  // Only the unit being written is covered: its answer is about to replace
+  // whatever is in the box. A unit merely waiting in line stays editable --
+  // a queue of fifty must not lock fifty panes.
+  const mine = !!(running() && selected && selected === job.current_id);
+  const ahead = !!(selected && !mine && queue.has(selected));
+  box.hidden = !mine;
+  $("out-queued").hidden = !ahead;
+  if (ahead) {
+    $("out-queued").textContent =
+      "in queue · " + Math.max(1, (job.total || 0) - (job.done || 0) - 1) + " ahead";
+  }
+  if (!mine) return;
   const who = job.provider || providerLabel();
-  $("busy-title").textContent = mine
-    ? "Reading this unit and writing the APEX version"
-    : "Waiting its turn";
-  $("busy-sub").textContent = mine
-    ? who + " has the whole trigger body, its built-ins and its globals. One unit usually takes 15 to 60 seconds; the proposal lands here the moment it answers."
-    : Math.max(0, (job.total || 0) - (job.done || 0) - 1) + " unit(s) ahead of this one. It starts as soon as the model is free.";
-  $("busy-tick").textContent = mine ? elapsed() + " elapsed" : "queued";
+  $("busy-title").textContent = "Reading this unit and writing the APEX version";
+  $("busy-sub").textContent = who +
+    " has the whole trigger body, its built-ins and its globals. One unit usually takes 15 to 60 seconds; the proposal lands here the moment it answers.";
+  $("busy-tick").textContent = elapsed() + " elapsed";
 }
 
 function startTicker() {

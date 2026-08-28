@@ -87,6 +87,11 @@ interface. No CDN, no external font, no framework — enforced by test
 3. **Review.** Approve (`a`), needs-work (`w`), reject (`r`), convert
    (`p`), navigate (`j`/`k`), search (`/`). Every decision is versioned in
    the session SQLite file with reviewer name and timestamp.
+   A conversion run is never silent: while it runs the screen names the
+   unit the model is reading, how long it has been reading it, which units
+   are still queued and which pane is still waiting for an answer. A CLI
+   provider takes 15 to 60 seconds per unit, and waiting without a signal
+   is indistinguishable from a hang.
 4. **Export.** APEXlang project + import ZIP for APEX 26.1. Approved code
    only. `approved.sql` and `session.json` document who approved what,
    against which model answer.
