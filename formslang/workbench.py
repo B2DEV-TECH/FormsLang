@@ -382,9 +382,26 @@ class Workbench:
             self.job = {
                 "running": True, "done": 0, "failed": 0, "total": len(task_ids),
                 "error": "", "last_error": "",
+                # What the UI needs to show a run honestly: the unit the model
+                # is reading right now, and everything still waiting in line.
+                "current": "", "current_id": "", "queue": list(task_ids),
+                "provider": self.provider.label,
             }
         threading.Thread(target=self._run_job, args=(task_ids,), daemon=True).start()
         return True
+
+    def _job_advance(self, task_id: str, counted: bool = True, error: str = "") -> None:
+        """One unit is finished: count it and take it out of the queue."""
+        with self._lock:
+            if counted:
+                self.job["done"] += 1
+            if error:
+                self.job["failed"] += 1
+                self.job["last_error"] = error
+            self.job["queue"] = [i for i in self.job.get("queue", []) if i != task_id]
+            if self.job.get("current_id") == task_id:
+                self.job["current_id"] = ""
+                self.job["current"] = ""
 
     def _run_job(self, task_ids: list[str]) -> None:
         seen: dict[str, str] = {}  # fingerprint -> task already converted here
@@ -392,7 +409,11 @@ class Workbench:
             for task_id in task_ids:
                 task = self.store.get_task(task_id)
                 if task is None:
+                    self._job_advance(task_id, counted=False)
                     continue
+                with self._lock:
+                    self.job["current_id"] = task_id
+                    self.job["current"] = task.title
                 twin = seen.get(task.fingerprint) if task.fingerprint else None
                 if twin:
                     # Identical body already converted in this run: reuse the
@@ -409,28 +430,28 @@ class Workbench:
                             model=previous["model"],
                         )
                         self.store.save_proposal(task_id, reused)
-                        with self._lock:
-                            self.job["done"] += 1
+                        self._job_advance(task_id)
                         continue
                 result = propose(task, self.provider)
                 self.store.save_proposal(task_id, result)
                 if task.fingerprint and result.ok:
                     seen.setdefault(task.fingerprint, task_id)
-                with self._lock:
-                    self.job["done"] += 1
-                    if not result.ok:
-                        self.job["failed"] += 1
-                        self.job["last_error"] = result.error
+                self._job_advance(task_id, error="" if result.ok else (result.error or "unknown error"))
         except Exception as e:  # noqa: BLE001 - a job must not take the server down
             with self._lock:
                 self.job["error"] = f"{type(e).__name__}: {e}"
         finally:
             with self._lock:
                 self.job["running"] = False
+                self.job["current"] = ""
+                self.job["current_id"] = ""
+                self.job["queue"] = []
 
     def job_state(self) -> dict:
         with self._lock:
-            return dict(self.job)
+            state = dict(self.job)
+        state["queue"] = list(state.get("queue", []))
+        return state
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -455,6 +476,28 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, data: dict, code: int = 200) -> None:
         self._send(code, json.dumps(data).encode("utf-8"), "application/json; charset=utf-8")
+
+    def _drain(self) -> None:
+        """Read and throw away the request body of a request being refused.
+
+        A refusal that answers without emptying the socket leaves the body
+        unread; the connection is then reset and the client sees a dropped
+        connection instead of the 403 or 415 it was just sent. A refusal has
+        to be readable to be useful. Oversized bodies are not drained -- the
+        connection is closed instead.
+        """
+        try:
+            left = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            left = 0
+        if left > MAX_BODY:
+            self.close_connection = True
+            return
+        while left > 0:
+            chunk = self.rfile.read(min(left, 65536))
+            if not chunk:
+                break
+            left -= len(chunk)
 
     def _read_json(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -512,6 +555,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if not self._host_is_local():
+            self._drain()
             self._json({"error": "forbidden host"}, 403)
             return
         wb = self.workbench
@@ -521,6 +565,7 @@ class Handler(BaseHTTPRequestHandler):
         # preflight this server never answers.
         expected = "application/octet-stream" if path == "/api/upload" else "application/json"
         if self._content_type() != expected:
+            self._drain()
             self._json({"error": f"content-type must be {expected}"}, 415)
             return
         if path == "/api/upload":

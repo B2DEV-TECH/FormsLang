@@ -30,12 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A pre-flight check refuses to start a conversion run when the selected
   HTTP provider has no API key, with a message that says exactly how to
   fix it (open Settings, paste a key, or pick a CLI provider).
+- **Progress you can watch.** A conversion through a CLI provider takes 15
+  to 60 seconds per unit, and the screen now accounts for every second of
+  it: a moving bar under the top bar, a strip naming the unit being read
+  with the provider and elapsed time, a spinner on the queued units in the
+  list, and an overlay on the APEX pane of the unit whose answer is still
+  being written. `GET /api/job` reports `current`, `current_id`, `queue`
+  and `provider` for it. A run started before the window was opened is
+  picked up on load.
 
 ### Fixed
 
 - Failed conversions are now counted and reported honestly: the job tracks
   `failed` and `last_error`, and the workbench toast says
   "N of M conversion(s) failed — [reason]" instead of claiming success.
+- A refused POST (403 wrong host, 415 wrong content type) now drains the
+  request body before answering. Without it the connection was reset on
+  the way back and the client saw a dropped connection instead of the
+  status it had just been sent.
 
 ## [0.1.0] — 2026-08-27
 

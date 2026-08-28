@@ -106,6 +106,40 @@ INDEX_HTML = r"""<!doctype html>
   .btn:disabled { opacity: .38; cursor: not-allowed; transform: none; }
   #btn-module { font: 12px var(--mono); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #bar { height: 2px; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); width: 0; transition: width .35s ease; box-shadow: 0 0 8px rgba(245,166,64,.4); }
+  /* While a run is live the same bar stops meaning "decisions made" and
+     starts meaning "the model is busy" -- so it moves instead of filling. */
+  #bar.busy {
+    width: 100% !important; transition: none;
+    background-image: linear-gradient(90deg, transparent, var(--gold), transparent);
+    background-size: 40% 100%; background-repeat: no-repeat;
+    animation: sweep 1.15s ease-in-out infinite;
+  }
+  @keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+  /* ── working: what the model is doing, while it does it ── */
+  .spin {
+    display: inline-block; width: 12px; height: 12px; flex: none;
+    border: 2px solid var(--line-hi); border-top-color: var(--gold);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  .spin.big { width: 30px; height: 30px; border-width: 3px; }
+  #working {
+    display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+    border-bottom: 1px solid var(--gold-line); background: var(--gold-soft);
+    color: var(--gold); font-size: 12.5px;
+  }
+  #working[hidden] { display: none; }
+  #working .what b { color: var(--ink); font: 600 12px var(--mono); }
+  #working .mono { font: 11px var(--mono); color: var(--ink-dim); letter-spacing: .04em; white-space: nowrap; }
+  .pane-busy {
+    position: absolute; inset: 0; z-index: 3; padding: 24px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px;
+    background: rgba(9,12,17,.93);
+  }
+  .pane-busy[hidden] { display: none; }
+  .pane-busy strong { font: 600 14px var(--sans); color: var(--ink); }
+  .pane-busy span.sub { font-size: 12.5px; color: var(--ink-dim); max-width: 330px; line-height: 1.55; }
+  .pane-busy .tick { font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
 
   /* ── layout ──────────────────────────────────────────── */
   main { display: grid; grid-template-columns: 330px 1fr; flex: 1; min-height: 0; }
@@ -141,6 +175,10 @@ INDEX_HTML = r"""<!doctype html>
   }
   .row:hover { background: var(--hover); }
   .row.sel { background: var(--raised); border-left-color: var(--gold); }
+  .row.queued { background: rgba(245,166,64,.045); }
+  .row.working { background: var(--gold-soft); border-left-color: var(--gold-deep); }
+  .row.working .title { color: var(--gold); }
+  .row .state .spin { width: 10px; height: 10px; border-width: 2px; vertical-align: -1px; }
   .row .state { font-size: 11px; text-align: center; }
   .row > div:nth-child(2) { min-width: 0; }
   .row .title { font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -163,9 +201,11 @@ INDEX_HTML = r"""<!doctype html>
   .head .where b { color: var(--ink-dim); font-weight: 500; }
   .head .meta { margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--ink-dim); font-size: 12px; }
   .panes { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
-  .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
   .pane + .pane { border-left: 1px solid var(--line); }
   .pane h2 {
+    /* above the busy overlay: which pane is covered stays readable */
+    position: relative; z-index: 4;
     margin: 0; padding: 8px 14px; font: 11px var(--mono); letter-spacing: .12em;
     text-transform: uppercase; color: var(--ink-dim); border-bottom: 1px solid var(--line);
     display: flex; justify-content: space-between; align-items: center; background: var(--panel);
@@ -406,6 +446,12 @@ INDEX_HTML = r"""<!doctype html>
   <button class="btn primary" id="btn-export">Export APEX 26.1</button>
 </header>
 <div id="bar"></div>
+<div id="working" hidden>
+  <span class="spin"></span>
+  <span class="what" id="working-what"></span>
+  <span class="spacer"></span>
+  <span class="mono" id="working-meta"></span>
+</div>
 <div id="setup-banner" hidden>
   <span><b>Offline mode</b> — conversions are placeholders until you pick a model. Hand-written APEX works either way.</span>
   <div class="spacer"></div>
@@ -440,6 +486,12 @@ INDEX_HTML = r"""<!doctype html>
           <span class="conf" id="t-conf"></span>
         </h2>
         <textarea class="code" id="out" spellcheck="false" placeholder="No proposal yet — write the APEX replacement here yourself, or press P to ask the model."></textarea>
+        <div class="pane-busy" id="out-busy" hidden>
+          <div class="spin big"></div>
+          <strong id="busy-title"></strong>
+          <span class="sub" id="busy-sub"></span>
+          <span class="tick" id="busy-tick"></span>
+        </div>
       </div>
     </div>
     <div class="notes" id="notes"></div>
@@ -515,6 +567,9 @@ const CALL_LABEL = { pending: "undecided", needs_work: "needs work" };
 const label = (s) => CALL_LABEL[s] || s;
 let state = { tasks: [], stats: {}, session: {}, provider: "" };
 let conv = "all", call = "all", query = "", selected = null, polling = null;
+/* The live run, as the server last described it -- null when nothing runs.
+   `ticker` only keeps the elapsed counter honest between polls. */
+let job = null, jobStart = 0, ticker = null, PROPOSE_LABEL = "";
 /* "Later" on the first-run banner means later: quiet until the next launch. */
 let setupLater = false;
 
@@ -622,7 +677,7 @@ function renderList() {
   const rows = filtered();
   $("list").innerHTML = rows.map((t) => `
     <div class="row ${t.id === selected ? "sel" : ""}" data-id="${t.id}">
-      <div class="state st-${t.state}">${MARK[t.state] || "●"}</div>
+      <div class="state st-${t.state}" data-mark="${MARK[t.state] || "●"}">${MARK[t.state] || "●"}</div>
       <div>
         <div class="title">${esc(t.title)}</div>
         <div class="sub">${esc(t.module)} · ${t.lines} lines${t.proposal ? "" : " · not converted"}</div>
@@ -630,6 +685,7 @@ function renderList() {
       <div class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PU"}</div>
     </div>`).join("") || `<div class="empty">Nothing matches this filter.</div>`;
   $("list").querySelectorAll(".row").forEach((r) => (r.onclick = () => select(r.dataset.id)));
+  paintBusyRows();  // a re-render must not wipe the spinners of a live run
 }
 
 function renderCounts() {
@@ -651,6 +707,7 @@ function renderCounts() {
 }
 
 function renderDetail() {
+  paintBusyPane();
   const t = state.tasks.find((x) => x.id === selected);
   if (!t) {
     $("t-title").textContent = "—";
@@ -755,28 +812,130 @@ async function decide(st) {
   move(1);
 }
 
+/* ── the run, made visible ─────────────────────────────────
+   A conversion through a CLI provider takes 15-60 seconds per unit. Silence
+   for a minute reads as a hang, so every second of it is accounted for: a
+   moving bar, the name of the unit being read, spinners on the queue and an
+   overlay on the pane whose answer is still being written. */
+function elapsed() {
+  const s = Math.max(0, Math.round((Date.now() - jobStart) / 1000));
+  return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + String(s % 60).padStart(2, "0") + "s";
+}
+function providerLabel() { return $("provider").textContent || "the model"; }
+function running() { return !!(job && job.running); }
+
+function paintWorking() {
+  const on = running();
+  $("working").hidden = !on;
+  $("bar").classList.toggle("busy", on);
+  if (on) {
+    const at = Math.min((job.done || 0) + 1, job.total || 1);
+    $("working-what").innerHTML = job.current
+      ? `Converting <b>${esc(job.current)}</b> — unit ${at} of ${job.total}`
+      : `Starting the conversion — unit ${at} of ${job.total}`;
+    const left = Math.max(0, (job.total || 0) - (job.done || 0));
+    $("working-meta").textContent =
+      [job.provider || providerLabel(), elapsed(), left + " left"].join(" · ");
+    const btn = $("btn-propose-all");
+    btn.disabled = true;
+    btn.textContent = `Converting ${job.done || 0}/${job.total}…`;
+  }
+  paintBusyRows();
+  paintBusyPane();
+}
+
+function paintBusyRows() {
+  const queue = new Set(running() ? (job.queue || []) : []);
+  document.querySelectorAll("#list .row").forEach((r) => {
+    const id = r.dataset.id;
+    const working = running() && id === job.current_id;
+    r.classList.toggle("working", working);
+    r.classList.toggle("queued", queue.has(id) && !working);
+    const cell = r.querySelector(".state");
+    if (!cell) return;
+    if (working) { if (!cell.firstElementChild) cell.innerHTML = `<span class="spin"></span>`; }
+    else if (cell.firstElementChild) cell.textContent = cell.dataset.mark || "●";
+  });
+}
+
+function paintBusyPane() {
+  const box = $("out-busy");
+  if (!box) return;
+  const queue = new Set(running() ? (job.queue || []) : []);
+  const mine = running() && selected && selected === job.current_id;
+  const on = !!(mine || (selected && queue.has(selected)));
+  box.hidden = !on;
+  if (!on) return;
+  const who = job.provider || providerLabel();
+  $("busy-title").textContent = mine
+    ? "Reading this unit and writing the APEX version"
+    : "Waiting its turn";
+  $("busy-sub").textContent = mine
+    ? who + " has the whole trigger body, its built-ins and its globals. One unit usually takes 15 to 60 seconds; the proposal lands here the moment it answers."
+    : Math.max(0, (job.total || 0) - (job.done || 0) - 1) + " unit(s) ahead of this one. It starts as soon as the model is free.";
+  $("busy-tick").textContent = mine ? elapsed() + " elapsed" : "queued";
+}
+
+function startTicker() {
+  stopTicker();
+  ticker = setInterval(() => { if (running()) paintWorking(); }, 1000);
+}
+function stopTicker() { if (ticker) clearInterval(ticker); ticker = null; }
+function resetProposeButton() {
+  const btn = $("btn-propose");
+  btn.disabled = false;
+  if (PROPOSE_LABEL) btn.innerHTML = PROPOSE_LABEL;
+}
+
 async function propose(all) {
   const body = all ? { all: true } : { task_id: selected };
   if (!all && !selected) return;
+  const btn = all ? $("btn-propose-all") : $("btn-propose");
+  const before = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = all ? "Sending…" : `<span class="spin"></span> Converting…`;
+  // Paint the working state before the server answers. Starting a CLI run can
+  // take a couple of seconds on its own, and a screen that does not move in
+  // that gap reads as a broken button.
+  const here = state.tasks.find((x) => x.id === selected);
+  jobStart = Date.now();
+  job = {
+    running: true, done: 0, failed: 0, total: all ? Math.max(1, state.stats.unproposed || 1) : 1,
+    current: all ? "" : (here || {}).title || "", current_id: all ? "" : selected,
+    queue: all ? [] : [selected], provider: providerLabel(),
+  };
+  paintWorking();
+  startTicker();
   try {
     await api("/api/propose", body);
-  } catch (e) { toast(e.message, true); return; }
-  $("btn-propose-all").disabled = true;
+  } catch (e) {
+    job = null; stopTicker(); paintWorking();
+    btn.disabled = false; btn.innerHTML = before;
+    toast(e.message, true);
+    return;
+  }
   poll();
 }
 
 function poll() {
   clearInterval(polling);
+  if (!jobStart) jobStart = Date.now();
+  startTicker();
   polling = setInterval(async () => {
-    const job = await api("/api/job");
-    if (job.running) {
-      $("btn-propose-all").textContent = `Converting ${job.done}/${job.total}…`;
-      return;
-    }
+    let snap;
+    try { snap = await api("/api/job"); }
+    catch (e) { return; }  // one missed poll is not the end of the run
+    job = snap;
+    if (snap.running) { paintWorking(); return; }
     clearInterval(polling);
-    if (job.error) toast(job.error, true);
-    else if (job.failed) toast(`${job.failed} of ${job.total} conversion(s) failed — ${job.last_error}`, true);
-    else if (job.total) toast(`Converted ${job.done} unit(s). Now read them.`);
+    stopTicker();
+    job = null;
+    jobStart = 0;
+    paintWorking();
+    resetProposeButton();
+    if (snap.error) toast(snap.error, true);
+    else if (snap.failed) toast(`${snap.failed} of ${snap.total} conversion(s) failed — ${snap.last_error}`, true);
+    else if (snap.total) toast(`Converted ${snap.done} unit(s). Now read them.`);
     const keep = selected;
     await refresh();  // restores the button's own label from the new counts
     if (keep) { selected = keep; renderList(); renderDetail(); }
@@ -896,7 +1055,8 @@ async function uploadModule(file) {
 
 async function openModule(path) {
   if (!path) return;
-  $("modal-body").innerHTML = `<div class="empty">Opening ${esc(path)} — an .fmb has to go through Oracle's converter first, which takes a moment.</div>`;
+  $("modal-body").innerHTML = `<div class="uploading"><div class="spinner"></div><strong>Opening ${esc(path.split(/[\\/]/).pop())}</strong>` +
+    `<span>An .fmb goes through Oracle's converter first, then every trigger and program unit is indexed.</span></div>`;
   foot(null);
   try {
     const r = await api("/api/open", { path });
@@ -999,7 +1159,7 @@ async function openSettings() {
     const testOut = body.querySelector("[data-testout]");
     testBtn.onclick = async () => {
       testOut.className = "out";
-      testOut.textContent = "asking the model for one word…";
+      testOut.innerHTML = `<span class="spin"></span> asking the model for one word…`;
       testBtn.disabled = true;
       try {
         const r = await api("/api/settings/test", payload());
@@ -1069,6 +1229,9 @@ function exportApex() {
   $("modal-go").onclick = async () => {
     const form = $("modal-body").querySelector(".export-form");
     const value = (name) => form.querySelector(`[name="${name}"]`).value.trim();
+    const go = $("modal-go");
+    go.disabled = true;
+    go.innerHTML = `<span class="spin"></span> Building ZIP…`;
     try {
       const r = await api("/api/export", {
         name: value("name"), alias: value("alias"), app_id: value("app_id"),
@@ -1078,6 +1241,7 @@ function exportApex() {
       toast(`APEXlang ZIP ready: ${r.zip}`);
       showExports(r.zip.split(/[\/]/).pop());
     } catch (e) { toast(e.message, true); }
+    finally { $("modal-go").disabled = false; $("modal-go").textContent = "Build import ZIP"; }
   };
 }
 
@@ -1141,7 +1305,12 @@ document.addEventListener("keydown", (e) => {
 });
 
 $("reviewer").value = localStorage.getItem("formslang.reviewer") || "";
-refresh(false).catch((e) => toast(e.message, true));
+PROPOSE_LABEL = $("btn-propose").innerHTML;
+refresh(false)
+  /* A run started before this window opened still owns the screen. */
+  .then(() => api("/api/job"))
+  .then((j) => { if (j.running) { job = j; jobStart = Date.now(); paintWorking(); poll(); } })
+  .catch((e) => toast(e.message, true));
 </script>
 </body>
 </html>

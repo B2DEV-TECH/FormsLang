@@ -512,3 +512,70 @@ def test_reveal_refuses_traversal_and_misses(server):
         status, data = _post(base, "/api/exports/open", {"name": name})
         assert status == 400, name
         assert "no such export" in data["error"], name
+
+
+def test_the_job_names_the_unit_being_converted(server):
+    """A run that reports only "0 of 6" is indistinguishable from a hang.
+    The job has to name the unit in flight and the ones still queued, so
+    the screen can show a spinner where the work actually is."""
+    base, wb = server
+    gate = threading.Event()
+
+    class SlowProvider(EchoProvider):
+        def complete(self, messages, max_tokens=4096):
+            gate.wait(10)
+            return super().complete(messages, max_tokens)
+
+    wb.provider = SlowProvider()
+    ids = wb.store.task_ids()[:2]
+    assert wb.start_job(ids) is True
+    try:
+        stop = threading.Event()
+        threading.Timer(10, stop.set).start()
+        while not stop.is_set() and not wb.job_state()["current_id"]:
+            stop.wait(0.02)
+        job = wb.job_state()
+        assert job["current_id"] == ids[0]
+        assert job["current"], "the unit in flight must carry a name to show"
+        assert job["queue"] == ids, "nothing has finished yet"
+        assert job["provider"] == wb.provider.label
+    finally:
+        gate.set()
+    done = _wait_for_job(wb)
+    assert done["done"] == 2
+    assert done["queue"] == [] and done["current"] == "" and done["current_id"] == ""
+
+
+def test_the_job_queue_is_handed_out_as_a_copy(server):
+    """The queue crosses a thread boundary on every poll; handing out the
+    live list would let a reader corrupt the run it is watching."""
+    _base, wb = server
+    ids = wb.store.task_ids()[:2]
+    wb.job = {
+        "running": True, "done": 0, "failed": 0, "total": 2, "error": "",
+        "last_error": "", "current": "", "current_id": "", "queue": list(ids),
+    }
+    snapshot = wb.job_state()
+    snapshot["queue"].append("intruder")
+    assert wb.job_state()["queue"] == list(ids)
+
+    wb._job_advance(ids[0], error="boom")
+    after = wb.job_state()
+    assert after["done"] == 1 and after["failed"] == 1
+    assert after["last_error"] == "boom"
+    assert after["queue"] == [ids[1]]
+
+
+def test_a_refusal_stays_readable_with_a_body_attached(server):
+    """A refusal that answers without emptying the socket gets the
+    connection reset on the way back, and the client sees a dropped
+    connection instead of the 415 it was just sent."""
+    base, _wb = server
+    for _ in range(5):
+        req = urllib.request.Request(
+            base + "/api/propose", data=b"x" * 200_000,
+            headers={"Content-Type": "text/plain"}, method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(req, timeout=10)
+        assert err.value.code == 415
