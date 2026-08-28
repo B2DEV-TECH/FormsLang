@@ -546,6 +546,21 @@ def test_the_job_names_the_unit_being_converted(server):
     assert done["queue"] == [] and done["current"] == "" and done["current_id"] == ""
 
 
+def test_an_idle_job_has_the_same_shape_as_a_running_one(server):
+    """A reader polling before the first run must not have to tell a
+    missing field from an empty one."""
+    base, wb = server
+    idle = wb.job_state()
+    assert idle["running"] is False
+    assert set(idle) == {
+        "running", "done", "failed", "total", "error", "last_error",
+        "current", "current_id", "queue", "provider",
+    }
+    status, _ = _post(base, "/api/propose", {"all": True})
+    assert status == 200
+    assert set(_wait_for_job(wb)) == set(idle)
+
+
 def test_the_job_queue_is_handed_out_as_a_copy(server):
     """The queue crosses a thread boundary on every poll; handing out the
     live list would let a reader corrupt the run it is watching."""

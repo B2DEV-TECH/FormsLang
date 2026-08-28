@@ -78,9 +78,12 @@ class Workbench:
         self.browse_root = Path(browse_root or Path.cwd()).resolve()
         self.oracle_home = oracle_home
         self._lock = threading.Lock()
+        # Same shape a live run reports, so a reader never has to guess
+        # whether a field is missing or empty.
         self.job = {
             "running": False, "done": 0, "failed": 0, "total": 0,
             "error": "", "last_error": "",
+            "current": "", "current_id": "", "queue": [], "provider": "",
         }
         self.module = self._module_from_session()
 
