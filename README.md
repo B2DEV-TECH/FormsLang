@@ -27,6 +27,17 @@ proposal on every unit, a human decision on every proposal.
 > conversion workbench runs and is under active development; every proposal
 > it produces is a draft for a human to approve, never a finished migration.
 
+<p align="center">
+  <img src="assets/screenshots/workbench-review.png" width="900"
+       alt="The FormsLang workbench reviewing a PRE-INSERT trigger: the Forms code on the left, the proposed APEX code on the right, and the model's reasoning underneath">
+</p>
+
+<p align="center">
+  <sub>The workbench mid-review: a block-level <code>PRE-INSERT</code> trigger, the APEX code
+  proposed to replace it, what changed and why, and the questions the model refused
+  to answer on its own. The verdict on this one was <em>rejected</em> — by a human.</sub>
+</p>
+
 ## Creator
 
 FormsLang was created by **[Geraldo Viana Jr](https://github.com/gevianajr)**,
@@ -227,7 +238,8 @@ session or generated artifact is written beside the customer's source.
 The screen shows the original Forms code on the left — syntax-highlighted,
 with its verdict, confidence, the open questions the model raised and the
 built-ins it had to deal with — and the proposed APEX code on the right,
-editable. Approve, reject, or send back for work. Everything has a key:
+editable. Approve, reject, or send back for work. That screen is the one in
+the screenshot at the top of this page. Everything has a key:
 
 | Key | Action |
 |---|---|
