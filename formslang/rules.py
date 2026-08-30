@@ -23,6 +23,8 @@ missing is counted as ``UNKNOWN`` and surfaced in the report as catalog debt
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 AUTO = "AUTO"
 ASSISTED = "ASSISTED"
 MANUAL = "MANUAL"
@@ -367,3 +369,512 @@ def catalog_size() -> dict[str, int]:
         "client_prefixes": len(CLIENT_SIDE_PREFIXES),
         "triggers": len(TRIGGERS),
     }
+
+
+# ==========================================================================
+# Structured compatibility catalog
+#
+# The tables above are the authoring format: one line per construct, verdict
+# plus APEX target. This section layers the rest of the matrix on top --
+# category, what Forms actually does, migration classification and a risk
+# weight -- without restating the verdict anywhere. There is exactly one
+# place where "GO_BLOCK is ASSISTED" is written down, and it is above.
+#
+# Category is the pivot. A statement true of a whole family (timers have no
+# server-side equivalent; OLE has no browser equivalent) is written once on
+# the category; only the handful of constructs where the family statement is
+# wrong carry an override.
+# ==========================================================================
+
+# Migration classification -- how the construct crosses to APEX.
+DIRECT_EQUIVALENT = "DIRECT_EQUIVALENT"
+SERVER_SIDE_REPLACEMENT = "SERVER_SIDE_REPLACEMENT"
+CLIENT_SIDE_REPLACEMENT = "CLIENT_SIDE_REPLACEMENT"
+ARCHITECTURAL_REDESIGN = "ARCHITECTURAL_REDESIGN"
+MANUAL_REVIEW = "MANUAL_REVIEW"
+UNSUPPORTED = "UNSUPPORTED"
+# Added to the six classes the matrix normally carries: a DROP verdict is
+# neither unsupported nor replaced -- the construct solves a problem APEX
+# does not have. Folding it into UNSUPPORTED would inflate every "missing
+# feature" count with things that are gains.
+NOT_REQUIRED = "NOT_REQUIRED"
+
+MIGRATION_CLASSES = (
+    DIRECT_EQUIVALENT,
+    SERVER_SIDE_REPLACEMENT,
+    CLIENT_SIDE_REPLACEMENT,
+    ARCHITECTURAL_REDESIGN,
+    MANUAL_REVIEW,
+    UNSUPPORTED,
+    NOT_REQUIRED,
+)
+
+
+@dataclass(frozen=True)
+class Category:
+    """A family of Forms constructs that migrate for the same reason."""
+
+    id: str
+    label: str
+    forms_behavior: str   # what the Forms runtime does with this family
+    risk: float           # 0..1 danger weight per occurrence, for risk.py
+    risk_reason: str      # the evidence sentence shown to a reviewer
+    review_area: str      # what a human has to look at because of it
+    assisted: str         # migration class when the verdict is ASSISTED
+    manual: str           # migration class when the verdict is MANUAL
+
+
+def _cat(
+    ident: str, label: str, forms_behavior: str, risk: float, risk_reason: str,
+    review_area: str, assisted: str = SERVER_SIDE_REPLACEMENT,
+    manual: str = ARCHITECTURAL_REDESIGN,
+) -> Category:
+    return Category(ident, label, forms_behavior, risk, risk_reason, review_area,
+                    assisted, manual)
+
+
+CATEGORIES: dict[str, Category] = {
+    "navigation": _cat(
+        "navigation", "Block/item navigation",
+        "Moves the Forms input focus, which also drives the trigger firing order.",
+        0.45,
+        "Logic depends on Forms navigation, and APEX has no navigation cycle to depend on.",
+        "Navigation-dependent logic and trigger firing order",
+        assisted=CLIENT_SIDE_REPLACEMENT,
+    ),
+    "query": _cat(
+        "query", "Query execution",
+        "Runs or aborts the block query and switches the block between normal and query mode.",
+        0.40,
+        "Query execution is explicit in Forms and implicit in an APEX region refresh.",
+        "Where the query runs and what triggers it",
+    ),
+    "form_state": _cat(
+        "form_state", "Form and block state",
+        "Clears or leaves the form, which can silently discard uncommitted changes.",
+        0.60,
+        "Clearing or exiting can discard pending changes; APEX has no equivalent prompt.",
+        "What happens to unsaved changes",
+    ),
+    "transaction": _cat(
+        "transaction", "Transaction control",
+        "Posts or commits the Forms transaction at a point the developer chose.",
+        0.90,
+        "The transaction boundary moves: APEX commits at the end of page processing.",
+        "Transaction boundaries and commit points",
+    ),
+    "record_dml": _cat(
+        "record_dml", "Record-level DML",
+        "Creates, deletes, duplicates or locks a record inside the Forms block buffer.",
+        0.60,
+        "Record buffer operations have no APEX counterpart; the locking model differs.",
+        "Row lifecycle and locking model",
+    ),
+    "block_state": _cat(
+        "block_state", "Block properties",
+        "Reads or rewrites block properties, including WHERE and ORDER BY, at runtime.",
+        0.55,
+        "Runtime changes to the block query become a different region source design.",
+        "Dynamic query construction",
+    ),
+    "item_state": _cat(
+        "item_state", "Item properties",
+        "Reads or sets item properties: value, visibility, enabled state, format.",
+        0.20,
+        "Item property changes become dynamic actions with a different execution point.",
+        "Item state and dynamic actions",
+        assisted=CLIENT_SIDE_REPLACEMENT,
+    ),
+    "indirection": _cat(
+        "indirection", "Indirect item access",
+        "Reads or writes an item whose name is only known at runtime, as a string.",
+        0.85,
+        "The target is a runtime string, so no static analysis can name what this touches.",
+        "Indirect item access -- resolve the targets by hand",
+        manual=MANUAL_REVIEW,
+    ),
+    "message": _cat(
+        "message", "Messages and alerts",
+        "Shows a message or a modal alert and, for alerts, blocks until the user answers.",
+        0.10,
+        "Alerts block the Forms client; APEX cannot block server-side processing on an answer.",
+        "User confirmation flow",
+        assisted=CLIENT_SIDE_REPLACEMENT,
+    ),
+    "ui_container": _cat(
+        "ui_container", "Windows, canvases and views",
+        "Manipulates the thick-client window and canvas geometry.",
+        0.10,
+        "Window and canvas geometry has no meaning in a browser layout.",
+        "Screen layout",
+        assisted=CLIENT_SIDE_REPLACEMENT,
+    ),
+    "module_nav": _cat(
+        "module_nav", "Cross-module navigation",
+        "Opens, calls or replaces another Forms module, with its own session state.",
+        0.70,
+        "Another module is invoked: migrating this unit depends on that form too.",
+        "Cross-form dependencies and parameter passing",
+    ),
+    "lov_group": _cat(
+        "lov_group", "LOVs, record groups and lists",
+        "Builds or reads an in-memory record group, list item or LOV.",
+        0.35,
+        "In-memory record groups become queries or collections with a different lifetime.",
+        "LOV and record group rebuild",
+    ),
+    "timer": _cat(
+        "timer", "Timers",
+        "Schedules client-side code to run after a delay, repeatedly or once.",
+        0.70,
+        "There is no server-side timer in APEX; the scheduling model has to change.",
+        "Anything that depended on elapsed time",
+        manual=ARCHITECTURAL_REDESIGN,
+    ),
+    "menu": _cat(
+        "menu", "Menu",
+        "Reads or rewrites the attached Forms menu at runtime.",
+        0.30,
+        "Menu state carries authorization decisions that become APEX authorization schemes.",
+        "Authorization rules hidden in menu state",
+    ),
+    "reporting": _cat(
+        "reporting", "Reporting integration",
+        "Hands off to Oracle Reports or another external product.",
+        0.70,
+        "An external reporting product is invoked; the target has to be chosen first.",
+        "Reporting target",
+    ),
+    "external": _cat(
+        "external", "Operating system and external integration",
+        "Reaches outside the database: the client OS, the file system or another product.",
+        0.90,
+        "The code reaches outside the database; a browser cannot do this at all.",
+        "External integration -- redesign, not translation",
+        manual=UNSUPPORTED,
+    ),
+    "client_platform": _cat(
+        "client_platform", "Thick-client platform",
+        "Uses a Java, OLE, DDE or native capability that only the Forms client has.",
+        0.95,
+        "Depends on a thick-client capability the browser does not expose.",
+        "Client platform capability -- no equivalent exists",
+        manual=UNSUPPORTED,
+    ),
+    "dynamic_sql": _cat(
+        "dynamic_sql", "Dynamic SQL and DDL",
+        "Builds and runs SQL or DDL assembled at runtime.",
+        0.90,
+        "SQL is assembled at runtime: neither the effect nor the privileges are static.",
+        "Dynamic SQL -- effect and privileges",
+        manual=MANUAL_REVIEW,
+    ),
+    "scheduling": _cat(
+        "scheduling", "Background jobs",
+        "Submits work to run outside the current session.",
+        0.50,
+        "Background work outlives the request; ownership and scheduling change.",
+        "Background job ownership",
+    ),
+    "handle": _cat(
+        "handle", "Object handles",
+        "Looks up an internal handle to a Forms object.",
+        0.10,
+        "Handles disappear with the Forms runtime, together with the code that uses them.",
+        "Handle-based code",
+    ),
+    "application": _cat(
+        "application", "Application properties",
+        "Reads or sets a runtime property of the whole application.",
+        0.30,
+        "Application-level properties map to different APEX concepts case by case.",
+        "Application property mapping",
+        manual=MANUAL_REVIEW,
+    ),
+    "system_var": _cat(
+        "system_var", "Forms system variables",
+        "Exposes runtime state of the Forms cycle: mode, status, cursor position.",
+        0.35,
+        "Reads Forms runtime state that APEX does not maintain.",
+        "Forms runtime state assumptions",
+    ),
+    "unknown": _cat(
+        "unknown", "Outside the catalog",
+        "Not classified yet -- FormsLang does not claim to know what this does.",
+        0.60,
+        "Construct is outside the catalog, so its cost and risk are unproven.",
+        "Unclassified construct -- confirm by hand",
+        assisted=MANUAL_REVIEW, manual=MANUAL_REVIEW,
+    ),
+}
+
+# Which family each built-in belongs to. Grouped exactly like the table it
+# annotates, so the two stay reviewable side by side.
+_CATEGORY_MEMBERS: dict[str, tuple[str, ...]] = {
+    "navigation": (
+        "GO_BLOCK", "GO_ITEM", "GO_RECORD", "NEXT_ITEM", "PREVIOUS_ITEM",
+        "NEXT_RECORD", "PREVIOUS_RECORD", "FIRST_RECORD", "LAST_RECORD",
+        "NEXT_BLOCK", "PREVIOUS_BLOCK", "NEXT_SET", "DO_KEY",
+    ),
+    "query": ("EXECUTE_QUERY", "ENTER_QUERY", "COUNT_QUERY", "ABORT_QUERY"),
+    "form_state": ("EXIT_FORM", "CLEAR_FORM", "CLEAR_BLOCK", "CLEAR_RECORD", "CLEAR_ITEM"),
+    "transaction": ("COMMIT_FORM", "COMMIT", "ROLLBACK", "POST", "POST_FORM"),
+    "record_dml": (
+        "CREATE_RECORD", "DELETE_RECORD", "DUPLICATE_RECORD", "DUPLICATE_ITEM",
+        "LOCK_RECORD", "SET_RECORD_PROPERTY", "GET_RECORD_PROPERTY",
+    ),
+    "dynamic_sql": ("FORMS_DDL",),
+    "block_state": ("SET_BLOCK_PROPERTY", "GET_BLOCK_PROPERTY"),
+    "item_state": (
+        "SET_ITEM_PROPERTY", "GET_ITEM_PROPERTY", "SET_ITEM_INSTANCE_PROPERTY",
+        "GET_ITEM_INSTANCE_PROPERTY", "DEFAULT_VALUE", "SET_LOV_PROPERTY",
+    ),
+    "indirection": ("NAME_IN", "COPY"),
+    "message": (
+        "MESSAGE", "SHOW_ALERT", "SET_ALERT_PROPERTY", "SET_ALERT_BUTTON_PROPERTY",
+        "ERROR_CODE", "ERROR_TEXT", "ERROR_TYPE", "DBMS_ERROR_CODE",
+        "DBMS_ERROR_TEXT", "FORM_SUCCESS", "FORM_FAILURE", "FORM_FATAL",
+    ),
+    "ui_container": (
+        "SET_WINDOW_PROPERTY", "GET_WINDOW_PROPERTY", "SHOW_WINDOW", "HIDE_WINDOW",
+        "SHOW_VIEW", "HIDE_VIEW", "SET_VIEW_PROPERTY", "SET_CANVAS_PROPERTY",
+        "REPLACE_CONTENT_VIEW", "SYNCHRONIZE", "PAUSE", "SET_WINDOW_SCROLL_BAR",
+    ),
+    "module_nav": ("CALL_FORM", "OPEN_FORM", "NEW_FORM", "CLOSE_FORM"),
+    "lov_group": (
+        "SHOW_LOV", "LIST_VALUES", "CREATE_GROUP_FROM_QUERY", "POPULATE_GROUP",
+        "POPULATE_GROUP_WITH_QUERY", "ADD_GROUP_ROW", "ADD_GROUP_COLUMN",
+        "DELETE_GROUP", "DELETE_GROUP_ROW", "GET_GROUP_ROW_COUNT",
+        "GET_GROUP_NUMBER_CELL", "GET_GROUP_CHAR_CELL", "GET_GROUP_DATE_CELL",
+        "SET_GROUP_NUMBER_CELL", "SET_GROUP_CHAR_CELL", "SET_GROUP_DATE_CELL",
+        "POPULATE_LIST", "ADD_LIST_ELEMENT", "DELETE_LIST_ELEMENT", "CLEAR_LIST",
+        "GET_LIST_ELEMENT_COUNT", "GET_LIST_ELEMENT_VALUE",
+        "GET_LIST_ELEMENT_LABEL", "RETRIEVE_LIST",
+    ),
+    "timer": ("CREATE_TIMER", "SET_TIMER", "DELETE_TIMER", "FIND_TIMER"),
+    "menu": (
+        "SET_MENU_ITEM_PROPERTY", "GET_MENU_ITEM_PROPERTY", "REPLACE_MENU",
+        "SHOW_MENU", "HIDE_MENU",
+    ),
+    "reporting": (
+        "RUN_REPORT_OBJECT", "REPORT_OBJECT_STATUS", "SET_REPORT_OBJECT_PROPERTY",
+        "GET_REPORT_OBJECT_PROPERTY", "RUN_PRODUCT",
+    ),
+    "external": (
+        "HOST", "GET_FILE_NAME", "READ_IMAGE_FILE", "WRITE_IMAGE_FILE",
+        "READ_SOUND_FILE", "WEB.SHOW_DOCUMENT", "TOOL_ENV.GETVAR", "USER_EXIT",
+    ),
+    "handle": (
+        "ID_NULL", "FIND_ITEM", "FIND_BLOCK", "FIND_CANVAS", "FIND_VIEW",
+        "FIND_WINDOW", "FIND_ALERT", "FIND_LOV", "FIND_GROUP", "FIND_RELATION",
+        "FIND_FORM", "FIND_MENU_ITEM", "FIND_REPORT_OBJECT", "FIND_TAB_PAGE",
+        "SET_TAB_PAGE_PROPERTY", "GET_TAB_PAGE_PROPERTY",
+    ),
+    "application": ("GET_APPLICATION_PROPERTY", "SET_APPLICATION_PROPERTY"),
+}
+
+# Which family each thick-client prefix belongs to.
+_PREFIX_CATEGORY: dict[str, str] = {
+    "WEBUTIL_": "client_platform",
+    "CLIENT_TEXT_IO.": "client_platform",
+    "CLIENT_OLE2.": "client_platform",
+    "CLIENT_HOST": "client_platform",
+    "OLE2.": "client_platform",
+    "DDE.": "client_platform",
+    "TEXT_IO.": "external",
+    "ORA_FFI.": "client_platform",
+    "ORA_JAVA.": "client_platform",
+    "DBMS_JOB.": "scheduling",
+}
+
+# Where the family statement is wrong for one construct.
+_CLASS_OVERRIDE: dict[str, str] = {
+    "HOST": UNSUPPORTED,
+    "USER_EXIT": UNSUPPORTED,
+    "READ_SOUND_FILE": UNSUPPORTED,
+    "LOCK_RECORD": ARCHITECTURAL_REDESIGN,
+    "FORMS_DDL": MANUAL_REVIEW,
+}
+
+# Risk the family weight does not capture for one construct: reading a
+# property is not the same act as changing it.
+_RISK_OVERRIDE: dict[str, float] = {
+    "GET_BLOCK_PROPERTY": 0.20,
+    "GET_RECORD_PROPERTY": 0.20,
+    "GET_ITEM_PROPERTY": 0.10,
+    "GET_MENU_ITEM_PROPERTY": 0.15,
+    "GET_APPLICATION_PROPERTY": 0.15,
+    # Leaving the form is not the same act as clearing unsaved work.
+    "EXIT_FORM": 0.45,
+    "CLEAR_ITEM": 0.15,
+    # A plain redirect, not an OS call.
+    "WEB.SHOW_DOCUMENT": 0.15,
+    "GET_FILE_NAME": 0.35,
+    # Reaches the environment, but through the application server.
+    "TOOL_ENV.GETVAR": 0.40,
+}
+
+
+@dataclass(frozen=True)
+class BuiltinSpec:
+    """One row of the Forms -> APEX compatibility matrix."""
+
+    name: str
+    category: str
+    verdict: str
+    apex: str              # the APEX strategy, taken from the tables above
+    migration_class: str
+    risk: float
+    forms_behavior: str
+    known: bool = True
+
+    @property
+    def label(self) -> str:
+        return CATEGORIES[self.category].label
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "category": self.category,
+            "category_label": self.label,
+            "verdict": self.verdict,
+            "apex": self.apex,
+            "migration_class": self.migration_class,
+            "risk": round(self.risk, 3),
+            "forms_behavior": self.forms_behavior,
+            "known": self.known,
+        }
+
+
+def _classify(verdict: str, cat: Category, name: str) -> str:
+    override = _CLASS_OVERRIDE.get(name)
+    if override:
+        return override
+    if verdict == DROP:
+        return NOT_REQUIRED
+    if verdict == AUTO:
+        return DIRECT_EQUIVALENT
+    if verdict == ASSISTED:
+        return cat.assisted
+    if verdict == MANUAL:
+        return cat.manual
+    return MANUAL_REVIEW
+
+
+def _build_spec(name: str, verdict: str, apex: str, category: str) -> BuiltinSpec:
+    cat = CATEGORIES[category]
+    return BuiltinSpec(
+        name=name,
+        category=category,
+        verdict=verdict,
+        apex=apex,
+        migration_class=_classify(verdict, cat, name),
+        risk=_RISK_OVERRIDE.get(name, cat.risk),
+        forms_behavior=cat.forms_behavior,
+        known=category != "unknown",
+    )
+
+
+def _build_catalog() -> dict[str, BuiltinSpec]:
+    of_name = {n: c for c, names in _CATEGORY_MEMBERS.items() for n in names}
+    out: dict[str, BuiltinSpec] = {}
+    for name, (verdict, apex) in BUILTINS.items():
+        # An unmapped built-in falls into "unknown": expensive and visible,
+        # never silently cheap. test_every_builtin_has_a_category keeps that
+        # bucket at zero.
+        out[name] = _build_spec(name, verdict, apex, of_name.get(name, "unknown"))
+    for name, (verdict, apex) in SYSTEM_VARS.items():
+        out[name] = _build_spec(name, verdict, apex, "system_var")
+    return out
+
+
+CATALOG: dict[str, BuiltinSpec] = _build_catalog()
+
+
+def spec_for(name: str) -> BuiltinSpec:
+    """The matrix row for a construct -- always answers, never invents.
+
+    An unrecognised name comes back as an honest UNKNOWN row rather than a
+    guess, so the caller can show catalog debt instead of false confidence.
+    """
+    key = (name or "").strip().upper()
+    hit = CATALOG.get(key)
+    if hit is not None:
+        return hit
+    for prefix, category in _PREFIX_CATEGORY.items():
+        if key.startswith(prefix.upper()):
+            verdict, apex = CLIENT_SIDE_PREFIXES[prefix]
+            return _build_spec(key, verdict, apex, category)
+    return _build_spec(
+        key, UNKNOWN, "Built-in outside the catalog: classify manually", "unknown"
+    )
+
+
+# --------------------------------------------------------------------------
+# Trigger risk
+#
+# A trigger's verdict says what it costs to move. This says what it costs to
+# get wrong -- a different question with a different answer: PRE-INSERT is
+# ASSISTED (cheap) and dangerous (afterwards it runs at a different moment).
+# --------------------------------------------------------------------------
+_VERDICT_RISK = {AUTO: 0.10, DROP: 0.05, ASSISTED: 0.30, MANUAL: 0.60, UNKNOWN: 0.55}
+
+TRIGGER_RISK: dict[str, tuple[float, str]] = {
+    # Transaction and DML replacement: the semantics live here.
+    "ON-COMMIT": (0.90, "Replaces Forms commit processing entirely."),
+    "ON-ROLLBACK": (0.90, "Replaces Forms rollback processing entirely."),
+    "ON-LOCK": (0.85, "Pessimistic row locking; APEX uses optimistic checksums."),
+    "ON-INSERT": (0.85, "Replaces the default INSERT for the block."),
+    "ON-UPDATE": (0.85, "Replaces the default UPDATE for the block."),
+    "ON-DELETE": (0.85, "Replaces the default DELETE for the block."),
+    "ON-SELECT": (0.80, "Replaces the default SELECT for the block."),
+    "ON-FETCH": (0.80, "Procedure-based block: the region source has to be redesigned."),
+    "PRE-COMMIT": (0.65, "Runs once per transaction, before any DML."),
+    "POST-COMMIT": (0.65, "Runs once per transaction, after the DML."),
+    "POST-FORMS-COMMIT": (0.65, "Runs inside the Forms commit sequence."),
+    # DML hooks: cheap to move, easy to move to the wrong place.
+    "PRE-INSERT": (0.55, "Fires per row inside the Forms commit; the APEX equivalent may not."),
+    "PRE-UPDATE": (0.55, "Fires per row inside the Forms commit; the APEX equivalent may not."),
+    "PRE-DELETE": (0.55, "Fires per row inside the Forms commit; the APEX equivalent may not."),
+    "POST-INSERT": (0.50, "Fires per row after the DML, still inside the transaction."),
+    "POST-UPDATE": (0.50, "Fires per row after the DML, still inside the transaction."),
+    "POST-DELETE": (0.50, "Fires per row after the DML, still inside the transaction."),
+    # Navigation cycle: has no APEX counterpart at all.
+    "WHEN-NEW-BLOCK-INSTANCE": (0.70, "Depends on block navigation, which APEX does not have."),
+    "WHEN-NEW-RECORD-INSTANCE": (0.70, "Depends on record navigation, which APEX does not have."),
+    "PRE-BLOCK": (0.65, "Part of the Forms navigation cycle."),
+    "POST-BLOCK": (0.65, "Part of the Forms navigation cycle."),
+    "PRE-RECORD": (0.65, "Part of the Forms navigation cycle."),
+    "POST-RECORD": (0.65, "Part of the Forms navigation cycle."),
+    # Query shaping and per-row work.
+    "PRE-QUERY": (0.60, "Shapes the query at runtime; becomes a static region source."),
+    "POST-QUERY": (0.60, "Runs once per fetched row; usually becomes a join."),
+    # Session and timing.
+    "WHEN-TIMER-EXPIRED": (0.70, "Depends on a timer APEX does not have."),
+    "ON-LOGON": (0.80, "Authentication moves to an APEX authentication scheme."),
+    "PRE-LOGON": (0.80, "Authentication moves to an APEX authentication scheme."),
+    "POST-LOGON": (0.75, "Becomes an APEX post-authentication procedure."),
+    "ON-LOGOUT": (0.70, "Session teardown differs."),
+    "ON-ERROR": (0.55, "Central error handling becomes an APEX error handling function."),
+    "WHEN-CUSTOM-ITEM-EVENT": (0.85, "Driven by a Java bean or WebUtil the browser does not have."),
+}
+
+
+def trigger_risk(name: str) -> tuple[float, str]:
+    """Risk weight and evidence sentence for a trigger point."""
+    key = (name or "").strip().upper()
+    hit = TRIGGER_RISK.get(key)
+    if hit is not None:
+        return hit
+    verdict = classify_trigger(key)[0]
+    if verdict == UNKNOWN:
+        return (_VERDICT_RISK[UNKNOWN], "Trigger point is outside the catalog.")
+    return (_VERDICT_RISK[verdict], "")
+
+
+def catalog_coverage() -> dict[str, int]:
+    """How the catalog distributes across migration classes."""
+    out = {c: 0 for c in MIGRATION_CLASSES}
+    for spec in CATALOG.values():
+        out[spec.migration_class] += 1
+    return out

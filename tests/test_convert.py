@@ -143,3 +143,39 @@ def test_failed_proposals_are_not_cached_as_shared():
     out = propose_many(tasks, FlakyThenFine())
     assert len(attempts) == 2, "a failed answer must not be reused as if it were good"
     assert out["t1"].ok
+
+
+def test_the_prompt_carries_the_unit_and_nothing_else_from_the_session(sample_xml):
+    """One unit's body goes out. Not the session, not another unit, not a key.
+
+    The product's promise is that a conversion sends the code being
+    converted. Anything else that ends up in the payload -- a neighbouring
+    trigger, a stored decision, a credential -- would be sent without the
+    reviewer ever asking for it.
+    """
+    tasks = _tasks(sample_xml)
+    mine = next(t for t in tasks if t.name == "WHEN-BUTTON-PRESSED")
+    _system, user = build_prompt(mine)
+
+    for other in tasks:
+        if other.id == mine.id:
+            continue
+        body = other.source.strip()
+        if len(body) > 30:  # a one-liner like NULL; legitimately appears anywhere
+            assert body not in user.content, f"{other.title} travelled with {mine.title}"
+
+    payload = (user.content + _system.content).lower()
+    for leak in ("api_key", "apikey", "authorization", "bearer ", "config.json",
+                 "formslang_ai_key", "sqlite", "session.json"):
+        assert leak not in payload, f"{leak!r} has no business in a prompt"
+
+
+def test_the_deterministic_analysis_travels_as_fact_not_as_a_question(sample_xml):
+    """Passing the rules' answer stops the model re-deriving it, badly."""
+    from formslang.analysis import analyze_task
+
+    task = next(t for t in _tasks(sample_xml) if t.name == "WHEN-BUTTON-PRESSED")
+    _system, user = build_prompt(task, analyze_task(task))
+    assert "measured facts about the source, not opinions" in user.content
+    assert "Risk: " in user.content and "Behaviour after migration:" in user.content
+    assert "UNSUPPORTED" in user.content, "the migration class travels with the built-in"

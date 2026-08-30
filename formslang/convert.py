@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 
 from . import rules
 from .ai import DEFAULT_MAX_TOKENS, Message, Provider, ProviderError
+from .analysis import analyze_task
 from .model import FormModule
 from .plsql import analyze, fingerprint
 
@@ -81,6 +82,23 @@ HONESTY RULES -- these outrank everything above
 - Write every human-readable string -- `apex_target`, `notes`,
   `open_questions` and code comments -- in English, whatever language the
   source code, its comments or the user's environment use.
+- When a note affects migration safety, label what kind of statement it is:
+  start it with FACT (in the source you were given), INFERENCE (derived from
+  it), ASSUMPTION (you needed it and it is unverified) or RECOMMENDATION.
+  A reviewer must be able to tell what you read from what you decided.
+
+WHAT YOU ARE GIVEN, AND WHAT YOU MAY NOT CONTRADICT
+
+The message includes a deterministic analysis produced by a rule engine:
+built-in classifications, a risk level and a behaviour classification. Those
+are measured facts about the Forms source, not opinions, and they are shown
+to the reviewer next to your answer.
+
+- Do not restate them and do not argue with them.
+- `behavior` in your output is a second opinion, used only if it is more
+  conservative than the rules. Answer PRESERVED only when you are certain
+  nothing observable differs. If the engine already said CHANGED or
+  UNCERTAIN, saying PRESERVED will be ignored.
 
 OUTPUT
 
@@ -91,6 +109,8 @@ Return one JSON object and nothing else -- no prose, no markdown fence:
   "code": "the PL/SQL / JavaScript to put there",
   "notes": ["what changed and why"],
   "open_questions": ["what a human must decide"],
+  "behavior": "PRESERVED | CHANGED | UNCERTAIN",
+  "behavior_reason": "one sentence, only if it is not PRESERVED",
   "confidence": 0.0
 }
 """
@@ -152,6 +172,11 @@ class Proposal:
     model: str = ""
     error: str = ""
     raw: str = ""
+    # The model's own read on behaviour. Advisory only: it is folded into the
+    # analysis through behavior.merge_ai, which ignores it unless it is more
+    # conservative than what the rules already found.
+    behavior: str = ""
+    behavior_reason: str = ""
 
     @property
     def ok(self) -> bool:
@@ -167,6 +192,8 @@ class Proposal:
             "provider": self.provider,
             "model": self.model,
             "error": self.error,
+            "behavior": self.behavior,
+            "behavior_reason": self.behavior_reason,
         }
 
 
@@ -224,8 +251,17 @@ def build_tasks(mod: FormModule) -> list[ConversionTask]:
     return tasks
 
 
-def build_prompt(task: ConversionTask) -> list[Message]:
-    """Everything the model needs, and nothing that would bias it."""
+def build_prompt(task: ConversionTask, analysis=None) -> list[Message]:
+    """Everything the model needs, and nothing that would bias it.
+
+    ``analysis`` is the deterministic result for this unit (a
+    :class:`formslang.analysis.UnitAnalysis`). When present it replaces the
+    flat built-in list with the structured catalog view -- migration class,
+    APEX strategy, resolved targets -- and states the risk and behaviour the
+    rules already established. Passing facts costs a few hundred tokens and
+    removes the whole class of answers where the model re-derives, badly,
+    something the engine already knows.
+    """
     lines = [
         f"Module: {task.module}",
         f"Unit: {task.kind} {task.title}",
@@ -235,10 +271,35 @@ def build_prompt(task: ConversionTask) -> list[Message]:
     elif task.apex_hint:
         lines.append(f"Catalog note: {task.apex_hint}")
 
-    if task.builtins:
+    if analysis is not None:
+        lines.append(
+            f"\nDeterministic analysis (rule engine {analysis.engine_version}) -- "
+            "these are measured facts about the source, not opinions:"
+        )
+        lines.append(
+            f"  Risk: {analysis.risk.level} ({analysis.risk.score:.0f}/100)"
+        )
+        for factor in analysis.risk.factors[:6]:
+            lines.append(f"    - {factor.title}: {factor.detail}")
+        lines.append(f"  Behaviour after migration: {analysis.behavior.value}")
+        for reason in (analysis.behavior.reasons + analysis.behavior.uncertainties)[:6]:
+            lines.append(f"    - {reason}")
+        # A body with no built-ins still has a risk and a behaviour worth
+        # stating; only the construct list depends on there being findings.
+        if analysis.findings:
+            lines.append("\nForms constructs found, with the catalog's migration strategy:")
+            for finding in analysis.findings:
+                times = f" x{finding.count}" if finding.count > 1 else ""
+                targets = f" -> {', '.join(finding.targets)}" if finding.targets else ""
+                lines.append(
+                    f"  {finding.name}{times}  [{finding.verdict}/{finding.migration_class}]"
+                    f" {finding.apex}{targets}"
+                )
+    elif task.builtins:
         lines.append("\nForms built-ins used, with the catalog's classification:")
         for name, verdict, apex in task.builtins:
             lines.append(f"  {name}  [{verdict}] {apex}")
+
     if task.item_refs:
         lines.append("\nScreen items referenced: " + ", ".join(task.item_refs[:40]))
     if task.globals_used:
@@ -293,22 +354,34 @@ def parse_proposal(text: str) -> Proposal:
     except (TypeError, ValueError):
         confidence = 0.0
 
+    # An answer outside the three values is dropped rather than normalised:
+    # merge_ai would ignore it anyway, and storing it would suggest the model
+    # said something usable about behaviour when it did not.
+    behavior = str(data.get("behavior", "")).strip().upper()
+    if behavior not in ("PRESERVED", "CHANGED", "UNCERTAIN"):
+        behavior = ""
+
     return Proposal(
         apex_target=str(data.get("apex_target", "")).strip(),
         code=str(data.get("code", "")),
         notes=as_list(data.get("notes")),
         open_questions=as_list(data.get("open_questions")),
         confidence=max(0.0, min(1.0, confidence)),
+        behavior=behavior,
+        behavior_reason=str(data.get("behavior_reason", "")).strip(),
         raw=raw[:4000],
     )
 
 
 def propose(
-    task: ConversionTask, provider: Provider, max_tokens: int = DEFAULT_MAX_TOKENS
+    task: ConversionTask,
+    provider: Provider,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    analysis=None,
 ) -> Proposal:
     """Ask the provider for one proposal. Failure is data, not an exception."""
     try:
-        answer = provider.complete(build_prompt(task), max_tokens=max_tokens)
+        answer = provider.complete(build_prompt(task, analysis), max_tokens=max_tokens)
     except ProviderError as e:
         return Proposal(error=str(e), provider=provider.type_id, model=provider.model)
     p = parse_proposal(answer)
@@ -338,7 +411,9 @@ def propose_many(
             p = Proposal(**{**cached.__dict__, "notes": list(cached.notes)})
             p.notes.append("Reused: identical body already converted in this run.")
         else:
-            p = propose(task, provider)
+            # Analysing here costs nothing (no provider call) and gives the
+            # model the same measured facts the workbench shows the reviewer.
+            p = propose(task, provider, analysis=analyze_task(task))
             if reuse_shared and task.fingerprint and p.ok:
                 by_print[task.fingerprint] = p
         out[task.id] = p
