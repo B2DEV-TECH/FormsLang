@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-08-31
+
+### Added — multi-user auth, RBAC and mandatory MFA
+
+- **Organizations, roles and sessions** (`formslang/authstore.py`,
+  `docs/auth-multitenancy-design.md`). Owner / Admin / Developer / Viewer
+  roles, per-organization membership, scrypt password hashing, and
+  session tokens with CSRF and Origin/DNS-rebinding protection on every
+  mutating request. Single-user local mode (no `auth_store`) is untouched
+  -- the served page is byte-for-byte identical to before when auth is
+  off.
+- **Project registry** (design doc §8-§9): registration, adoption and
+  path containment so a session can only reach the `.session.db` files
+  its organization actually owns -- a project id from another
+  organization or one that does not exist both answer 404, never 403, so
+  existence is never leaked across a tenant boundary.
+- **Mandatory TOTP MFA** (design doc §7, RFC 6238). Every Owner and Admin
+  account must confirm a TOTP enrollment before it reaches a normal
+  session; the raw secret never touches the SQLite file -- it lives in
+  one OS credential-store entry per user
+  (`FormsLang:mfa-totp:<user_id>`), and verification fails closed if the
+  vault is unreachable. Ten single-use recovery codes are issued once at
+  confirmation and hashed at rest. A browser-side overlay
+  (`formslang/authui.py`) drives enrollment (QR + manual key), the
+  per-login code step, and the one-time recovery-code display, with a QR
+  encoder vendored from `qrcode-generator` 1.4.4 (MIT, hash-pinned) so
+  enrollment makes zero external network requests.
+- **Assisted password reset** (design doc §7.5): an Admin may reset a
+  Developer or Viewer, an Owner may reset anyone except another Owner --
+  that path is `formslang auth reset-owner [--clear-mfa]`, a host-CLI-only
+  command for when local machine access to the FormsLang install *is* the
+  authentication. A reset token is single-use, expiring, and a bogus,
+  expired, or already-spent one gets the same generic refusal, so a
+  caller can never use it to enumerate accounts; redeeming one revokes
+  every existing session for the account without starting a new one.
+- **Response hardening**: every response now carries `Cache-Control:
+  no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  no-referrer` and a CSP with no `unsafe-eval`.
+
+Covered by 74 new tests (`tests/test_mfa.py`, `tests/test_password_reset.py`,
+`tests/test_workbench_mfa.py`, additions to `tests/test_cli_auth.py`) on
+top of the existing auth suite. One check has no automated form: a real
+authenticator app scanning the real rendered QR code. That manual
+two-device smoke test is documented as a checklist in
+`docs/auth-multitenancy-design.md` §12a and has not been run against this
+build yet -- the roadmap item in `README.md` stays unchecked until it has.
+
 ## [0.1.2] — 2026-08-31
 
 ### Fixed
@@ -151,7 +198,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/B2DEV-TECH/FormsLang/releases/tag/v0.1.0
