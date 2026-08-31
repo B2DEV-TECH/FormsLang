@@ -20,7 +20,7 @@ import getpass
 import sys
 from pathlib import Path
 
-from . import __version__, authstore, rules
+from . import __version__, authstore, config, rules
 from .ai import PROVIDERS, check_provider, provider_from_env
 from .assess import (
     HOURS_PER_POINT_DEFAULT,
@@ -329,6 +329,11 @@ def cmd_workbench(args: argparse.Namespace) -> int:
     stats = store.stats()
     print(f"Module      : {store.session().get('title', '') or '(pick one in the browser)'}")
     print(f"Tasks       : {stats['tasks']} ({added} new, {stats['unproposed']} unconverted)")
+    auth_store = None
+    auth_data_dir = None
+    if authstore.auth_enabled():
+        auth_store = authstore.AuthStore(authstore.default_db_path())
+        auth_data_dir = config.data_dir()
     wb = Workbench(
         store,
         provider,
@@ -336,11 +341,15 @@ def cmd_workbench(args: argparse.Namespace) -> int:
         out_dir=work,
         browse_root=target if target.is_dir() else target.parent,
         oracle_home=args.oracle_home,
+        auth_store=auth_store,
+        auth_data_dir=auth_data_dir,
     )
     try:
         serve(wb, host=args.host, port=args.port, open_browser=not args.no_browser)
     finally:
         wb.store.close()  # open_module may have swapped the store since
+        if wb.auth_store is not None:
+            wb.auth_store.close()
     return 0
 
 

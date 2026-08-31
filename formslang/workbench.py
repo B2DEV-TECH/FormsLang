@@ -24,8 +24,9 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
+from . import authcrypto, authstore, projects, rbac
 from . import behavior as behavior_model
 from . import dashboard, depgraph, secrets, testspec
 from . import risk as risk_model
@@ -82,6 +83,8 @@ class Workbench:
         out_dir: Path | None = None,
         browse_root: Path | None = None,
         oracle_home: str | None = None,
+        auth_store: authstore.AuthStore | None = None,
+        auth_data_dir: Path | None = None,
     ):
         self.store = store
         self.provider = provider
@@ -89,6 +92,12 @@ class Workbench:
         self.out_dir = Path(out_dir or self.export_dir.parent)
         self.browse_root = Path(browse_root or Path.cwd()).resolve()
         self.oracle_home = oracle_home
+        # None when auth is off -- every request-handling method below
+        # treats that as "the auth subsystem does not exist", never
+        # "logged out", so local single-user mode stays byte-for-byte
+        # what it was before this existed.
+        self.auth_store = auth_store
+        self.auth_data_dir = Path(auth_data_dir) if auth_data_dir is not None else None
         self._lock = threading.Lock()
         # An upgrade must not leave a key sitting in plaintext: move it
         # into the OS credential store the first time we come up.
@@ -639,23 +648,34 @@ class Handler(BaseHTTPRequestHandler):
     workbench: Workbench  # injected by serve()
     quiet = True
 
+    AUTH_COOKIE = "formslang_session"
+    _AUTH_EXEMPT_GET = ("/", "/index.html", "/api/auth/whoami")
+    _AUTH_EXEMPT_POST = ("/api/auth/login",)
+
     def log_message(self, *_args) -> None:
         if not self.quiet:
             super().log_message(*_args)
 
     # -- helpers ---------------------------------------------------------
 
-    def _send(self, code: int, body: bytes, content_type: str) -> None:
+    def _send(
+        self, code: int, body: bytes, content_type: str, *, cookie: str | None = None,
+    ) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(body)
 
-    def _json(self, data: dict, code: int = 200) -> None:
-        self._send(code, json.dumps(data).encode("utf-8"), "application/json; charset=utf-8")
+    def _json(self, data: dict, code: int = 200, *, cookie: str | None = None) -> None:
+        self._send(
+            code, json.dumps(data).encode("utf-8"), "application/json; charset=utf-8",
+            cookie=cookie,
+        )
 
     def _drain(self) -> None:
         """Read and throw away the request body of a request being refused.
@@ -702,6 +722,92 @@ class Handler(BaseHTTPRequestHandler):
     def _content_type(self) -> str:
         return (self.headers.get("Content-Type") or "").partition(";")[0].strip().lower()
 
+    # -- auth (design doc SS2, SS7.2) --------------------------------------
+
+    def _cookie(self, name: str) -> str:
+        raw = self.headers.get("Cookie") or ""
+        for part in raw.split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == name:
+                return value
+        return ""
+
+    def _current_session(self) -> tuple[str, dict] | None:
+        """(raw_token, session) for the caller's cookie, or ``None``.
+
+        A missing, expired or revoked token all collapse to the same
+        ``None`` -- :meth:`~formslang.authstore.AuthStore.get_session` already
+        makes that call; nothing here second-guesses it.
+        """
+        if self.workbench.auth_store is None:
+            return None
+        token = self._cookie(self.AUTH_COOKIE)
+        if not token:
+            return None
+        session = self.workbench.auth_store.get_session(token)
+        if session is None:
+            return None
+        return token, session
+
+    def _resolve_auth(self) -> tuple[str, dict, dict] | None:
+        """(raw_token, session, membership), or ``None``.
+
+        Membership is re-read on every call rather than trusted from the
+        session row -- a role change or removal takes effect on the
+        caller's very next request, not at their next login.
+        """
+        current = self._current_session()
+        if current is None:
+            return None
+        token, session = current
+        membership = self.workbench.auth_store.get_membership(
+            session["active_org_id"], session["user_id"]
+        )
+        if membership is None:
+            return None
+        return token, session, membership
+
+    def _origin_is_allowed(self) -> bool:
+        """Strict Origin check for every mutating request once auth is on.
+
+        A same-origin fetch() always sets Origin, so the SPA is unaffected;
+        a request with no Origin (curl, a non-browser client) or a foreign
+        one is refused -- the same loopback allowlist ``_host_is_local``
+        checks against Host, checked here against Origin instead.
+        """
+        origin = self.headers.get("Origin") or ""
+        if not origin:
+            return False
+        host = urlsplit(origin).hostname or ""
+        return host in {"127.0.0.1", "localhost", "::1"}
+
+    def _session_cookie_header(self, raw_token: str) -> str:
+        return (
+            f"{self.AUTH_COOKIE}={raw_token}; HttpOnly; Path=/; SameSite=Lax; "
+            f"Max-Age={authstore.SESSION_TTL_SECONDS}"
+        )
+
+    def _cleared_cookie_header(self) -> str:
+        return f"{self.AUTH_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0"
+
+    def _whoami_payload(self) -> dict:
+        resolved = self._resolve_auth()
+        if resolved is None:
+            return {"authenticated": False}
+        _token, session, membership = resolved
+        wb = self.workbench
+        user = wb.auth_store.get_user(session["user_id"])
+        org = wb.auth_store.get_organization(session["active_org_id"])
+        return {
+            "authenticated": True,
+            "user_id": session["user_id"],
+            "email": user["email"] if user else "",
+            "active_org_id": session["active_org_id"],
+            "organization": org["name"] if org else "",
+            "role": membership["role"],
+            "csrf_token": session["csrf_secret"],
+        }
+
     # -- routes ----------------------------------------------------------
 
     def do_GET(self) -> None:
@@ -710,9 +816,32 @@ class Handler(BaseHTTPRequestHandler):
             return
         wb = self.workbench
         path, _, query = self.path.partition("?")
+
+        auth = None
+        if wb.auth_store is not None and path not in self._AUTH_EXEMPT_GET:
+            auth = self._resolve_auth()
+            if auth is None:
+                self._json({"error": "authentication required"}, 401)
+                return
+
         try:
-            if path in ("/", "/index.html"):
+            if wb.auth_store is None and (
+                path.startswith("/api/auth/") or path.startswith("/api/projects")
+            ):
+                # A 404, not a 401 -- with the subsystem off, these routes
+                # simply do not exist, same as any other unknown path.
+                self._json({"error": "not found"}, 404)
+            elif path in ("/", "/index.html"):
                 self._send(200, INDEX_HTML.encode("utf-8"), "text/html; charset=utf-8")
+            elif path == "/api/auth/whoami":
+                self._json(self._whoami_payload())
+            elif path == "/api/projects":
+                _token, session, _membership = auth
+                rows = wb.auth_store.list_projects_for_org(session["active_org_id"])
+                self._json({"projects": [
+                    {k: p[k] for k in ("id", "name", "storage_mode", "created_at", "adopted_at")}
+                    for p in rows
+                ]})
             elif path == "/api/state":
                 self._json(wb.state())
             elif path == "/api/job":
@@ -741,6 +870,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(wb.dashboard_state())
             else:
                 self._json({"error": "not found"}, 404)
+        except authstore.ProjectNotFound:
+            self._json({"error": "not found"}, 404)
+        except PermissionError as e:
+            self._json({"error": str(e)}, 403)
         except ValueError as e:
             self._json({"error": str(e)}, 400)
         except Exception as e:  # noqa: BLE001 - return a safe HTTP error
@@ -761,6 +894,39 @@ class Handler(BaseHTTPRequestHandler):
             self._drain()
             self._json({"error": f"content-type must be {expected}"}, 415)
             return
+
+        if wb.auth_store is None and (
+            path.startswith("/api/auth/") or path.startswith("/api/projects")
+        ):
+            self._drain()
+            self._json({"error": "not found"}, 404)
+            return
+
+        auth = None
+        if wb.auth_store is not None:
+            # Auth mode's own layer on top of the Content-Type gate above: a
+            # strict Origin check on every mutating request, and an
+            # X-CSRF-Token that has to match the caller's own session
+            # (/api/auth/login has no session yet, so it is exempt from the
+            # token check but not the Origin one).
+            if not self._origin_is_allowed():
+                self._drain()
+                self._json({"error": "forbidden origin"}, 403)
+                return
+            if path not in self._AUTH_EXEMPT_POST:
+                auth = self._resolve_auth()
+                if auth is None:
+                    self._drain()
+                    self._json({"error": "authentication required"}, 401)
+                    return
+                _token, session, _membership = auth
+                if not authcrypto.constant_time_eq(
+                    self.headers.get("X-CSRF-Token", ""), session["csrf_secret"]
+                ):
+                    self._drain()
+                    self._json({"error": "csrf token missing or invalid"}, 403)
+                    return
+
         if path == "/api/upload":
             try:
                 name = parse_qs(query).get("name", [""])[0]
@@ -777,7 +943,75 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            if self.path == "/api/propose":
+            if self.path == "/api/auth/login":
+                email = str(body.get("email") or "")
+                password = str(body.get("password") or "")
+                org_id = body.get("org_id") or None
+                result = wb.auth_store.login(
+                    email, password, org_id=org_id,
+                    user_agent=self.headers.get("User-Agent", ""),
+                    ip=self.client_address[0],
+                )
+                if not result.ok:
+                    payload = {"ok": False, "reason": result.reason}
+                    if result.organizations:
+                        payload["organizations"] = [
+                            {"org_id": m["org_id"]} for m in result.organizations
+                        ]
+                    self._json(payload, 401)
+                    return
+                self._json(
+                    {"ok": True, "active_org_id": result.active_org_id},
+                    cookie=self._session_cookie_header(result.session_token),
+                )
+
+            elif self.path == "/api/auth/logout":
+                token, _session, _membership = auth
+                wb.auth_store.revoke_session(token)
+                self._json({"ok": True}, cookie=self._cleared_cookie_header())
+
+            elif self.path == "/api/auth/switch-org":
+                token, _session, _membership = auth
+                new_org_id = str(body.get("org_id") or "").strip()
+                new_token, new_session = wb.auth_store.switch_organization(
+                    token, new_org_id,
+                    user_agent=self.headers.get("User-Agent", ""),
+                    ip=self.client_address[0],
+                )
+                self._json(
+                    {"ok": True, "active_org_id": new_session["active_org_id"]},
+                    cookie=self._session_cookie_header(new_token),
+                )
+
+            elif self.path == "/api/projects":
+                _token, session, membership = auth
+                if not rbac.has_permission(membership["role"], rbac.CREATE_PROJECT):
+                    raise PermissionError(f"role {membership['role']} may not {rbac.CREATE_PROJECT}")
+                name = str(body.get("name") or "").strip()
+                external_path = str(body.get("external_path") or "").strip()
+                if not name or not external_path:
+                    self._json({"error": "name and external_path are required"}, 400)
+                    return
+                project = wb.auth_store.register_external_project(
+                    session["active_org_id"], name, external_path,
+                    created_by=session["user_id"],
+                )
+                self._json({k: project[k] for k in ("id", "name", "storage_mode", "created_at")})
+
+            elif self.path == "/api/projects/adopt":
+                _token, session, _membership = auth
+                project_id = str(body.get("project_id") or "").strip()
+                projects.authorize_project_access(
+                    wb.auth_store, session["user_id"], session["active_org_id"],
+                    project_id, rbac.ADOPT_PROJECT,
+                )
+                adopted = projects.adopt_project(
+                    wb.auth_store, project_id,
+                    data_dir=wb.auth_data_dir, actor_user_id=session["user_id"],
+                )
+                self._json({k: adopted[k] for k in ("id", "name", "storage_mode", "adopted_at")})
+
+            elif self.path == "/api/propose":
                 if body.get("all"):
                     ids = [t.id for t in wb.store.pending_tasks()]
                 else:
@@ -844,7 +1078,17 @@ class Handler(BaseHTTPRequestHandler):
 
             else:
                 self._json({"error": "not found"}, 404)
-        except (ValueError, OracleToolchainError) as e:
+        except authstore.ProjectNotFound:
+            self._json({"error": "not found"}, 404)
+        except PermissionError as e:
+            self._json({"error": str(e)}, 403)
+        except authstore.SessionNotFound:
+            self._json({"error": "session is invalid or expired"}, 401)
+        except authstore.RateLimited as e:
+            self._json(
+                {"error": "too many attempts", "retry_after_seconds": e.retry_after_seconds}, 429,
+            )
+        except (ValueError, projects.AdoptionError, OracleToolchainError) as e:
             # A bad path or a missing Oracle install is the caller's problem
             # to fix, and the message is the whole point of the answer.
             self._json({"error": str(e)}, 400)
