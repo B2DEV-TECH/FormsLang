@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from formslang import testspec
 from formslang.ai import EchoProvider
 from formslang.cli import _work_dir
 from formslang.convert import build_tasks
@@ -508,7 +509,7 @@ def test_reveal_refuses_traversal_and_misses(server):
     # A secret OUTSIDE the export dir, named like an export.
     secret = wb.export_dir.parent / "secret.apex.zip"
     secret.write_bytes(b"PK")
-    for name in ("../secret.apex.zip", "..\secret.apex.zip", "ghost.apex.zip", "notes.txt", ""):
+    for name in ("../secret.apex.zip", r"..\secret.apex.zip", "ghost.apex.zip", "notes.txt", ""):
         status, data = _post(base, "/api/exports/open", {"name": name})
         assert status == 400, name
         assert "no such export" in data["error"], name
@@ -594,3 +595,175 @@ def test_a_refusal_stays_readable_with_a_body_attached(server):
         with pytest.raises(urllib.error.HTTPError) as err:
             urllib.request.urlopen(req, timeout=10)
         assert err.value.code == 415
+
+
+def test_deps_answers_for_the_unit_on_screen(server):
+    """The graph is fetched per selection, never shipped with every task."""
+    base, wb = server
+    task_id = wb.store.task_ids()[0]
+    status, body = _get(base, "/api/deps?task=" + task_id + "&depth=2")
+    out = json.loads(body)
+    assert status == 200
+    assert out["available"] is True
+    assert out["summary"]["nodes"] > 0
+    assert out["explore"]["node"]["task_id"] == task_id
+
+
+def test_deps_without_a_task_is_the_module_rollup_alone(server):
+    base, _wb = server
+    out = json.loads(_get(base, "/api/deps")[1])
+    assert out["available"] is True and "explore" not in out
+    assert out["summary"]["module"] == "DEMO_ORDER"
+
+
+def test_deps_for_a_task_nobody_has_heard_of_is_empty_not_a_crash(server):
+    base, _wb = server
+    out = json.loads(_get(base, "/api/deps?task=deadbeef")[1])
+    assert out["available"] is True and out["explore"] == {}
+
+
+def test_deps_admits_when_there_is_no_graph_at_all(tmp_path):
+    """Saying so beats an empty explorer, which reads as no dependencies."""
+    store = Store(tmp_path / "empty.db")
+    store.init_session("NO_SOURCE", "")
+    try:
+        wb = Workbench(store, EchoProvider(), tmp_path / "export")
+        out = wb.deps_state()
+        assert out["available"] is False and out["reason"]
+    finally:
+        store.close()
+
+
+def test_the_graph_outlives_the_xml_it_was_built_from(tmp_path, sample_xml):
+    """A session reopened from its .db alone still explains its dependencies."""
+    db = tmp_path / "s.db"
+    store = Store(db)
+    store.init_session("DEMO_ORDER", str(sample_xml))
+    store.add_tasks(build_tasks(parse_xml(sample_xml)))
+    before = Workbench(store, EchoProvider(), tmp_path / "export").deps_state()["summary"]
+    store.close()
+
+    sample_xml.unlink()
+    store = Store(db)
+    try:
+        wb = Workbench(store, EchoProvider(), tmp_path / "export")
+        assert wb.module is None, "the source is gone; only the session remains"
+        assert wb.deps_state()["summary"] == before
+    finally:
+        store.close()
+
+
+def test_tests_are_written_for_the_whole_session_the_moment_it_opens(server):
+    """Deterministic and offline: no provider, no proposal, no waiting."""
+    _base, wb = server
+    coverage = wb.store.test_coverage()
+    assert coverage["tasks"] > 0
+    assert coverage["specified"] == coverage["tasks"]
+    assert coverage["missing"] == 0
+    assert coverage["total"] > coverage["tasks"], "more than one case per unit"
+
+
+def test_the_specification_of_the_unit_on_screen_is_fetched_on_demand(server):
+    base, wb = server
+    task_id = wb.store.task_ids()[0]
+    status, body = _get(base, "/api/tests?task=" + task_id)
+    out = json.loads(body)
+    assert status == 200
+    assert out["cases"] and all(c["task_id"] == task_id for c in out["cases"])
+    assert out["coverage"]["specified"] == out["coverage"]["tasks"]
+    assert out["item_metadata"] is True
+    assert set(out["states"]) == set(testspec.CASE_STATES)
+
+
+def test_asking_for_no_unit_returns_the_rollup_without_the_cases(server):
+    base, _wb = server
+    out = json.loads(_get(base, "/api/tests")[1])
+    assert "cases" not in out
+    assert out["coverage"]["total"] > 0
+
+
+def test_a_reviewer_decision_on_a_case_is_recorded_and_counted(server):
+    base, wb = server
+    task_id = wb.store.task_ids()[0]
+    case_id = wb.store.test_cases(task_id)[0]["id"]
+    status, out = _post(base, "/api/test-decision", {
+        "case_id": case_id, "state": "accepted",
+        "reviewer": "geraldo", "comment": "matches production",
+    })
+    assert status == 200 and out["ok"] is True
+    assert out["coverage"]["states"]["accepted"] == 1
+    stored = {c["id"]: c for c in wb.store.test_cases(task_id)}[case_id]
+    assert stored["state"] == "accepted"
+    assert stored["reviewer"] == "geraldo" and stored["decided_at"]
+
+
+def test_an_invented_reviewer_state_is_refused(server):
+    base, wb = server
+    case_id = wb.store.test_cases(wb.store.task_ids()[0])[0]["id"]
+    status, out = _post(base, "/api/test-decision", {"case_id": case_id, "state": "lgtm"})
+    assert status == 400 and out["error"] == "unknown state"
+
+
+def test_deciding_a_case_that_does_not_exist_is_a_404(server):
+    base, _wb = server
+    status, out = _post(base, "/api/test-decision",
+                        {"case_id": "nope", "state": "accepted"})
+    assert status == 404 and out["error"] == "unknown test case"
+
+
+def test_without_the_module_the_specification_says_it_could_not_check_the_items(tmp_path,
+                                                                               sample_xml):
+    """"Needs confirmation" must read as a limit of the input, not of the code."""
+    db = tmp_path / "s.db"
+    store = Store(db)
+    store.init_session("DEMO_ORDER", str(sample_xml))
+    store.add_tasks(build_tasks(parse_xml(sample_xml)))
+    Workbench(store, EchoProvider(), tmp_path / "export")
+    store.close()
+
+    sample_xml.unlink()
+    store = Store(db)
+    try:
+        wb = Workbench(store, EchoProvider(), tmp_path / "export")
+        assert wb.module is None
+        assert wb.tests_state()["item_metadata"] is False
+    finally:
+        store.close()
+
+
+def test_the_review_screen_offers_the_three_answers_on_every_case():
+    from formslang.ui import INDEX_HTML
+
+    assert "Test cases —" in INDEX_HTML
+    assert "/api/test-decision" in INDEX_HTML
+    for state in testspec.CASE_STATES[1:]:
+        assert f'"{state}"' in INDEX_HTML, f"no way to mark a case {state}"
+    # The screen must not let a reader mistake a specification for a test run.
+    assert "not executed by FormsLang" in INDEX_HTML
+
+
+def test_the_project_view_is_reachable_and_counts_this_session(server):
+    base, wb = server
+    status, body = _get(base, "/api/dashboard")
+    assert status == 200
+    out = json.loads(body)
+    assert out["totals"]["units"] == len(wb.store.task_ids())
+    assert out["session"]["title"] == "DEMO_ORDER"
+    assert 0 <= out["readiness"]["score"] <= 100
+
+
+def test_the_score_never_appears_on_screen_without_its_own_arithmetic():
+    """An unexplained percentage is exactly what this product must not ship."""
+    from formslang import dashboard
+    from formslang.ui import INDEX_HTML
+
+    assert "/api/dashboard" in INDEX_HTML
+    assert "How this number is calculated" in INDEX_HTML
+    # Every weight of the published formula is printed beside the number.
+    assert "readiness_model" in INDEX_HTML
+    assert "m.formula" in INDEX_HTML and "m.caveat" in INDEX_HTML
+    for key in (c["key"] for c in dashboard.COMPONENTS):
+        assert key  # the table is data-driven; the keys travel in the payload
+    # And the page says what is missing instead of hiding it in the score.
+    assert "still unanalysed and counted nowhere in this chart" in INDEX_HTML
+    assert "a blocker is work to do, not a percentage" in INDEX_HTML

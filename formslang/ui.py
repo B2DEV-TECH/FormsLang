@@ -197,6 +197,18 @@ INDEX_HTML = r"""<!doctype html>
   .v-AUTO { color: var(--green); } .v-ASSISTED { color: var(--gold); }
   .v-MANUAL { color: var(--red); } .v-DROP { color: var(--ink-dim); }
   .v-UNKNOWN { color: var(--violet); }
+
+  /* Risk and behaviour ride the same badge shape as the verdict: three
+     short words in a row read as one sentence, and nothing new competes
+     with the code for attention. */
+  .r-LOW { color: var(--ink-dim); } .r-MEDIUM { color: var(--gold); }
+  .r-HIGH { color: #FB923C; } .r-CRITICAL { color: var(--red); }
+  .bh-PRESERVED { color: var(--green); } .bh-CHANGED { color: var(--red); }
+  .bh-UNCERTAIN { color: var(--violet); }
+  /* In the list a dot is enough: LOW nearly disappears, CRITICAL does not. */
+  .rdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 6px; }
+  .rdot.r-LOW { opacity: .28; }
+  .row .rside { display: flex; align-items: center; gap: 7px; }
   .st-approved { color: var(--green); } .st-rejected { color: var(--red); }
   .st-needs_work { color: var(--gold); } .st-pending { color: var(--ink-faint); }
 
@@ -245,6 +257,46 @@ INDEX_HTML = r"""<!doctype html>
   .notes li { margin: 3px 0; color: #B4BCC8; font-size: 13px; }
   .notes li.q { color: var(--gold); }
   .notes li code { font: 12px var(--mono); color: var(--ink); }
+  /* Collapsed by default. The evidence is always there, and never in the way. */
+  .notes details { margin: 0 0 8px; }
+  .notes details > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+    font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-dim); padding: 3px 0;
+  }
+  .notes details > summary::-webkit-details-marker { display: none; }
+  .notes details > summary::before { content: "▸"; font-size: 9px; color: var(--ink-faint); }
+  .notes details[open] > summary::before { content: "▾"; }
+  .notes details > summary:hover { color: var(--ink); }
+  .notes details ul { margin: 4px 0 10px; }
+  .notes .pts { font: 10px var(--mono); color: var(--ink-faint); }
+  .notes .ev { display: block; color: var(--ink-faint); font: 11px var(--mono); margin-left: 2px; }
+  .notes .why { color: var(--ink-dim); font-size: 12px; margin: 0 0 8px; }
+  /* The edge kind, ahead of the thing it points at: "calls", "queries". */
+  .notes .dep-k { color: var(--ink-faint); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  /* One test case: its origin badge, its Given/When/Then, its verdict row. */
+  .notes .tc { border-left: 2px solid var(--line); padding: 0 0 0 10px; margin: 0 0 10px; }
+  .notes .tc.answered { border-left-color: var(--line-hi); }
+  .notes .tc-h { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+  .notes .tc-t { color: var(--ink); font-size: 13px; }
+  .notes .tc-k { color: var(--ink-faint); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  /* Where the expectation comes from -- the one thing a reviewer must not
+     have to guess. Gold means the rules could not establish it. */
+  .notes .org { font: 10px var(--mono); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line-hi); color: var(--ink-dim); }
+  .notes .org.o-FORMS_BEHAVIOR { color: var(--green); border-color: rgba(74,222,128,.35); }
+  .notes .org.o-MODERNIZATION { color: var(--ink-dim); }
+  .notes .org.o-NEEDS_CONFIRMATION { color: var(--gold); border-color: var(--gold-deep); }
+  .notes .gwt { margin: 2px 0 4px; padding-left: 14px; }
+  .notes .gwt li { font-size: 12px; }
+  .notes .gwt b { color: var(--ink-faint); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  .notes .tc-a { display: flex; gap: 4px; align-items: center; margin-top: 4px; }
+  .notes .tc-a button {
+    background: none; border: 1px solid var(--line); color: var(--ink-faint);
+    border-radius: 4px; padding: 1px 7px; font: 10px var(--mono);
+  }
+  .notes .tc-a button:hover { color: var(--ink); border-color: var(--line-hi); }
+  .notes .tc-a button.on { color: var(--gold); border-color: var(--gold-deep); background: var(--gold-soft); }
+  .notes .tc-a .said { color: var(--ink-faint); font: 10px var(--mono); }
   .conf { display: flex; align-items: center; gap: 8px; font: 11px var(--mono); color: var(--ink-dim); text-transform: none; letter-spacing: 0; }
   .conf .cbar { width: 90px; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
   .conf .cbar i { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
@@ -429,11 +481,54 @@ INDEX_HTML = r"""<!doctype html>
   .exports-list .exp-name { font: 12px var(--mono); overflow-wrap: anywhere; }
   .exports-list .exp-meta { margin-left: auto; white-space: nowrap; color: var(--ink-dim); font: 10px var(--mono); letter-spacing: .05em; }
   .exports-list .empty { color: var(--ink-dim); padding: 8px 2px; }
+  /* the project view: counts first, and the one score with its own arithmetic
+     printed beside it -- a number nobody can check is a number nobody should
+     act on. */
+  .dash { padding: 4px 24px 22px; display: grid; gap: 18px; }
+  .dash h3 { margin: 0 0 8px; font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+  .dash .card { border: 1px solid var(--line); border-radius: 10px; background: #0C1016; padding: 14px 16px; }
+  .dash .none { color: var(--ink-faint); font-size: 12.5px; padding: 2px; }
+  .ready { display: grid; grid-template-columns: 210px 1fr; gap: 20px; align-items: start; }
+  .ready .num { font: 650 46px var(--sans); letter-spacing: -.03em; color: var(--gold); line-height: 1; }
+  .ready .of { color: var(--ink-faint); font: 11px var(--mono); letter-spacing: .06em; }
+  .ready .gauge { height: 6px; background: var(--line); border-radius: 4px; margin-top: 11px; overflow: hidden; }
+  .ready .gauge i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); }
+  .ready .caveat { margin-top: 11px; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+  .ready .ver { margin-top: 8px; color: var(--ink-faint); font: 10px var(--mono); word-break: break-all; }
+  .formula { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .formula th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); color: var(--ink-faint); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; font-weight: 500; }
+  .formula td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .formula td.n { text-align: right; white-space: nowrap; font: 12px var(--mono); }
+  .formula .d { margin-top: 2px; color: var(--ink-faint); font-size: 11px; line-height: 1.45; }
+  .formula tr.sum td { border-bottom: none; color: var(--ink); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+  .kpi { border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; background: var(--panel); }
+  .kpi b { display: block; font: 600 21px var(--sans); letter-spacing: -.02em; }
+  .kpi span { color: var(--ink-faint); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+  .dists { display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 14px; }
+  .brow { display: grid; grid-template-columns: 104px 1fr 30px; gap: 8px; align-items: center; margin: 5px 0; font: 11px var(--mono); }
+  .brow .track { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .brow .track i { display: block; height: 100%; background: currentColor; border-radius: 4px; }
+  .brow .cnt { text-align: right; }
+  .dist .cap { margin-top: 8px; color: var(--ink-faint); font-size: 11px; line-height: 1.45; }
+  .blk { display: flex; gap: 10px; align-items: baseline; padding: 7px 11px; margin-bottom: 6px; border-left: 2px solid var(--gold-deep); background: var(--gold-soft); border-radius: 0 6px 6px 0; }
+  .blk b { flex: 0 0 auto; font: 600 12px var(--mono); color: var(--gold); }
+  .blk span { color: #B4BCC8; font-size: 12.5px; }
+  .dtable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .dtable th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); color: var(--ink-faint); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; font-weight: 500; }
+  .dtable td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .dtable tr:last-child td { border-bottom: none; }
+  .dtable tr.pick { cursor: pointer; }
+  .dtable tr.pick:hover td { background: var(--hover); }
+  .dtable .mono { font: 12px var(--mono); }
+  .dtable .sub { margin-top: 2px; color: var(--ink-faint); font-size: 11px; line-height: 1.4; }
+  .dtable td.n { text-align: right; white-space: nowrap; font: 12px var(--mono); }
   @media (max-width: 760px) {
     .modal { padding: 10px; } .sheet { max-height: calc(100vh - 20px); }
     .picker-hero, .picker-files, .export-form { grid-template-columns: 1fr; }
     .picker-info { display: none; } .export-form label.wide { grid-column: auto; }
     .steps { grid-template-columns: 1fr; }
+    .ready { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -450,6 +545,7 @@ INDEX_HTML = r"""<!doctype html>
   <span class="chip provider" id="provider" title="Pick the model that converts">—</span>
   <button class="btn" id="btn-settings" title="Settings — model, API key, CLI">&#9881;</button>
   <button class="btn" id="btn-propose-all">Convert unconverted</button>
+  <button class="btn" id="btn-dash" title="Project view — what this session says, counted">Project</button>
   <button class="btn" id="btn-exports" title="Exported ZIPs — open in folder">Exports</button>
   <button class="btn primary" id="btn-export">Export APEX 26.1</button>
 </header>
@@ -472,6 +568,7 @@ INDEX_HTML = r"""<!doctype html>
     <div class="filters">
       <div class="frow"><span class="flabel">Conversion</span><span id="f-conv"></span></div>
       <div class="frow"><span class="flabel">Your call</span><span id="f-call"></span></div>
+      <div class="frow"><span class="flabel">Risk</span><span id="f-risk"></span></div>
     </div>
     <div class="search"><input id="q" placeholder="filter by name, block or built-in…" spellcheck="false"></div>
     <div id="list"></div>
@@ -572,15 +669,52 @@ const VERDICT_HELP = {
   UNKNOWN: "UNKNOWN — not in the catalog yet. Priced expensive on purpose.",
 };
 const help = (v) => VERDICT_HELP[v] || "Program unit — no trigger verdict applies.";
+
+/* Risk is not confidence. Confidence asks how sure the model is about its
+   answer; risk asks how much damage a wrong answer does here. They are
+   computed by different things and must never be read as one number. */
+const RISK = [["all", "all"], ["CRITICAL", "critical"], ["HIGH", "high"],
+              ["MEDIUM", "medium"], ["LOW", "low"]];
+const RISK_HELP = {
+  LOW: "LOW — nothing in this body is dangerous on its own.",
+  MEDIUM: "MEDIUM — a few constructs need a deliberate decision.",
+  HIGH: "HIGH — at least one construct is dangerous to translate blindly.",
+  CRITICAL: "CRITICAL — several dangerous constructs at once. Read every line.",
+};
+const BEH_HELP = {
+  PRESERVED: "PRESERVED — no rule found anything that changes observable behaviour.",
+  CHANGED: "CHANGED — something observably differs after migration, and we can name it.",
+  UNCERTAIN: "UNCERTAIN — the rules cannot tell. That is a finding, not a hedge.",
+};
+const BEH_SHORT = { PRESERVED: "BEHAVIOUR KEPT", CHANGED: "BEHAVIOUR CHANGED", UNCERTAIN: "BEHAVIOUR UNCERTAIN" };
+const CLASS_LABEL = {
+  DIRECT_EQUIVALENT: "direct equivalent",
+  SERVER_SIDE_REPLACEMENT: "server-side replacement",
+  CLIENT_SIDE_REPLACEMENT: "client-side replacement",
+  ARCHITECTURAL_REDESIGN: "architectural redesign",
+  MANUAL_REVIEW: "manual review",
+  UNSUPPORTED: "unsupported in APEX",
+  NOT_REQUIRED: "not required in APEX",
+};
+const riskOf = (t) => ((t.analysis || {}).risk || {}).level || "";
+const behOf = (t) => ((t.analysis || {}).behavior || {}).value || "";
+
 const CALL_LABEL = { pending: "undecided", needs_work: "needs work" };
 const label = (s) => CALL_LABEL[s] || s;
 let state = { tasks: [], stats: {}, session: {}, provider: "" };
-let conv = "all", call = "all", query = "", selected = null, polling = null;
+let conv = "all", call = "all", risk = "all", query = "", selected = null, polling = null;
 /* The live run, as the server last described it -- null when nothing runs.
    `ticker` only keeps the elapsed counter honest between polls. */
 let job = null, jobStart = 0, ticker = null, PROPOSE_LABEL = "";
 /* "Later" on the first-run banner means later: quiet until the next launch. */
 let setupLater = false;
+/* Dependency neighbourhoods, fetched per unit and kept until the module
+   changes -- the graph does not move when a proposal or a decision does. */
+let deps = {};
+/* Test specifications, same deal: one fetch per unit, refreshed only when
+   the reviewer answers a case. TEST_ORIGINS is the server's own legend for
+   the three origins, shown as tooltips rather than restated here. */
+let tests = {}, TEST_ORIGINS = {};
 
 function esc(s) {
   return (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -662,12 +796,14 @@ function matches(t) {
   if (conv === "unconverted" && t.proposal) return false;
   if (conv === "converted" && !t.proposal) return false;
   if (call !== "all" && t.state !== call) return false;
+  if (risk !== "all" && riskOf(t) !== risk) return false;
   if (!query) return true;
-  const hay = [t.title, t.module, t.kind, t.verdict, ...(t.builtins || []).map((b) => b.name)].join(" ").toLowerCase();
+  const hay = [t.title, t.module, t.kind, t.verdict, riskOf(t), behOf(t),
+               ...(t.builtins || []).map((b) => b.name)].join(" ").toLowerCase();
   return hay.includes(query);
 }
 const filtered = () => state.tasks.filter(matches);
-const filtering = () => conv !== "all" || call !== "all" || !!query;
+const filtering = () => conv !== "all" || call !== "all" || risk !== "all" || !!query;
 
 function renderRow(id, defs, current, set) {
   $(id).innerHTML = defs.map(([value, text]) =>
@@ -680,6 +816,7 @@ function renderRow(id, defs, current, set) {
 function renderFilters() {
   renderRow("f-conv", CONV, conv, (v) => (conv = v));
   renderRow("f-call", CALL, call, (v) => (call = v));
+  renderRow("f-risk", RISK, risk, (v) => (risk = v));
 }
 
 function renderList() {
@@ -691,7 +828,10 @@ function renderList() {
         <div class="title">${esc(t.title)}</div>
         <div class="sub">${esc(t.module)} · ${t.lines} lines${t.proposal ? "" : " · not converted"}</div>
       </div>
-      <div class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PU"}</div>
+      <div class="rside">
+        ${riskOf(t) ? `<i class="rdot r-${riskOf(t)}" title="${esc(RISK_HELP[riskOf(t)] || "")}"></i>` : ""}
+        <div class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PU"}</div>
+      </div>
     </div>`).join("") || `<div class="empty">Nothing matches this filter.</div>`;
   $("list").querySelectorAll(".row").forEach((r) => (r.onclick = () => select(r.dataset.id)));
   paintBusyRows();  // a re-render must not wipe the spinners of a live run
@@ -736,12 +876,20 @@ function renderDetail() {
     (pos >= 0 ? `Unit <b>${pos + 1}</b> of <b>${rows.length}</b>${filtering() ? " in this view" : ""} · ` : "") +
     `one ${esc(t.kind)} · left is <b>what runs today</b>, right is <b>what would replace it</b>`;
   const p = t.proposal;
+  const a = t.analysis || null;
+  const lvl = riskOf(t), beh = behOf(t);
+  // Status, then how it converts, then how dangerous, then what changes.
+  // Confidence sits on the right pane on purpose: it is the model talking,
+  // and it belongs next to the model's answer, not next to the facts.
   $("t-meta").innerHTML = [
+    t.state !== "pending" ? `<span class="st-${t.state}">${label(t.state)}${t.reviewer ? " by " + esc(t.reviewer) : ""}</span>` : "",
     `<span class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PROGRAM UNIT"}</span>`,
+    lvl ? `<span class="verdict r-${lvl}" title="${esc(RISK_HELP[lvl] || "")}">${lvl} RISK · ${(a.risk.score || 0).toFixed(0)}</span>` : "",
+    beh ? `<span class="verdict bh-${beh}" title="${esc(BEH_HELP[beh] || "")}">${BEH_SHORT[beh] || beh}</span>` : "",
     `<span>${esc(t.module)}</span>`,
     t.apex_hint ? `<span>→ ${esc(t.apex_hint)}</span>` : "",
     p && p.apex_target ? `<span class="chip">${esc(p.apex_target)}</span>` : "",
-    t.state !== "pending" ? `<span class="st-${t.state}">${label(t.state)}${t.reviewer ? " by " + esc(t.reviewer) : ""}</span>` : "",
+    a && a.stale ? `<span class="st-needs_work" title="Computed under an older rule set — reopen the module to recompute.">rules moved since</span>` : "",
   ].filter(Boolean).join("");
   $("t-lines").textContent = t.lines + " lines";
   $("src").innerHTML = withLineNumbers(t.source);
@@ -757,11 +905,40 @@ function renderDetail() {
 
   const bits = [];
   if (p && p.error) bits.push(`<div class="err">Provider error: ${esc(p.error)}</div>`);
+  // The deterministic findings come first and stay collapsed: they are the
+  // evidence behind the badges above, available without ever being in the way.
+  if (a && a.risk && (a.risk.factors || []).length) {
+    const f = a.risk.factors;
+    bits.push(`<details><summary>Why this risk? — ${esc(lvl)} · score ${(a.risk.score || 0).toFixed(0)} of 100 · ${f.length} factor${f.length > 1 ? "s" : ""}</summary>
+      <ul>${f.map((x) => `<li><code>${esc(x.title)}</code> <span class="pts">+${x.points} raw</span> — ${esc(x.detail)}
+        ${(x.evidence || []).length ? `<span class="ev">${x.evidence.map(esc).join(" · ")}</span>` : ""}</li>`).join("")}</ul>
+      ${(a.review_areas || []).length ? `<div class="why"><b>Check by hand:</b> ${a.review_areas.map(esc).join(" · ")}</div>` : ""}
+      <div class="why">Score is <code>100 × (1 − 0.5 ^ (raw ÷ 12))</code> over the raw points above — no model opinion is an input.</div>
+    </details>`);
+  }
+  if (a && a.behavior && (( a.behavior.reasons || []).length || (a.behavior.uncertainties || []).length)) {
+    const b = a.behavior;
+    bits.push(`<details><summary>Behaviour after migration — ${esc(b.value)}${b.source === "rules+ai" ? " · rules + model" : ""}</summary>
+      ${(b.reasons || []).length ? `<ul>${b.reasons.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+      ${(b.uncertainties || []).length ? `<div class="why">Not established by the rules:</div><ul>${b.uncertainties.map((n) => `<li class="q">${esc(n)}</li>`).join("")}</ul>` : ""}
+    </details>`);
+  }
+  if (a && (a.findings || []).length) {
+    bits.push(`<details><summary>Forms compatibility — ${a.findings.length} construct${a.findings.length > 1 ? "s" : ""}</summary>
+      <ul>${a.findings.map((f) => `<li><span class="verdict v-${f.verdict}">${esc(f.verdict)}</span>
+        <code>${esc(f.name)}</code>${f.count > 1 ? ` <span class="pts">×${f.count}</span>` : ""}
+        — ${esc(f.apex)}
+        <span class="ev">${esc(CLASS_LABEL[f.migration_class] || f.migration_class)} · ${esc(f.category_label)}${f.targets && f.targets.length ? " · targets: " + f.targets.map(esc).join(", ") : ""}</span></li>`).join("")}</ul>
+    </details>`);
+  }
+  bits.push(renderDeps(t));
   if (p && p.notes && p.notes.length)
     bits.push(`<h3>What changed</h3><ul>${p.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`);
   if (p && p.open_questions && p.open_questions.length)
     bits.push(`<h3>Open questions</h3><ul>${p.open_questions.map((n) => `<li class="q">${esc(n)}</li>`).join("")}</ul>`);
-  if ((t.builtins || []).length)
+  bits.push(renderTests(t));
+  // Sessions created before the analysis engine still show their built-ins.
+  if (!a && (t.builtins || []).length)
     bits.push(`<h3>Built-ins in this body</h3><ul>${t.builtins.map((b) =>
       `<li><span class="verdict v-${b.verdict}">${b.verdict}</span> <code>${esc(b.name)}</code> — ${esc(b.apex)}</li>`).join("")}</ul>`);
   if (t.globals && t.globals.length)
@@ -769,11 +946,130 @@ function renderDetail() {
   if (!p) bits.unshift(`<div class="empty">Not converted yet — press <kbd>P</kbd> to ask the model, or write the APEX code on the right and approve it.</div>`);
   if (p && p.model) bits.push(`<div class="conf">${esc(p.provider)} · ${esc(p.model)} · ${esc(p.created_at || "")}</div>`);
   $("notes").innerHTML = bits.join("");
+  $("notes").querySelectorAll(".tc-a button").forEach((b) =>
+    (b.onclick = () => decideCase(b.dataset.case, b.dataset.state, b.dataset.task)));
   $("comment").value = t.comment || "";
+}
+
+/* ── dependencies ──────────────────────────────────────── */
+/* Fetched on demand rather than shipped with every task: the graph is one
+   payload per module, and the reviewer looks at one unit at a time. */
+async function loadDeps(id) {
+  if (deps[id]) return;
+  deps[id] = "loading";
+  try {
+    deps[id] = await api("/api/deps?task=" + encodeURIComponent(id) + "&depth=2");
+  } catch (e) {
+    deps[id] = { available: false, reason: e.message };
+  }
+  if (selected === id) renderDetail();
+}
+
+function depLine(x) {
+  const tags = [x.label];
+  if (x.depth > 1) tags.push(x.depth + " hops away");
+  if (x.risk) tags.push(x.risk + " RISK");
+  if (x.missing) tags.push("not declared in this module");
+  else if (x.external) tags.push("outside this form");
+  if (x.evidence) tags.push(x.evidence);
+  return `<li><span class="dep-k">${esc(x.via_label)}</span> <code>${esc(x.name)}</code>
+    <span class="ev">${tags.map(esc).join(" · ")}</span></li>`;
+}
+
+function renderDeps(t) {
+  const d = deps[t.id];
+  if (d === undefined) loadDeps(t.id);
+  if (d === "loading" || d === undefined) return `<details><summary>Dependencies — reading…</summary></details>`;
+  if (!d.available) return "";
+  const e = d.explore;
+  if (!e || !e.node) return "";
+  const impact = e.impact || [], needs = e.depends_on || [];
+  const unresolved = e.node.unresolved_targets || [];
+  const risky = impact.concat(needs).filter((x) => x.risk === "HIGH" || x.risk === "CRITICAL" || x.missing).length;
+  return `<details><summary>Dependencies — ${impact.length} affected by this · ${needs.length} needed by it${risky ? ` · <b>${risky} to check</b>` : ""}</summary>
+    ${impact.length ? `<div class="why"><b>Breaks if this changes</b> (inbound)</div><ul>${impact.map(depLine).join("")}</ul>` : ""}
+    ${needs.length ? `<div class="why"><b>This unit needs</b> (outbound)</div><ul>${needs.map(depLine).join("")}</ul>` : ""}
+    ${unresolved.length ? `<div class="why">Named at runtime, so no dependency could be resolved: <code>${unresolved.map(esc).join("</code>, <code>")}</code></div>` : ""}
+    ${!impact.length && !needs.length ? `<div class="why">Nothing else in this module refers to it, and it refers to nothing outside itself.</div>` : ""}
+  </details>`;
+}
+
+/* ── test cases ────────────────────────────────────────── */
+/* Written from the original Forms body before any conversion exists, so the
+   section is there even for a unit nobody has proposed yet. */
+async function loadTests(id) {
+  if (tests[id]) return;
+  tests[id] = "loading";
+  try {
+    tests[id] = await api("/api/tests?task=" + encodeURIComponent(id));
+  } catch (e) {
+    tests[id] = { cases: [], error: e.message };
+  }
+  if (selected === id) renderDetail();
+}
+
+const CASE_ACTION = { accepted: "Accept", rejected: "Reject", needs_work: "Needs work" };
+
+async function decideCase(caseId, state, taskId) {
+  try {
+    await api("/api/test-decision", {
+      case_id: caseId, state,
+      reviewer: $("reviewer").value, comment: $("comment").value,
+    });
+  } catch (e) {
+    toast(e.message, true);
+    return;
+  }
+  delete tests[taskId];          // re-read: the counts in the header moved too
+  await loadTests(taskId);
+  toast(CASE_ACTION[state] + "ed");
+}
+
+function caseBlock(c, taskId) {
+  const gwt = [["Given", c.given], ["When", c.when], ["Then", c.then]]
+    .filter(([, rows]) => (rows || []).length)
+    .map(([heading, rows]) => rows.map((r) =>
+      `<li><b>${heading}</b> ${esc(r)}</li>`).join("")).join("");
+  const buttons = ["accepted", "rejected", "needs_work"].map((s) =>
+    `<button class="${c.state === s ? "on" : ""}" data-case="${c.id}" data-task="${taskId}" data-state="${s}">${CASE_ACTION[s]}</button>`
+  ).join("");
+  const said = c.state && c.state !== "pending"
+    ? `<span class="said">${esc(label(c.state))}${c.reviewer ? " by " + esc(c.reviewer) : ""}${c.comment ? " — " + esc(c.comment) : ""}</span>`
+    : "";
+  return `<div class="tc${c.state && c.state !== "pending" ? " answered" : ""}">
+    <div class="tc-h">
+      <span class="tc-t">${esc(c.title)}</span>
+      <span class="tc-k">${esc(c.kind_label || c.kind)}</span>
+      <span class="org o-${esc(c.origin)}" title="${esc(TEST_ORIGINS[c.origin] || "")}">${esc(c.origin)}</span>
+      ${c.stale ? `<span class="tc-k" title="Written under an older rule set.">rules moved since</span>` : ""}
+    </div>
+    <ul class="gwt">${gwt}</ul>
+    ${(c.evidence || []).length ? `<span class="ev">${c.evidence.map(esc).join(" · ")}</span>` : ""}
+    <div class="tc-a">${buttons}${said}</div>
+  </div>`;
+}
+
+
+function renderTests(t) {
+  const d = tests[t.id];
+  if (d === undefined) loadTests(t.id);
+  if (d === "loading" || d === undefined) return `<details><summary>Test cases — reading…</summary></details>`;
+  if (d.origins) TEST_ORIGINS = d.origins;
+  const cases = d.cases || [];
+  if (!cases.length) return "";
+  const open = cases.filter((c) => !c.state || c.state === "pending").length;
+  const unsure = cases.filter((c) => c.origin === "NEEDS_CONFIRMATION").length;
+  return `<details><summary>Test cases — ${cases.length} · ${cases.length - open} reviewed${unsure ? ` · <b>${unsure} to confirm</b>` : ""}</summary>
+    <div class="why">Written from the Forms body, not from the conversion, and not executed by FormsLang.${
+      d.item_metadata === false ? " The module itself is not on disk, so nothing about required values or lengths could be checked." : ""}</div>
+    ${cases.map((c) => caseBlock(c, t.id)).join("")}
+  </details>`;
 }
 
 function select(id) {
   selected = id;
+  loadDeps(id);
+  loadTests(id);
   renderList();
   renderDetail();
   const row = document.querySelector(".row.sel");
@@ -1058,6 +1354,7 @@ async function uploadModule(file) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    deps = {}; tests = {};  // another module, another graph and another specification
     closeModal();
     await refresh(false);
     toast(`${data.title}: ${data.stats.tasks} unit(s) ready for review.`);
@@ -1074,6 +1371,7 @@ async function openModule(path) {
   foot(null);
   try {
     const r = await api("/api/open", { path });
+    deps = {}; tests = {};  // another module, another graph and another specification
     closeModal();
     await refresh(false);
     toast(`${r.title}: ${r.stats.tasks} unit(s)${r.added ? "" : " — resumed, nothing new"}`);
@@ -1292,6 +1590,167 @@ async function showExports(freshName) {
   });
 }
 
+/* ── the project view ──────────────────────────────────── */
+/* Every figure here is a count over rows already on disk. The readiness
+   score is the only one that could be read as a verdict, so it is printed
+   next to the formula that produced it, weight by weight. */
+const pct = (n, of) => (of ? Math.round((100 * n) / of) : 0);
+
+function bars(rows, total) {
+  if (!rows.length) return `<div class="none">nothing counted yet</div>`;
+  return rows.map(([label, n, cls]) => `
+    <div class="brow ${cls || ""}">
+      <span>${esc(label)}</span>
+      <span class="track"><i style="width:${pct(n, total)}%"></i></span>
+      <span class="cnt">${n}</span>
+    </div>`).join("");
+}
+
+function readyCard(d) {
+  const r = d.readiness || {}, m = d.readiness_model || {};
+  const got = {};
+  (r.components || []).forEach((c) => (got[c.key] = c));
+  const rows = (m.components || []).map((c) => {
+    const g = got[c.key] || {};
+    return `<tr>
+      <td>${esc(c.title)}<div class="d">${esc(c.detail)}</div></td>
+      <td class="n">${c.weight}</td>
+      <td class="n">${Math.round((g.ratio || 0) * 100)}%</td>
+      <td class="n">${(g.points || 0).toFixed(1)}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="card ready">
+    <div>
+      <div class="num">${r.score}</div>
+      <div class="of">OF ${r.of} &middot; MIGRATION READINESS</div>
+      <div class="gauge"><i style="width:${pct(r.score, r.of)}%"></i></div>
+      <div class="caveat">${esc(m.caveat || "")}</div>
+      <div class="ver">${esc(m.version || "")} &middot; ${esc(m.engine_version || "")}</div>
+    </div>
+    <div>
+      <h3>How this number is calculated</h3>
+      <table class="formula">
+        <tr><th>Component</th><th>Weight</th><th>Measured</th><th>Points</th></tr>
+        ${rows}
+        <tr class="sum"><td><b>readiness</b><div class="d">${esc(m.formula || "")}</div></td>
+          <td class="n">${m.total_weight}</td><td class="n">&mdash;</td><td class="n"><b>${r.score}</b></td></tr>
+      </table>
+    </div>
+  </div>`;
+}
+
+function riskTable(d) {
+  const rows = d.highest_risk || [];
+  if (!rows.length) return `<div class="none">No unit has been analysed yet.</div>`;
+  return `<table class="dtable">
+    <tr><th>Unit</th><th>Risk</th><th>Behaviour</th><th>Mode</th><th>State</th><th>Score</th></tr>
+    ${rows.map((r) => `<tr class="pick" data-go="${esc(r.task_id)}">
+      <td class="mono">${esc(r.title)}<div class="sub">${esc(r.kind)} &middot; ${r.factors} factor(s)</div></td>
+      <td class="r-${esc(r.level)} mono">${esc(r.level)}</td>
+      <td class="bh-${esc(r.behavior)} mono">${esc(r.behavior || "—")}</td>
+      <td class="v-${esc(r.verdict)} mono">${esc(r.verdict)}</td>
+      <td class="st-${esc(r.state)} mono">${esc(r.state)}</td>
+      <td class="n">${r.score}</td>
+    </tr>`).join("")}
+  </table>`;
+}
+
+function unsupportedTable(d) {
+  const rows = d.unsupported || [];
+  if (!rows.length) return `<div class="none">No unsupported construct in what has been analysed.</div>`;
+  return `<table class="dtable">
+    <tr><th>Built-in</th><th>Calls</th><th>Where it is called</th><th>What APEX offers</th></tr>
+    ${rows.map((r) => `<tr>
+      <td class="mono">${esc(r.name)}<div class="sub">${esc(r.category || "")}</div></td>
+      <td class="n">${r.count}</td>
+      <td class="sub">${(r.units || []).map(esc).join("<br>")}</td>
+      <td class="sub">${esc(r.apex || "no direct replacement")}</td>
+    </tr>`).join("")}
+  </table>`;
+}
+
+function depCard(d) {
+  const g = d.dependencies || {};
+  if (!g.available) return `<div class="none">${esc(g.reason || "no dependency graph")}</div>`;
+  const hubs = (g.hubs || []).map((h) => `<tr>
+    <td class="mono">${esc(h.name || h.id)}<div class="sub">${esc(h.label || h.kind || "")}</div></td>
+    <td class="n">${h.in}</td><td class="n">${h.out}</td><td class="n">${h.degree}</td>
+  </tr>`).join("");
+  return `<div class="cap" style="margin-bottom:9px;color:var(--ink-dim);font-size:12px;line-height:1.5">
+      ${g.nodes} object(s), ${g.edges} link(s) &mdash; ${g.external} external, ${g.missing} referenced but not
+      declared here, ${g.unresolved} name(s) the parser could not resolve. One session holds one form, so this
+      ranks the objects inside <b>${esc(g.module || "")}</b> that the most other things lean on.
+    </div>
+    ${hubs
+      ? `<table class="dtable"><tr><th>Object</th><th>Depended on by</th><th>Depends on</th><th>Total</th></tr>${hubs}</table>`
+      : `<div class="none">nothing in this form depends on anything else</div>`}`;
+}
+
+async function showDashboard() {
+  let d;
+  try { d = await api("/api/dashboard"); } catch (e) { toast(e.message, true); return; }
+  openModal("Project — " + ((d.session || {}).title || "session"));
+  $("modal-path").textContent = (d.session || {}).source_path || "";
+  $("modal-hint").textContent =
+    "Counted from this session, never estimated: the deterministic analysis, your decisions, the dependency graph and the test specifications.";
+  $("modal-foot").style.display = "none";
+
+  const t = d.totals, cov = d.coverage, tc = d.test_coverage;
+  const measured = `Measured on ${cov.analysed} of ${t.units} unit(s)` +
+    (cov.missing ? `; ${cov.missing} still unanalysed and counted nowhere in this chart.` : ".");
+
+  $("modal-body").innerHTML = `<div class="dash">
+    ${readyCard(d)}
+
+    <div>
+      <h3>The session</h3>
+      <div class="kpis">
+        <div class="kpi"><b>${t.units}</b><span>units</span></div>
+        <div class="kpi"><b>${t.lines}</b><span>lines of PL/SQL</span></div>
+        <div class="kpi"><b>${t.proposed}</b><span>converted</span></div>
+        <div class="kpi"><b>${d.percent.reviewed}%</b><span>reviewed</span></div>
+        <div class="kpi"><b>${d.percent.approved}%</b><span>approved</span></div>
+        <div class="kpi"><b>${tc.total}</b><span>test cases</span></div>
+      </div>
+    </div>
+
+    <div class="dists">
+      <div class="card dist"><h3>Conversion mode</h3>
+        ${bars(Object.entries(d.conversion_modes).map(([k, n]) => [k, n, "v-" + k]), t.units)}
+        <div class="cap">What the rules say the conversion costs. A different question from risk.</div>
+      </div>
+      <div class="card dist"><h3>Your decisions</h3>
+        ${bars(Object.entries(d.decisions).map(([k, n]) => [k, n, "st-" + k]), t.units)}
+        <div class="cap">Approval is a human act. Nothing on this screen moves it.</div>
+      </div>
+      <div class="card dist"><h3>Migration risk</h3>
+        ${bars(Object.entries(d.risk).map(([k, n]) => [k, n, "r-" + k]), cov.analysed)}
+        <div class="cap">${esc(measured)} Average score ${d.avg_risk_score}.</div>
+      </div>
+      <div class="card dist"><h3>Behaviour after migration</h3>
+        ${bars(Object.entries(d.behavior).map(([k, n]) => [k, n, "bh-" + k]), cov.analysed)}
+        <div class="cap">${esc(measured)}</div>
+      </div>
+    </div>
+
+    <div><h3>What is in the way</h3>
+      ${(d.blockers || []).length
+        ? d.blockers.map((b) => `<div class="blk"><b>${b.count}</b><span>${esc(b.detail)}</span></div>`).join("")
+        : `<div class="none">Nothing outstanding: every unit is analysed, converted, decided and specified.</div>`}
+      <div class="cap" style="margin-top:8px;color:var(--ink-faint);font-size:11px">
+        Deliberately left out of the score above &mdash; a blocker is work to do, not a percentage.</div>
+    </div>
+
+    <div><h3>Highest risk first</h3>${riskTable(d)}</div>
+    <div><h3>Forms features APEX has no equivalent for</h3>${unsupportedTable(d)}</div>
+    <div><h3>Where the dependencies pile up</h3>${depCard(d)}</div>
+  </div>`;
+
+  $("modal-body").querySelectorAll("[data-go]").forEach((tr) => {
+    tr.onclick = () => { closeModal(); select(tr.dataset.go); };
+  });
+}
+
 /* ── wiring ────────────────────────────────────────────── */
 $("btn-module").onclick = () => browse("");
 $("welcome-open").onclick = () => browse("");
@@ -1308,6 +1767,7 @@ $("btn-propose").onclick = () => propose(false);
 $("btn-propose-all").onclick = () => propose(true);
 $("btn-export").onclick = exportApex;
 $("btn-exports").onclick = () => showExports();
+$("btn-dash").onclick = showDashboard;
 $("q").oninput = (e) => { query = e.target.value.toLowerCase(); renderList(); };
 
 document.addEventListener("keydown", (e) => {
@@ -1324,6 +1784,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "w") decide("needs_work");
   else if (e.key === "p") propose(false);
   else if (e.key === "o") browse("");
+  else if (e.key === "d") showDashboard();
 });
 
 $("reviewer").value = localStorage.getItem("formslang.reviewer") || "";
