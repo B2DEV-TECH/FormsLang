@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-08-31
+
 ### Added — migration analysis
 
 - **Migration risk** (`formslang/risk.py`). Every unit is scored
@@ -136,5 +138,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/B2DEV-TECH/FormsLang/releases/tag/v0.1.0

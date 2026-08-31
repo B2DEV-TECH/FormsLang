@@ -8,5 +8,5 @@ Not affiliated with, nor endorsed by, Oracle Corporation. Oracle, Oracle
 Forms and Oracle APEX are trademarks of Oracle Corporation.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["__version__"]
