@@ -29,20 +29,20 @@ session file:
   every write is either its own implicit transaction or explicitly wrapped
   by :meth:`AuthStore._immediate`.
 
-Design reference: ``docs/auth-multitenancy-design.md``. This module is
-Phase 1/2 of that document's §11 phased delivery -- schema, scrypt hashing,
-sessions, RBAC role constants, and the scoped bootstrap flow. MFA, assisted
-password reset, and the full audit trail are Phase 3 and are deliberately
-not implemented here; the tables they will use already exist below (a
-Phase 1 deliverable is the complete schema), but nothing yet reads or
-writes ``mfa_secret``, ``mfa_recovery_code`` or ``password_reset_token``.
+Design reference: ``docs/auth-multitenancy-design.md``. This module covers
+Phases 1-3 of that document's §11 phased delivery: schema, scrypt hashing,
+sessions, RBAC role constants, the scoped bootstrap flow, and -- Phase 3 --
+TOTP MFA (§7.3), recovery codes, assisted password reset (§7.5) and the
+structured audit trail. The raw TOTP secret never touches this database:
+per D6 (§2.3) it lives in the OS credential store, one entry per user
+(``FormsLang:mfa-totp:<user_id>``, via :mod:`formslang.secrets`), and
+``mfa_secret`` here holds enrollment metadata only.
 
-One consequence worth stating plainly, not burying in a docstring nobody
-reads: because MFA enrollment does not exist yet, :meth:`AuthStore.login`
-never issues the ``BOOTSTRAP_MFA`` or ``MFA_PENDING`` scopes the design
-document's §7.1/§7.2 describe -- every session issued today is ``NORMAL``.
-The schema and the ``scope`` column are ready for Phase 3 to wire in; the
-mandatory-MFA-for-Owner/Admin enforcement itself is not live until then.
+Scope enforcement (§7.1/§7.2): :meth:`AuthStore.login` issues
+``MFA_PENDING`` for a user with confirmed MFA (completed by
+:meth:`complete_mfa_login`), ``BOOTSTRAP_MFA`` for an Owner/Admin who has
+not confirmed MFA yet (mandatory enrollment -- the session can only reach
+the MFA enroll/confirm routes), and ``NORMAL`` otherwise.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import hashlib
+import json
 import os
 import sqlite3
 import threading
@@ -57,7 +58,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import authcrypto, config
+from . import authcrypto, config, totp
+from . import secrets as vault
 
 AUTH_ENV = "FORMSLANG_AUTH"
 
@@ -72,6 +74,15 @@ STORAGE_MODES = (EXTERNAL_LEGACY, ADOPTED)
 
 SESSION_TTL_SECONDS = 12 * 60 * 60
 MAX_SESSIONS_PER_USER = 5
+
+# Phase 3 (§7.1-§7.5): restricted-session lifetimes, enrollment expiry,
+# recovery codes and reset tokens. All deliberately short -- each of these
+# is a stepping stone toward a NORMAL session, never a resting state.
+MFA_PENDING_SESSION_TTL_SECONDS = 5 * 60
+MFA_ENROLLMENT_SESSION_TTL_SECONDS = 15 * 60
+MFA_ENROLLMENT_TTL_SECONDS = 15 * 60
+MFA_RECOVERY_CODE_COUNT = 10
+PASSWORD_RESET_TTL_SECONDS = 15 * 60
 
 # Persisted rate limiting (D3): a lockout survives a process restart because
 # it lives here, not in a module-level dict.
@@ -225,6 +236,17 @@ CREATE TABLE IF NOT EXISTS rate_limit_bucket (
 # column a later schema_migration adds to a table that already shipped.
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = ()
 
+# The only keys record_audit() will ever serialize into detail_json. An
+# allowlist, not a blocklist: anything unlisted -- and so any secret --
+# simply never lands in the audit table.
+_AUDIT_DETAIL_KEYS = frozenset(
+    {
+        "scope", "reason", "via", "mfa_method",
+        "old_role", "new_role",
+        "sessions_revoked", "remaining_recovery_codes",
+    }
+)
+
 _SCHEMA_VERSION = 1
 _SCHEMA_DESCRIPTION = "initial control-plane schema (organization, user, membership, project, session)"
 
@@ -275,6 +297,30 @@ class RateLimited(AuthStoreError):
         super().__init__(f"rate limited, retry after {retry_after_seconds}s")
 
 
+class MfaNotEnrolled(AuthStoreError, LookupError):
+    pass
+
+
+class MfaAlreadyConfirmed(AuthStoreError, ValueError):
+    pass
+
+
+class MfaEnrollmentExpired(AuthStoreError, ValueError):
+    pass
+
+
+class InvalidMfaCode(AuthStoreError, ValueError):
+    """A TOTP or recovery code that did not verify. The message is safe to
+    show the user: it hints at clock drift (the common benign cause) without
+    ever widening the acceptance window to compensate."""
+
+    def __init__(self, message: str = ""):
+        super().__init__(
+            message
+            or "invalid code -- if it keeps failing, check that the device clock is in sync"
+        )
+
+
 @dataclass
 class LoginResult:
     """What :meth:`AuthStore.login` decided. Never raises on a bad guess."""
@@ -286,6 +332,8 @@ class LoginResult:
     scope: str | None = None
     active_org_id: str | None = None
     organizations: list[dict] | None = None
+    mfa_required: bool = False
+    mfa_enrollment_required: bool = False
 
 
 def auth_enabled() -> bool:
@@ -319,28 +367,108 @@ def _fingerprint(value: str) -> str | None:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
 
 
+def _normalize_recovery_code(code: str) -> str:
+    """The canonical form a recovery code is hashed and compared in --
+    tolerant of the dashes and spacing a person re-types."""
+    return (code or "").strip().lower().replace("-", "").replace(" ", "")
+
+
+class _FetchedRows:
+    """A SELECT's result, fully drained while the statement lock was held.
+    Quacks like the cursor for the read patterns this codebase uses
+    (``fetchone``, ``fetchall``, iteration)."""
+
+    def __init__(self, rows: list):
+        self._rows = rows
+        self._i = 0
+        self.rowcount = -1  # what sqlite3 itself reports for a SELECT
+
+    def fetchone(self):
+        if self._i >= len(self._rows):
+            return None
+        row = self._rows[self._i]
+        self._i += 1
+        return row
+
+    def fetchall(self) -> list:
+        rows = self._rows[self._i :]
+        self._i = len(self._rows)
+        return rows
+
+    def __iter__(self):
+        while (row := self.fetchone()) is not None:
+            yield row
+
+
+class _SerializedConnection:
+    """One ``sqlite3.Connection`` shared by every thread of a
+    ThreadingHTTPServer (workbench.py), with every statement -- including
+    the row fetch of a SELECT -- run under one re-entrant lock.
+
+    Sharing the bare connection is not safe, even in a "serialized" SQLite
+    build: two threads running the same SQL can step the same cached
+    prepared statement concurrently (InterfaceError: "bad parameter or
+    other API misuse"), and a bare write interleaved into another thread's
+    open BEGIN IMMEDIATE lands inside that transaction and is swallowed by
+    its rollback. ``AuthStore._immediate()`` holds this same lock for the
+    whole transaction, which is what keeps a multi-statement transaction
+    atomic against other threads (PRAGMA busy_timeout only arbitrates
+    separate connections, never two threads sharing this one).
+    """
+
+    def __init__(self, real: sqlite3.Connection, lock: "threading.RLock"):
+        self._real = real
+        self._lock = lock
+
+    def execute(self, sql: str, params=()):
+        with self._lock:
+            cur = self._real.execute(sql, params)
+            if cur.description is None:
+                return cur
+            return _FetchedRows(cur.fetchall())
+
+    def executemany(self, sql: str, seq):
+        with self._lock:
+            return self._real.executemany(sql, seq)
+
+    def executescript(self, script: str):
+        with self._lock:
+            return self._real.executescript(script)
+
+    def commit(self) -> None:
+        with self._lock:
+            self._real.commit()
+
+    def rollback(self) -> None:
+        with self._lock:
+            self._real.rollback()
+
+    def close(self) -> None:
+        with self._lock:
+            self._real.close()
+
+    def __getattr__(self, name: str):
+        return getattr(self._real, name)
+
+
 class AuthStore:
     """The control-plane database: one file, ``auth.db``, per FormsLang install."""
 
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
+        # Re-entrant on purpose: _immediate() holds it for a whole
+        # transaction while every statement inside re-acquires it.
+        self._write_lock = threading.RLock()
+        raw = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
+        raw.row_factory = sqlite3.Row
+        self.db = _SerializedConnection(raw, self._write_lock)
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.execute("PRAGMA journal_mode = WAL")
         self.db.execute("PRAGMA busy_timeout = 5000")
         self.db.executescript(SCHEMA)
         self._migrate()
         self._record_schema_version()
-        # One sqlite3.Connection, shared by every thread of a ThreadingHTTPServer
-        # (workbench.py). SQLite itself only ever has one transaction in flight
-        # per connection; two threads racing BEGIN IMMEDIATE on it would hit
-        # "cannot start a transaction within a transaction" instead of queuing
-        # behind PRAGMA busy_timeout (that PRAGMA only arbitrates separate
-        # connections/processes, not two threads sharing this one). This lock
-        # is what actually serializes them.
-        self._write_lock = threading.Lock()
 
     def _migrate(self) -> None:
         for table, column, decl in _ADDED_COLUMNS:
@@ -511,7 +639,15 @@ class AuthStore:
                 "UPDATE membership SET role = ? WHERE org_id = ? AND user_id = ?",
                 (new_role, org_id, user_id),
             )
-            self._revoke_sessions_no_commit(user_id, org_id=org_id)
+            revoked = self._revoke_sessions_no_commit(user_id, org_id=org_id)
+            self.record_audit(
+                event_type="ROLE_CHANGED", org_id=org_id, user_id=user_id,
+                target_type="membership", target_id=user_id,
+                detail={
+                    "old_role": row["role"], "new_role": new_role,
+                    "sessions_revoked": revoked,
+                },
+            )
 
     def remove_membership(self, org_id: str, user_id: str) -> None:
         """Remove a member. Refuses to remove the organization's last Owner."""
@@ -538,6 +674,7 @@ class AuthStore:
     def create_session(
         self, user_id: str, active_org_id: str | None, *,
         scope: str = NORMAL, user_agent: str = "", ip: str = "",
+        ttl_seconds: int = SESSION_TTL_SECONDS,
     ) -> tuple[str, dict]:
         if scope not in SCOPES:
             raise ValueError(f"unknown scope {scope!r}")
@@ -545,18 +682,22 @@ class AuthStore:
         session_id = _new_id()
         now_dt = dt.datetime.now().replace(microsecond=0)
         now_s = now_dt.isoformat(sep=" ")
-        expires_at = (now_dt + dt.timedelta(seconds=SESSION_TTL_SECONDS)).isoformat(sep=" ")
-        self.db.execute(
-            "INSERT INTO session_token (id, user_id, active_org_id, scope, token_hash, "
-            "csrf_secret, user_agent_hash, ip_hash, created_at, last_seen_at, expires_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                session_id, user_id, active_org_id, scope, authcrypto.hash_token(raw_token),
-                authcrypto.new_token(), _fingerprint(user_agent), _fingerprint(ip),
-                now_s, now_s, expires_at,
-            ),
-        )
-        self._enforce_session_limit(user_id)
+        expires_at = (now_dt + dt.timedelta(seconds=ttl_seconds)).isoformat(sep=" ")
+        # One transaction for insert + limit enforcement: on this shared
+        # connection, a bare INSERT interleaved into another thread's open
+        # BEGIN IMMEDIATE would be swallowed by that thread's rollback.
+        with self._immediate():
+            self.db.execute(
+                "INSERT INTO session_token (id, user_id, active_org_id, scope, token_hash, "
+                "csrf_secret, user_agent_hash, ip_hash, created_at, last_seen_at, expires_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session_id, user_id, active_org_id, scope, authcrypto.hash_token(raw_token),
+                    authcrypto.new_token(), _fingerprint(user_agent), _fingerprint(ip),
+                    now_s, now_s, expires_at,
+                ),
+            )
+            self._enforce_session_limit(user_id)
         session = self.get_session(raw_token)
         assert session is not None
         return raw_token, session
@@ -614,7 +755,7 @@ class AuthStore:
     def _enforce_session_limit(self, user_id: str, limit: int = MAX_SESSIONS_PER_USER) -> None:
         rows = self.db.execute(
             "SELECT id FROM session_token WHERE user_id = ? AND revoked_at IS NULL "
-            "ORDER BY created_at DESC",
+            "ORDER BY created_at DESC, rowid DESC",
             (user_id,),
         ).fetchall()
         if len(rows) <= limit:
@@ -648,12 +789,37 @@ class AuthStore:
 
     def cleanup_expired_sessions(self) -> int:
         """Delete rows already past ``expires_at``. Not required for correctness
-        (an expired token is already rejected by :meth:`get_session`) -- just
-        keeps ``auth.db`` from growing without bound.
+        (an expired token is already rejected by :meth:`get_session`, an
+        expired reset token by :meth:`redeem_password_reset`, an expired
+        enrollment by :meth:`mfa_confirm`) -- just keeps ``auth.db`` from
+        growing without bound. Expiring an unused reset token is audited
+        (§7.5.7), and an expired unconfirmed enrollment's vault entry is
+        removed along with its row.
         """
         now = _now()
         cur = self.db.execute("DELETE FROM session_token WHERE expires_at <= ?", (now,))
+        for row in self.db.execute(
+            "SELECT id, user_id FROM password_reset_token "
+            "WHERE expires_at <= ? AND used_at IS NULL",
+            (now,),
+        ).fetchall():
+            self.record_audit(
+                event_type="PASSWORD_RESET_EXPIRED", user_id=row["user_id"],
+                target_type="password_reset_token", target_id=row["id"],
+            )
         self.db.execute("DELETE FROM password_reset_token WHERE expires_at <= ?", (now,))
+        cutoff = (
+            dt.datetime.now() - dt.timedelta(seconds=MFA_ENROLLMENT_TTL_SECONDS)
+        ).replace(microsecond=0).isoformat(sep=" ")
+        with self._immediate():
+            # Select and delete inside one transaction, so an enrollment
+            # confirmed between the two cannot be swept away.
+            for row in self.db.execute(
+                "SELECT user_id FROM mfa_secret "
+                "WHERE confirmed_at IS NULL AND enrolled_at <= ?",
+                (cutoff,),
+            ).fetchall():
+                self._mfa_delete_all_no_commit(row["user_id"])
         return cur.rowcount
 
     # -- rate limiting (D3) -----------------------------------------------------
@@ -726,6 +892,9 @@ class AuthStore:
             self.rate_limit_record_failure(email_key)
             if ip_key:
                 self.rate_limit_record_failure(ip_key)
+            self.record_audit(
+                event_type="LOGIN_FAIL", outcome="fail", ip=ip, detail={"reason": reason},
+            )
             return LoginResult(ok=False, reason=reason)
 
         user = self.get_user_by_email(email)
@@ -764,14 +933,31 @@ class AuthStore:
                 user_id=user["id"], organizations=memberships,
             )
 
-        # MFA is Phase 3 -- see the module docstring. Every session issued
-        # here is NORMAL until MFA enrollment exists to gate it.
+        # §7.1/§7.2: a confirmed-MFA user gets a short-lived MFA_PENDING
+        # session (completed by complete_mfa_login); an Owner/Admin who has
+        # never confirmed MFA gets a BOOTSTRAP_MFA session that can only
+        # reach the enroll/confirm routes -- mandatory enrollment, applying
+        # to pre-existing Owner/Admin accounts on their next login too.
+        scope, ttl = NORMAL, SESSION_TTL_SECONDS
+        mfa_required = enrollment_required = False
+        if self.has_confirmed_mfa(user["id"]):
+            scope, ttl, mfa_required = MFA_PENDING, MFA_PENDING_SESSION_TTL_SECONDS, True
+        elif chosen["role"] in (OWNER, ADMIN):
+            scope, ttl = BOOTSTRAP_MFA, MFA_ENROLLMENT_SESSION_TTL_SECONDS
+            enrollment_required = True
+
         raw_token, _session = self.create_session(
-            user["id"], chosen["org_id"], scope=NORMAL, user_agent=user_agent, ip=ip,
+            user["id"], chosen["org_id"], scope=scope, user_agent=user_agent, ip=ip,
+            ttl_seconds=ttl,
+        )
+        self.record_audit(
+            event_type="LOGIN_OK", org_id=chosen["org_id"], user_id=user["id"], ip=ip,
+            detail={"scope": scope},
         )
         return LoginResult(
             ok=True, user_id=user["id"], session_token=raw_token,
-            scope=NORMAL, active_org_id=chosen["org_id"],
+            scope=scope, active_org_id=chosen["org_id"],
+            mfa_required=mfa_required, mfa_enrollment_required=enrollment_required,
         )
 
     # -- bootstrap (§7.1) ---------------------------------------------------------
@@ -826,6 +1012,509 @@ class AuthStore:
             "user_id": user_id,
             "email": email.strip().lower(),
         }
+
+    # -- MFA: TOTP enrollment and verification (§7.3, §7.4, D6) ------------------
+
+    @staticmethod
+    def _mfa_vault_account(user_id: str) -> str:
+        """The per-user OS-credential-store entry name (D6): an opaque
+        internal id, never the email."""
+        return f"mfa-totp:{user_id}"
+
+    def get_mfa(self, user_id: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT * FROM mfa_secret WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def has_confirmed_mfa(self, user_id: str) -> bool:
+        row = self.db.execute(
+            "SELECT 1 FROM mfa_secret WHERE user_id = ? AND confirmed_at IS NOT NULL",
+            (user_id,),
+        ).fetchone()
+        return row is not None
+
+    def count_unused_recovery_codes(self, user_id: str) -> int:
+        return self.db.execute(
+            "SELECT COUNT(*) AS n FROM mfa_recovery_code WHERE user_id = ? AND used_at IS NULL",
+            (user_id,),
+        ).fetchone()["n"]
+
+    def mfa_enroll(self, user_id: str, *, ip: str = "") -> dict:
+        """Start (or restart) TOTP enrollment.
+
+        The raw secret goes straight into the OS credential store -- if that
+        store is unavailable this raises :class:`~formslang.secrets.SecureStorageUnavailable`
+        and no enrollment exists at all (fail closed, never a plaintext
+        fallback). A previous *unconfirmed* enrollment is silently replaced;
+        a *confirmed* one is refused (§7.3: disable first, then re-enroll --
+        and no endpoint ever returns a confirmed secret again).
+
+        Returns ``{"secret", "otpauth_uri"}`` -- the only moment the raw
+        secret ever leaves the process, and only in the response body of the
+        authenticated enrollment call. Never log or persist either value.
+        """
+        user = self.get_user(user_id)
+        if user is None:
+            raise UserNotFound(user_id)
+        secret = totp.generate_secret()
+        with self._immediate():
+            row = self.db.execute(
+                "SELECT confirmed_at FROM mfa_secret WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            if row is not None and row["confirmed_at"] is not None:
+                raise MfaAlreadyConfirmed(
+                    "MFA is already confirmed for this account; disable it before re-enrolling"
+                )
+            vault.set_secret(vault.SERVICE, self._mfa_vault_account(user_id), secret)
+            now = _now()
+            self.db.execute(
+                "INSERT INTO mfa_secret (user_id, enrolled_at, confirmed_at, "
+                "last_accepted_step, created_at) VALUES (?, ?, NULL, NULL, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET "
+                "enrolled_at = excluded.enrolled_at, confirmed_at = NULL, "
+                "last_accepted_step = NULL",
+                (user_id, now, now),
+            )
+        self.record_audit(event_type="MFA_ENROLL_STARTED", user_id=user_id, ip=ip)
+        return {
+            "secret": secret,
+            "otpauth_uri": totp.provisioning_uri(secret, account_name=user["email"]),
+        }
+
+    def _load_mfa_secret(self, user_id: str) -> str:
+        """The raw secret from the OS vault, for a user with an ``mfa_secret``
+        row. Fail closed: a row without a vault entry (auth.db copied to a
+        different machine, vault wiped) is an error, never a bypass."""
+        secret = vault.get_secret(vault.SERVICE, self._mfa_vault_account(user_id))
+        if not secret:
+            raise vault.SecureStorageUnavailable(
+                "the MFA secret for this account is not in this machine's credential store"
+            )
+        return secret
+
+    def mfa_confirm(self, user_id: str, code1: str, code2: str, *, ip: str = "") -> list[str]:
+        """Confirm enrollment with two codes from *consecutive* time steps
+        (§7.3.4) and return the plaintext recovery codes -- shown exactly
+        once, only their hashes are stored.
+
+        Runs inside one ``BEGIN IMMEDIATE`` transaction, so two concurrent
+        confirmations cannot both validate the same codes. An enrollment
+        older than ``MFA_ENROLLMENT_TTL_SECONDS`` is expired: it is removed
+        and the caller must start again.
+        """
+        key = f"mfa:account:{user_id}"
+        ip_key = f"mfa:ip:{authcrypto.hash_token(ip)[:16]}" if ip.strip() else None
+        for k in (k for k in (key, ip_key) if k):
+            self.rate_limit_check(k)
+        expired = False
+        codes: list[str] = []
+        try:
+            with self._immediate():
+                row = self.db.execute(
+                    "SELECT * FROM mfa_secret WHERE user_id = ?", (user_id,)
+                ).fetchone()
+                if row is None:
+                    raise MfaNotEnrolled(user_id)
+                if row["confirmed_at"] is not None:
+                    raise MfaAlreadyConfirmed("MFA is already confirmed for this account")
+                enrolled = dt.datetime.fromisoformat(row["enrolled_at"])
+                if (dt.datetime.now() - enrolled).total_seconds() > MFA_ENROLLMENT_TTL_SECONDS:
+                    # Delete, let the transaction COMMIT, and only then raise
+                    # below -- raising from in here would roll the delete back.
+                    self._mfa_delete_all_no_commit(user_id)
+                    expired = True
+                else:
+                    secret = self._load_mfa_secret(user_id)
+                    step1 = totp.verify_code(secret, code1)
+                    step2 = totp.verify_code(secret, code2, last_accepted_step=step1)
+                    if step1 is None or step2 != step1 + 1:
+                        raise InvalidMfaCode(
+                            "enter two consecutive codes: the current one, then the "
+                            "next one the app shows -- if it keeps failing, check "
+                            "that the device clock is in sync"
+                        )
+                    codes = self._replace_recovery_codes_no_commit(user_id)
+                    self.db.execute(
+                        "UPDATE mfa_secret SET confirmed_at = ?, last_accepted_step = ? "
+                        "WHERE user_id = ?",
+                        (_now(), step2, user_id),
+                    )
+        except InvalidMfaCode:
+            self.rate_limit_record_failure(key)
+            if ip_key:
+                self.rate_limit_record_failure(ip_key)
+            self.record_audit(
+                event_type="MFA_FAILED", outcome="fail", user_id=user_id, ip=ip,
+                detail={"via": "confirm"},
+            )
+            raise
+        if expired:
+            raise MfaEnrollmentExpired("this enrollment has expired; start enrollment again")
+        self.rate_limit_record_success(key)
+        if ip_key:
+            self.rate_limit_record_success(ip_key)
+        self.record_audit(event_type="MFA_CONFIRMED", user_id=user_id, ip=ip)
+        return codes
+
+    def _mfa_delete_all_no_commit(self, user_id: str) -> None:
+        self.db.execute("DELETE FROM mfa_secret WHERE user_id = ?", (user_id,))
+        self.db.execute("DELETE FROM mfa_recovery_code WHERE user_id = ?", (user_id,))
+        vault.delete_secret(vault.SERVICE, self._mfa_vault_account(user_id))
+
+    def _replace_recovery_codes_no_commit(self, user_id: str) -> list[str]:
+        """Fresh recovery codes (hashes stored, plaintext returned once);
+        every previous code, used or not, is revoked. 128 bits each."""
+        self.db.execute("DELETE FROM mfa_recovery_code WHERE user_id = ?", (user_id,))
+        codes = []
+        now = _now()
+        for _ in range(MFA_RECOVERY_CODE_COUNT):
+            raw = os.urandom(16).hex()
+            code = "-".join(raw[i : i + 4] for i in range(0, len(raw), 4))
+            codes.append(code)
+            self.db.execute(
+                "INSERT INTO mfa_recovery_code (id, user_id, code_hash, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (_new_id(), user_id, authcrypto.hash_token(_normalize_recovery_code(code)), now),
+            )
+        return codes
+
+    def _check_totp_no_commit(self, user_id: str, code: str) -> None:
+        """Verify a TOTP code for a *confirmed* enrollment and advance the
+        replay watermark. Must run inside ``_immediate()`` -- the read of
+        ``last_accepted_step`` and its update are what make two concurrent
+        validations of the same code impossible."""
+        row = self.db.execute(
+            "SELECT * FROM mfa_secret WHERE user_id = ? AND confirmed_at IS NOT NULL",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            raise MfaNotEnrolled(user_id)
+        secret = self._load_mfa_secret(user_id)
+        step = totp.verify_code(secret, code, last_accepted_step=row["last_accepted_step"])
+        if step is None:
+            raise InvalidMfaCode()
+        self.db.execute(
+            "UPDATE mfa_secret SET last_accepted_step = ? WHERE user_id = ?", (step, user_id)
+        )
+
+    def _consume_recovery_code_no_commit(self, user_id: str, code: str) -> int:
+        """Single-use, atomically consumed (§7.3.4): the row flips to used
+        inside the caller's ``BEGIN IMMEDIATE`` transaction, so a second
+        concurrent attempt with the same code finds it already spent.
+        Returns how many unused codes remain."""
+        wanted = authcrypto.hash_token(_normalize_recovery_code(code))
+        rows = self.db.execute(
+            "SELECT id, code_hash FROM mfa_recovery_code WHERE user_id = ? AND used_at IS NULL",
+            (user_id,),
+        ).fetchall()
+        matched_id = None
+        for r in rows:  # constant-time per comparison, no early exit
+            if authcrypto.constant_time_eq(r["code_hash"], wanted):
+                matched_id = r["id"]
+        if matched_id is None:
+            raise InvalidMfaCode("invalid recovery code")
+        cur = self.db.execute(
+            "UPDATE mfa_recovery_code SET used_at = ? WHERE id = ? AND used_at IS NULL",
+            (_now(), matched_id),
+        )
+        if cur.rowcount != 1:
+            raise InvalidMfaCode("invalid recovery code")
+        return self.count_unused_recovery_codes(user_id)
+
+    @staticmethod
+    def _looks_like_totp(code: str) -> bool:
+        cleaned = (code or "").strip()
+        return cleaned.isdigit() and len(cleaned) == totp.DIGITS
+
+    def complete_mfa_login(
+        self, raw_token: str, code: str, *, user_agent: str = "", ip: str = "",
+    ) -> LoginResult:
+        """Exchange an ``MFA_PENDING`` session for a ``NORMAL`` one (§7.2.5).
+
+        ``code`` is a 6-digit TOTP code or a recovery code, told apart by
+        shape. Rate-limited independently of the password step. A recovery
+        code, once accepted, revokes every existing session for the user
+        before the fresh one is issued (§7.3: a used recovery code means
+        the second factor may be compromised).
+        """
+        session = self.get_session(raw_token)
+        if session is None:
+            raise SessionNotFound("session is invalid or expired")
+        if session["scope"] != MFA_PENDING:
+            raise ValueError("this session has no pending MFA step")
+        user_id = session["user_id"]
+        key = f"mfa:account:{user_id}"
+        ip_key = f"mfa:ip:{authcrypto.hash_token(ip)[:16]}" if ip.strip() else None
+        for k in (k for k in (key, ip_key) if k):
+            self.rate_limit_check(k)
+
+        used_recovery = not self._looks_like_totp(code)
+        remaining = None
+        try:
+            with self._immediate():
+                if used_recovery:
+                    remaining = self._consume_recovery_code_no_commit(user_id, code)
+                else:
+                    self._check_totp_no_commit(user_id, code)
+        except InvalidMfaCode:
+            self.rate_limit_record_failure(key)
+            if ip_key:
+                self.rate_limit_record_failure(ip_key)
+            self.record_audit(
+                event_type="MFA_FAILED", outcome="fail",
+                org_id=session["active_org_id"], user_id=user_id, ip=ip,
+                detail={"via": "login"},
+            )
+            raise
+        self.rate_limit_record_success(key)
+        if ip_key:
+            self.rate_limit_record_success(ip_key)
+
+        if used_recovery:
+            revoked = self.revoke_sessions_for_user(user_id)
+            self.record_audit(
+                event_type="MFA_RECOVERY_USED", org_id=session["active_org_id"],
+                user_id=user_id, ip=ip,
+                detail={"remaining_recovery_codes": remaining, "sessions_revoked": revoked},
+            )
+        else:
+            self.revoke_session(raw_token)
+
+        new_token, _new_session = self.create_session(
+            user_id, session["active_org_id"], scope=NORMAL, user_agent=user_agent, ip=ip,
+        )
+        self.record_audit(
+            event_type="LOGIN_OK", org_id=session["active_org_id"], user_id=user_id, ip=ip,
+            detail={"scope": NORMAL, "mfa_method": "recovery" if used_recovery else "totp"},
+        )
+        return LoginResult(
+            ok=True, user_id=user_id, session_token=new_token,
+            scope=NORMAL, active_org_id=session["active_org_id"],
+        )
+
+    def mfa_regenerate_recovery_codes(
+        self, user_id: str, code: str, *, ip: str = "",
+    ) -> list[str]:
+        """Fresh recovery codes for a confirmed enrollment, proven by a
+        valid TOTP code (not a recovery code -- regeneration is a
+        convenience, not a break-glass path). Every previous code is
+        revoked."""
+        key = f"mfa:account:{user_id}"
+        ip_key = f"mfa:ip:{authcrypto.hash_token(ip)[:16]}" if ip.strip() else None
+        for k in (k for k in (key, ip_key) if k):
+            self.rate_limit_check(k)
+        try:
+            with self._immediate():
+                self._check_totp_no_commit(user_id, code)
+                codes = self._replace_recovery_codes_no_commit(user_id)
+        except InvalidMfaCode:
+            self.rate_limit_record_failure(key)
+            if ip_key:
+                self.rate_limit_record_failure(ip_key)
+            self.record_audit(
+                event_type="MFA_FAILED", outcome="fail", user_id=user_id, ip=ip,
+                detail={"via": "regenerate"},
+            )
+            raise
+        self.rate_limit_record_success(key)
+        if ip_key:
+            self.rate_limit_record_success(ip_key)
+        self.record_audit(event_type="MFA_RECOVERY_REGENERATED", user_id=user_id, ip=ip)
+        return codes
+
+    def mfa_disable(self, user_id: str, password: str, code: str, *, ip: str = "") -> int:
+        """Disable MFA: requires the password *and* a valid TOTP or recovery
+        code in the same call (§7.4), removes the vault entry and every
+        recovery code, and revokes every session. Returns how many sessions
+        were revoked."""
+        user = self.get_user(user_id)
+        if user is None:
+            raise UserNotFound(user_id)
+        key = f"mfa:account:{user_id}"
+        ip_key = f"mfa:ip:{authcrypto.hash_token(ip)[:16]}" if ip.strip() else None
+        for k in (k for k in (key, ip_key) if k):
+            self.rate_limit_check(k)
+
+        def _charge_and_audit() -> None:
+            self.rate_limit_record_failure(key)
+            if ip_key:
+                self.rate_limit_record_failure(ip_key)
+            self.record_audit(
+                event_type="MFA_FAILED", outcome="fail", user_id=user_id, ip=ip,
+                detail={"via": "disable"},
+            )
+
+        if not authcrypto.verify_password(
+            password, user["password_hash"], user["password_salt"],
+            user["password_params_version"],
+        ):
+            _charge_and_audit()
+            raise InvalidMfaCode("invalid password or code")
+        try:
+            with self._immediate():
+                if self._looks_like_totp(code):
+                    self._check_totp_no_commit(user_id, code)
+                else:
+                    if not self.has_confirmed_mfa(user_id):
+                        raise MfaNotEnrolled(user_id)
+                    self._consume_recovery_code_no_commit(user_id, code)
+                self._mfa_delete_all_no_commit(user_id)
+                revoked = self._revoke_sessions_no_commit(user_id)
+        except InvalidMfaCode:
+            _charge_and_audit()
+            raise
+        self.rate_limit_record_success(key)
+        if ip_key:
+            self.rate_limit_record_success(ip_key)
+        self.record_audit(
+            event_type="MFA_DISABLED", user_id=user_id, ip=ip,
+            detail={"sessions_revoked": revoked},
+        )
+        return revoked
+
+    def mfa_disable_cli(self, user_id: str) -> int:
+        """Break-glass MFA removal for ``formslang auth reset-owner --clear-mfa``
+        -- CLI-only (local host access is the authentication), never routed
+        over HTTP. Revokes every session."""
+        with self._immediate():
+            self._mfa_delete_all_no_commit(user_id)
+            revoked = self._revoke_sessions_no_commit(user_id)
+        self.record_audit(
+            event_type="MFA_DISABLED", user_id=user_id,
+            detail={"via": "cli", "sessions_revoked": revoked},
+        )
+        return revoked
+
+    # -- assisted password reset (§7.5, D2) --------------------------------------
+
+    def issue_password_reset(
+        self, *, issued_by: str, target_user_id: str, org_id: str, ip: str = "",
+    ) -> str:
+        """A short-lived, single-use reset token for a member of the issuer's
+        organization. Returns the raw token exactly once -- only its hash is
+        stored, tied to who issued it.
+
+        Role rules (§7.5): an Admin may reset Developers and Viewers only;
+        an Owner may reset anyone in the organization except another Owner.
+        Nobody resets an Owner over HTTP -- the last-Owner path is
+        :meth:`reset_owner_password_cli`.
+        """
+        issuer = self.get_membership(org_id, issued_by)
+        target = self.get_membership(org_id, target_user_id)
+        if issuer is None or issuer["role"] not in (OWNER, ADMIN):
+            raise PermissionError("only an Owner or Admin can issue a password reset")
+        if target is None:
+            raise UserNotFound(target_user_id)
+        if target["role"] == OWNER:
+            raise PermissionError(
+                "an Owner's password cannot be reset over HTTP -- "
+                "use `formslang auth reset-owner` on the host"
+            )
+        if issuer["role"] == ADMIN and target["role"] not in (DEVELOPER, VIEWER):
+            raise PermissionError("an Admin can only reset Developers and Viewers")
+        raw = authcrypto.new_token()
+        now_dt = dt.datetime.now().replace(microsecond=0)
+        expires = (now_dt + dt.timedelta(seconds=PASSWORD_RESET_TTL_SECONDS)).isoformat(sep=" ")
+        with self._immediate():
+            # One outstanding token per target: issuing again supersedes.
+            self.db.execute(
+                "DELETE FROM password_reset_token WHERE user_id = ? AND used_at IS NULL",
+                (target_user_id,),
+            )
+            self.db.execute(
+                "INSERT INTO password_reset_token (id, user_id, issued_by, token_hash, "
+                "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    _new_id(), target_user_id, issued_by, authcrypto.hash_token(raw),
+                    now_dt.isoformat(sep=" "), expires,
+                ),
+            )
+        self.record_audit(
+            event_type="PASSWORD_RESET_ISSUED", org_id=org_id, user_id=issued_by,
+            target_type="user", target_id=target_user_id, ip=ip,
+        )
+        return raw
+
+    def redeem_password_reset(self, token: str, new_password: str, *, ip: str = "") -> str:
+        """Set a new password from a reset token. Single-use, expiring, and
+        deliberately narrow: every session is revoked, MFA is untouched
+        (§7.5.5 -- the normal MFA login step still applies afterwards), and
+        the user is *not* logged in by this call. Returns the user id.
+
+        The failure message never says whether the token existed, whose it
+        was, or why it failed -- no account enumeration through this route.
+        """
+        if not new_password:
+            raise ValueError("password must not be empty")
+        ip_key = f"reset:ip:{authcrypto.hash_token(ip)[:16]}" if ip.strip() else None
+        if ip_key:
+            self.rate_limit_check(ip_key)
+        token_hash = authcrypto.hash_token(token or "")
+        # Hashed before the transaction: the KDF is the expensive part and
+        # must not run while the store-wide write lock is held -- and doing
+        # it unconditionally keeps valid and invalid tokens on the same
+        # timing path.
+        password_hash, password_salt, params_version = authcrypto.hash_password(new_password)
+        with self._immediate():
+            row = self.db.execute(
+                "SELECT * FROM password_reset_token WHERE token_hash = ?", (token_hash,)
+            ).fetchone()
+            if row is None or row["used_at"] is not None or row["expires_at"] <= _now():
+                row = None
+            else:
+                self.db.execute(
+                    "UPDATE user SET password_hash = ?, password_salt = ?, "
+                    "password_params_version = ?, must_rehash = 0 WHERE id = ?",
+                    (password_hash, password_salt, params_version, row["user_id"]),
+                )
+                self.db.execute(
+                    "UPDATE password_reset_token SET used_at = ? WHERE id = ?",
+                    (_now(), row["id"]),
+                )
+                revoked = self._revoke_sessions_no_commit(row["user_id"])
+        if row is None:
+            # Recorded only after the transaction is out of the way: a
+            # failure written inside it would be rolled back by the very
+            # exception it accompanies, and the limiter would never engage.
+            if ip_key:
+                self.rate_limit_record_failure(ip_key)
+            raise ValueError("invalid or expired reset token")
+        if ip_key:
+            self.rate_limit_record_success(ip_key)
+        self.record_audit(
+            event_type="PASSWORD_RESET_COMPLETED", user_id=row["user_id"], ip=ip,
+            detail={"sessions_revoked": revoked},
+        )
+        return row["user_id"]
+
+    def reset_owner_password_cli(self, email: str, new_password: str) -> dict:
+        """Last-Owner recovery (§7.5): set an Owner's password directly.
+        CLI-only -- local host access is the authentication. Revokes every
+        session and preserves MFA."""
+        if not new_password:
+            raise ValueError("password must not be empty")
+        user = self.get_user_by_email(email)
+        if user is None:
+            raise UserNotFound(email)
+        if not any(m["role"] == OWNER for m in self.list_memberships_for_user(user["id"])):
+            raise PermissionError(
+                "reset-owner is for Owner accounts only -- "
+                "other members are reset by their Owner/Admin in the app"
+            )
+        password_hash, password_salt, params_version = authcrypto.hash_password(new_password)
+        with self._immediate():
+            self.db.execute(
+                "UPDATE user SET password_hash = ?, password_salt = ?, "
+                "password_params_version = ?, must_rehash = 0 WHERE id = ?",
+                (password_hash, password_salt, params_version, user["id"]),
+            )
+            revoked = self._revoke_sessions_no_commit(user["id"])
+        self.record_audit(
+            event_type="PASSWORD_RESET_COMPLETED", user_id=user["id"],
+            detail={"via": "cli", "sessions_revoked": revoked},
+        )
+        return {"user_id": user["id"], "email": user["email"], "sessions_revoked": revoked}
 
     # -- projects (§8, §9) -------------------------------------------------------
 
@@ -919,17 +1608,47 @@ class AuthStore:
     def record_audit(
         self, *, event_type: str, outcome: str = "ok", org_id: str | None = None,
         user_id: str | None = None, actor_email: str = "", target_type: str = "",
-        target_id: str = "", ip: str = "",
+        target_id: str = "", ip: str = "", detail: dict | None = None,
     ) -> None:
-        """One row. Phase 2 writes exactly one event type (``PROJECT_ADOPTED``,
-        from adoption) -- see the module docstring for why a full audit trail
-        is Phase 3, not built out here."""
+        """One structured row per security-relevant event (design doc §7,
+        Phase 3 event list).
+
+        ``detail`` is filtered through :data:`_AUDIT_DETAIL_KEYS` -- an
+        allowlist, so no secret (password, TOTP code or secret, otpauth URI,
+        recovery code, session/CSRF/reset token, project content) can reach
+        ``detail_json`` even by accident. Actors are recorded as opaque IDs;
+        ``actor_email`` stays supported for callers that truly need it but
+        no Phase 3 event passes it.
+        """
+        detail_json = None
+        if detail:
+            filtered = {k: v for k, v in detail.items() if k in _AUDIT_DETAIL_KEYS}
+            if filtered:
+                detail_json = json.dumps(filtered, sort_keys=True)
         self.db.execute(
             "INSERT INTO audit_log (id, at, org_id, user_id, actor_email_snapshot, "
             "event_type, target_type, target_id, outcome, ip_hash, detail_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 _new_id(), _now(), org_id, user_id, actor_email.strip().lower(),
                 event_type, target_type, target_id, outcome, _fingerprint(ip),
+                detail_json,
             ),
         )
+
+    def list_audit_events(
+        self, *, org_id: str | None = None, user_id: str | None = None, limit: int = 100,
+    ) -> list[dict]:
+        where, params = [], []
+        if org_id is not None:
+            where.append("org_id = ?")
+            params.append(org_id)
+        if user_id is not None:
+            where.append("user_id = ?")
+            params.append(user_id)
+        sql = "SELECT * FROM audit_log"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY at DESC, id DESC LIMIT ?"
+        params.append(max(1, min(int(limit), 1000)))
+        return [dict(r) for r in self.db.execute(sql, params).fetchall()]

@@ -21,10 +21,14 @@ def test_a_correct_login_issues_a_session(auth_store):
     assert auth_store.get_session(result.session_token) is not None
 
 
-def test_login_scope_is_always_normal_mfa_is_not_wired_up_yet(auth_store):
+def test_login_scope_for_an_owner_without_confirmed_mfa_is_bootstrap_mfa(auth_store):
+    """Mandatory MFA enrollment (SS7.1): a privileged account never reaches
+    a NORMAL session before confirming MFA -- test_mfa.py covers the rest
+    of the scope matrix."""
     _bootstrap(auth_store)
     result = auth_store.login("owner@example.com", PASSWORD)
-    assert result.scope == authstore.NORMAL
+    assert result.scope == authstore.BOOTSTRAP_MFA
+    assert result.mfa_enrollment_required
 
 
 def test_a_wrong_password_is_refused(auth_store):

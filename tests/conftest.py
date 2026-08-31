@@ -8,6 +8,7 @@ mojibake) without carrying a single line of third-party code.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,56 @@ def auth_store(tmp_path: Path):
     store = authstore.AuthStore(tmp_path / "auth.db")
     yield store
     store.close()
+
+
+def setup_confirmed_mfa(auth_store, user_id: str) -> dict:
+    """Enroll and confirm TOTP for a user, the way tests need it done.
+
+    Confirmation uses the real two-consecutive-codes flow (current step,
+    then the next step's code -- verify_code's +-1 window accepts the
+    second one early). Afterwards the replay watermark is rewound far below
+    the current window: production code never does this, but a test that
+    logs the same user in more than once inside a single 30-second TOTP
+    window needs earlier steps to be spendable again.
+
+    Returns ``{"secret", "recovery_codes"}``.
+    """
+    from formslang import totp
+
+    enrollment = auth_store.mfa_enroll(user_id)
+    secret = enrollment["secret"]
+    now = time.time()
+    code1 = totp.generate_code(secret, at=now)
+    code2 = totp.generate_code(secret, at=now + totp.PERIOD_SECONDS)
+    recovery_codes = auth_store.mfa_confirm(user_id, code1, code2)
+    auth_store.db.execute(
+        "UPDATE mfa_secret SET last_accepted_step = last_accepted_step - 1000 "
+        "WHERE user_id = ?",
+        (user_id,),
+    )
+    return {"secret": secret, "recovery_codes": recovery_codes}
+
+
+def next_mfa_code(auth_store, user_id: str, secret: str) -> str:
+    """A TOTP code that is inside the verification window AND above the
+    user's current replay watermark -- i.e. one that will actually be
+    accepted right now. Starts at the earliest spendable step, so up to
+    three same-user logins fit in one 30-second window."""
+    from formslang import totp
+
+    row = auth_store.db.execute(
+        "SELECT last_accepted_step FROM mfa_secret WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    last = row["last_accepted_step"] if row else None
+    step = totp.current_step() - totp.DEFAULT_WINDOW
+    if last is not None and last >= step:
+        step = last + 1
+    if step > totp.current_step() + totp.DEFAULT_WINDOW:
+        raise RuntimeError(
+            "too many MFA logins for this user inside one TOTP window -- "
+            "spread the logins across users or wait a step"
+        )
+    return totp.generate_code(secret, at=step * totp.PERIOD_SECONDS)
 
 
 SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
