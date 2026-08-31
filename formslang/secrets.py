@@ -1,4 +1,4 @@
-"""The API key, kept where the operating system keeps secrets.
+"""Credentials, kept where the operating system keeps secrets.
 
 The settings file records what provider to use and which model; it must not
 record the credential. This module is the credential half, and it talks to
@@ -33,11 +33,25 @@ code applies to a key -- a process listing is not a private place.
 ``FORMSLANG_SECRET_BACKEND`` forces a backend by name; ``memory`` is a
 process-local store with no persistence, which is how the test suite keeps
 its hands off a real keychain.
+
+**Two callers, two APIs.** ``get_key``/``set_key``/``delete_key`` are the
+original, single-slot API for the AI provider key (``FormsLang:ai-api-key``)
+and are unchanged in behavior, including ``get_key()``'s choice to swallow
+every failure into ``""`` -- reasonable there, since worst case the user
+retypes a key. ``get_secret``/``set_secret``/``delete_secret`` are the
+general, multi-slot API (design doc section 2.3, D6): any ``(service,
+account)`` pair gets its own entry, used for one MFA TOTP secret per user
+(``FormsLang:mfa-totp:<user_id>``). ``get_secret`` deliberately does not
+swallow a store failure into ``""`` the way ``get_key`` does -- MFA
+correctness depends on telling "not enrolled" apart from "the vault could
+not be reached," and collapsing those would let a transient store failure
+either look like a bypass or an unexplained lockout.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -54,21 +68,35 @@ UNAVAILABLE_MESSAGE = (
     "Use an environment variable instead."
 )
 
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
+
 
 class SecureStorageUnavailable(RuntimeError):
-    """No OS credential store answered, so nothing was saved."""
+    """No OS credential store answered, so nothing was saved or read."""
 
     def __init__(self, message: str = UNAVAILABLE_MESSAGE) -> None:
         super().__init__(message)
 
 
 def _clean(value: str) -> str:
-    """A key must be one line of printable text, or we cannot pass it safely."""
+    """A secret must be one line of printable text, or we cannot pass it safely."""
     value = str(value or "").strip()
     if any(ch.isspace() for ch in value):
-        raise ValueError("an API key cannot contain whitespace")
+        raise ValueError("a secret cannot contain whitespace")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-        raise ValueError("an API key cannot contain control characters")
+        raise ValueError("a secret cannot contain control characters")
+    return value
+
+
+def _clean_identifier(kind: str, value: str) -> str:
+    """``service``/``account`` are interpolated into a command line for the
+    macOS backend's interactive ``security -i`` mode, so they get the same
+    scrutiny an argument would -- this is what keeps a caller-supplied
+    account name (e.g. built from a user id) from ever being able to inject
+    an extra command into that stream."""
+    value = str(value or "")
+    if not _IDENTIFIER_RE.match(value):
+        raise ValueError(f"invalid {kind}: {value!r}")
     return value
 
 
@@ -83,6 +111,7 @@ class _WindowsBackend:
 
     _CRED_TYPE_GENERIC = 1
     _CRED_PERSIST_LOCAL_MACHINE = 2
+    _ERROR_NOT_FOUND = 1168
 
     def __init__(self) -> None:
         import ctypes
@@ -128,11 +157,20 @@ class _WindowsBackend:
     def available(self) -> bool:
         return True
 
-    def get(self) -> str:
+    def get(self, service: str, account: str) -> str:
         ctypes = self._ctypes
+        target = f"{service}:{account}"
         ptr = ctypes.POINTER(self._CREDENTIAL)()
-        ok = self._advapi.CredReadW(TARGET, self._CRED_TYPE_GENERIC, 0, ctypes.byref(ptr))
+        ok = self._advapi.CredReadW(target, self._CRED_TYPE_GENERIC, 0, ctypes.byref(ptr))
         if not ok:
+            err = ctypes.get_last_error()
+            if err not in (0, self._ERROR_NOT_FOUND):
+                # Something other than "no such entry" -- do not let the
+                # caller read this as "not enrolled".
+                raise SecureStorageUnavailable(
+                    f"Windows Credential Manager could not be read (error {err}). "
+                    f"{UNAVAILABLE_MESSAGE}"
+                )
             return ""  # not found is the ordinary case, not an error
         try:
             cred = ptr.contents
@@ -146,31 +184,33 @@ class _WindowsBackend:
                 continue
         return ""
 
-    def set(self, value: str) -> None:
+    def set(self, service: str, account: str, value: str, *, comment: str = "") -> None:
         ctypes = self._ctypes
+        target = f"{service}:{account}"
         blob = value.encode("utf-16-le")
         buf = ctypes.create_string_buffer(blob, len(blob))
         cred = self._CREDENTIAL()
         cred.Flags = 0
         cred.Type = self._CRED_TYPE_GENERIC
-        cred.TargetName = TARGET
-        cred.Comment = "FormsLang AI provider API key"
+        cred.TargetName = target
+        cred.Comment = comment or "FormsLang credential"
         cred.CredentialBlobSize = len(blob)
         cred.CredentialBlob = ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
         cred.Persist = self._CRED_PERSIST_LOCAL_MACHINE
         cred.AttributeCount = 0
         cred.Attributes = None
         cred.TargetAlias = None
-        cred.UserName = ACCOUNT
+        cred.UserName = account
         if not self._advapi.CredWriteW(ctypes.byref(cred), 0):
             raise SecureStorageUnavailable(
-                "Windows Credential Manager refused to store the key "
+                "Windows Credential Manager refused to store the credential "
                 f"(error {ctypes.get_last_error()}). {UNAVAILABLE_MESSAGE}"
             )
 
-    def delete(self) -> None:
+    def delete(self, service: str, account: str) -> None:
         # Deleting what is not there is a success, not a failure.
-        self._advapi.CredDeleteW(TARGET, self._CRED_TYPE_GENERIC, 0)
+        target = f"{service}:{account}"
+        self._advapi.CredDeleteW(target, self._CRED_TYPE_GENERIC, 0)
 
 
 # -- macOS: Keychain --------------------------------------------------------
@@ -186,27 +226,29 @@ class _MacBackend:
     def available(self) -> bool:
         return os.path.exists(self.binary)
 
-    def get(self) -> str:
+    def get(self, service: str, account: str) -> str:
         out = _run(
-            [self.binary, "find-generic-password", "-a", ACCOUNT, "-s", SERVICE, "-w"]
+            [self.binary, "find-generic-password", "-a", account, "-s", service, "-w"]
         )
         return out.strip() if out is not None else ""
 
-    def set(self, value: str) -> None:
+    def set(self, service: str, account: str, value: str, *, comment: str = "") -> None:
         # Interactive mode reads commands from stdin, so the key is never an
         # argument of a process anyone can list. ``-w`` takes the rest of the
-        # token, and _clean() has already ruled out whitespace.
+        # token, and _clean() has already ruled out whitespace; service and
+        # account have already passed _clean_identifier().
+        label = comment or service
         command = (
-            f"add-generic-password -U -a {ACCOUNT} -s {SERVICE} "
-            f"-l {SERVICE} -D 'application password' -w {value}\n"
+            f"add-generic-password -U -a {account} -s {service} "
+            f"-l {label} -D 'application password' -w {value}\n"
         )
         if _run([self.binary, "-i"], stdin=command) is None:
             raise SecureStorageUnavailable(
-                f"the macOS Keychain refused to store the key. {UNAVAILABLE_MESSAGE}"
+                f"the macOS Keychain refused to store the credential. {UNAVAILABLE_MESSAGE}"
             )
 
-    def delete(self) -> None:
-        _run([self.binary, "delete-generic-password", "-a", ACCOUNT, "-s", SERVICE])
+    def delete(self, service: str, account: str) -> None:
+        _run([self.binary, "delete-generic-password", "-a", account, "-s", service])
 
 
 # -- Linux and the BSDs: Secret Service -------------------------------------
@@ -224,30 +266,31 @@ class _SecretToolBackend:
     def available(self) -> bool:
         return bool(self._binary)
 
-    def get(self) -> str:
+    def get(self, service: str, account: str) -> str:
         out = _run(
-            [self._binary, "lookup", "service", SERVICE, "account", ACCOUNT]
+            [self._binary, "lookup", "service", service, "account", account]
         )
         return out.strip() if out is not None else ""
 
-    def set(self, value: str) -> None:
+    def set(self, service: str, account: str, value: str, *, comment: str = "") -> None:
         # ``store`` reads the secret from stdin by design.
+        label = comment or service
         ok = _run(
             [
                 self._binary, "store",
-                "--label", "FormsLang AI provider API key",
-                "service", SERVICE, "account", ACCOUNT,
+                "--label", label,
+                "service", service, "account", account,
             ],
             stdin=value + "\n",
         )
         if ok is None:
             raise SecureStorageUnavailable(
-                "the Secret Service refused to store the key (is a keyring "
+                "the Secret Service refused to store the credential (is a keyring "
                 f"daemon running?). {UNAVAILABLE_MESSAGE}"
             )
 
-    def delete(self) -> None:
-        _run([self._binary, "clear", "service", SERVICE, "account", ACCOUNT])
+    def delete(self, service: str, account: str) -> None:
+        _run([self._binary, "clear", "service", service, "account", account])
 
 
 # -- tests only -------------------------------------------------------------
@@ -258,24 +301,24 @@ class _MemoryBackend:
 
     name = "memory"
     label = "in-memory (testing)"
-    _value = ""
+    _store: dict[tuple[str, str], str] = {}
 
     def available(self) -> bool:
         return True
 
-    def get(self) -> str:
-        return _MemoryBackend._value
+    def get(self, service: str, account: str) -> str:
+        return _MemoryBackend._store.get((service, account), "")
 
-    def set(self, value: str) -> None:
-        _MemoryBackend._value = value
+    def set(self, service: str, account: str, value: str, *, comment: str = "") -> None:
+        _MemoryBackend._store[(service, account)] = value
 
-    def delete(self) -> None:
-        _MemoryBackend._value = ""
+    def delete(self, service: str, account: str) -> None:
+        _MemoryBackend._store.pop((service, account), None)
 
 
 def reset_memory_backend() -> None:
-    """Empty the test backend, so one test cannot see another's key."""
-    _MemoryBackend._value = ""
+    """Empty the test backend, so one test cannot see another's secret."""
+    _MemoryBackend._store.clear()
 
 
 # -- picking one ------------------------------------------------------------
@@ -348,7 +391,7 @@ def backend_label() -> str:
     return b.label if b else ""
 
 
-# -- the API the rest of FormsLang uses -------------------------------------
+# -- the AI provider key API (unchanged behavior) ---------------------------
 
 
 def get_key() -> str:
@@ -357,7 +400,7 @@ def get_key() -> str:
     if b is None:
         return ""
     try:
-        return b.get()
+        return b.get(SERVICE, ACCOUNT)
     except Exception:
         return ""
 
@@ -371,7 +414,7 @@ def set_key(value: str) -> None:
     b = backend()
     if b is None:
         raise SecureStorageUnavailable()
-    b.set(value)
+    b.set(SERVICE, ACCOUNT, value, comment="FormsLang AI provider API key")
 
 
 def delete_key() -> None:
@@ -380,6 +423,65 @@ def delete_key() -> None:
     if b is None:
         return
     try:
-        b.delete()
+        b.delete(SERVICE, ACCOUNT)
+    except Exception:
+        pass
+
+
+# -- the general (service, account) API, e.g. one MFA secret per user -------
+
+
+def get_secret(service: str, account: str) -> str:
+    """The stored secret for ``(service, account)``, or ``""`` if unset.
+
+    Deliberately does not swallow a store failure the way :func:`get_key`
+    does: raises :class:`SecureStorageUnavailable` if there is no backend at
+    all, or if the backend answered with something other than "not found".
+    A caller that needs to know whether a user has enrolled MFA must not
+    have that question silently collapsed into "no".
+    """
+    service = _clean_identifier("service", service)
+    account = _clean_identifier("account", account)
+    b = backend()
+    if b is None:
+        raise SecureStorageUnavailable()
+    try:
+        return b.get(service, account)
+    except SecureStorageUnavailable:
+        raise
+    except Exception as e:
+        raise SecureStorageUnavailable(
+            f"the credential store could not be read. {UNAVAILABLE_MESSAGE}"
+        ) from e
+
+
+def set_secret(service: str, account: str, value: str, *, comment: str = "") -> None:
+    """Store a secret under ``(service, account)``. Raises if there is
+    nowhere safe to put it -- there is no lower-security fallback."""
+    service = _clean_identifier("service", service)
+    account = _clean_identifier("account", account)
+    value = _clean(value)
+    if not value:
+        delete_secret(service, account)
+        return
+    b = backend()
+    if b is None:
+        raise SecureStorageUnavailable()
+    b.set(service, account, value, comment=comment)
+
+
+def delete_secret(service: str, account: str) -> None:
+    """Forget a stored secret. Silent when there is nothing to forget or no
+    backend to ask -- deleting is the terminal state either way, and
+    ``auth.db`` (not this module) is the source of truth for whether a user
+    is enrolled, so an orphaned vault entry left behind by an unreachable
+    backend is inert, never re-read once the caller has moved on."""
+    service = _clean_identifier("service", service)
+    account = _clean_identifier("account", account)
+    b = backend()
+    if b is None:
+        return
+    try:
+        b.delete(service, account)
     except Exception:
         pass
