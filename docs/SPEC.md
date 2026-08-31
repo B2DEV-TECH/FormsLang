@@ -258,6 +258,9 @@ environment variables in a terminal before launch.
 | Oracle ships nothing with FormsLang | No Oracle jars, binaries or artwork in the repo or the packages | NOTICE + README Legal, repo audit |
 | A number on screen is never a model's opinion | Risk, behaviour, dependencies and readiness are computed by rules; the model may only enrich an explanation | `tests/test_risk.py`, `tests/test_behavior.py`, `tests/test_dashboard.py` |
 | A prompt carries the unit, not the session | Only the code body and its catalog findings are sent; no credentials, no other units, no stored analysis | `tests/test_convert.py` |
+| A finding never echoes the secret it matched | `formslang.sensitive.redact()` is the only place a matched value is formatted; findings carry a redacted excerpt everywhere they surface (analysis JSON, `/api/state`, `compliance.md`) | `tests/test_sensitive.py::test_a_finding_never_carries_the_secret_itself` |
+| Enterprise mode blocks cloud egress outright, not just warns | `formslang.policy.check()` runs inside `ai.build_provider()` -- the one chokepoint every production call path shares -- and is also applied at the settings save and job-start preflight so the picker never offers a choice the call would refuse | `tests/test_policy.py` |
+| Egress is classified by effective host, not by provider name | `claude_cli`/`codex_cli` are CLI-supplied credentials but CLOUD egress; `ollama` is HTTP-supplied but LOCAL when pointed at a loopback or private address. An unresolvable host fails closed to CLOUD | `tests/test_policy.py::test_a_remote_ollama_is_not_local` |
 
 ## 7. Out of scope for this version (roadmap)
 
@@ -292,3 +295,8 @@ environment variables in a terminal before launch.
 | Native terminal window instead of embedded terminal | CLI sign-in is a one-time act; a PTY bridge inside the app is v2 complexity with v0 payoff |
 | No silent default to any cloud provider | "Nothing is sent anywhere until you choose a provider on purpose" is a README promise; a first-run banner asks, it never assumes |
 | Manual authoring is a first-class conversion route | A migration tool that *requires* AI is a weaker product and a weaker compliance story |
+| Egress classified by host, not by provider's `kind` axis | `kind` (`cli`/`http`) says how a credential is supplied; it conflates `claude_cli` (CLOUD) with `ollama` (can be LOCAL). A compliance gate needs the egress axis, not the credential axis |
+| Egress policy sees the address, not what is behind it | An on-premise gateway at a private IP that forwards to a public model is invisible to a host check by design -- documented as a known limitation rather than solved with a network audit that does not exist yet |
+| Compliance report is not blocked per unit | Enterprise mode already blocks cloud egress for the whole session; a third, per-unit intermediate behaviour would add surface without closing a gap the session-level block does not already close |
+| Compliance report is not remediation | The product points out findings in client-owned source; it does not rewrite it |
+| `compliance.md` sits beside `tests.md`, never inside the APEX export ZIP | The ZIP is deliberately APEX-artifacts-only (`tests/test_apexlang.py:83`); the compliance record is an audit artifact for the reviewer, not a deployable |

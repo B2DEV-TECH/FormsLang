@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-08-31
+
+### Added — sensitive-data scanning and enterprise egress policy
+
+- **Sensitive-data scanner** (`formslang/sensitive.py`). Every unit is
+  scanned deterministically -- no AI -- for credentials (`IDENTIFIED BY`,
+  the Forms `LOGON(...)` built-in, `CONNECT user/pass@db`, a password
+  assigned to a variable, API-key-shaped strings), CPF/CNPJ
+  (check-digit-validated), contact details and financial data (card
+  numbers Luhn-validated). CPF/CNPJ, contact and financial matches are only
+  reported inside string literals or comments, where real client data
+  actually lives; credentials are scanned everywhere, including comments.
+  A finding never carries the value it matched -- only a redacted excerpt
+  (first and last character, everything between masked) -- in the stored
+  analysis, in `/api/state`, and in the new compliance export. Shown next
+  to risk and behaviour in the workbench: a list-row marker, a header
+  badge, and a "Sensitive data found" detail block.
+- **Enterprise egress policy** (`formslang/policy.py`,
+  `FORMSLANG_ENTERPRISE_MODE=1`). Classifies every provider's traffic as
+  NONE / LOCAL / CLOUD by the effective host it would call -- not by
+  whether its credential is CLI- or API-key-supplied, since that axis
+  conflates the two (`claude_cli`/`codex_cli` are CLOUD, a loopback
+  `ollama` is LOCAL). With enterprise mode on, a CLOUD-egress provider is
+  refused outright at every point that could start a request: the
+  provider picker marks it unavailable with the reason, saving Settings
+  with one selected is refused, and starting a conversion run is refused
+  -- enforced once, in `ai.build_provider()`, the chokepoint every
+  production call path shares.
+- **Compliance export** (`Store.export_compliance`). Every export now
+  writes `compliance.md` beside `tests.md` in the review directory (never
+  inside the APEX ZIP, which stays APEX-artifacts-only): session and
+  timestamp, whether enterprise mode was active, the providers that
+  answered a proposal and their egress class, totals of findings by
+  category, and the per-unit findings with line and redacted excerpt.
+
+Covered by `tests/test_sensitive.py`, `tests/test_policy.py`, and
+`tests/test_store_compliance.py`.
+
 ## [0.1.3] — 2026-08-31
 
 ### Added — multi-user auth, RBAC and mandatory MFA
@@ -198,7 +236,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.0...v0.1.1

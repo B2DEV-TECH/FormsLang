@@ -36,6 +36,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import policy
 from .config import load_config
 
 DEFAULT_TIMEOUT = 120.0
@@ -503,12 +504,29 @@ def setting(name: str, config: dict | None = None) -> str:
     return str(cfg.get(name) or "").strip()
 
 
+_ENTERPRISE_BLOCK_HINT = (
+    "Blocked by enterprise mode ({env}=1): this provider would send source "
+    "code off this machine."
+).format(env=policy.ENTERPRISE_ENV)
+
+
 def provider_catalog() -> list[dict]:
-    """Everything the UI needs to offer a provider picker."""
+    """Everything the UI needs to offer a provider picker.
+
+    ``egress`` is a different axis from ``kind``: ``kind`` says how a
+    credential is supplied (cli vs. http), ``egress`` says where the source
+    code goes (see :mod:`formslang.policy`). A provider whose *default*
+    egress is CLOUD is marked unavailable outright when enterprise mode is
+    on, so the picker never offers a choice the actual conversion call would
+    refuse.
+    """
     has_key = bool(setting("api_key"))
+    enterprise = policy.enterprise_mode()
     out = []
     for type_id, cls in sorted(PROVIDERS.items()):
         needs_key = not issubclass(cls, (CliProvider, EchoProvider, OllamaProvider))
+        egress = policy.egress_for(type_id, cls.default_base_url)
+        blocked = enterprise and egress == policy.CLOUD
         entry = {
             "id": type_id,
             "label": cls.label,
@@ -516,25 +534,39 @@ def provider_catalog() -> list[dict]:
             "models": MODEL_HINTS.get(type_id, []),
             "needs_key": needs_key,
             "kind": "cli" if issubclass(cls, CliProvider) else "http",
+            "egress": egress,
+            "blocked": blocked,
         }
         if issubclass(cls, CliProvider):
-            entry["available"] = shutil.which(cls.binary) is not None
-            entry["hint"] = cls.install_hint
+            entry["available"] = (not blocked) and shutil.which(cls.binary) is not None
+            entry["hint"] = _ENTERPRISE_BLOCK_HINT if blocked else cls.install_hint
         elif needs_key:
-            entry["available"] = has_key
-            entry["hint"] = (
+            entry["available"] = (not blocked) and has_key
+            entry["hint"] = _ENTERPRISE_BLOCK_HINT if blocked else (
                 "Add an API key in Settings, or set FORMSLANG_AI_KEY in the "
                 "environment; either way it never travels through the browser."
             )
+        elif blocked:
+            entry["available"] = False
+            entry["hint"] = _ENTERPRISE_BLOCK_HINT
         out.append(entry)
     return out
 
 
 def build_provider(type_id: str, **kwargs) -> Provider:
-    cls = PROVIDERS.get((type_id or "").strip().lower())
+    """The one chokepoint every production call path builds a provider through.
+
+    ``policy.check`` runs here, not only in the UI's settings validation, so
+    a call that reaches this function by any other route -- a test, a batch
+    script, a future caller nobody has written yet -- gets the same
+    enterprise-mode guarantee for free.
+    """
+    norm = (type_id or "").strip().lower()
+    cls = PROVIDERS.get(norm)
     if cls is None:
         known = ", ".join(sorted(PROVIDERS))
         raise ValueError(f"unknown AI provider {type_id!r} (known: {known})")
+    policy.check(norm, kwargs.get("base_url") or cls.default_base_url)
     return cls(**kwargs)
 
 

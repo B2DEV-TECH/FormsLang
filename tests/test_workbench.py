@@ -26,6 +26,8 @@ from formslang.parser import parse_xml
 from formslang.store import APPROVED, Store
 from formslang.workbench import Handler, Workbench
 
+NEWLINE = chr(10)
+
 
 @pytest.fixture()
 def server(tmp_path, sample_xml):
@@ -456,6 +458,47 @@ def test_the_api_key_never_reaches_the_browser(server, monkeypatch):
 
     assert "sk-do-not-leak-me" not in seen
     assert wb.provider.api_key == "sk-do-not-leak-me"  # the server does hold it
+
+
+def test_a_sensitive_finding_never_echoes_its_own_secret_over_http(server):
+    """The finding is redacted wherever it surfaces -- the editor pane is not the finding.
+
+    The task's ``source`` field legitimately carries the user's own Forms
+    code back to their own editor -- that is the product. What must never
+    happen is the *scanner's own output* repeating the raw value it
+    matched: see formslang/sensitive.py's ``redact()`` and the module
+    docstring in formslang/policy.py.
+    """
+    base, wb = server
+    from formslang.analysis import analyze_task
+    from formslang.convert import ConversionTask
+
+    task = ConversionTask(
+        id="U_SECRET", module="DEMO_ORDER", kind="trigger", name="U_SECRET",
+        owner="", verdict="DIRECT_EQUIVALENT", apex_hint="",
+        source=NEWLINE.join([
+            "BEGIN",
+            "  GRANT CONNECT TO scott IDENTIFIED BY tiger123;",
+            "END;",
+            "",
+        ]),
+        lines=3,
+    )
+    wb.store.add_tasks([task])
+    wb.store.save_analysis(analyze_task(task))
+
+    body = json.loads(_get(base, "/api/state")[1])
+    view = next(t for t in body["tasks"] if t["id"] == "U_SECRET")
+
+    # The source pane is allowed to show the user their own code, secret included.
+    assert "tiger123" in view["source"]
+
+    # The scanner's own findings must not repeat it.
+    findings = view["analysis"]["sensitive"]["findings"]
+    assert findings, "expected the credential scan to fire on this fixture"
+    dumped = json.dumps(findings)
+    assert "tiger123" not in dumped
+    assert "CREDENTIAL" in dumped
 
 
 def test_the_picker_is_offered_every_provider(server):

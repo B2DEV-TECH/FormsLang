@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import authcrypto, authstore, projects, rbac
+from . import authcrypto, authstore, policy, projects, rbac
 from . import behavior as behavior_model
 from . import dashboard, depgraph, secrets, testspec
 from . import risk as risk_model
@@ -43,6 +43,7 @@ from .ai import (
     provider_from_env,
     setting,
 )
+from .policy import PolicyViolation
 from .analysis import analyze_task, summarize
 from .apexlang import export_apexlang
 from .config import (
@@ -473,6 +474,16 @@ class Workbench:
                         cfg[name] = value
                     else:
                         cfg.pop(name, None)
+            # Checked before the write, not after: a blocked combination must
+            # never reach config.json, the same as the unknown-provider check
+            # above -- a refused save has to leave nothing behind to explain.
+            check_type = setting("provider", cfg) or "echo"
+            check_cls = PROVIDERS.get(check_type)
+            check_base = setting("base_url", cfg) or (check_cls.default_base_url if check_cls else "")
+            try:
+                policy.check(check_type, check_base)
+            except PolicyViolation as e:
+                raise ValueError(str(e)) from None
             try:
                 save_config(cfg)
             except (SecureStorageUnavailable, ValueError) as e:
@@ -540,6 +551,10 @@ class Workbench:
                 f"{self.provider.label} needs an API key. Open Settings (the gear), "
                 "paste the key and press Test — or pick a CLI provider instead."
             )
+        try:
+            policy.check(self.provider.type_id, getattr(self.provider, "base_url", ""))
+        except PolicyViolation as e:
+            raise ValueError(str(e)) from None
         with self._lock:
             if self.job["running"]:
                 return False

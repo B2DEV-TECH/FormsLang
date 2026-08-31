@@ -208,6 +208,10 @@ INDEX_HTML = r"""<!doctype html>
   /* In the list a dot is enough: LOW nearly disappears, CRITICAL does not. */
   .rdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 6px; }
   .rdot.r-LOW { opacity: .28; }
+  /* Same severity colours as risk, a different shape on purpose -- risk asks
+     "is this dangerous to translate", this asks "is there a secret in here",
+     and the two must never be mistaken for one another at a glance. */
+  .sflag { font-size: 11px; line-height: 1; flex: 0 0 auto; font-style: normal; }
   .row .rside { display: flex; align-items: center; gap: 7px; }
   .st-approved { color: var(--green); } .st-rejected { color: var(--red); }
   .st-needs_work { color: var(--gold); } .st-pending { color: var(--ink-faint); }
@@ -362,6 +366,13 @@ INDEX_HTML = r"""<!doctype html>
   .testrow .out { font: 12px var(--mono); }
   .testrow .out.ok { color: var(--green); }
   .testrow .out.bad { color: var(--red); }
+  .settings-form label.check {
+    display: flex; align-items: center; gap: 8px; flex-direction: row;
+    text-transform: none; letter-spacing: 0; font: 12px var(--mono); color: var(--ink);
+  }
+  .settings-form label.check input[type="checkbox"] {
+    all: revert; width: auto; padding: 0; accent-color: var(--gold-deep);
+  }
 
   /* ── welcome: the first thing a new install shows ────── */
   #welcome {
@@ -698,6 +709,8 @@ const CLASS_LABEL = {
 };
 const riskOf = (t) => ((t.analysis || {}).risk || {}).level || "";
 const behOf = (t) => ((t.analysis || {}).behavior || {}).value || "";
+const sensOf = (t) => ((t.analysis || {}).sensitive || {}).level || "";
+const SENS_CATEGORY_LABEL = { CREDENTIAL: "credential", BR_DOCUMENT: "CPF/CNPJ", CONTACT: "contact", FINANCIAL: "financial" };
 
 const CALL_LABEL = { pending: "undecided", needs_work: "needs work" };
 const label = (s) => CALL_LABEL[s] || s;
@@ -829,6 +842,7 @@ function renderList() {
         <div class="sub">${esc(t.module)} · ${t.lines} lines${t.proposal ? "" : " · not converted"}</div>
       </div>
       <div class="rside">
+        ${sensOf(t) ? `<i class="sflag r-${sensOf(t)}" title="Sensitive data found in the source — ${esc(sensOf(t))}">&#9888;</i>` : ""}
         ${riskOf(t) ? `<i class="rdot r-${riskOf(t)}" title="${esc(RISK_HELP[riskOf(t)] || "")}"></i>` : ""}
         <div class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PU"}</div>
       </div>
@@ -886,6 +900,7 @@ function renderDetail() {
     `<span class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PROGRAM UNIT"}</span>`,
     lvl ? `<span class="verdict r-${lvl}" title="${esc(RISK_HELP[lvl] || "")}">${lvl} RISK · ${(a.risk.score || 0).toFixed(0)}</span>` : "",
     beh ? `<span class="verdict bh-${beh}" title="${esc(BEH_HELP[beh] || "")}">${BEH_SHORT[beh] || beh}</span>` : "",
+    sensOf(t) ? `<span class="verdict r-${sensOf(t)}" title="Redacted findings only -- see below.">SENSITIVE DATA · ${esc(sensOf(t))}</span>` : "",
     `<span>${esc(t.module)}</span>`,
     t.apex_hint ? `<span>→ ${esc(t.apex_hint)}</span>` : "",
     p && p.apex_target ? `<span class="chip">${esc(p.apex_target)}</span>` : "",
@@ -914,6 +929,16 @@ function renderDetail() {
         ${(x.evidence || []).length ? `<span class="ev">${x.evidence.map(esc).join(" · ")}</span>` : ""}</li>`).join("")}</ul>
       ${(a.review_areas || []).length ? `<div class="why"><b>Check by hand:</b> ${a.review_areas.map(esc).join(" · ")}</div>` : ""}
       <div class="why">Score is <code>100 × (1 − 0.5 ^ (raw ÷ 12))</code> over the raw points above — no model opinion is an input.</div>
+    </details>`);
+  }
+  if (a && a.sensitive && (a.sensitive.findings || []).length) {
+    const sf = a.sensitive.findings;
+    bits.push(`<details><summary>Sensitive data found — ${esc(sensOf(t))} · ${sf.length} finding${sf.length > 1 ? "s" : ""}</summary>
+      <ul>${sf.map((f) => `<li><span class="verdict r-${f.severity}">${esc(f.severity)}</span>
+        <code>${esc(SENS_CATEGORY_LABEL[f.category] || f.category)}</code> — ${esc(f.title)}
+        <span class="pts">line ${f.line}${f.in_comment ? " · in a comment" : ""}</span>
+        <span class="ev">${esc(f.confidence)} · ${esc(f.excerpt)}${f.detail ? " · " + esc(f.detail) : ""}</span></li>`).join("")}</ul>
+      <div class="why">Every excerpt above is redacted — the raw value that was matched never leaves the scan.</div>
     </details>`);
   }
   if (a && a.behavior && (( a.behavior.reasons || []).length || (a.behavior.uncertainties || []).length)) {
@@ -1418,10 +1443,12 @@ async function openSettings() {
 
   const row = (p) => {
     const on = p.id === chosen.id;
-    const tag = p.kind === "cli"
+    const tag = p.blocked
+      ? "blocked · enterprise mode"
+      : p.kind === "cli"
       ? (p.available ? "cli · your subscription" : "cli · not installed")
       : (p.needs_key ? (p.available ? "api key" : "api key · none yet") : "local");
-    return `<div class="entry ${on ? "on" : ""}" data-p="${esc(p.id)}">` +
+    return `<div class="entry ${on ? "on" : ""}${p.blocked ? " off" : ""}" data-p="${esc(p.id)}">` +
       `<span class="icon">${on ? "●" : "○"}</span>` +
       `<span class="name">${esc(p.label)}</span><span class="tag">${esc(tag)}</span></div>`;
   };
@@ -1429,6 +1456,9 @@ async function openSettings() {
   /* The per-provider form: only the fields this provider actually needs. */
   const form = (p) => {
     const bits = [];
+    if (p.blocked) {
+      bits.push(`<div class="keyline warn"><i>&#9888;</i><span>${esc(p.hint || "")}</span></div>`);
+    }
     if (p.needs_key) {
       const store = cfg.secure_storage || {};
       const vault = store.label || "the OS credential store";
@@ -1459,7 +1489,7 @@ async function openSettings() {
         <label>API version<input data-f="api_version" spellcheck="false" value="${esc(cfg.api_version || "")}"></label>
       </div>`);
     }
-    if (p.kind === "cli") {
+    if (p.kind === "cli" && !p.blocked) {
       bits.push(`<div class="keyline"><i>${p.available ? "&#10003;" : "&#10007;"}</i>` +
         `<span>${p.available ? "CLI installed — it signs in with your subscription." : esc(p.hint || "Not installed on this machine.")}</span>` +
         (p.available ? `<button type="button" class="btn" data-term>Open setup terminal</button>` : "") +

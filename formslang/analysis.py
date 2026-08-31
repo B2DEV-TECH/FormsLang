@@ -29,9 +29,11 @@ from dataclasses import dataclass, field
 from . import behavior as behavior_mod
 from . import risk as risk_mod
 from . import rules
+from . import sensitive as sensitive_mod
 from .behavior import BehaviorResult
 from .plsql import CodeAnalysis, analyze
 from .risk import RiskResult
+from .sensitive import ScanResult
 
 
 def _engine_version() -> str:
@@ -50,7 +52,10 @@ def _engine_version() -> str:
     parts.append("--triggers--")
     parts += [f"{k}:{v[0]:.2f}" for k, v in sorted(rules.TRIGGER_RISK.items())]
     digest = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:10]
-    return f"analysis/1+{risk_mod.VERSION}+{behavior_mod.VERSION}+catalog:{digest}"
+    return (
+        f"analysis/1+{risk_mod.VERSION}+{behavior_mod.VERSION}"
+        f"+{sensitive_mod.VERSION}+catalog:{digest}"
+    )
 
 
 ENGINE_VERSION = _engine_version()
@@ -118,6 +123,7 @@ class UnitAnalysis:
     risk: RiskResult = field(default_factory=RiskResult)
     behavior: BehaviorResult = field(default_factory=BehaviorResult)
     findings: list[CompatFinding] = field(default_factory=list)
+    sensitive: ScanResult = field(default_factory=ScanResult)
     engine_version: str = ENGINE_VERSION
 
     @property
@@ -151,6 +157,7 @@ class UnitAnalysis:
             "risk": self.risk.to_dict(),
             "behavior": self.behavior.to_dict(),
             "findings": [f.to_dict() for f in self.findings],
+            "sensitive": self.sensitive.to_dict(),
             "review_areas": self.review_areas,
             "engine_version": self.engine_version,
             "stale": self.stale,
@@ -187,6 +194,26 @@ class UnitAnalysis:
             source=beh_raw.get("source", "rules"),
             version=beh_raw.get("version", behavior_mod.VERSION),
         )
+        sens_raw = raw.get("sensitive") or {}
+        sens = ScanResult(
+            findings=[
+                sensitive_mod.Finding(
+                    id=f.get("id", ""),
+                    category=f.get("category", sensitive_mod.CREDENTIAL),
+                    title=f.get("title", ""),
+                    severity=f.get("severity", sensitive_mod.LOW),
+                    confidence=f.get("confidence", sensitive_mod.POSSIBLE),
+                    line=int(f.get("line", 0)),
+                    excerpt=f.get("excerpt", ""),
+                    detail=f.get("detail", ""),
+                    in_comment=bool(f.get("in_comment", False)),
+                )
+                for f in sens_raw.get("findings", [])
+            ],
+            counts=dict(sens_raw.get("counts", {})),
+            level=sens_raw.get("level", sensitive_mod.LOW),
+            version=sens_raw.get("version", sensitive_mod.VERSION),
+        )
         return cls(
             task_id=raw.get("task_id", ""),
             module=raw.get("module", ""),
@@ -198,6 +225,7 @@ class UnitAnalysis:
             risk=risk,
             behavior=beh,
             findings=[CompatFinding.from_dict(f) for f in raw.get("findings", [])],
+            sensitive=sens,
             engine_version=raw.get("engine_version", "unknown"),
         )
 
@@ -276,6 +304,7 @@ def analyze_unit(
             parsed, kind=kind, trigger_name=trigger_name, verdict=verdict, source=text
         ),
         findings=compat_findings(parsed),
+        sensitive=sensitive_mod.scan(text),
         engine_version=ENGINE_VERSION,
     )
 

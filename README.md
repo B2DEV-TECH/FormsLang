@@ -359,6 +359,28 @@ are authorized to process the source through that service and review the
 provider's training, retention, and data-processing policies. Use Ollama or
 manual conversion when the source cannot leave the local environment.
 
+### Sensitive data and enterprise mode
+
+Every unit is scanned -- deterministically, no AI involved -- for
+credentials (`IDENTIFIED BY`, `LOGON(...)`, a password assigned to a
+variable, API-key-shaped strings), CPF/CNPJ (checksum-validated), contact
+details and financial data (card numbers Luhn-validated). A finding is
+shown with its line, category and severity, but **never** with the value
+that was matched -- only a redacted excerpt (first and last character,
+everything between masked). That rule has no exception: the same redacted
+excerpt is what lands in the on-screen finding, in the stored analysis, and
+in the compliance report below.
+
+That scan tells you what is in the source. `FORMSLANG_ENTERPRISE_MODE=1`
+controls where the source is allowed to go: with it set, any provider whose
+traffic would leave the machine is refused outright -- not warned about,
+blocked -- at every point that could start a request (Settings, Test, and
+starting a conversion run). The check is by the *effective host* the
+provider would call, not by provider name: `ollama` pointed at a loopback
+or private address is allowed, `claude_cli`/`codex_cli` and every hosted
+API provider are not. Echo (no network call at all) and a local Ollama stay
+available either way.
+
 Settings are written to `%APPDATA%\FormsLang\config.json` on Windows
 (`~/.config/formslang/config.json` elsewhere) — never inside your project.
 The API key is **write-only through the UI**: it travels browser → server
@@ -383,6 +405,7 @@ win** over the settings file:
 | `FORMSLANG_AI_BASE_URL` | override the endpoint (self-hosted, gateway, proxy) |
 | `FORMSLANG_AI_DEPLOYMENT` · `FORMSLANG_AI_API_VERSION` | Azure OpenAI only |
 | `FORMSLANG_CONFIG_DIR` | override where `config.json` lives |
+| `FORMSLANG_ENTERPRISE_MODE` | `1` refuses any provider whose traffic would leave the machine -- see [Sensitive data and enterprise mode](#sensitive-data-and-enterprise-mode) below |
 
 The default is `echo`: an offline stub that answers with a well-formed
 proposal of confidence `0.00` saying plainly that no model ran. Nothing is
@@ -417,7 +440,9 @@ folder contains:
 
 - `<alias>.apex.zip` — the APEXlang 26.1 package for SQLcl validation/import
 - `<alias>/` — the same application as an expanded, reviewable APEXlang tree
-- `<alias>-review/` — `approved.sql`, `session.json` and the mapping manifest
+- `<alias>-review/` — `approved.sql`, `session.json` and the mapping manifest, plus `tests.md` and `compliance.md` when there is
+  anything to report (test specs, and sensitive-data findings with whether
+  enterprise mode was active and which providers were used)
 
 The **Exports** button in the workbench header lists every ZIP built so
 far, newest first, each with a *Show in folder* action that selects the

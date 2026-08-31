@@ -19,7 +19,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import testspec
+from . import policy, sensitive, testspec
+from .ai import setting as ai_setting
 from .analysis import ENGINE_VERSION, UnitAnalysis
 from .convert import ConversionTask, Proposal
 from .depgraph import DepGraph
@@ -718,6 +719,7 @@ class Store:
             encoding="utf-8",
         )
         self.export_tests(out)
+        self.export_compliance(out)
         return sql_path, json_path
 
     def export_tests(self, out_dir: Path | str) -> Path | None:
@@ -750,4 +752,98 @@ class Store:
             testspec.render_markdown(self.session().get("title", ""), units),
             encoding="utf-8",
         )
+        return path
+
+    def export_compliance(self, out_dir: Path | str) -> Path | None:
+        """Write a compliance record for this session, if there is anything to say.
+
+        Kept beside ``tests.md``, not inside the APEX export ZIP -- the ZIP
+        ships only APEX artefacts (see ``apexlang.export_apexlang``, which a
+        test protects). This is the file a customer archives as evidence of
+        what was found in the source and whether the provider that answered
+        was allowed to see it.
+
+        Every finding repeated here was already computed by
+        :mod:`formslang.sensitive` during analysis, and repeated exactly as
+        redacted then -- this method only collects and formats it, it scans
+        nothing itself.
+        """
+        views = self.all_views()
+        per_unit = []
+        all_findings: list[dict] = []
+        for v in views:
+            findings = ((v.analysis or {}).get("sensitive") or {}).get("findings") or []
+            if not findings:
+                continue
+            per_unit.append((v, findings))
+            all_findings.extend(findings)
+
+        providers_used = sorted(
+            {(v.proposal or {}).get("provider", "") for v in views if v.proposal} - {""}
+        )
+        if not per_unit and not providers_used:
+            return None
+
+        counts: dict[str, int] = {}
+        level = sensitive.LOW
+        for f in all_findings:
+            counts[f["category"]] = counts.get(f["category"], 0) + 1
+            if sensitive.SEVERITY_LEVELS.index(f["severity"]) > sensitive.SEVERITY_LEVELS.index(level):
+                level = f["severity"]
+
+        enterprise = policy.enterprise_mode()
+        lines = [
+            f"# Compliance record -- {self.session().get('title', '')}",
+            "",
+            f"Exported: {_now()}",
+            f"Enterprise mode: {'ON (' + policy.ENTERPRISE_ENV + '=1)' if enterprise else 'off'}",
+            "",
+            "## Providers that answered a proposal in this session",
+            "",
+        ]
+        if providers_used:
+            lines.append("| Provider | Egress |")
+            lines.append("|---|---|")
+            for type_id in providers_used:
+                egress = policy.egress_for(type_id, ai_setting("base_url"))
+                lines.append(f"| {type_id} | {egress} |")
+        else:
+            lines.append("(no proposal has been generated yet)")
+        lines += [
+            "",
+            f"## Sensitive data found -- {len(all_findings)} finding(s), highest severity {level}",
+            "",
+        ]
+        if counts:
+            lines.append("| Category | Count |")
+            lines.append("|---|---|")
+            for cat in sensitive.CATEGORIES:
+                if counts.get(cat):
+                    lines.append(f"| {cat} | {counts[cat]} |")
+            lines.append("")
+        if not per_unit:
+            lines.append("No sensitive data was found in any scanned unit.")
+            lines.append("")
+        for v, findings in per_unit:
+            t = v.task
+            lines.append(f"### {t['module']} :: {t['kind']} {t['title']}")
+            lines.append("")
+            lines.append("| Line | Category | Severity | Confidence | Excerpt |")
+            lines.append("|---|---|---|---|---|")
+            for f in findings:
+                excerpt = str(f["excerpt"]).replace("|", chr(92) + "|")
+                lines.append(
+                    f"| {f['line']} | {f['category']} | {f['severity']} | "
+                    f"{f['confidence']} | `{excerpt}` |"
+                )
+            lines.append("")
+        lines.append(
+            "Every excerpt above is redacted -- the raw value that was matched "
+            f"never left the scan (formslang.sensitive {sensitive.VERSION})."
+        )
+
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / "compliance.md"
+        path.write_text(chr(10).join(lines), encoding="utf-8")
         return path
