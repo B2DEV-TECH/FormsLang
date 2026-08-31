@@ -52,6 +52,7 @@ import datetime as dt
 import hashlib
 import os
 import sqlite3
+import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -260,6 +261,10 @@ class BootstrapAlreadyDone(AuthStoreError, ValueError):
     pass
 
 
+class ProjectNotFound(AuthStoreError, LookupError):
+    pass
+
+
 class RateLimited(AuthStoreError):
     def __init__(self, retry_after_seconds: int):
         self.retry_after_seconds = retry_after_seconds
@@ -324,6 +329,14 @@ class AuthStore:
         self.db.executescript(SCHEMA)
         self._migrate()
         self._record_schema_version()
+        # One sqlite3.Connection, shared by every thread of a ThreadingHTTPServer
+        # (workbench.py). SQLite itself only ever has one transaction in flight
+        # per connection; two threads racing BEGIN IMMEDIATE on it would hit
+        # "cannot start a transaction within a transaction" instead of queuing
+        # behind PRAGMA busy_timeout (that PRAGMA only arbitrates separate
+        # connections/processes, not two threads sharing this one). This lock
+        # is what actually serializes them.
+        self._write_lock = threading.Lock()
 
     def _migrate(self) -> None:
         for table, column, decl in _ADDED_COLUMNS:
@@ -346,15 +359,21 @@ class AuthStore:
 
     @contextlib.contextmanager
     def _immediate(self):
-        """An explicit ``BEGIN IMMEDIATE`` transaction -- see the module docstring."""
-        self.db.execute("BEGIN IMMEDIATE")
-        try:
-            yield
-        except Exception:
-            self.db.rollback()
-            raise
-        else:
-            self.db.commit()
+        """An explicit ``BEGIN IMMEDIATE`` transaction -- see the module docstring.
+
+        Guarded by ``self._write_lock`` so at most one thread is ever inside
+        a transaction on this connection at a time (see the comment in
+        ``__init__``).
+        """
+        with self._write_lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+            except Exception:
+                self.db.rollback()
+                raise
+            else:
+                self.db.commit()
 
     # -- organizations ----------------------------------------------------
 
@@ -803,3 +822,110 @@ class AuthStore:
             "user_id": user_id,
             "email": email.strip().lower(),
         }
+
+    # -- projects (§8, §9) -------------------------------------------------------
+
+    def get_project(self, project_id: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM project WHERE id = ?", (project_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_projects_for_org(self, org_id: str) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT * FROM project WHERE org_id = ? AND deleted_at IS NULL ORDER BY created_at",
+            (org_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def register_external_project(
+        self, org_id: str, name: str, external_path: str | Path, *, created_by: str,
+    ) -> dict:
+        """Idempotently register an existing ``.session.db`` as EXTERNAL_LEGACY (§9).
+
+        The path is resolved and, on Windows, case-folded (``os.path.normcase``)
+        before being compared or stored, so two different-looking candidate
+        strings for the same file register once, not twice. The whole
+        check-then-insert runs inside one ``BEGIN IMMEDIATE`` transaction, so
+        two concurrent registration runs racing on the same file cannot both
+        insert a row for it.
+        """
+        resolved = Path(external_path).expanduser().resolve()
+        if not resolved.is_file():
+            raise ValueError(f"not a file: {resolved}")
+        key = os.path.normcase(str(resolved))
+        with self._immediate():
+            row = self.db.execute(
+                "SELECT * FROM project WHERE external_path = ?", (key,)
+            ).fetchone()
+            if row is not None:
+                return dict(row)
+            # Belt-and-suspenders: a registration recorded under a different
+            # string (a mapped drive, a UNC path, an 8.3 short name) that
+            # resolves to the same file on disk is still the same project.
+            for candidate in self.db.execute(
+                "SELECT * FROM project WHERE storage_mode = ?", (EXTERNAL_LEGACY,)
+            ).fetchall():
+                try:
+                    if os.path.samefile(candidate["external_path"], key):
+                        return dict(candidate)
+                except OSError:
+                    continue  # that registration's file is gone -- not a match
+            project_id = _new_id()
+            self.db.execute(
+                "INSERT INTO project (id, org_id, name, storage_mode, external_path, "
+                "created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (project_id, org_id, name, EXTERNAL_LEGACY, key, created_by, _now()),
+            )
+        return self.get_project(project_id)
+
+    def mark_project_adopted(self, project_id: str, session_db_path: str | Path) -> None:
+        """Flip a project from EXTERNAL_LEGACY to ADOPTED. Called once, by
+        :func:`formslang.projects.adopt_project`, after the copy is installed."""
+        self.db.execute(
+            "UPDATE project SET storage_mode = ?, session_db_path = ?, "
+            "external_path = NULL, adopted_at = ? WHERE id = ?",
+            (ADOPTED, str(session_db_path), _now(), project_id),
+        )
+
+    def grant_project_permission(
+        self, project_id: str, user_id: str, permission: str, *, granted_by: str,
+    ) -> None:
+        """Give a Viewer the one permission the matrix lets them hold (§5): EXPORT."""
+        if permission != "EXPORT":
+            raise ValueError(f"unknown project permission {permission!r}")
+        try:
+            self.db.execute(
+                "INSERT INTO project_permission "
+                "(id, project_id, user_id, permission, granted_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (_new_id(), project_id, user_id, permission, granted_by, _now()),
+            )
+        except sqlite3.IntegrityError:
+            pass  # already granted -- idempotent
+
+    def has_project_permission(self, project_id: str, user_id: str, permission: str) -> bool:
+        row = self.db.execute(
+            "SELECT 1 FROM project_permission WHERE project_id = ? AND user_id = ? "
+            "AND permission = ?",
+            (project_id, user_id, permission),
+        ).fetchone()
+        return row is not None
+
+    # -- audit log ------------------------------------------------------------------
+
+    def record_audit(
+        self, *, event_type: str, outcome: str = "ok", org_id: str | None = None,
+        user_id: str | None = None, actor_email: str = "", target_type: str = "",
+        target_id: str = "", ip: str = "",
+    ) -> None:
+        """One row. Phase 2 writes exactly one event type (``PROJECT_ADOPTED``,
+        from adoption) -- see the module docstring for why a full audit trail
+        is Phase 3, not built out here."""
+        self.db.execute(
+            "INSERT INTO audit_log (id, at, org_id, user_id, actor_email_snapshot, "
+            "event_type, target_type, target_id, outcome, ip_hash, detail_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+            (
+                _new_id(), _now(), org_id, user_id, actor_email.strip().lower(),
+                event_type, target_type, target_id, outcome, _fingerprint(ip),
+            ),
+        )
