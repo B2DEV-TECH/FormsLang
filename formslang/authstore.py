@@ -166,13 +166,17 @@ CREATE TABLE IF NOT EXISTS session_token (
 CREATE INDEX IF NOT EXISTS idx_session_token_hash ON session_token(token_hash);
 CREATE INDEX IF NOT EXISTS idx_session_user ON session_token(user_id);
 
+-- D6 (design doc §2.3, §4): the raw TOTP secret lives ONLY in the OS
+-- credential store, one entry per user (FormsLang:mfa-totp:<user_id>,
+-- see formslang/secrets.get_secret/set_secret). This table never holds
+-- the secret in any form, plaintext or encrypted -- enrollment/confirmation
+-- metadata only.
 CREATE TABLE IF NOT EXISTS mfa_secret (
-    user_id           TEXT PRIMARY KEY REFERENCES user(id),
-    secret_ciphertext BLOB NOT NULL,
-    nonce             BLOB NOT NULL,
-    kek_version       INTEGER NOT NULL,
-    confirmed_at      TEXT,
-    created_at        TEXT NOT NULL
+    user_id             TEXT PRIMARY KEY REFERENCES user(id),
+    enrolled_at         TEXT NOT NULL,
+    confirmed_at        TEXT,
+    last_accepted_step  INTEGER,
+    created_at          TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS mfa_recovery_code (
