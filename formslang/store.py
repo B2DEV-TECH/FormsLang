@@ -19,7 +19,11 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import testspec
+from .analysis import ENGINE_VERSION, UnitAnalysis
 from .convert import ConversionTask, Proposal
+from .depgraph import DepGraph
+from .testspec import TestCase
 
 PENDING, APPROVED, REJECTED, NEEDS_WORK = "pending", "approved", "rejected", "needs_work"
 STATES = (PENDING, APPROVED, REJECTED, NEEDS_WORK)
@@ -58,6 +62,8 @@ CREATE TABLE IF NOT EXISTS proposal (
     confidence  REAL NOT NULL DEFAULT 0,
     provider    TEXT NOT NULL DEFAULT '',
     model       TEXT NOT NULL DEFAULT '',
+    behavior    TEXT NOT NULL DEFAULT '',
+    behavior_reason TEXT NOT NULL DEFAULT '',
     error       TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS proposal_task ON proposal(task_id, id);
@@ -72,7 +78,67 @@ CREATE TABLE IF NOT EXISTS decision (
     decided_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS decision_task ON decision(task_id, id);
+
+-- One row per task: what the deterministic engine concluded about it.
+-- Cached rather than recomputed on every request, but never trusted blindly:
+-- engine_version says which rules produced it, and a mismatch means stale.
+CREATE TABLE IF NOT EXISTS unit_analysis (
+    task_id        TEXT PRIMARY KEY REFERENCES task(id),
+    engine_version TEXT NOT NULL DEFAULT '',
+    risk_level     TEXT NOT NULL DEFAULT '',
+    risk_score     REAL NOT NULL DEFAULT 0,
+    behavior       TEXT NOT NULL DEFAULT '',
+    payload        TEXT NOT NULL DEFAULT '{}',
+    computed_at    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS analysis_risk ON unit_analysis(risk_level);
+
+-- Test specifications, written from the original Forms behaviour. The
+-- generated text and the reviewer's answer to it live in the same row: a
+-- case is only worth anything once a person has accepted or rejected it.
+CREATE TABLE IF NOT EXISTS test_case (
+    id             TEXT PRIMARY KEY,
+    task_id        TEXT NOT NULL REFERENCES task(id),
+    kind           TEXT NOT NULL DEFAULT '',
+    origin         TEXT NOT NULL DEFAULT '',
+    title          TEXT NOT NULL DEFAULT '',
+    payload        TEXT NOT NULL DEFAULT '{}',
+    state          TEXT NOT NULL DEFAULT 'pending',
+    reviewer       TEXT NOT NULL DEFAULT '',
+    comment        TEXT NOT NULL DEFAULT '',
+    position       INTEGER NOT NULL DEFAULT 0,
+    spec_version   TEXT NOT NULL DEFAULT '',
+    engine_version TEXT NOT NULL DEFAULT '',
+    generated_at   TEXT NOT NULL DEFAULT '',
+    decided_at     TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS test_case_task ON test_case(task_id, position);
+
+-- Module-level facts that are not derivable from the task list alone:
+-- object counts, dependency edges, whatever a later phase measures once
+-- per loaded module.
+CREATE TABLE IF NOT EXISTS module_meta (
+    module      TEXT PRIMARY KEY,
+    payload     TEXT NOT NULL DEFAULT '{}',
+    updated_at  TEXT NOT NULL DEFAULT ''
+);
 """
+
+# Columns added after the first release. New tables come free from
+# CREATE TABLE IF NOT EXISTS above; new columns do not, so they are applied
+# here against whatever the file already has.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    # Snapshot of what the reviewer was looking at when they decided. Kept on
+    # the decision row on purpose: if the rules change next month, the record
+    # still says what the risk read at the moment of approval.
+    ("decision", "risk_level", "TEXT NOT NULL DEFAULT ''"),
+    ("decision", "behavior", "TEXT NOT NULL DEFAULT ''"),
+    ("decision", "engine_version", "TEXT NOT NULL DEFAULT ''"),
+    # The model's own reading of the behaviour, kept apart from the
+    # rule engine's so the two can be compared instead of blended.
+    ("proposal", "behavior", "TEXT NOT NULL DEFAULT ''"),
+    ("proposal", "behavior_reason", "TEXT NOT NULL DEFAULT ''"),
+)
 
 
 def _now() -> str:
@@ -90,6 +156,7 @@ class TaskView:
     comment: str
     reviewer: str
     decided_at: str
+    analysis: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -100,6 +167,7 @@ class TaskView:
             "comment": self.comment,
             "reviewer": self.reviewer,
             "decided_at": self.decided_at,
+            "analysis": self.analysis,
         }
 
 
@@ -114,7 +182,22 @@ class Store:
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.db.commit()
+
+    def _migrate(self) -> None:
+        """Add columns that older session files do not have yet.
+
+        A session file written by an earlier build must keep opening. Tables
+        are handled by CREATE TABLE IF NOT EXISTS; columns need this.
+        """
+        for table, column, decl in _ADDED_COLUMNS:
+            rows = self.db.execute(f"PRAGMA table_info({table})").fetchall()
+            if not rows:
+                continue
+            if column in {r["name"] for r in rows}:
+                continue
+            self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     def close(self) -> None:
         self.db.close()
@@ -192,11 +275,12 @@ class Store:
     def save_proposal(self, task_id: str, p: Proposal) -> int:
         cur = self.db.execute(
             "INSERT INTO proposal (task_id, created_at, apex_target, code, notes, "
-            "questions, confidence, provider, model, error) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "questions, confidence, provider, model, behavior, behavior_reason, error) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 task_id, _now(), p.apex_target, p.code, json.dumps(p.notes),
-                json.dumps(p.open_questions), p.confidence, p.provider, p.model, p.error,
+                json.dumps(p.open_questions), p.confidence, p.provider, p.model,
+                p.behavior, p.behavior_reason, p.error,
             ),
         )
         self.db.commit()
@@ -219,6 +303,8 @@ class Store:
             "confidence": row["confidence"],
             "provider": row["provider"],
             "model": row["model"],
+            "behavior": row["behavior"],
+            "behavior_reason": row["behavior_reason"],
             "error": row["error"],
         }
 
@@ -229,10 +315,23 @@ class Store:
     ) -> None:
         if state not in STATES:
             raise ValueError(f"unknown state {state!r}")
+        # Freeze what the engine was saying at the moment of the decision. The
+        # rules will keep improving; the record of what the reviewer approved
+        # against must not move with them.
+        row = self.db.execute(
+            "SELECT risk_level, behavior, engine_version FROM unit_analysis WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()
+        snapshot = dict(row) if row else {}
         self.db.execute(
-            "INSERT INTO decision (task_id, state, code, comment, reviewer, decided_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (task_id, state, code, comment, reviewer, _now()),
+            "INSERT INTO decision (task_id, state, code, comment, reviewer, decided_at, "
+            "risk_level, behavior, engine_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                task_id, state, code, comment, reviewer, _now(),
+                snapshot.get("risk_level", ""),
+                snapshot.get("behavior", ""),
+                snapshot.get("engine_version", ""),
+            ),
         )
         self.db.commit()
 
@@ -245,11 +344,274 @@ class Store:
 
     def history(self, task_id: str) -> list[dict]:
         rows = self.db.execute(
-            "SELECT state, comment, reviewer, decided_at FROM decision "
-            "WHERE task_id = ? ORDER BY id DESC",
+            "SELECT state, comment, reviewer, decided_at, risk_level, behavior, "
+            "engine_version FROM decision WHERE task_id = ? ORDER BY id DESC",
             (task_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # -- analysis --------------------------------------------------------
+
+    def save_analysis(self, item: UnitAnalysis) -> None:
+        """Store (or replace) the deterministic analysis of one task."""
+        self.db.execute(
+            "INSERT INTO unit_analysis (task_id, engine_version, risk_level, risk_score, "
+            "behavior, payload, computed_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(task_id) DO UPDATE SET engine_version = excluded.engine_version, "
+            "risk_level = excluded.risk_level, risk_score = excluded.risk_score, "
+            "behavior = excluded.behavior, payload = excluded.payload, "
+            "computed_at = excluded.computed_at",
+            (
+                item.task_id, item.engine_version, item.risk.level, item.risk.score,
+                item.behavior.value,
+                json.dumps(item.to_dict(), ensure_ascii=False),
+                _now(),
+            ),
+        )
+        self.db.commit()
+
+    def save_analyses(self, items: list[UnitAnalysis]) -> int:
+        for item in items:
+            self.save_analysis(item)
+        return len(items)
+
+    def analysis_payload(self, task_id: str) -> dict | None:
+        """The stored analysis as the UI consumes it, or None if never run."""
+        row = self.db.execute(
+            "SELECT payload, computed_at, engine_version FROM unit_analysis WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except json.JSONDecodeError:
+            # A corrupt row is a missing row: better no analysis than a wrong one.
+            return None
+        payload["computed_at"] = row["computed_at"]
+        payload["stale"] = row["engine_version"] != ENGINE_VERSION
+        return payload
+
+    def get_analysis(self, task_id: str) -> UnitAnalysis | None:
+        payload = self.analysis_payload(task_id)
+        return UnitAnalysis.from_dict(payload) if payload else None
+
+    def all_analyses(self) -> list[UnitAnalysis]:
+        """Every stored analysis, in task order. Missing ones are simply absent."""
+        out: list[UnitAnalysis] = []
+        for task_id in self.task_ids():
+            item = self.get_analysis(task_id)
+            if item is not None:
+                out.append(item)
+        return out
+
+    def analysis_coverage(self) -> dict:
+        """How much of the session has an analysis, and how much of it is stale.
+
+        The dashboard needs this to avoid quoting a distribution as if it
+        covered everything when a third of the units were never measured.
+        """
+        total = len(self.task_ids())
+        rows = self.db.execute(
+            "SELECT engine_version FROM unit_analysis"
+        ).fetchall()
+        analysed = len(rows)
+        stale = sum(1 for r in rows if r["engine_version"] != ENGINE_VERSION)
+        return {
+            "tasks": total,
+            "analysed": analysed,
+            "missing": max(total - analysed, 0),
+            "stale": stale,
+            "engine_version": ENGINE_VERSION,
+        }
+
+    def stale_task_ids(self) -> list[str]:
+        """Tasks with no analysis, or one computed under different rules."""
+        rows = self.db.execute(
+            "SELECT t.id FROM task t "
+            "LEFT JOIN unit_analysis a ON a.task_id = t.id "
+            "WHERE a.task_id IS NULL OR a.engine_version <> ? "
+            "ORDER BY t.position",
+            (ENGINE_VERSION,),
+        ).fetchall()
+        return [r["id"] for r in rows]
+
+    # -- module metadata -------------------------------------------------
+
+    def save_module_meta(self, module: str, payload: dict) -> None:
+        self.db.execute(
+            "INSERT INTO module_meta (module, payload, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(module) DO UPDATE SET payload = excluded.payload, "
+            "updated_at = excluded.updated_at",
+            (module, json.dumps(payload, ensure_ascii=False), _now()),
+        )
+        self.db.commit()
+
+    def module_meta(self, module: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT payload, updated_at FROM module_meta WHERE module = ?", (module,)
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except json.JSONDecodeError:
+            return None
+        payload["module"] = module
+        payload["updated_at"] = row["updated_at"]
+        return payload
+
+    def save_graph(self, module: str, graph: DepGraph) -> None:
+        """Persist the dependency graph beside the module it describes.
+
+        It lives in ``module_meta`` as one JSON document rather than in
+        tables of its own: a graph is only ever read whole, for one module
+        at a time, and this way a session file stays legible to anyone with
+        sqlite3 and no knowledge of this schema.
+        """
+        meta = self.module_meta(module) or {}
+        meta.pop("updated_at", None)
+        meta["graph"] = graph.to_dict()
+        meta["graph_summary"] = graph.summary()
+        self.save_module_meta(module, meta)
+
+    def graph(self, module: str) -> DepGraph | None:
+        raw = (self.module_meta(module) or {}).get("graph")
+        return DepGraph.from_dict(raw) if raw else None
+
+    def all_module_meta(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT module FROM module_meta ORDER BY module"
+        ).fetchall()
+        return [m for m in (self.module_meta(r["module"]) for r in rows) if m is not None]
+
+    # -- test specifications ---------------------------------------------
+
+    def save_test_cases(self, task_id: str, cases: list[TestCase]) -> dict:
+        """Store a freshly generated specification without losing the review.
+
+        A case keeps its id as long as its text does not change, so a
+        regeneration under new rules re-writes the wording and leaves every
+        accept and reject exactly where the reviewer put it. Cases that
+        vanish are removed only while still pending: a case someone answered
+        is evidence, and deleting evidence because the rules moved is
+        precisely the silent drift this store exists to prevent.
+        """
+        now = _now()
+        existing = {
+            r["id"]: r for r in self.db.execute(
+                "SELECT * FROM test_case WHERE task_id = ?", (task_id,)
+            ).fetchall()
+        }
+        fresh_ids = set()
+        for position, case in enumerate(cases):
+            fresh_ids.add(case.id)
+            payload = json.dumps(case.to_dict(), ensure_ascii=False)
+            if case.id in existing:
+                self.db.execute(
+                    "UPDATE test_case SET kind = ?, origin = ?, title = ?, payload = ?, "
+                    "position = ?, spec_version = ?, engine_version = ?, generated_at = ? "
+                    "WHERE id = ?",
+                    (case.kind, case.origin, case.title, payload, position,
+                     case.version, ENGINE_VERSION, now, case.id),
+                )
+                continue
+            self.db.execute(
+                "INSERT INTO test_case (id, task_id, kind, origin, title, payload, state, "
+                "position, spec_version, engine_version, generated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (case.id, task_id, case.kind, case.origin, case.title, payload,
+                 testspec.PENDING, position, case.version, ENGINE_VERSION, now),
+            )
+        gone = [
+            r["id"] for r in existing.values()
+            if r["id"] not in fresh_ids and r["state"] == testspec.PENDING
+        ]
+        for case_id in gone:
+            self.db.execute("DELETE FROM test_case WHERE id = ?", (case_id,))
+        self.db.commit()
+        return {
+            "written": len(cases),
+            "kept": len(fresh_ids & set(existing)),
+            "dropped": len(gone),
+            "orphaned": len(set(existing) - fresh_ids - set(gone)),
+        }
+
+    def _case_row(self, row: sqlite3.Row) -> dict:
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        return {
+            **payload,
+            "id": row["id"],
+            "task_id": row["task_id"],
+            "kind": row["kind"],
+            "origin": row["origin"],
+            "title": row["title"],
+            "state": row["state"],
+            "reviewer": row["reviewer"],
+            "comment": row["comment"],
+            "generated_at": row["generated_at"],
+            "decided_at": row["decided_at"],
+            # Written under rules that have since moved. Shown, never hidden:
+            # a reviewer is entitled to know the case is older than the engine.
+            "stale": row["engine_version"] != ENGINE_VERSION
+            or row["spec_version"] != testspec.VERSION,
+        }
+
+    def test_cases(self, task_id: str) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT * FROM test_case WHERE task_id = ? ORDER BY position, id", (task_id,)
+        ).fetchall()
+        return [self._case_row(r) for r in rows]
+
+    def all_test_cases(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT c.* FROM test_case c JOIN task t ON t.id = c.task_id "
+            "ORDER BY t.position, c.position, c.id"
+        ).fetchall()
+        return [self._case_row(r) for r in rows]
+
+    def decide_test_case(self, case_id: str, state: str, reviewer: str = "",
+                         comment: str = "") -> bool:
+        """Record a reviewer's answer to one case. Unknown states are refused."""
+        if state not in testspec.CASE_STATES:
+            return False
+        cur = self.db.execute(
+            "UPDATE test_case SET state = ?, reviewer = ?, comment = ?, decided_at = ? "
+            "WHERE id = ?",
+            (state, reviewer, comment, _now(), case_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def stale_test_task_ids(self) -> list[str]:
+        """Tasks with no specification, or one written under older rules."""
+        rows = self.db.execute(
+            "SELECT t.id, "
+            "SUM(CASE WHEN c.id IS NULL THEN 1 ELSE 0 END) AS missing, "
+            "SUM(CASE WHEN c.engine_version <> ? OR c.spec_version <> ? THEN 1 ELSE 0 END) "
+            "AS stale FROM task t LEFT JOIN test_case c ON c.task_id = t.id "
+            "GROUP BY t.id, t.position ORDER BY t.position",
+            (ENGINE_VERSION, testspec.VERSION),
+        ).fetchall()
+        return [r["id"] for r in rows if r["missing"] or r["stale"]]
+
+    def test_coverage(self) -> dict:
+        """How much of the session has a specification, and how reviewed it is."""
+        total = len(self.task_ids())
+        rows = self.db.execute(
+            "SELECT DISTINCT task_id FROM test_case"
+        ).fetchall()
+        cases = self.all_test_cases()
+        out = testspec.summarize(cases)
+        out.update({
+            "tasks": total,
+            "specified": len(rows),
+            "missing": max(total - len(rows), 0),
+        })
+        return out
 
     # -- views -----------------------------------------------------------
 
@@ -268,6 +630,7 @@ class Store:
             comment=(decision or {}).get("comment", ""),
             reviewer=(decision or {}).get("reviewer", ""),
             decided_at=(decision or {}).get("decided_at", ""),
+            analysis=self.analysis_payload(task_id),
         )
 
     def all_views(self) -> list[TaskView]:
@@ -279,11 +642,23 @@ class Store:
         for v in views:
             counts[v.state] = counts.get(v.state, 0) + 1
         proposed = sum(1 for v in views if v.proposal)
+        risk_counts: dict[str, int] = {}
+        behavior_counts: dict[str, int] = {}
+        for v in views:
+            item = v.analysis or {}
+            level = (item.get("risk") or {}).get("level")
+            value = (item.get("behavior") or {}).get("value")
+            if level:
+                risk_counts[level] = risk_counts.get(level, 0) + 1
+            if value:
+                behavior_counts[value] = behavior_counts.get(value, 0) + 1
         return {
             "tasks": len(views),
             "proposed": proposed,
             "unproposed": len(views) - proposed,
             **counts,
+            "risk": risk_counts,
+            "behavior": behavior_counts,
         }
 
     # -- export ----------------------------------------------------------
@@ -327,8 +702,13 @@ class Store:
                 {
                     "session": self.session(),
                     "stats": self.stats(),
+                    "test_coverage": self.test_coverage(),
                     "tasks": [
-                        {**v.to_dict(), "history": self.history(v.task["id"])}
+                        {
+                            **v.to_dict(),
+                            "history": self.history(v.task["id"]),
+                            "test_cases": self.test_cases(v.task["id"]),
+                        }
                         for v in views
                     ],
                 },
@@ -337,4 +717,37 @@ class Store:
             ),
             encoding="utf-8",
         )
+        self.export_tests(out)
         return sql_path, json_path
+
+    def export_tests(self, out_dir: Path | str) -> Path | None:
+        """Write the test specification as Markdown, if there is one.
+
+        Kept out of ``approved.sql`` on purpose: the specification describes
+        the *original* behaviour and applies to every unit, approved or not.
+        A reviewer who only exported what was approved would be left testing
+        exactly the half that already looked fine.
+        """
+        units = []
+        for view in self.all_views():
+            cases = self.test_cases(view.task["id"])
+            if not cases:
+                continue
+            item = view.analysis or {}
+            units.append({
+                "title": view.task.get("title", ""),
+                "kind": view.task.get("kind", ""),
+                "risk": (item.get("risk") or {}).get("level", ""),
+                "behavior": (item.get("behavior") or {}).get("value", ""),
+                "cases": cases,
+            })
+        if not units:
+            return None
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / "tests.md"
+        path.write_text(
+            testspec.render_markdown(self.session().get("title", ""), units),
+            encoding="utf-8",
+        )
+        return path
