@@ -242,6 +242,11 @@ picks its own port). **Open a module…** at the top left selects the `.fmb`
 gets its own resumable session under the FormsLang output directory; no
 session or generated artifact is written beside your source.
 
+<p align="center">
+  <img src="assets/screenshots/onboarding.png" width="900"
+       alt="FormsLang before a module is opened: three-step explainer (import, convert, review) and the Open a Forms module button">
+</p>
+
 The screen shows the original Forms code on the left — syntax-highlighted,
 with its verdict, confidence, the open questions the model raised and the
 built-ins it had to deal with — and the proposed APEX code on the right,
@@ -260,6 +265,16 @@ the screenshot at the top of this page. Everything has a key:
 Every decision, with its reviewer and comment, is written to the session
 file as it happens. **Propose all** drafts the whole module in one pass;
 review remains one unit at a time.
+
+<p align="center">
+  <img src="assets/screenshots/conversion-progress.png" width="900"
+       alt="A conversion in progress: the top bar tracks elapsed time, the queued units show a spinner, and the unit being read gets an overlay on the APEX pane">
+</p>
+
+<p align="center">
+  <sub>A CLI provider takes 15 to 60 seconds per unit — the screen accounts for
+  every second of it instead of going quiet.</sub>
+</p>
 
 ### What the screen tells you before you decide
 
@@ -286,12 +301,28 @@ in expandable sections that stay shut until you want them:
   FormsLang writes these specifications; it does not run them, and the
   screen says so.
 
+<p align="center">
+  <img src="assets/screenshots/unit-review-risk-panel.png" width="900"
+       alt="A WHEN-NEW-FORM-INSTANCE unit at LOW risk: the panels explain why, that behaviour was preserved, and that a commented-out HOST() call was recognized as dead code and excluded from the conversion">
+</p>
+
+<p align="center">
+  <sub>The risk score is traced back to the exact constructs it counted —
+  here, a <code>HOST()</code> call that was already commented out in the source
+  contributes nothing, because it never runs.</sub>
+</p>
+
 ### The project view (`d`)
 
 Totals, conversion modes, decisions, risk and behaviour distributions, what
 is in the way, the highest-risk units, the Forms features APEX has no
 equivalent for, and where the dependencies pile up — counted from the
 session, never estimated.
+
+<p align="center">
+  <img src="assets/screenshots/project-view.png" width="900"
+       alt="The project view: a readiness score of 62.7 with the five weighted components that produced it, plus totals for units, conversion modes, decisions, migration risk and behaviour after migration">
+</p>
 
 It carries one readiness score, and prints the exact arithmetic that
 produced it right beside the number: five weighted components, each a ratio
@@ -309,6 +340,11 @@ the provider chip) opens Settings, where every provider shows what it needs
 and whether this machine has it — a missing API key or an uninstalled CLI
 is a label, not a surprise at request time. Pick a provider, paste a key or
 open the setup terminal for a CLI, press **Test**, save.
+
+<p align="center">
+  <img src="assets/screenshots/settings-providers.png" width="900"
+       alt="Settings screen listing every provider — Claude, Azure OpenAI, Claude Code CLI selected, Codex CLI, Offline, Gemini, Ollama, OpenAI — each labelled with what it needs and whether it is ready">
+</p>
 
 | Provider | Kind | What it needs |
 |---|---|---|
@@ -386,6 +422,11 @@ folder contains:
 The **Exports** button in the workbench header lists every ZIP built so
 far, newest first, each with a *Show in folder* action that selects the
 file in your file manager; the same panel opens after every export.
+
+<p align="center">
+  <img src="assets/screenshots/exports.png" width="900"
+       alt="Exported APEX applications panel listing demo-order.apex.zip with its size, timestamp and a Show in folder action">
+</p>
 
 The ZIP is deliberately separate from the audit artifacts. Only approved
 proposals are included, and they are emitted as disabled page-process
