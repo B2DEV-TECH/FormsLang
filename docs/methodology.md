@@ -128,7 +128,29 @@ portfolio with a different profile may well deserve different bands: calibrate
 them against conversions you have measured yourself, and move them — it is a
 one-line change in `assess.py`.
 
-## 8. What FormsLang does not claim
+## 8. Cost is not risk
+
+Everything above prices a migration. It does not say how dangerous one is.
+
+`COMMIT_FORM` is `AUTO` and weighs almost nothing here, and it moves the
+transaction boundary of an entire page. `GO_ITEM` is `ASSISTED` and costs
+more to convert, and gets it wrong in a way anyone notices immediately. The
+two questions disagree often enough that answering them with one number
+would make the number useless.
+
+So the workbench carries both columns, side by side and never merged:
+
+| | Question | Answers |
+|---|---|---|
+| **Conversion mode** (this document) | What does it cost? | AUTO / ASSISTED / MANUAL / DROP / UNKNOWN |
+| **Migration risk** | How dangerous is it to get wrong? | LOW / MEDIUM / HIGH / CRITICAL |
+| **Behaviour** | Does it still do the same thing? | PRESERVED / CHANGED / UNCERTAIN |
+
+The risk and behaviour models — every weight, every threshold, and the
+readiness formula on the project screen — are documented in
+[risk-model.md](risk-model.md).
+
+## 9. What FormsLang does not claim
 
 - It does not claim a percentage of screens will convert automatically.
   *Automation-friendly* is the share of classified symbols that are `AUTO` or
@@ -137,3 +159,6 @@ one-line change in `assess.py`.
 - It does not evaluate the quality of the resulting APEX application.
 - It does not read the database schema. Calls into external packages are
   reported as dependencies to inventory, not as work already understood.
+- It does not claim that a low-cost unit is a safe unit. Read the risk
+  column for that, and do not read either as a promise about the migration
+  as a whole.

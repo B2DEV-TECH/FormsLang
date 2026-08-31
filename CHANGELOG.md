@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — migration analysis
+
+- **Migration risk** (`formslang/risk.py`). Every unit is scored
+  LOW / MEDIUM / HIGH / CRITICAL from the constructs actually found in its
+  body, deterministically, with the evidence behind every point. A different
+  question from the conversion mode (*what does it cost?*) and from AI
+  confidence (*how sure is the model about this draft?*). The scoring
+  formula, weights and thresholds are published in `docs/risk-model.md` and
+  printed on screen next to the score.
+- **Behaviour classification** (`formslang/behavior.py`).
+  PRESERVED / CHANGED / UNCERTAIN, next to the confidence indicator. Absence
+  of evidence is never PRESERVED, and an AI opinion is accepted only when it
+  moves the answer away from PRESERVED — the model can make this more
+  conservative, never less.
+- **Migration classes in the catalog** (`formslang/rules.py`): every entry
+  now carries DIRECT_EQUIVALENT, SERVER_SIDE_REPLACEMENT,
+  CLIENT_SIDE_REPLACEMENT, ARCHITECTURAL_REDESIGN, MANUAL_REVIEW,
+  UNSUPPORTED or NOT_REQUIRED. `NOT_REQUIRED` is kept apart from
+  `UNSUPPORTED` on purpose: `SYNCHRONIZE` disappearing is not a gap in APEX.
+- **One analysis pass per unit** (`formslang/analysis.py`), stamped with an
+  engine version that fingerprints the catalog rows and scoring weights.
+  Change one risk number and every stored analysis is flagged stale rather
+  than being served silently under older rules.
+- **Dependency graph** (`formslang/depgraph.py`): forms, blocks, items,
+  triggers, program units, packages, procedures, tables and views, LOVs,
+  record groups, relations, alerts, timers, reports, menus, PL/SQL
+  libraries, globals, parameters and external calls, with inbound and
+  outbound edges, transitive reach, and risky dependencies highlighted.
+  A structured explorer beside the code — `GET /api/deps`.
+- **Test case generation** (`formslang/testspec.py`): specifications written
+  from the *original Forms body*, not from the generated APEX — normal path,
+  boundaries, null handling, transaction behaviour, side effects, exception
+  paths and regression scenarios. Each case is marked FORMS_BEHAVIOR,
+  MODERNIZATION or NEEDS_CONFIRMATION, and reviewed per case as accepted,
+  rejected or needs-modification. Case ids are content-hashed, so a decision
+  survives regeneration when the wording has not changed. FormsLang writes
+  these specifications and does not run them; the screen says so.
+  `GET /api/tests`, `POST /api/test-decision`, and a `tests.md` in the
+  export.
+- **Project view** (`formslang/dashboard.py`, `GET /api/dashboard`, key `d`):
+  totals, conversion modes, decisions, risk and behaviour distributions,
+  blockers, the highest-risk units, the Forms features APEX has no
+  equivalent for and where the dependencies pile up. One readiness score,
+  printed next to the exact arithmetic that produced it — five weighted
+  components, each measured over *every* unit in the session, so a unit
+  nobody analysed lowers the score instead of quietly leaving the
+  denominator. Blockers are deliberately excluded from the score.
+- `docs/risk-model.md`: the whole scoring model, weight by weight.
+
 ### Changed
 
 - **FormsLang is now Open Source under the Apache License 2.0.** The

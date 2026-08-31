@@ -98,6 +98,14 @@ Ollama can keep the entire conversion local. Claude Code CLI, Codex CLI,
 and hosted API providers may transmit the selected source code under their
 respective account, retention, and data-processing policies.
 
+**5. A number on screen is never a model's opinion.**
+Risk, behaviour, dependencies and the readiness score are computed by rules
+in this repository, from the source text. The model may be asked to explain
+a finding the rules already made; it is never asked what the risk is. Every
+weight and threshold is written down in
+[docs/risk-model.md](docs/risk-model.md), and the readiness formula is
+printed on screen next to its own number.
+
 ## The verdict taxonomy
 
 Every trigger and built-in gets one of five verdicts. The difference between
@@ -246,11 +254,51 @@ the screenshot at the top of this page. Everything has a key:
 | `p` | propose a conversion for the current unit |
 | `a` / `r` / `w` | approve / reject / send back for work |
 | `o` | open a Forms module |
+| `d` | the project view |
 | `/` | search |
 
 Every decision, with its reviewer and comment, is written to the session
 file as it happens. **Propose all** drafts the whole module in one pass;
 review remains one unit at a time.
+
+### What the screen tells you before you decide
+
+Every unit is measured the moment the module opens — offline, with no
+provider configured and nothing sent anywhere. Beside the code comparison,
+in expandable sections that stay shut until you want them:
+
+- **Migration risk** — LOW / MEDIUM / HIGH / CRITICAL, with every point of
+  the score traced back to a construct actually found in the body. A
+  different question from the conversion mode (*what does it cost?*) and a
+  different one again from AI confidence (*how sure is the model about this
+  draft?*).
+- **Behaviour after migration** — PRESERVED / CHANGED / UNCERTAIN. Absence
+  of evidence is never PRESERVED, and the model may make this answer more
+  conservative, never less.
+- **Dependencies** — what this unit uses and what uses it, direct and
+  transitive, so *what else breaks if I change this?* has an answer before
+  the change is made.
+- **Forms compatibility findings** — every built-in found, its migration
+  class, and what APEX offers instead.
+- **Test cases** — written from the original Forms body, not from the
+  generated APEX, and marked as inherited Forms behaviour, modernization, or
+  something that needs confirmation. Accept, reject or send back each one.
+  FormsLang writes these specifications; it does not run them, and the
+  screen says so.
+
+### The project view (`d`)
+
+Totals, conversion modes, decisions, risk and behaviour distributions, what
+is in the way, the highest-risk units, the Forms features APEX has no
+equivalent for, and where the dependencies pile up — counted from the
+session, never estimated.
+
+It carries one readiness score, and prints the exact arithmetic that
+produced it right beside the number: five weighted components, each a ratio
+over *every* unit in the session, so a unit nobody analysed lowers the score
+instead of quietly leaving the denominator. Blockers are deliberately kept
+out of the score — a blocker is work to do, not a percentage. The full model
+is in [docs/risk-model.md](docs/risk-model.md).
 
 ## AI-assisted conversion
 
@@ -368,6 +416,12 @@ formslang/
 ├── model.py     # what a Forms module is, minus the layout noise
 ├── rules.py     # the catalog: Forms -> APEX. The core asset.
 ├── plsql.py     # lexical analysis + code fingerprinting
+├── risk.py      # migration risk: LOW / MEDIUM / HIGH / CRITICAL, with evidence
+├── behavior.py  # does it still do the same thing? PRESERVED / CHANGED / UNCERTAIN
+├── analysis.py  # one deterministic pass per unit: compat + risk + behaviour
+├── depgraph.py  # what else breaks if I change this unit
+├── testspec.py  # test cases written from the Forms body, not from the output
+├── dashboard.py # the project view, and the readiness score's arithmetic
 ├── assess.py    # scoring, tiers, portfolio deduplication
 ├── report.py    # self-contained HTML + JSON
 ├── ai.py        # provider layer (urllib only) + CLI providers + offline stub

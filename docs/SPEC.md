@@ -55,6 +55,14 @@ Five pillars, in priority order:
 └────────────────────────────┘      │                                  │
    or plain `formslang serve`       │  oracle.py   Forms2XML driver    │
    in any browser                   │  parser.py   Forms XML → units   │
+                                    │  plsql.py    static analysis     │
+                                    │  rules.py    built-in catalog    │
+                                    │  risk.py     risk scoring        │
+                                    │  behavior.py PRESERVED/CHANGED   │
+                                    │  analysis.py one pass per unit   │
+                                    │  depgraph.py what breaks if...   │
+                                    │  testspec.py test cases          │
+                                    │  dashboard.py project counts     │
                                     │  convert.py  rules + prompts     │
                                     │  ai.py       provider layer      │
                                     │  config.py   settings file       │
@@ -63,6 +71,35 @@ Five pillars, in priority order:
                                     │  ui.py       one HTML document   │
                                     └──────────────────────────────────┘
 ```
+
+### 3.1 The layered pipeline
+
+The order matters more than any single layer: **deterministic facts stay
+deterministic**, and the model is reached only where genuine ambiguity is
+left. Nothing is sent to an LLM that a rule can answer.
+
+```
+parse Forms metadata          parser.py     structure, code bodies, items, LOVs
+  → static analysis           plsql.py      built-ins, SQL verbs, globals, literals
+  → catalog classification    rules.py      migration class per construct
+  → dependency detection      depgraph.py   inbound/outbound, direct and transitive
+  → risk scoring              risk.py       LOW / MEDIUM / HIGH / CRITICAL, with evidence
+  → behaviour classification  behavior.py   PRESERVED / CHANGED / UNCERTAIN
+  → AI proposal               ai.py         only the code, never the risk
+  → human review              store.py      the decision, versioned, with a name on it
+  → test specification        testspec.py   written from the Forms body, not the output
+  → project view and export   dashboard.py, apexlang.py
+```
+
+Every deterministic result carries an engine version -- a fingerprint of the
+catalog rows and scoring weights that produced it. Change one risk number and
+every stored analysis is known to be stale, which is exactly the behaviour
+this product needs: silently serving a score computed under older rules is
+the kind of quiet drift it exists to prevent.
+
+The scoring model is documented in full in [risk-model.md](risk-model.md):
+every weight, every threshold, and the readiness formula that the workbench
+prints on screen beside its own number.
 
 The UI is a single self-contained HTML document served from the loopback
 interface. No CDN, no external font, no framework — enforced by test
@@ -84,7 +121,27 @@ interface. No CDN, no external font, no framework — enforced by test
      placeholder, never a fake conversion.
    - **Hand-written:** the right pane is an editor whether or not a
      proposal exists. Type the replacement, approve it, done.
-3. **Review.** Approve (`a`), needs-work (`w`), reject (`r`), convert
+3. **Understand before deciding.** Every unit arrives already measured,
+   offline, with no provider configured and nothing sent anywhere:
+   - **Migration risk** — LOW / MEDIUM / HIGH / CRITICAL, scored from the
+     constructs actually found, with the evidence behind every point.
+     A different question from the conversion mode, and a different one
+     again from AI confidence.
+   - **Behaviour** — PRESERVED / CHANGED / UNCERTAIN. Absence of evidence
+     is never PRESERVED.
+   - **Dependencies** — what this unit uses and what uses it, direct and
+     transitive, so *what else breaks if I change this?* has an answer
+     before the change is made.
+   - **Forms compatibility findings** — every built-in found, its migration
+     class, and what APEX offers instead, straight from the catalog.
+   - **Test cases** — written from the original Forms body, marked as
+     inherited behaviour, modernization or something that needs
+     confirmation; accepted, rejected or sent back per case. FormsLang
+     writes them; it does not run them, and the screen says so.
+
+   All of it lives in expandable sections beside the code comparison, which
+   stays the focus of the screen.
+4. **Review.** Approve (`a`), needs-work (`w`), reject (`r`), convert
    (`p`), navigate (`j`/`k`), search (`/`). Every decision is versioned in
    the session SQLite file with reviewer name and timestamp.
    A conversion run is never silent: while it runs the screen names the
@@ -92,7 +149,15 @@ interface. No CDN, no external font, no framework — enforced by test
    are still queued and which pane is still waiting for an answer. A CLI
    provider takes 15 to 60 seconds per unit, and waiting without a signal
    is indistinguishable from a hang.
-4. **Export.** APEXlang project + import ZIP for APEX 26.1. Approved code
+5. **The project view** (`d`, or the *Project* button). Totals, conversion
+   modes, decisions, risk and behaviour distributions, what is in the way,
+   the highest-risk units, the Forms features APEX has no equivalent for,
+   and where the dependencies pile up. One readiness score, printed next to
+   the exact arithmetic that produced it — weights, ratios and points, in a
+   table on the same screen. No model contributes to any figure on that
+   page, and a unit nobody analysed lowers the score rather than quietly
+   leaving the denominator.
+6. **Export.** APEXlang project + import ZIP for APEX 26.1. Approved code
    only. `approved.sql` and `session.json` document who approved what,
    against which model answer.
 
@@ -191,14 +256,21 @@ environment variables in a terminal before launch.
 | Terminal launch cannot be weaponized | Fixed whitelist, browser sends an id, never a command | `test_terminal_refuses_anything_not_whitelisted` |
 | CLI providers can't wander into source trees | Subprocess runs in an empty scratch directory, prompt on stdin | `tests/test_cli_providers.py` |
 | Oracle ships nothing with FormsLang | No Oracle jars, binaries or artwork in the repo or the packages | NOTICE + README Legal, repo audit |
+| A number on screen is never a model's opinion | Risk, behaviour, dependencies and readiness are computed by rules; the model may only enrich an explanation | `tests/test_risk.py`, `tests/test_behavior.py`, `tests/test_dashboard.py` |
+| A prompt carries the unit, not the session | Only the code body and its catalog findings are sent; no credentials, no other units, no stored analysis | `tests/test_convert.py` |
 
 ## 7. Out of scope for this version (roadmap)
 
 - **Embedded terminal** (xterm.js + PTY inside the app) — v2. The native
   terminal launch covers CLI sign-in today with a fraction of the attack
   surface.
-- Multi-module portfolio dashboard in the workbench (the CLI already
-  batch-assesses portfolios).
+- **Cross-module portfolio dashboard.** The workbench now has a project
+  view, but a session holds one form: "the forms with the highest dependency
+  complexity" is answered inside a module, not across a portfolio. The CLI
+  already batch-assesses portfolios; joining the two is v2.
+- **Executing the generated test cases.** FormsLang writes specifications a
+  person or a framework can run. It does not run them, and does not pretend
+  to.
 - Editable APEX page layout (regions/items designer). FormsLang converts
   logic; layout stays a Page Designer job.
 - Windows keychain/DPAPI storage for the API key — candidate for v2;
@@ -212,7 +284,11 @@ environment variables in a terminal before launch.
 |---|---|
 | Settings live in the engine, not the Tauri shell | Works identically in the browser (`formslang serve`) and the desktop app; the shell stays a dumb window |
 | Env vars beat the config file | CI and power users keep working unchanged; a saved setting can never invisibly override an explicit export |
-| Key stored in a local JSON file, write-only over HTTP | Simplest honest design; the alternative (env-only) is what made the product "hard to use". Documented in README and here |
+| Risk and verdict are two columns, never one | `COMMIT_FORM` is cheap and dangerous. A single number would have to lie about one of them |
+| Readiness counts every unit, including unanalysed ones | Excluding them would make the least finished session score the highest |
+| Blockers stay out of the readiness score | A blocker is work to do; folding it into a percentage hides it behind arithmetic |
+| Test cases are derived from the Forms body, not the generated APEX | A test written from generated code can only prove the generator agrees with itself |
+| Key stored in the OS credential store, write-only over HTTP | The alternative (env-only) is what made the product "hard to use", and a plaintext file is not a defensible place for a credential. No fallback to plaintext: when no store exists, the save fails and the env var is the documented route. See 5.2 |
 | Native terminal window instead of embedded terminal | CLI sign-in is a one-time act; a PTY bridge inside the app is v2 complexity with v0 payoff |
 | No silent default to any cloud provider | "Nothing is sent anywhere until you choose a provider on purpose" is a README promise; a first-run banner asks, it never assumes |
 | Manual authoring is a first-class conversion route | A migration tool that *requires* AI is a weaker product and a weaker compliance story |
