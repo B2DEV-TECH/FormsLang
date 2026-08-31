@@ -403,6 +403,44 @@ def cmd_auth_bootstrap_owner(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_auth_reset_owner(args: argparse.Namespace) -> int:
+    """Last-Owner recovery (design doc SS7.5): reset an Owner's password
+    directly on the host. Host CLI only -- local host access *is* the
+    authentication, the same trust boundary as bootstrap-owner.
+
+    ``--clear-mfa`` is the accompanying break-glass for an Owner who also
+    lost their authenticator: it removes the enrollment outright, so use it
+    only when the device is truly gone, never as a routine reset step.
+    """
+    email = args.email.strip()
+    if not email:
+        print("ERROR: email must not be empty", file=sys.stderr)
+        return 2
+    password = getpass.getpass("New password: ")
+    confirm = getpass.getpass("Confirm new password: ")
+    if password != confirm:
+        print("ERROR: passwords do not match", file=sys.stderr)
+        return 2
+
+    store = authstore.AuthStore(authstore.default_db_path())
+    try:
+        try:
+            result = store.reset_owner_password_cli(email, password)
+        except (ValueError, PermissionError, authstore.UserNotFound) as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 2
+
+        print(f"Owner password reset : {result['email']}")
+        print(f"Sessions revoked      : {result['sessions_revoked']}")
+
+        if args.clear_mfa:
+            store.mfa_disable_cli(result["user_id"])
+            print("MFA cleared           : this account must enroll again at next login")
+    finally:
+        store.close()
+    return 0
+
+
 def cmd_catalog(_args: argparse.Namespace) -> int:
     c = rules.catalog_size()
     print(f"FormsLang {__version__} -- conversion catalog")
@@ -487,6 +525,17 @@ def build_parser() -> argparse.ArgumentParser:
     bo.add_argument("--org-slug", default="local", help="organization slug (default: local)")
     bo.add_argument("--org-name", default="Local", help="organization display name (default: Local)")
     bo.set_defaults(func=cmd_auth_bootstrap_owner)
+
+    ro = auth_sub.add_parser(
+        "reset-owner",
+        help="last-Owner password recovery (host CLI only, never HTTP)",
+    )
+    ro.add_argument("email", help="the Owner's email address")
+    ro.add_argument(
+        "--clear-mfa", action="store_true",
+        help="also remove this Owner's MFA enrollment (break-glass -- use only if the device is lost)",
+    )
+    ro.set_defaults(func=cmd_auth_reset_owner)
     return p
 
 
