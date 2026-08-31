@@ -126,7 +126,7 @@ part of the session, not something inferred per request:
   org for its whole life," which is easier to reason about and to audit
   than a session whose scope can silently change underneath it.
 
-### 2.3 Storage layout — MFA key moved out of the data directory
+### 2.3 Storage layout — MFA secret moved out of the data directory (revised D6, 2026-08-31)
 
 **Correction resolved (review item 1):** the prior draft proposed
 `<data_dir>/.keys/mfa.key` protected by `chmod 600`. Rejected in review,
@@ -135,24 +135,42 @@ and a key sitting next to the database it protects means a single
 directory copy — a backup, a stolen drive, a misconfigured sync tool —
 exfiltrates both the ciphertext and the key together.
 
-**Fixed design:** MFA secrets are encrypted with a Key Encryption Key
-(KEK) that never touches disk under FormsLang's control at all — it lives
-in the OS credential store, using **the exact mechanism `secrets.py`
-already implements and this project already trusts** for the AI provider
-API key (`ctypes`/Windows Credential Manager, `security` on macOS,
-`secret-tool`/Secret Service on Linux, no silent plaintext fallback). One
-KEK entry, `FormsLang:mfa-kek-v<n>` (mirrors `secrets.py`'s existing
-`f"{SERVICE}:{ACCOUNT}"` naming), wraps every user's MFA secret —
-**envelope encryption**, not one OS-store entry per user:
+**Revised design (D6, supersedes the envelope-encryption design below
+this note originally described):** each user's raw TOTP secret is stored
+as **one entry per user, directly in the OS credential store**, using
+**the exact mechanism `secrets.py` already implements and this project
+already trusts** for the AI provider API key (`ctypes`/Windows Credential
+Manager, `security` on macOS, `secret-tool`/Secret Service on Linux, no
+silent plaintext fallback) — `secrets.py` is parameterized from its
+current single hardcoded `(service, account)` pair to accept a caller-
+supplied account name, and MFA uses `FormsLang:mfa-totp:<user_id>` (one
+opaque entry per user; `<user_id>` is an internal UUID, never the email).
+`auth.db` never holds a TOTP secret in any form, plaintext or encrypted —
+only enrollment/confirmation metadata (§4).
+
+The original design here specified **envelope encryption**: a single
+Key Encryption Key (KEK) in the OS store wrapping every user's secret,
+with ciphertext+nonce+key-version in `auth.db`. That was rejected in
+Phase 3 planning (2026-08-31): it requires a real, audited AEAD
+implementation, which under this project's crypto rules means either a
+new third-party dependency or hand-rolled AES-GCM/ChaCha20 — the
+one-entry-per-user design needs neither. It also removes a shared-fatal
+point: a KEK compromise would have exposed every user's secret at once;
+per-user entries mean compromising one user's secret does not touch any
+other's, and there is no key-rotation maintenance operation to get
+wrong. The trade accepted in return: N credential-store entries instead
+of 1 (irrelevant at FormsLang's scale — no vault backend here has a
+practical entry-count limit that matters).
 
 ```
 <data_dir>/
   auth.db                          # organization, user, membership, project,
                                     # project_permission, session_token,
-                                    # mfa_secret (ciphertext + nonce + key
-                                    # version — never the key itself),
-                                    # mfa_recovery_code, audit_log,
-                                    # password_reset_token, schema_migration
+                                    # mfa_secret (enrollment/confirmation
+                                    # metadata only — never the secret
+                                    # itself, see §4), mfa_recovery_code,
+                                    # audit_log, password_reset_token,
+                                    # schema_migration
   orgs/
     <org_id>/
       projects/
@@ -161,17 +179,21 @@ KEK entry, `FormsLang:mfa-kek-v<n>` (mirrors `secrets.py`'s existing
           exports/
 ```
 
-No file under `data_dir` can decrypt an MFA secret on its own. Rotating
-the KEK (bump `<n>`, provision a new OS-store entry, re-wrap every
-`mfa_secret` row with the new key) is documented as an explicit,
-auditable maintenance operation — see §4 and §10 for the honest limits of
-this (disaster recovery of `auth.db` alone, without the matching OS-store
-entry, does not recover MFA; see §10).
+No file under `data_dir` can ever reveal a TOTP secret on its own — a
+copy of `auth.db` alone, without the matching OS credential store entry
+for that specific user, is worthless for MFA bypass (see §10 for the
+honest limits of this: it also means a disaster-recovery restore of
+`auth.db` to a different machine leaves every user's MFA undecryptable
+unless each user's OS-store entry is separately re-provisioned or the
+user re-enrolls).
 
 **Fail-closed, always:** if the OS credential store is unavailable when
-enrollment or TOTP verification needs the KEK, the operation fails with
-an actionable error — the same `SecureStorageUnavailable` posture
-`secrets.py` already uses — never a silent fallback to a weaker key.
+enrollment or TOTP verification needs it, the operation fails with an
+actionable error — the same `SecureStorageUnavailable` posture
+`secrets.py` already uses — never a silent fallback to a weaker
+mechanism. On Linux without a running Secret Service daemon (headless
+server, container, CI) this means MFA enrollment is refused outright,
+documented as a known limitation (§10), not silently degraded.
 
 ### 2.4 The two modes — D4: no non-loopback bind in v1
 
@@ -383,12 +405,14 @@ CREATE TABLE session_token (
 CREATE INDEX idx_session_token_hash ON session_token(token_hash);
 CREATE INDEX idx_session_user ON session_token(user_id);
 
+-- D6 (2026-08-31): the raw secret lives ONLY in the OS credential store,
+-- one entry per user (FormsLang:mfa-totp:<user_id>). This table never
+-- holds the secret in any form -- see SS2.3.
 CREATE TABLE mfa_secret (
     user_id TEXT PRIMARY KEY REFERENCES user(id),
-    secret_ciphertext BLOB NOT NULL,
-    nonce BLOB NOT NULL,
-    kek_version INTEGER NOT NULL,      -- which FormsLang:mfa-kek-v<n> wrapped this
-    confirmed_at TEXT,
+    enrolled_at TEXT NOT NULL,         -- when the OS-store entry was written
+    confirmed_at TEXT,                 -- NULL until two consecutive codes verify
+    last_accepted_step INTEGER,        -- replay protection (SS7.3.5)
     created_at TEXT NOT NULL
 );
 
@@ -564,11 +588,13 @@ active for a given session — never per-request. `POST
 ### 7.3 MFA enrollment
 
 1. `POST /api/auth/mfa/enroll` (any authenticated, non-bootstrap or
-   bootstrap session) generates a random TOTP secret, wraps it with the
-   current MFA KEK (§2.3), stores the ciphertext **unconfirmed**, and
-   returns an `otpauth://` URI plus the raw secret as a manual-entry
-   string — once, in this response only, never persisted anywhere as
-   plaintext and never logged.
+   bootstrap session) generates a random TOTP secret and writes it
+   **directly to the OS credential store** as `FormsLang:mfa-totp:<user_id>`
+   (D6, §2.3) — a new enrollment overwrites any prior unconfirmed one for
+   that user. `auth.db` records only `enrolled_at`, **unconfirmed** (no
+   `confirmed_at` yet). The response returns an `otpauth://` URI plus the
+   raw secret as a manual-entry string — once, in this response only,
+   never persisted anywhere in `auth.db` and never logged.
 2. **QR code generation (review item 9):** the Python standard library
    cannot render a QR code, and no secret is ever sent to an external
    service to render one. The `otpauth://` URI is rendered into a QR
@@ -784,13 +810,23 @@ transforme o FormsLang em SaaS nesta rodada."
 team mode is a reverse-proxy deployment plus the trusted-proxy-token
 mechanism in §2.4/§6.
 
-**D5 — open: how the QR code gets rendered (review item 9).**
-Recommendation: a small, specific, audited JS QR-encoder vendored into
-the UI bundle (no CDN, no network call, consistent with FormsLang's
-offline-by-default posture), with the manual-entry key always shown as a
-text fallback. This is a real new piece of code (even if not a Python
-dependency) and deserves the same explicit sign-off D1–D4 got, not a
-silent default — **Geraldo's call before Phase 3.**
+**D5 — approved 2026-08-31: vendored client-side JS QR-encoder,**
+no CDN, no network call, version and SHA-256 pinned, Apache-2.0-compatible
+license recorded in-tree, manual-entry key always shown as a text
+fallback. Exact headers required alongside it (Phase 3 scope, §11):
+`Cache-Control: no-store`, `Referrer-Policy: no-referrer`,
+`frame-ancestors 'none'`, CSP without `unsafe-eval`; the `otpauth://` URI
+travels only in the authenticated response body, never in a URL, log, or
+persisted storage; secret and QR are wiped from the DOM after confirm or
+cancel.
+
+**D6 — approved 2026-08-31: no KEK, one OS-credential-store entry per
+user for the raw TOTP secret** (`FormsLang:mfa-totp:<user_id>`),
+superseding this document's original envelope-encryption design in
+§2.3/§4. `secrets.py` is parameterized to accept a per-call
+`(service, account)` instead of its current hardcoded pair; no new
+crypto code and no new dependency are introduced. Rationale and the
+accepted trade are in §2.3.
 
 Other limitations, stated rather than hidden:
 
@@ -800,12 +836,12 @@ Other limitations, stated rather than hidden:
   already controls that OS account.
 - **Restoring `auth.db` alone does not restore MFA.** A disaster-recovery
   restore of `auth.db` to a different machine, without also
-  re-provisioning the matching `FormsLang:mfa-kek-v<n>` entry in that
-  machine's OS credential store, leaves every user's MFA undecryptable —
-  they would need to re-enroll. This is the direct, honest cost of moving
-  the key out of the data directory (§2.3); it is the correct trade, but
-  it needs to be in the backup/recovery runbook explicitly, not
-  discovered during an actual incident.
+  re-provisioning each affected user's `FormsLang:mfa-totp:<user_id>`
+  entry in that machine's OS credential store, leaves those users' MFA
+  undecryptable — they would need to re-enroll. This is the direct,
+  honest cost of moving secrets out of the data directory (§2.3, D6); it
+  is the correct trade, but it needs to be in the backup/recovery runbook
+  explicitly, not discovered during an actual incident.
 - **Registration cannot discover every project with certainty** (§9).
 - **WebAuthn/passkeys are out of scope for v1**, per the original request.
 - **Real increase in attack surface.** Every line of auth/session/RBAC
@@ -880,6 +916,7 @@ module-level fixtures):
 | D2 — assisted password reset, cross-role restricted, session-revoking, MFA-preserving | **Approved 2026-08-31** |
 | D3 — SQLite-backed rate limiting, no horizontal scaling this version | **Approved 2026-08-31** |
 | D4 — no non-loopback bind in v1; team mode via reverse proxy + trusted-proxy token | **Approved 2026-08-31** |
-| D5 — QR rendering: vendored client-side encoder vs. an alternative | **Open — needs Geraldo's call before Phase 3** |
+| D5 — QR rendering: vendored client-side JS encoder, pinned version+hash, licensed, no CDN | **Approved 2026-08-31** |
+| D6 — MFA secret storage: one OS-credential-store entry per user, no KEK, no envelope encryption (supersedes original §2.3/§4 design) | **Approved 2026-08-31** |
 | WebAuthn/passkeys deferred past v1 | Matches the original request |
 | No public self-service signup in team/server mode; bootstrap via CLI only | Confirmed, unchanged |
