@@ -16,10 +16,11 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as cf
 import datetime as dt
+import getpass
 import sys
 from pathlib import Path
 
-from . import __version__, rules
+from . import __version__, authstore, rules
 from .ai import PROVIDERS, check_provider, provider_from_env
 from .assess import (
     HOURS_PER_POINT_DEFAULT,
@@ -358,6 +359,41 @@ def cmd_ai(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_auth_bootstrap_owner(args: argparse.Namespace) -> int:
+    """Create the first Owner of an organization. Host CLI only -- never an HTTP route.
+
+    The password is set interactively, never taken as a command-line
+    argument: a ``--password`` flag would end up in shell history and
+    process listings, which the design doc treats as a leak on the same
+    footing as one in a log line.
+    """
+    email = args.email.strip()
+    if not email:
+        print("ERROR: email must not be empty", file=sys.stderr)
+        return 2
+    password = getpass.getpass("Password: ")
+    confirm = getpass.getpass("Confirm password: ")
+    if password != confirm:
+        print("ERROR: passwords do not match", file=sys.stderr)
+        return 2
+
+    store = authstore.AuthStore(authstore.default_db_path())
+    try:
+        result = store.bootstrap_owner(
+            email, password, org_slug=args.org_slug, org_name=args.org_name
+        )
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    finally:
+        store.close()
+
+    print(f"Owner created : {result['email']}")
+    print(f"Organization  : {result['organization_slug']} ({result['organization_id']})")
+    print(f"User id       : {result['user_id']}")
+    return 0
+
+
 def cmd_catalog(_args: argparse.Namespace) -> int:
     c = rules.catalog_size()
     print(f"FormsLang {__version__} -- conversion catalog")
@@ -431,6 +467,17 @@ def build_parser() -> argparse.ArgumentParser:
     ai.add_argument("--provider", default="", help="override FORMSLANG_AI_PROVIDER")
     ai.add_argument("--check", action="store_true", help="send one short request")
     ai.set_defaults(func=cmd_ai)
+
+    auth = sub.add_parser("auth", help="control-plane identity: organizations, users, sessions")
+    auth_sub = auth.add_subparsers(dest="auth_cmd", required=True)
+
+    bo = auth_sub.add_parser(
+        "bootstrap-owner", help="create the first Owner (host CLI only, never HTTP)"
+    )
+    bo.add_argument("email", help="the new Owner's email address")
+    bo.add_argument("--org-slug", default="local", help="organization slug (default: local)")
+    bo.add_argument("--org-name", default="Local", help="organization display name (default: Local)")
+    bo.set_defaults(func=cmd_auth_bootstrap_owner)
     return p
 
 
