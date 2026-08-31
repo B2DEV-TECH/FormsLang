@@ -1,4 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
+#
+# Before running this spec, reinstall the package non-editably from the repo
+# root: `pip install --no-deps --force-reinstall .`. PyInstaller resolves
+# `formslang` from whatever is on sys.path, not from this file's location --
+# an editable install (`pip install -e .`) breaks static analysis here
+# (ModuleNotFoundError: formslang.cli in the frozen exe), and a stale
+# non-editable install silently freezes an old release's code with no error
+# at build time.
 from PyInstaller.utils.hooks import collect_data_files
 
 datas = []

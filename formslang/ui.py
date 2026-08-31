@@ -1231,12 +1231,29 @@ function poll() {
   clearInterval(polling);
   if (!jobStart) jobStart = Date.now();
   startTicker();
+  let seen = (job && ((job.done || 0) + (job.failed || 0))) || 0;
+  let refreshing = false;
   polling = setInterval(async () => {
     let snap;
     try { snap = await api("/api/job"); }
     catch (e) { return; }  // one missed poll is not the end of the run
     job = snap;
-    if (snap.running) { paintWorking(); return; }
+    if (snap.running) {
+      paintWorking();
+      // A long run must not leave finished units looking unconverted: pull the
+      // real proposals in as soon as the server reports one landing, not only
+      // once the whole queue is done.
+      const done = (snap.done || 0) + (snap.failed || 0);
+      if (done !== seen && !refreshing) {
+        seen = done;
+        refreshing = true;
+        const keep = selected;
+        refresh()
+          .then(() => { if (keep) { selected = keep; renderList(); renderDetail(); } })
+          .finally(() => { refreshing = false; });
+      }
+      return;
+    }
     clearInterval(polling);
     stopTicker();
     job = null;
