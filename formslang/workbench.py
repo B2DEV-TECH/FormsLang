@@ -26,6 +26,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
+from . import behavior as behavior_model
+from . import dashboard, depgraph, secrets, testspec
+from . import risk as risk_model
 from .ai import (
     ENV_FOR,
     PROVIDERS,
@@ -39,8 +42,8 @@ from .ai import (
     provider_from_env,
     setting,
 )
+from .analysis import analyze_task, summarize
 from .apexlang import export_apexlang
-from . import secrets
 from .config import (
     SecureStorageUnavailable,
     config_path,
@@ -98,6 +101,123 @@ class Workbench:
             "current": "", "current_id": "", "queue": [], "provider": "",
         }
         self.module = self._module_from_session()
+        # A session file written before the risk engine existed, or under an
+        # older rule set, still has to open with the analysis on screen.
+        self.refresh_analysis()
+        self.graph = self.refresh_graph()
+        self.refresh_tests()
+
+    # -- analysis ---------------------------------------------------------
+
+    def refresh_analysis(self, force: bool = False) -> dict:
+        """Compute the deterministic analysis for whatever is missing or stale.
+
+        Cheap and offline -- no provider is contacted here. Recomputing only
+        what the current rules have not already produced keeps opening a
+        large session fast, while ``force`` rebuilds everything after the
+        rules themselves change.
+        """
+        ids = self.store.task_ids() if force else self.store.stale_task_ids()
+        for task_id in ids:
+            task = self.store.get_task(task_id)
+            if task is None:
+                continue
+            self.store.save_analysis(analyze_task(task))
+        return self.store.analysis_coverage()
+
+    # -- dependencies -----------------------------------------------------
+
+    def refresh_graph(self):
+        """Rebuild the dependency graph for the module on screen.
+
+        Structure comes from the parsed module, so this can only run while
+        the XML is still reachable. When it is not -- a session opened from
+        its .db alone -- the graph saved with the session is loaded instead,
+        and if there is none the explorer says so rather than showing an
+        empty form that looks like a form with no dependencies.
+        """
+        module_name = self.store.session().get("title", "")
+        if self.module is None:
+            return self.store.graph(module_name)
+        task_ids, risks = {}, {}
+        for view in self.store.all_views():
+            t = view.task
+            key = f"{t['kind']}|{t['owner']}|{t['name']}".upper()
+            task_ids[key] = t["id"]
+            level = ((view.analysis or {}).get("risk") or {}).get("level", "")
+            if level:
+                risks[t["id"]] = level
+        graph = depgraph.build(self.module, task_ids=task_ids, risks=risks)
+        self.store.save_graph(self.module.name, graph)
+        return graph
+
+    def deps_state(self, task_id: str = "", node: str = "", depth: int = 2) -> dict:
+        """One node's neighbourhood, or the module rollup when none is named."""
+        if self.graph is None:
+            return {"available": False, "reason": "no dependency graph for this session"}
+        out = {"available": True, "summary": self.graph.summary()}
+        if task_id:
+            out["explore"] = self.graph.for_task(task_id, depth)
+        elif node:
+            out["explore"] = self.graph.explore(node, depth)
+        return out
+
+    # -- test specifications ----------------------------------------------
+
+    def refresh_tests(self, force: bool = False) -> dict:
+        """Write the specification for whatever has none, or an outdated one.
+
+        Deterministic and offline, like the analysis: the cases come from the
+        original Forms behaviour, so nothing here waits on a provider or on a
+        proposal existing. Reviewed cases survive -- see
+        :meth:`formslang.store.Store.save_test_cases`.
+        """
+        items = testspec.items_of(self.module) if self.module is not None else None
+        ids = self.store.task_ids() if force else self.store.stale_test_task_ids()
+        for task_id in ids:
+            task = self.store.get_task(task_id)
+            if task is None:
+                continue
+            cases = testspec.generate(
+                task, analysis=self.store.get_analysis(task_id), items=items
+            )
+            self.store.save_test_cases(task_id, cases)
+        return self.store.test_coverage()
+
+    def tests_state(self, task_id: str = "") -> dict:
+        """One unit's specification, or the whole session's rollup."""
+        out = {
+            "coverage": self.store.test_coverage(),
+            "origins": testspec.ORIGIN_LABEL,
+            "states": list(testspec.CASE_STATES),
+            # Without the module on disk, nothing could be asserted about
+            # required values or lengths; say so rather than let a reviewer
+            # read "needs confirmation" as a finding about their code.
+            "item_metadata": self.module is not None,
+        }
+        if task_id:
+            out["cases"] = self.store.test_cases(task_id)
+        return out
+
+    def decide_test_case(self, case_id: str, state: str, reviewer: str = "",
+                         comment: str = "") -> dict:
+        if state not in testspec.CASE_STATES:
+            return {"ok": False, "error": "unknown state"}
+        if not self.store.decide_test_case(case_id, state, reviewer, comment):
+            return {"ok": False, "error": "unknown test case"}
+        return {"ok": True, "coverage": self.store.test_coverage()}
+
+    def dashboard_state(self) -> dict:
+        """The project view. Recomputed per request: it is only arithmetic."""
+        return dashboard.build(self.store, self.graph)
+
+    def analysis_state(self) -> dict:
+        """Portfolio-level rollup plus the published formula behind the score."""
+        return {
+            "coverage": self.store.analysis_coverage(),
+            "summary": summarize(self.store.all_analyses()),
+            "risk_model": risk_model.explain(),
+        }
 
     # -- read ------------------------------------------------------------
 
@@ -206,7 +326,14 @@ class Workbench:
             old.close()
         self.browse_root = target.parent
         self.module = module if module is not None else self._module_from_session()
-        return {"title": store.session().get("title", ""), "added": added, "stats": store.stats()}
+        coverage = self.refresh_analysis()
+        self.graph = self.refresh_graph()
+        return {
+            "title": store.session().get("title", ""),
+            "added": added,
+            "stats": store.stats(),
+            "analysis": coverage,
+        }
 
     def upload_module(self, name: str, content: bytes) -> dict:
         """Accept a browser-selected module into our own staging directory."""
@@ -455,12 +582,17 @@ class Workbench:
                             confidence=previous["confidence"],
                             provider=previous["provider"],
                             model=previous["model"],
+                            behavior=previous.get("behavior", ""),
+                            behavior_reason=previous.get("behavior_reason", ""),
                         )
                         self.store.save_proposal(task_id, reused)
+                        self._merge_behavior(task_id, reused)
                         self._job_advance(task_id)
                         continue
-                result = propose(task, self.provider)
+                # The model sees the same measured facts the reviewer sees.
+                result = propose(task, self.provider, analysis=self.store.get_analysis(task_id))
                 self.store.save_proposal(task_id, result)
+                self._merge_behavior(task_id, result)
                 if task.fingerprint and result.ok:
                     seen.setdefault(task.fingerprint, task_id)
                 self._job_advance(task_id, error="" if result.ok else (result.error or "unknown error"))
@@ -473,6 +605,27 @@ class Workbench:
                 self.job["current"] = ""
                 self.job["current_id"] = ""
                 self.job["queue"] = []
+
+    def _merge_behavior(self, task_id: str, result: Proposal) -> None:
+        """Fold the model's reading of the behaviour into the stored analysis.
+
+        :func:`formslang.behavior.merge_ai` only ever moves the answer
+        towards caution, so a model that says PRESERVED about a unit the
+        rules called CHANGED is ignored. Nothing is written unless the
+        answer actually became more conservative.
+        """
+        if not result.ok or not result.behavior:
+            return
+        analysis = self.store.get_analysis(task_id)
+        if analysis is None:
+            return
+        merged = behavior_model.merge_ai(
+            analysis.behavior, result.behavior, result.behavior_reason
+        )
+        if merged is analysis.behavior:
+            return
+        analysis.behavior = merged
+        self.store.save_analysis(analysis)
 
     def job_state(self) -> dict:
         with self._lock:
@@ -573,6 +726,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(wb.browse(where))
             elif path == "/api/exports":
                 self._json(wb.list_exports())
+            elif path == "/api/analysis":
+                self._json(wb.analysis_state())
+            elif path == "/api/deps":
+                q = parse_qs(query)
+                self._json(wb.deps_state(
+                    task_id=q.get("task", [""])[0],
+                    node=q.get("node", [""])[0],
+                    depth=int(q.get("depth", ["2"])[0] or 2),
+                ))
+            elif path == "/api/tests":
+                self._json(wb.tests_state(parse_qs(query).get("task", [""])[0]))
+            elif path == "/api/dashboard":
+                self._json(wb.dashboard_state())
             else:
                 self._json({"error": "not found"}, 404)
         except ValueError as e:
@@ -641,6 +807,18 @@ class Handler(BaseHTTPRequestHandler):
                     reviewer=body.get("reviewer", ""),
                 )
                 self._json({"ok": True, "stats": wb.store.stats()})
+
+            elif self.path == "/api/test-decision":
+                out = wb.decide_test_case(
+                    case_id=str(body.get("case_id") or ""),
+                    state=str(body.get("state") or ""),
+                    reviewer=str(body.get("reviewer") or ""),
+                    comment=str(body.get("comment") or ""),
+                )
+                if not out.get("ok"):
+                    self._json(out, 400 if out.get("error") == "unknown state" else 404)
+                    return
+                self._json(out)
 
             elif self.path == "/api/open":
                 self._json(wb.open_module(body.get("path") or ""))
