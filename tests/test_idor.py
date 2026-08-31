@@ -95,6 +95,18 @@ def _login(base, email, password, *, org_id=None):
     return status, body, token
 
 
+def _login_normal(base, auth_store, user, *, org_id=None):
+    """HTTP login followed by the MFA step, done at store level so these
+    tests stay about IDOR, not MFA. An Owner needs this now: a fresh Owner
+    login is BOOTSTRAP_MFA, and the scope gate keeps it off data routes."""
+    from conftest import next_mfa_code, setup_confirmed_mfa
+
+    mfa = setup_confirmed_mfa(auth_store, user["user_id"])
+    _status, _body, pending = _login(base, user["email"], PASSWORD, org_id=org_id)
+    code = next_mfa_code(auth_store, user["user_id"], mfa["secret"])
+    return auth_store.complete_mfa_login(pending, code).session_token
+
+
 def _fresh_session_file(tmp_path, name):
     path = tmp_path / name
     s = Store(path)
@@ -169,7 +181,7 @@ def test_a_project_id_belonging_to_another_org_is_404_not_403(server, tmp_path):
         created_by=owner_b_id,
     )
 
-    _status, _body, token = _login(base, "ownera@example.com", PASSWORD)
+    token = _login_normal(base, auth_store, owner_a)
     _status, who = _get(base, "/api/auth/whoami", cookie=token)
     assert who["role"] == "OWNER"
 
@@ -183,7 +195,7 @@ def test_a_project_id_belonging_to_another_org_is_404_not_403(server, tmp_path):
 def test_a_nonexistent_project_id_is_also_404(server):
     base, wb, auth_store = server
     owner = auth_store.bootstrap_owner("owner3@example.com", PASSWORD)
-    _status, _body, token = _login(base, "owner3@example.com", PASSWORD)
+    token = _login_normal(base, auth_store, owner)
     _status, who = _get(base, "/api/auth/whoami", cookie=token)
 
     status, body = _post(

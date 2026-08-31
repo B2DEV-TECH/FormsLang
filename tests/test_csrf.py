@@ -177,8 +177,16 @@ def test_a_mutating_request_with_the_wrong_csrf_token_is_refused(server):
 
 
 def test_a_mutating_request_with_the_correct_csrf_token_is_accepted(server):
-    base, wb, _owner = server
-    _status, _body, token = _login(base, EMAIL, PASSWORD)
+    base, wb, owner = server
+    # The route under test needs a NORMAL session, and a fresh Owner login
+    # is MFA-gated now -- complete the MFA step at store level.
+    from conftest import next_mfa_code, setup_confirmed_mfa
+
+    mfa = setup_confirmed_mfa(wb.auth_store, owner["user_id"])
+    _status, _body, pending = _login(base, EMAIL, PASSWORD)
+    token = wb.auth_store.complete_mfa_login(
+        pending, next_mfa_code(wb.auth_store, owner["user_id"], mfa["secret"])
+    ).session_token
     _status, who = _get(base, "/api/auth/whoami", cookie=token)
     csrf = who["csrf_token"]
 

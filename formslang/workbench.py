@@ -57,6 +57,7 @@ from .convert import Proposal, build_tasks, propose
 from .oracle import OracleToolchainError, convert_module, detect_toolchain, expected_xml_name
 from .parser import parse_xml
 from .store import STATES, Store
+from . import authui
 from .ui import INDEX_HTML
 
 MAX_BODY = 4 * 1024 * 1024
@@ -650,7 +651,17 @@ class Handler(BaseHTTPRequestHandler):
 
     AUTH_COOKIE = "formslang_session"
     _AUTH_EXEMPT_GET = ("/", "/index.html", "/api/auth/whoami")
-    _AUTH_EXEMPT_POST = ("/api/auth/login",)
+    _AUTH_EXEMPT_POST = ("/api/auth/login", "/api/auth/reset/redeem")
+
+    # SS7.1/SS7.2: what a restricted session may reach. A scope missing from
+    # this table (NORMAL) is unrestricted; a path missing from a scope's set
+    # is ACCESS_DENIED until the session graduates to NORMAL.
+    _SCOPE_ALLOWED_POST = {
+        authstore.BOOTSTRAP_MFA: frozenset(
+            {"/api/auth/logout", "/api/auth/mfa/enroll", "/api/auth/mfa/confirm"}
+        ),
+        authstore.MFA_PENDING: frozenset({"/api/auth/logout", "/api/auth/mfa"}),
+    }
 
     def log_message(self, *_args) -> None:
         if not self.quiet:
@@ -666,6 +677,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        # No unsafe-eval, no external origin of any kind, never framable.
+        # The MFA enrollment page renders the otpauth QR under this policy.
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'none'; script-src 'unsafe-inline'; "
+            "style-src 'unsafe-inline'; img-src data:; connect-src 'self'; "
+            "frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        )
         if cookie is not None:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
@@ -806,7 +826,20 @@ class Handler(BaseHTTPRequestHandler):
             "organization": org["name"] if org else "",
             "role": membership["role"],
             "csrf_token": session["csrf_secret"],
+            "scope": session["scope"],
+            "mfa_confirmed": wb.auth_store.has_confirmed_mfa(session["user_id"]),
         }
+
+    def _deny_scope(self, session: dict, path: str) -> None:
+        """403 for a restricted session reaching past its scope -- audited,
+        so a stolen restricted token probing other routes leaves a trail."""
+        self.workbench.auth_store.record_audit(
+            event_type="ACCESS_DENIED", outcome="fail",
+            org_id=session["active_org_id"], user_id=session["user_id"],
+            target_type="route", target_id=path, ip=self.client_address[0],
+            detail={"scope": session["scope"], "reason": "restricted_scope"},
+        )
+        self._json({"error": "complete MFA setup or verification first"}, 403)
 
     # -- routes ----------------------------------------------------------
 
@@ -823,6 +856,9 @@ class Handler(BaseHTTPRequestHandler):
             if auth is None:
                 self._json({"error": "authentication required"}, 401)
                 return
+            if auth[1]["scope"] != authstore.NORMAL:
+                self._deny_scope(auth[1], path)
+                return
 
         try:
             if wb.auth_store is None and (
@@ -832,7 +868,8 @@ class Handler(BaseHTTPRequestHandler):
                 # simply do not exist, same as any other unknown path.
                 self._json({"error": "not found"}, 404)
             elif path in ("/", "/index.html"):
-                self._send(200, INDEX_HTML.encode("utf-8"), "text/html; charset=utf-8")
+                page = INDEX_HTML if wb.auth_store is None else authui.with_auth_overlay(INDEX_HTML)
+                self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
             elif path == "/api/auth/whoami":
                 self._json(self._whoami_payload())
             elif path == "/api/projects":
@@ -926,6 +963,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._drain()
                     self._json({"error": "csrf token missing or invalid"}, 403)
                     return
+                allowed = self._SCOPE_ALLOWED_POST.get(session["scope"])
+                if allowed is not None and path not in allowed:
+                    self._drain()
+                    self._deny_scope(session, path)
+                    return
 
         if path == "/api/upload":
             try:
@@ -966,8 +1008,13 @@ class Handler(BaseHTTPRequestHandler):
                 )
 
             elif self.path == "/api/auth/logout":
-                token, _session, _membership = auth
+                token, session, _membership = auth
                 wb.auth_store.revoke_session(token)
+                wb.auth_store.record_audit(
+                    event_type="SESSION_REVOKED", org_id=session["active_org_id"],
+                    user_id=session["user_id"], ip=self.client_address[0],
+                    detail={"via": "logout"},
+                )
                 self._json({"ok": True}, cookie=self._cleared_cookie_header())
 
             elif self.path == "/api/auth/switch-org":
@@ -982,6 +1029,95 @@ class Handler(BaseHTTPRequestHandler):
                     {"ok": True, "active_org_id": new_session["active_org_id"]},
                     cookie=self._session_cookie_header(new_token),
                 )
+
+            elif self.path == "/api/auth/mfa/enroll":
+                _token, session, _membership = auth
+                enrollment = wb.auth_store.mfa_enroll(
+                    session["user_id"], ip=self.client_address[0]
+                )
+                # The one and only place the secret and otpauth URI ever
+                # appear: this authenticated response body (SS7.3). Never in
+                # a URL, a log line, an audit row or browser storage.
+                self._json({"ok": True, **enrollment})
+
+            elif self.path == "/api/auth/mfa/confirm":
+                token, session, _membership = auth
+                codes = wb.auth_store.mfa_confirm(
+                    session["user_id"],
+                    str(body.get("code1") or ""), str(body.get("code2") or ""),
+                    ip=self.client_address[0],
+                )
+                if session["scope"] == authstore.BOOTSTRAP_MFA:
+                    # Password was proven at login, possession of the device
+                    # by two consecutive codes just now -- both factors are
+                    # done, so the restricted session graduates to NORMAL
+                    # instead of forcing a second login.
+                    wb.auth_store.revoke_session(token)
+                    new_token, _ns = wb.auth_store.create_session(
+                        session["user_id"], session["active_org_id"],
+                        scope=authstore.NORMAL,
+                        user_agent=self.headers.get("User-Agent", ""),
+                        ip=self.client_address[0],
+                    )
+                    self._json(
+                        {"ok": True, "recovery_codes": codes},
+                        cookie=self._session_cookie_header(new_token),
+                    )
+                else:
+                    self._json({"ok": True, "recovery_codes": codes})
+
+            elif self.path == "/api/auth/mfa":
+                token, _session, _membership = auth
+                result = wb.auth_store.complete_mfa_login(
+                    token, str(body.get("code") or ""),
+                    user_agent=self.headers.get("User-Agent", ""),
+                    ip=self.client_address[0],
+                )
+                self._json(
+                    {"ok": True, "active_org_id": result.active_org_id},
+                    cookie=self._session_cookie_header(result.session_token),
+                )
+
+            elif self.path == "/api/auth/mfa/disable":
+                _token, session, _membership = auth
+                wb.auth_store.mfa_disable(
+                    session["user_id"],
+                    str(body.get("password") or ""), str(body.get("code") or ""),
+                    ip=self.client_address[0],
+                )
+                # mfa_disable revoked every session, this one included.
+                self._json({"ok": True}, cookie=self._cleared_cookie_header())
+
+            elif self.path == "/api/auth/mfa/recovery-codes":
+                _token, session, _membership = auth
+                codes = wb.auth_store.mfa_regenerate_recovery_codes(
+                    session["user_id"], str(body.get("code") or ""),
+                    ip=self.client_address[0],
+                )
+                self._json({"ok": True, "recovery_codes": codes})
+
+            elif self.path == "/api/auth/reset/issue":
+                _token, session, _membership = auth
+                reset_token = wb.auth_store.issue_password_reset(
+                    issued_by=session["user_id"],
+                    target_user_id=str(body.get("user_id") or "").strip(),
+                    org_id=session["active_org_id"],
+                    ip=self.client_address[0],
+                )
+                # Handed to the issuing Admin/Owner to pass on out of band;
+                # the server keeps only its hash.
+                self._json({"ok": True, "reset_token": reset_token})
+
+            elif self.path == "/api/auth/reset/redeem":
+                # Unauthenticated by design (the caller lost their password);
+                # Origin-checked above, rate-limited by IP in the store, and
+                # the response never says whether the token ever existed.
+                wb.auth_store.redeem_password_reset(
+                    str(body.get("token") or ""),
+                    str(body.get("new_password") or ""),
+                    ip=self.client_address[0],
+                )
+                self._json({"ok": True})
 
             elif self.path == "/api/projects":
                 _token, session, membership = auth
@@ -1088,6 +1224,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(
                 {"error": "too many attempts", "retry_after_seconds": e.retry_after_seconds}, 429,
             )
+        except secrets.SecureStorageUnavailable as e:
+            # Fail closed and say so: MFA without a reachable OS credential
+            # store is an outage, never a bypass.
+            self._json({"error": str(e)}, 503)
+        except authstore.AuthStoreError as e:
+            self._json({"error": str(e)}, 400)
         except (ValueError, projects.AdoptionError, OracleToolchainError) as e:
             # A bad path or a missing Oracle install is the caller's problem
             # to fix, and the message is the whole point of the answer.

@@ -125,6 +125,19 @@ def _two_orgs(auth_store):
     return alice, {"organization_id": org_b, "user_id": bob_id, "email": "bob@b.example"}
 
 
+def _login_normal(base, auth_store, user, *, org_id=None):
+    """HTTP login followed by the MFA step, done at store level so these
+    tests stay about tenancy, not about the MFA route (which has its own
+    suite). An Owner needs this now: a fresh Owner login is MFA_PENDING or
+    BOOTSTRAP_MFA, and the scope gate keeps both away from data routes."""
+    from conftest import next_mfa_code, setup_confirmed_mfa
+
+    mfa = setup_confirmed_mfa(auth_store, user["user_id"])
+    _status, _body, pending = _login(base, user["email"], PASSWORD, org_id=org_id)
+    code = next_mfa_code(auth_store, user["user_id"], mfa["secret"])
+    return auth_store.complete_mfa_login(pending, code).session_token
+
+
 def test_a_session_only_lists_projects_from_its_own_org(server, tmp_path):
     base, wb, auth_store = server
     alice, bob = _two_orgs(auth_store)
@@ -138,7 +151,7 @@ def test_a_session_only_lists_projects_from_its_own_org(server, tmp_path):
         created_by=bob["user_id"],
     )
 
-    _status, _body, alice_token = _login(base, alice["email"], PASSWORD)
+    alice_token = _login_normal(base, auth_store, alice)
     status, listing = _get(base, "/api/projects", cookie=alice_token)
     assert status == 200
     names = [p["name"] for p in listing["projects"]]
@@ -157,7 +170,7 @@ def test_a_project_id_from_another_org_is_a_404_not_a_403(server, tmp_path):
         created_by=bob["user_id"],
     )
 
-    _status, _body, alice_token = _login(base, alice["email"], PASSWORD)
+    alice_token = _login_normal(base, auth_store, alice)
     _status, who = _get(base, "/api/auth/whoami", cookie=alice_token)
 
     status, body = _post(
@@ -172,7 +185,7 @@ def test_switching_to_an_org_you_do_not_belong_to_is_refused(server):
     base, wb, auth_store = server
     alice, bob = _two_orgs(auth_store)
 
-    _status, _body, alice_token = _login(base, alice["email"], PASSWORD)
+    alice_token = _login_normal(base, auth_store, alice)
     _status, who = _get(base, "/api/auth/whoami", cookie=alice_token)
 
     status, body = _post(
@@ -193,7 +206,7 @@ def test_switching_to_an_org_you_do_belong_to_rotates_the_session(server, tmp_pa
     # Add Alice as a Developer of Bob's org too.
     auth_store.create_membership(bob["organization_id"], alice["user_id"], DEVELOPER)
 
-    _status, _body, token = _login(base, alice["email"], PASSWORD, org_id=alice["organization_id"])
+    token = _login_normal(base, auth_store, alice, org_id=alice["organization_id"])
     _status, who = _get(base, "/api/auth/whoami", cookie=token)
 
     status, body, new_token = _post_capturing_cookie(
