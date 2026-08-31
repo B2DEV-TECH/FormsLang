@@ -906,6 +906,38 @@ module-level fixtures):
 | Backup & rollback | `tests/test_migration.py` | `test_a_failed_registration_leaves_the_previous_state_intact` |
 | Foreign-key integrity | `tests/test_authstore_schema.py` | `test_a_membership_referencing_a_missing_organization_is_rejected` |
 
+### 12a. Manual verification (not automatable)
+
+One Phase 3 check has no automated form: whether a real authenticator app,
+scanning the real rendered QR code, produces a code the server actually
+accepts. The suite proves the TOTP math (`tests/test_totp.py`, RFC 6238
+vector) and the vendored encoder's integrity and zero-network behavior
+(`tests/test_workbench_mfa.py`), but nothing in CI holds a phone up to a
+screen. This step is done once by a human before Phase 3 is called
+validated, and again after any change to `formslang/authui.py` or the
+vendored encoder:
+
+1. Run `formslang auth bootstrap-owner <email>` against a throwaway
+   `auth.db`, then `formslang workbench` against a disposable session.
+2. Log in as that Owner; the mandatory-enrollment screen appears.
+3. Scan the rendered QR with **two different** authenticator apps on two
+   different devices (e.g. Google Authenticator and a password manager's
+   built-in TOTP) — confirms the `otpauth://` URI is standards-correct,
+   not just accepted by one implementation's quirks.
+4. Enter two consecutive codes from the *first* app to confirm enrollment;
+   verify the ten recovery codes are shown exactly once.
+5. Log out, log back in, and complete the MFA step with a code from the
+   *second* app — confirms both apps derived the same secret from the same
+   QR/manual key.
+6. Open the browser's Network tab throughout: confirm zero requests to any
+   host other than the FormsLang server itself (the vendored encoder does
+   this offline; the manual step is watching that stay true in a real
+   browser, not just in the source).
+
+**Status: not yet performed.** This checklist exists so the step is not
+skipped silently; Phase 3 is not "validated end-to-end" until someone runs
+it against a real build and records the result here.
+
 ---
 
 ## 13. Decision log

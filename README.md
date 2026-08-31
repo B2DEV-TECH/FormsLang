@@ -512,6 +512,7 @@ proprietary business rules, credentials or production data.
 - [x] AI-assisted conversion workbench (proposal + approval per hunk)
 - [x] APEXlang 26.1 project and import ZIP generation
 - [x] Windows desktop app (bundled engine, MSI / NSIS installers)
+- [ ] Secure multi-user workspaces: RBAC, MFA/TOTP, and per-organization isolation
 - [ ] Semantic diff and merge across module versions
 
 ## Community
