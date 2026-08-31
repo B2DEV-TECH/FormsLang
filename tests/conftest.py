@@ -34,6 +34,17 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     secrets.reset_memory_backend()
     return config_home
 
+
+@pytest.fixture()
+def auth_store(tmp_path: Path):
+    """A fresh, isolated ``AuthStore`` -- never the developer's real ``auth.db``."""
+    from formslang import authstore
+
+    store = authstore.AuthStore(tmp_path / "auth.db")
+    yield store
+    store.close()
+
+
 SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Module xmlns="http://xmlns.oracle.com/Forms" version="12.2.1.4.0">
   <FormModule Name="DEMO_ORDER" Title="Order entry" FirstNavigationBlockName="ORDERS">
