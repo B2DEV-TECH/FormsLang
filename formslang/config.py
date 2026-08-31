@@ -46,6 +46,7 @@ __all__ = [
     "SecureStorageUnavailable",
     "config_dir",
     "config_path",
+    "data_dir",
     "load_config",
     "save_config",
     "key_location",
@@ -66,6 +67,20 @@ def config_dir() -> Path:
 
 def config_path() -> Path:
     return config_dir() / "config.json"
+
+
+def data_dir() -> Path:
+    """Where the control-plane database (``auth.db``) and adopted projects live.
+
+    Independent of ``config_dir()`` so a team/server deployment can point
+    the two at different volumes -- settings are per-machine, but
+    ``auth.db`` and adopted project files are the one thing a server
+    deployment needs on durable, backed-up storage. Defaults to the same
+    directory as the settings file, since a local desktop install has no
+    reason to split them.
+    """
+    override = os.environ.get("FORMSLANG_DATA_DIR", "").strip()
+    return Path(override) if override else config_dir()
 
 
 def _read_file() -> dict:
