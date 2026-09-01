@@ -331,6 +331,38 @@ instead of quietly leaving the denominator. Blockers are deliberately kept
 out of the score — a blocker is work to do, not a percentage. The full model
 is in [docs/risk-model.md](docs/risk-model.md).
 
+### Documentation and diffing (`Doc` / `Diff`)
+
+Two buttons in the workbench header — and the same two operations from the
+CLI — working off the same parsed module, no separate tool or format.
+
+`Doc` writes a self-contained HTML technical reference for one module: every
+block, item, trigger, program unit, LOV, record group and relation, with the
+properties Forms actually stored rather than a summary of them.
+
+```bash
+formslang doc "D:\legacy\forms\ORDERS.fmb" -o out
+```
+
+<p align="center">
+  <img src="assets/screenshots/doc-report.png" width="900"
+       alt="FormsLang Doc report for a real Forms module: overview counts (7 blocks, 121 items, 77 triggers, 14 program units, 4 LOVs, 4 record groups) and the first block's properties, including its query source table and WHERE clause">
+</p>
+
+`Diff` structurally compares two versions of the same module — blocks,
+items, triggers, program units, LOVs, record groups and relations, property
+changes and code hunks alike — and reports only what actually moved.
+
+```bash
+formslang diff "D:\legacy\forms\ORDERS_v1.fmb" "D:\legacy\forms\ORDERS_v2.fmb" -o out
+```
+
+Run on two real revisions of the same production module, saved about
+eighteen hours apart: one block modified — a new button added, a new
+`KEY-NEXT-ITEM` trigger, one item's validation changed — every other block,
+every form-level trigger and all eighteen program units reported unchanged,
+because they were.
+
 ## Authentication and multi-user workspaces
 
 By default the workbench is single-user with no login screen — exactly as
