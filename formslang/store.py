@@ -175,6 +175,13 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # rule engine's so the two can be compared instead of blended.
     ("proposal", "behavior", "TEXT NOT NULL DEFAULT ''"),
     ("proposal", "behavior_reason", "TEXT NOT NULL DEFAULT ''"),
+    # Whether someone actually ran this case against the migrated unit, and
+    # what happened -- distinct from the reviewer's accept/reject above, and
+    # never touched by save_test_cases: a regeneration must not erase a run.
+    ("test_case", "run_state", "TEXT NOT NULL DEFAULT 'not_run'"),
+    ("test_case", "run_by", "TEXT NOT NULL DEFAULT ''"),
+    ("test_case", "run_notes", "TEXT NOT NULL DEFAULT ''"),
+    ("test_case", "run_at", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -593,6 +600,10 @@ class Store:
             "comment": row["comment"],
             "generated_at": row["generated_at"],
             "decided_at": row["decided_at"],
+            "run_state": row["run_state"],
+            "run_by": row["run_by"],
+            "run_notes": row["run_notes"],
+            "run_at": row["run_at"],
             # Written under rules that have since moved. Shown, never hidden:
             # a reviewer is entitled to know the case is older than the engine.
             "stale": row["engine_version"] != ENGINE_VERSION
@@ -621,6 +632,25 @@ class Store:
             "UPDATE test_case SET state = ?, reviewer = ?, comment = ?, decided_at = ? "
             "WHERE id = ?",
             (state, reviewer, comment, _now(), case_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def record_test_run(self, case_id: str, run_state: str, run_by: str = "",
+                        run_notes: str = "") -> bool:
+        """Record what happened when someone actually ran this case.
+
+        Kept apart from :meth:`decide_test_case` on purpose: accepting a
+        case is a judgement about its wording, running it is a fact about
+        the migrated unit, and a case can be re-run any number of times
+        without ever being re-reviewed.
+        """
+        if run_state not in testspec.RUN_STATES:
+            return False
+        cur = self.db.execute(
+            "UPDATE test_case SET run_state = ?, run_by = ?, run_notes = ?, run_at = ? "
+            "WHERE id = ?",
+            (run_state, run_by, run_notes, _now(), case_id),
         )
         self.db.commit()
         return cur.rowcount > 0

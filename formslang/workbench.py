@@ -215,6 +215,7 @@ class Workbench:
             "coverage": self.store.test_coverage(),
             "origins": testspec.ORIGIN_LABEL,
             "states": list(testspec.CASE_STATES),
+            "run_states": list(testspec.RUN_STATES),
             # Without the module on disk, nothing could be asserted about
             # required values or lengths; say so rather than let a reviewer
             # read "needs confirmation" as a finding about their code.
@@ -229,6 +230,14 @@ class Workbench:
         if state not in testspec.CASE_STATES:
             return {"ok": False, "error": "unknown state"}
         if not self.store.decide_test_case(case_id, state, reviewer, comment):
+            return {"ok": False, "error": "unknown test case"}
+        return {"ok": True, "coverage": self.store.test_coverage()}
+
+    def record_test_run(self, case_id: str, run_state: str, run_by: str = "",
+                        run_notes: str = "") -> dict:
+        if run_state not in testspec.RUN_STATES:
+            return {"ok": False, "error": "unknown run state"}
+        if not self.store.record_test_run(case_id, run_state, run_by, run_notes):
             return {"ok": False, "error": "unknown test case"}
         return {"ok": True, "coverage": self.store.test_coverage()}
 
@@ -1286,6 +1295,18 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 if not out.get("ok"):
                     self._json(out, 400 if out.get("error") == "unknown state" else 404)
+                    return
+                self._json(out)
+
+            elif self.path == "/api/test-run":
+                out = wb.record_test_run(
+                    case_id=str(body.get("case_id") or ""),
+                    run_state=str(body.get("run_state") or ""),
+                    run_by=str(body.get("run_by") or ""),
+                    run_notes=str(body.get("run_notes") or ""),
+                )
+                if not out.get("ok"):
+                    self._json(out, 400 if out.get("error") == "unknown run state" else 404)
                     return
                 self._json(out)
 

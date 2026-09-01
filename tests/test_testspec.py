@@ -402,6 +402,27 @@ def test_summarize_of_nothing_is_zeroes_not_an_empty_dict():
     assert set(out["origins"]) == set(testspec.ORIGINS)
 
 
+def test_summarize_counts_runs_apart_from_review_state():
+    rows = [
+        {"kind": NORMAL, "origin": FROM_FORMS, "state": ACCEPTED,
+         "run_state": testspec.RUN_PASS},
+        {"kind": NORMAL, "origin": FROM_FORMS, "state": ACCEPTED,
+         "run_state": testspec.RUN_FAIL},
+        {"kind": NORMAL, "origin": FROM_FORMS, "state": PENDING},
+    ]
+    out = testspec.summarize(rows)
+    assert out["runs"][testspec.RUN_PASS] == 1
+    assert out["runs"][testspec.RUN_FAIL] == 1
+    assert out["runs"][testspec.NOT_RUN] == 1
+    assert out["executed"] == 2
+
+
+def test_a_row_with_no_run_state_counts_as_not_run():
+    out = testspec.summarize([{"kind": NORMAL, "origin": FROM_FORMS, "state": PENDING}])
+    assert out["runs"][testspec.NOT_RUN] == 1
+    assert out["executed"] == 0
+
+
 # -- markdown -------------------------------------------------------------
 
 
@@ -435,7 +456,10 @@ def test_the_exported_markdown_marks_what_a_reviewer_answered():
     assert "Needs modification by qa" in text
     assert "`trigger | HIGH | CHANGED`" in text
     assert "<details><summary>Evidence</summary>" in text
-    assert "**4 case(s)** across 1 unit(s); 3 reviewed, 1 pending." in text
+    assert (
+        "**4 case(s)** across 1 unit(s); 3 reviewed, 1 pending; "
+        "0 executed, 0 passed, 0 failed." in text
+    )
 
 
 def test_the_markdown_says_nothing_was_executed():
@@ -448,6 +472,27 @@ def test_the_markdown_says_nothing_was_executed():
 def test_a_unit_with_no_cases_does_not_get_an_empty_heading():
     text = testspec.render_markdown("DEMO", [{"title": "EMPTY", "cases": []}])
     assert "## EMPTY" not in text
+
+
+def test_the_markdown_shows_what_actually_happened_when_a_case_ran():
+    units = [{
+        "title": "ORDERS.PRE-INSERT", "cases": [
+            {"title": "Ran and passed", "kind": NORMAL, "origin": FROM_FORMS,
+             "given": [], "when": ["w"], "then": ["t"], "evidence": [],
+             "state": PENDING, "run_state": testspec.RUN_PASS,
+             "run_by": "geraldo", "run_notes": "matches prod",
+             "run_at": "2026-08-31 10:00:00"},
+            {"title": "Never run", "kind": NORMAL, "origin": FROM_FORMS,
+             "given": [], "when": ["w"], "then": ["t"], "evidence": [],
+             "state": PENDING, "run_state": testspec.NOT_RUN},
+        ],
+    }]
+    text = testspec.render_markdown("DEMO", units)
+    assert "· Passed</sub>" in text
+    assert "Run: Passed by geraldo (2026-08-31 10:00:00) -- matches prod" in text
+    assert "Run: " not in text.split("Never run")[1].split("###")[0]
+    assert "0 executed" not in text
+    assert "1 executed, 1 passed, 0 failed." in text
 
 
 # -- the store: a review outlives the rules that produced the case --------
@@ -544,6 +589,79 @@ def test_an_unknown_reviewer_state_is_refused_not_stored(store):
 
 def test_deciding_a_case_nobody_has_heard_of_reports_failure(store):
     assert store.decide_test_case("nope", ACCEPTED) is False
+
+
+# -- the store: what actually happened when a case was run -----------------
+
+
+def test_a_fresh_case_has_never_been_run(store):
+    task_id = specify(store)
+    case = store.test_cases(task_id)[0]
+    assert case["run_state"] == testspec.NOT_RUN
+    assert case["run_by"] == "" and case["run_notes"] == "" and case["run_at"] == ""
+
+
+def test_recording_a_run_is_kept_apart_from_the_reviewer_decision(store):
+    task_id = specify(store)
+    case_id = store.test_cases(task_id)[0]["id"]
+    store.decide_test_case(case_id, ACCEPTED, "geraldo", "looks right")
+    assert store.record_test_run(
+        case_id, testspec.RUN_PASS, "qa-analyst", "ran against APEX 26.1"
+    ) is True
+    case = {c["id"]: c for c in store.test_cases(task_id)}[case_id]
+    assert case["state"] == ACCEPTED and case["reviewer"] == "geraldo"
+    assert case["run_state"] == testspec.RUN_PASS
+    assert case["run_by"] == "qa-analyst"
+    assert case["run_notes"] == "ran against APEX 26.1"
+    assert case["run_at"]
+
+
+def test_a_case_can_be_run_again_and_the_latest_result_wins(store):
+    task_id = specify(store)
+    case_id = store.test_cases(task_id)[0]["id"]
+    store.record_test_run(case_id, testspec.RUN_FAIL, "qa", "NPE on save")
+    store.record_test_run(case_id, testspec.RUN_PASS, "qa", "fixed and re-run")
+    case = {c["id"]: c for c in store.test_cases(task_id)}[case_id]
+    assert case["run_state"] == testspec.RUN_PASS
+    assert case["run_notes"] == "fixed and re-run"
+
+
+def test_an_unknown_run_state_is_refused_not_stored(store):
+    task_id = specify(store)
+    case_id = store.test_cases(task_id)[0]["id"]
+    assert store.record_test_run(case_id, "kinda-passed") is False
+    assert store.test_cases(task_id)[0]["run_state"] == testspec.NOT_RUN
+
+
+def test_recording_a_run_for_a_case_nobody_has_heard_of_reports_failure(store):
+    assert store.record_test_run("nope", testspec.RUN_PASS) is False
+
+
+def test_regenerating_leaves_a_recorded_run_in_place(store):
+    """A rules change must not erase evidence that a case was actually run,
+    exactly as it must not erase the reviewer's accept/reject."""
+    task_id = specify(store)
+    first = store.test_cases(task_id)[0]
+    store.record_test_run(first["id"], testspec.RUN_PASS, "qa", "ok")
+
+    store.save_test_cases(
+        task_id, testspec.generate(store.get_task(task_id),
+                                   analysis=store.get_analysis(task_id))
+    )
+    same = {c["id"]: c for c in store.test_cases(task_id)}[first["id"]]
+    assert same["run_state"] == testspec.RUN_PASS
+    assert same["run_by"] == "qa" and same["run_notes"] == "ok"
+
+
+def test_coverage_reports_how_much_has_actually_been_run(store):
+    task_id = specify(store)
+    cases = store.test_cases(task_id)
+    store.record_test_run(cases[0]["id"], testspec.RUN_PASS)
+    store.record_test_run(cases[1]["id"], testspec.RUN_FAIL)
+    coverage = store.test_coverage()
+    assert coverage["runs"][testspec.RUN_PASS] == 1
+    assert coverage["runs"][testspec.RUN_FAIL] == 1
+    assert coverage["executed"] == 2
 
 
 def test_coverage_counts_the_units_that_have_no_specification_at_all(store):

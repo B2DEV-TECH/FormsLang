@@ -301,6 +301,11 @@ INDEX_HTML = r"""<!doctype html>
   .notes .tc-a button:hover { color: var(--ink); border-color: var(--line-hi); }
   .notes .tc-a button.on { color: var(--gold); border-color: var(--gold-deep); background: var(--gold-soft); }
   .notes .tc-a .said { color: var(--ink-faint); font: 10px var(--mono); }
+  /* Whether someone actually ran the case, kept visually apart from the
+     accept/reject row above it: a different axis, a different colour. */
+  .notes .tc-a.run button.on.r-pass { color: var(--green); border-color: rgba(74,222,128,.35); background: rgba(74,222,128,.08); }
+  .notes .tc-a.run button.on.r-fail { color: var(--red); border-color: var(--red); background: rgba(248,113,113,.08); }
+  .notes .tc-a.run button.on.r-blocked { color: var(--gold); border-color: var(--gold-deep); background: var(--gold-soft); }
   .conf { display: flex; align-items: center; gap: 8px; font: 11px var(--mono); color: var(--ink-dim); text-transform: none; letter-spacing: 0; }
   .conf .cbar { width: 90px; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
   .conf .cbar i { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
@@ -971,8 +976,10 @@ function renderDetail() {
   if (!p) bits.unshift(`<div class="empty">Not converted yet — press <kbd>P</kbd> to ask the model, or write the APEX code on the right and approve it.</div>`);
   if (p && p.model) bits.push(`<div class="conf">${esc(p.provider)} · ${esc(p.model)} · ${esc(p.created_at || "")}</div>`);
   $("notes").innerHTML = bits.join("");
-  $("notes").querySelectorAll(".tc-a button").forEach((b) =>
+  $("notes").querySelectorAll(".tc-a:not(.run) button").forEach((b) =>
     (b.onclick = () => decideCase(b.dataset.case, b.dataset.state, b.dataset.task)));
+  $("notes").querySelectorAll(".tc-a.run button").forEach((b) =>
+    (b.onclick = () => recordRun(b.dataset.case, b.dataset.run, b.dataset.task)));
   $("comment").value = t.comment || "";
 }
 
@@ -1034,6 +1041,8 @@ async function loadTests(id) {
 }
 
 const CASE_ACTION = { accepted: "Accept", rejected: "Reject", needs_work: "Needs work" };
+const RUN_ACTION = { pass: "Pass", fail: "Fail", blocked: "Blocked" };
+const RUN_LABEL = { pass: "Passed", fail: "Failed", blocked: "Blocked", not_run: "Not run" };
 
 async function decideCase(caseId, state, taskId) {
   try {
@@ -1050,6 +1059,21 @@ async function decideCase(caseId, state, taskId) {
   toast(CASE_ACTION[state] + "ed");
 }
 
+async function recordRun(caseId, runState, taskId) {
+  try {
+    await api("/api/test-run", {
+      case_id: caseId, run_state: runState,
+      run_by: $("reviewer").value, run_notes: $("comment").value,
+    });
+  } catch (e) {
+    toast(e.message, true);
+    return;
+  }
+  delete tests[taskId];          // re-read: the counts in the header moved too
+  await loadTests(taskId);
+  toast(RUN_LABEL[runState]);
+}
+
 function caseBlock(c, taskId) {
   const gwt = [["Given", c.given], ["When", c.when], ["Then", c.then]]
     .filter(([, rows]) => (rows || []).length)
@@ -1061,6 +1085,12 @@ function caseBlock(c, taskId) {
   const said = c.state && c.state !== "pending"
     ? `<span class="said">${esc(label(c.state))}${c.reviewer ? " by " + esc(c.reviewer) : ""}${c.comment ? " — " + esc(c.comment) : ""}</span>`
     : "";
+  const runButtons = ["pass", "fail", "blocked"].map((s) =>
+    `<button class="${c.run_state === s ? "on r-" + s : ""}" data-case="${c.id}" data-task="${taskId}" data-run="${s}">${RUN_ACTION[s]}</button>`
+  ).join("");
+  const runSaid = c.run_state && c.run_state !== "not_run"
+    ? `<span class="said">${esc(RUN_LABEL[c.run_state] || c.run_state)}${c.run_by ? " by " + esc(c.run_by) : ""}${c.run_notes ? " — " + esc(c.run_notes) : ""}</span>`
+    : "";
   return `<div class="tc${c.state && c.state !== "pending" ? " answered" : ""}">
     <div class="tc-h">
       <span class="tc-t">${esc(c.title)}</span>
@@ -1071,6 +1101,7 @@ function caseBlock(c, taskId) {
     <ul class="gwt">${gwt}</ul>
     ${(c.evidence || []).length ? `<span class="ev">${c.evidence.map(esc).join(" · ")}</span>` : ""}
     <div class="tc-a">${buttons}${said}</div>
+    <div class="tc-a run">${runButtons}${runSaid}</div>
   </div>`;
 }
 
@@ -1084,7 +1115,9 @@ function renderTests(t) {
   if (!cases.length) return "";
   const open = cases.filter((c) => !c.state || c.state === "pending").length;
   const unsure = cases.filter((c) => c.origin === "NEEDS_CONFIRMATION").length;
-  return `<details><summary>Test cases — ${cases.length} · ${cases.length - open} reviewed${unsure ? ` · <b>${unsure} to confirm</b>` : ""}</summary>
+  const notRun = cases.filter((c) => !c.run_state || c.run_state === "not_run").length;
+  const failed = cases.filter((c) => c.run_state === "fail").length;
+  return `<details><summary>Test cases — ${cases.length} · ${cases.length - open} reviewed · ${cases.length - notRun} run${failed ? ` · <b>${failed} failed</b>` : ""}${unsure ? ` · <b>${unsure} to confirm</b>` : ""}</summary>
     <div class="why">Written from the Forms body, not from the conversion, and not executed by FormsLang.${
       d.item_metadata === false ? " The module itself is not on disk, so nothing about required values or lengths could be checked." : ""}</div>
     ${cases.map((c) => caseBlock(c, t.id)).join("")}

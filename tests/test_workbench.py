@@ -771,6 +771,7 @@ def test_the_specification_of_the_unit_on_screen_is_fetched_on_demand(server):
     assert out["coverage"]["specified"] == out["coverage"]["tasks"]
     assert out["item_metadata"] is True
     assert set(out["states"]) == set(testspec.CASE_STATES)
+    assert set(out["run_states"]) == set(testspec.RUN_STATES)
 
 
 def test_asking_for_no_unit_returns_the_rollup_without_the_cases(server):
@@ -809,6 +810,36 @@ def test_deciding_a_case_that_does_not_exist_is_a_404(server):
     assert status == 404 and out["error"] == "unknown test case"
 
 
+def test_a_run_result_is_recorded_and_counted_apart_from_review(server):
+    base, wb = server
+    task_id = wb.store.task_ids()[0]
+    case_id = wb.store.test_cases(task_id)[0]["id"]
+    status, out = _post(base, "/api/test-run", {
+        "case_id": case_id, "run_state": "pass",
+        "run_by": "geraldo", "run_notes": "ran on oracleapex.com",
+    })
+    assert status == 200 and out["ok"] is True
+    assert out["coverage"]["runs"]["pass"] == 1
+    stored = {c["id"]: c for c in wb.store.test_cases(task_id)}[case_id]
+    assert stored["run_state"] == "pass"
+    assert stored["run_by"] == "geraldo" and stored["run_at"]
+    assert stored["state"] == "pending"  # the reviewer decision is untouched
+
+
+def test_an_invented_run_state_is_refused(server):
+    base, wb = server
+    case_id = wb.store.test_cases(wb.store.task_ids()[0])[0]["id"]
+    status, out = _post(base, "/api/test-run", {"case_id": case_id, "run_state": "kinda"})
+    assert status == 400 and out["error"] == "unknown run state"
+
+
+def test_recording_a_run_for_a_case_that_does_not_exist_is_a_404(server):
+    base, _wb = server
+    status, out = _post(base, "/api/test-run",
+                        {"case_id": "nope", "run_state": "pass"})
+    assert status == 404 and out["error"] == "unknown test case"
+
+
 def test_without_the_module_the_specification_says_it_could_not_check_the_items(tmp_path,
                                                                                sample_xml):
     """"Needs confirmation" must read as a limit of the input, not of the code."""
@@ -838,6 +869,10 @@ def test_the_review_screen_offers_the_three_answers_on_every_case():
         assert f'"{state}"' in INDEX_HTML, f"no way to mark a case {state}"
     # The screen must not let a reader mistake a specification for a test run.
     assert "not executed by FormsLang" in INDEX_HTML
+    # But once a person does run it, there is somewhere to say what happened.
+    assert "/api/test-run" in INDEX_HTML
+    for state in testspec.RUN_STATES[1:]:
+        assert f'"{state}"' in INDEX_HTML, f"no way to record a {state} run"
 
 
 def test_the_project_view_is_reachable_and_counts_this_session(server):

@@ -598,12 +598,13 @@ proprietary business rules, credentials or production data.
       oracleapex.com, a free shared host whose REST endpoint routes to a
       generic error page instead of ORDS; tracked separately, since that is
       a host-specific routing gap, not a FormsLang defect
+- [x] Continuous integration (GitHub Actions: pytest + ruff, Python 3.10–3.13, Linux + Windows)
+- [x] Functional validation workflow: `testspec`'s generated test cases
+      carry a tracked execute/pass/fail/blocked loop, kept apart from and
+      surviving reviewer accept/reject, instead of a static list
 
 ### In progress
 
-- [ ] Continuous integration (GitHub Actions: pytest + ruff, Python 3.10–3.13, Linux + Windows)
-- [ ] Functional validation workflow: turn `testspec`'s generated test
-      cases into a tracked execute/pass/fail loop instead of a static list
 - [ ] `ui.py` modularization (single ~100KB file → `ui/{shell,auth,
       projects,conversion,review,validation,settings,shared}`)
 

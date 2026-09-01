@@ -81,6 +81,22 @@ STATE_LABEL = {
     NEEDS_WORK: "Needs modification",
 }
 
+# -- execution states -------------------------------------------------------
+# A reviewer's accept/reject is a judgement about the wording of the case.
+# Whether the case was actually run against the migrated unit, and what
+# happened, is a separate fact -- one a case can go on collecting long after
+# it was accepted, and one that a regeneration must not erase (see
+# Store.save_test_cases, which only ever touches the reviewer columns).
+
+NOT_RUN, RUN_PASS, RUN_FAIL, RUN_BLOCKED = "not_run", "pass", "fail", "blocked"
+RUN_STATES = (NOT_RUN, RUN_PASS, RUN_FAIL, RUN_BLOCKED)
+RUN_STATE_LABEL = {
+    NOT_RUN: "Not run",
+    RUN_PASS: "Passed",
+    RUN_FAIL: "Failed",
+    RUN_BLOCKED: "Blocked",
+}
+
 # How many named items or tables a sentence lists before it stops naming and
 # starts counting. A case nobody finishes reading is a case nobody runs.
 _LIST_CAP = 6
@@ -539,21 +555,26 @@ def summarize(rows) -> dict:
     kinds = {kind: 0 for kind in KINDS}
     origins = {origin: 0 for origin in ORIGINS}
     states = {state: 0 for state in CASE_STATES}
+    runs = {state: 0 for state in RUN_STATES}
     stale = 0
     for row in rows:
         kinds[row.get("kind", "")] = kinds.get(row.get("kind", ""), 0) + 1
         origins[row.get("origin", "")] = origins.get(row.get("origin", ""), 0) + 1
         states[row.get("state", PENDING)] = states.get(row.get("state", PENDING), 0) + 1
+        runs[row.get("run_state", NOT_RUN)] = runs.get(row.get("run_state", NOT_RUN), 0) + 1
         if row.get("stale"):
             stale += 1
     total = len(rows)
     reviewed = total - states.get(PENDING, 0)
+    executed = total - runs.get(NOT_RUN, 0)
     return {
         "total": total,
         "kinds": kinds,
         "origins": origins,
         "states": states,
+        "runs": runs,
         "reviewed": reviewed,
+        "executed": executed,
         "stale": stale,
         "version": VERSION,
     }
@@ -584,7 +605,9 @@ def render_markdown(session_title: str, units: list[dict]) -> str:
     lines += [
         (
             f"**{totals['total']} case(s)** across {len(units)} unit(s); "
-            f"{totals['reviewed']} reviewed, {totals['states'][PENDING]} pending."
+            f"{totals['reviewed']} reviewed, {totals['states'][PENDING]} pending; "
+            f"{totals['executed']} executed, {totals['runs'][RUN_PASS]} passed, "
+            f"{totals['runs'][RUN_FAIL]} failed."
         ),
         "",
     ]
@@ -602,10 +625,15 @@ def render_markdown(session_title: str, units: list[dict]) -> str:
         for case in cases:
             state = case.get("state", PENDING)
             mark = {ACCEPTED: "[x]", REJECTED: "[-]", NEEDS_WORK: "[!]"}.get(state, "[ ]")
+            run_state = case.get("run_state", NOT_RUN)
+            run_tag = (
+                f" · {RUN_STATE_LABEL.get(run_state, run_state)}"
+                if run_state != NOT_RUN else ""
+            )
             lines.append(
                 f"### {mark} {case.get('title', '')}  "
                 f"<sub>{case.get('kind_label') or case.get('kind', '')} · "
-                f"{case.get('origin', '')}</sub>"
+                f"{case.get('origin', '')}{run_tag}</sub>"
             )
             lines.append("")
             for label, key in (("Given", "given"), ("When", "when"), ("Then", "then")):
@@ -627,5 +655,14 @@ def render_markdown(session_title: str, units: list[dict]) -> str:
                 who = case.get("reviewer") or "unnamed reviewer"
                 note = f" -- {case['comment']}" if case.get("comment") else ""
                 lines.append(f"> {STATE_LABEL.get(state, state)} by {who}{note}")
+                lines.append("")
+            if run_state != NOT_RUN:
+                ran_by = case.get("run_by") or "unnamed tester"
+                run_note = f" -- {case['run_notes']}" if case.get("run_notes") else ""
+                run_when = f" ({case['run_at']})" if case.get("run_at") else ""
+                lines.append(
+                    f"> Run: {RUN_STATE_LABEL.get(run_state, run_state)} "
+                    f"by {ran_by}{run_when}{run_note}"
+                )
                 lines.append("")
     return "\n".join(lines).rstrip() + "\n"
