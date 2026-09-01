@@ -5,16 +5,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
 struct Engine(Mutex<Option<CommandChild>>);
+
+static REPORT_WINDOW_SEQ: AtomicU32 = AtomicU32::new(0);
 
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
@@ -27,7 +29,6 @@ fn free_port() -> u16 {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_opener::init())
         .manage(Engine(Mutex::new(None)))
         .setup(|app| {
             let port = free_port();
@@ -55,16 +56,32 @@ fn main() {
 
             // Doc/Diff open their report in a new tab via window.open(); the
             // webview has no tabs and silently drops that request unless we
-            // intercept it here and hand the URL to the system browser.
-            let opener = app.handle().clone();
+            // intercept it here and give it a real native window of its own
+            // (a fresh label each time, since the caller may open several
+            // reports side by side).
+            let report_app = app.handle().clone();
             let win = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("FormsLang - by B2DEV TECH")
                 .inner_size(1380.0, 880.0)
                 .min_inner_size(1100.0, 700.0)
                 .center()
                 .on_new_window(move |url, _features| {
-                    let _ = opener.opener().open_url(url.to_string(), None::<String>);
-                    NewWindowResponse::Deny
+                    let label = format!("report-{}", REPORT_WINDOW_SEQ.fetch_add(1, Ordering::Relaxed));
+                    let title = match url.path() {
+                        "/api/diff" => "FormsLang - Diff",
+                        "/api/doc" => "FormsLang - Documentation",
+                        _ => "FormsLang",
+                    };
+                    match WebviewWindowBuilder::new(&report_app, label.as_str(), WebviewUrl::External(url.clone()))
+                        .title(title)
+                        .inner_size(1380.0, 880.0)
+                        .min_inner_size(900.0, 600.0)
+                        .center()
+                        .build()
+                    {
+                        Ok(window) => NewWindowResponse::Create { window },
+                        Err(_) => NewWindowResponse::Deny,
+                    }
                 })
                 .build()?;
 

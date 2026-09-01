@@ -209,29 +209,47 @@ def compare_modules(a: FormModule, b: FormModule) -> ModuleDiff:
 
 
 _CSS = """
-:root{--bg:#07090C;--surface:#12151A;--line:#242832;--fg:#F2F4F7;--mut:#8A9099;--gold:#F5A640}
+:root{
+ --bg:#07090C;--surface:#12151A;--surface2:#161A21;--line:#242832;--line2:#2E333F;
+ --fg:#F2F4F7;--mut:#8A9099;--gold:#F5A640;--gold-dim:rgba(245,166,64,.12);
+ --good:#5BD98A;--bad:#F0736F
+}
 *{box-sizing:border-box}
+::selection{background:rgba(245,166,64,.28);color:var(--fg)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:var(--line2)}
 body{margin:0;background:var(--bg);color:var(--fg);
  font:15px/1.6 "Segoe UI",Inter,system-ui,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:40px 24px 80px}
-h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
-h2{font-size:19px;margin:44px 0 14px;letter-spacing:-.01em;
- border-bottom:1px solid var(--line);padding-bottom:8px;scroll-margin-top:16px}
+.kicker{color:var(--gold);font-size:11px;font-weight:700;text-transform:uppercase;
+ letter-spacing:.14em;margin:0 0 10px}
+.hero{position:relative;padding-bottom:24px;margin-bottom:8px}
+.hero::after{content:"";position:absolute;left:0;bottom:0;width:64px;height:3px;
+ background:linear-gradient(90deg,var(--gold),transparent);border-radius:2px}
+h1{font-size:28px;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:19px;margin:48px 0 14px;letter-spacing:-.01em;
+ border-bottom:1px solid var(--line);padding-bottom:8px;scroll-margin-top:64px}
 h3{font-size:14px;margin:18px 0 8px;color:var(--gold)}
-.sub{color:var(--mut);margin:6px 0 0;font-size:13px}
+.sub{color:var(--mut);margin:0;font-size:13px}
+code{font-family:"JetBrains Mono",Consolas,monospace;font-size:12.5px;background:#0B0D11;
+ padding:1px 5px;border-radius:4px;border:1px solid var(--line)}
 table{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0 18px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--mut);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
-tbody tr:hover{background:#0E1116}
-pre.code{background:#0B0D11;border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+tbody tr{transition:background .12s ease}
+tbody tr:hover{background:var(--surface2)}
+pre.code{background:#0B0D11;border:1px solid var(--line);border-radius:8px;padding:10px 0;
  overflow-x:auto;font-family:"JetBrains Mono",Consolas,monospace;font-size:12.5px;white-space:pre-wrap;
  word-break:break-word;margin:0}
 .tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;
  letter-spacing:.03em}
-.yes{background:#123021;color:#5BD98A}.no{background:#2A1418;color:#F0736F}
+.yes{background:#123021;color:var(--good)}.no{background:#2A1418;color:var(--bad)}
 .entity{background:var(--surface);border:1px solid var(--line);border-radius:10px;
- padding:14px 16px;margin:10px 0}
+ padding:14px 16px;margin:10px 0;transition:border-color .15s ease}
+.entity:hover{border-color:var(--line2)}
 .entity>.hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .entity>.hd b{font-size:14.5px}
 .none{color:var(--mut);font-style:italic;padding:4px 0}
@@ -239,15 +257,38 @@ pre.code{background:#0B0D11;border:1px solid var(--line);border-radius:8px;paddi
 .chg-group{margin:6px 0}
 .hunk{margin:8px 0}
 .hunk-hd{color:var(--mut);font-size:11px;margin-bottom:2px;font-family:"JetBrains Mono",Consolas,monospace}
-.del{color:#F0736F}
-.add{color:#5BD98A}
-nav.toc{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);
+.del,.add{display:block;padding:1px 14px;margin:0}
+.del{color:var(--bad);background:rgba(240,115,111,.10)}
+.add{color:var(--good);background:rgba(91,217,138,.10)}
+nav.toc{position:sticky;top:0;background:rgba(7,9,12,.85);backdrop-filter:blur(8px);
+ -webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
  padding:10px 0;margin-bottom:8px;display:flex;gap:4px;flex-wrap:wrap;z-index:5}
 nav.toc a{color:var(--mut);text-decoration:none;font-size:12.5px;padding:4px 9px;
- border-radius:999px;border:1px solid transparent}
+ border-radius:999px;border:1px solid transparent;
+ transition:color .12s ease,border-color .12s ease,background .12s ease}
 nav.toc a:hover{color:var(--fg);border-color:var(--line)}
+nav.toc a.active{color:var(--gold);border-color:rgba(245,166,64,.35);background:var(--gold-dim)}
 @media print{nav.toc{display:none}body{background:#fff;color:#111}
+ .hero::after{display:none}
  .entity,pre.code{background:#f6f6f6;border-color:#ccc}}
+"""
+
+_SCROLLSPY_JS = """
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  var sections = links
+    .map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); })
+    .filter(Boolean);
+  if (!sections.length) return;
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (!entry.isIntersecting) return;
+      var id = entry.target.id;
+      links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
+    });
+  }, {rootMargin: '-15% 0px -70% 0px', threshold: 0});
+  sections.forEach(function(s){ obs.observe(s); });
+})();
 """
 
 
@@ -382,12 +423,16 @@ def render_html(diff: ModuleDiff, *, generated_at: str = "") -> str:
 </head>
 <body>
 <div class="wrap">
+<div class="hero">
+<p class="kicker">FormsLang &middot; Structural Diff</p>
 <h1>{_esc(diff.name_a)} &rarr; {_esc(diff.name_b)}</h1>
-<p class="sub">FormsLang structural diff &middot; generated {_esc(generated_at)}</p>
+<p class="sub">generated {_esc(generated_at)}</p>
+</div>
 <nav class="toc">{toc}</nav>
 {_summary_table(diff)}
 {body}
 </div>
+<script>{_SCROLLSPY_JS}</script>
 </body>
 </html>"""
 
