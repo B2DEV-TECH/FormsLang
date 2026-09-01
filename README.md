@@ -602,11 +602,9 @@ proprietary business rules, credentials or production data.
 - [x] Functional validation workflow: `testspec`'s generated test cases
       carry a tracked execute/pass/fail/blocked loop, kept apart from and
       surviving reviewer accept/reject, instead of a static list
-
-### In progress
-
-- [ ] `ui.py` modularization (single ~100KB file → `ui/{shell,auth,
-      projects,conversion,review,validation,settings,shared}`)
+- [x] `ui.py` modularization: the ~100KB single file is now
+      `ui/{shell,auth,projects,conversion,review,validation,settings,shared}`,
+      reassembled into the same page byte-for-byte
 
 ### Later
 
