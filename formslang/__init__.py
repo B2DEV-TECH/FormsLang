@@ -8,5 +8,14 @@ Not affiliated with, nor endorsed by, Oracle Corporation. Oracle, Oracle
 Forms and Oracle APEX are trademarks of Oracle Corporation.
 """
 
-__version__ = "0.1.4"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("formslang")
+except PackageNotFoundError:
+    # Running from source with no installed distribution (e.g. a fresh
+    # editable checkout before `pip install -e .`) -- pyproject.toml is
+    # the source of truth; this is a fallback only, kept in sync by hand.
+    __version__ = "0.1.6"
+
 __all__ = ["__version__"]
