@@ -5,6 +5,63 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] — 2026-09-01
+
+### Added — HTML technical documentation and structural diff
+
+- **`formslang doc` / `formslang diff`.** `formdoc` renders self-contained
+  HTML technical documentation for one module (blocks, items, triggers,
+  program units, LOVs, record groups, relations). `formdiff` compares two
+  versions of the same module: added/removed/modified entities by name,
+  property changes via reflection over the model dataclasses, and code
+  changes as `SequenceMatcher` hunks (`autojunk=False`, so short repeated
+  PL/SQL lines like `END IF;` are never dropped from the match).
+- Wired into the workbench HTTP API (`/api/doc`, `/api/diff`) and the
+  browser UI (**Doc** / **Diff** buttons in the header). The module
+  picker gained an options object so it can be reused to pick a diff
+  target without showing the upload dropzone meant for opening a module.
+- v1 scope: name-only entity matching, no rename detection -- a renamed
+  entity shows as remove+add. The report is read-only; an interactive
+  hunk-by-hunk merge is not built yet.
+
+### Added — per-test-case execute/pass/fail tracking
+
+- Test cases now carry a `run_state` (`not_run`/`pass`/`fail`/`blocked`)
+  alongside the existing reviewer accept/reject decision. The two are
+  deliberately independent: a case can be accepted but never run, or run
+  and failed while still pending review. `Store.record_test_run()`
+  persists the result; the review screen gets a second Pass/Fail/Blocked
+  row per case, and `testspec` reports executed/passed/failed counts
+  alongside the reviewed/pending ones.
+
+### Added — CI
+
+- A GitHub Actions workflow now runs the full test suite on Linux and
+  Windows across Python 3.10-3.13, plus a separate ruff lint job.
+
+### Changed
+
+- `formslang/ui.py` -- one ~1880-line raw string holding the whole
+  workbench single-page app -- was split into `formslang/ui/{shell,auth,
+  projects,conversion,review,validation,settings,shared,formdoc}.py`,
+  one module per concern. Zero behaviour change: the reassembled page
+  hashes byte-for-byte identical to the pre-split constant.
+- `FORMSLANG_AUTH` still overrides multi-user mode outright when set,
+  but with it unset the choice saved from the Settings screen now
+  persists to `config.json` and survives a restart. The desktop toggle
+  to flip this from the UI is still pending.
+
+### Fixed
+
+- A race in `AuthStore.rate_limit_record_failure`: two concurrent login
+  failures for the same key could both read no existing row and both
+  try to `INSERT`, tripping the unique constraint instead of recording
+  the failure. It now uses the same immediate-transaction pattern as
+  every other read-modify-write method in that file.
+- Windows CI runners rewrote the vendored QR encoder's LF endings to
+  CRLF on checkout, changing its bytes and failing the pinned-hash test
+  on Windows only; `.gitattributes` now forces LF checkout everywhere.
+
 ## [0.1.5] — 2026-08-31
 
 ### Fixed
@@ -293,7 +350,9 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.1...v0.1.2
