@@ -35,22 +35,27 @@ from .secrets import SecureStorageUnavailable  # re-exported for callers
 
 # The whole vocabulary of the settings file. Anything else is dropped on
 # load and on save, so a hand-edited file cannot smuggle surprises in.
-SETTING_KEYS = ("provider", "model", "api_key", "base_url", "deployment", "api_version")
+# ``auth_enabled`` is a string, not a JSON boolean, on purpose: "1"/"true"/
+# "on"/"yes" mirror the truthy vocabulary FORMSLANG_AUTH already uses (see
+# authstore.auth_enabled), so the same value reads the same way whether it
+# came from the environment or from this file. Absent means off, same as
+# every other setting here.
+SETTING_KEYS = ("provider", "model", "api_key", "base_url", "deployment", "api_version", "auth_enabled")
 
 # What may actually be written to disk. The key is deliberately absent.
 FILE_KEYS = tuple(k for k in SETTING_KEYS if k != "api_key")
 
 __all__ = [
-    "SETTING_KEYS",
     "FILE_KEYS",
+    "SETTING_KEYS",
     "SecureStorageUnavailable",
     "config_dir",
     "config_path",
     "data_dir",
-    "load_config",
-    "save_config",
     "key_location",
+    "load_config",
     "migrate_plaintext_key",
+    "save_config",
 ]
 
 

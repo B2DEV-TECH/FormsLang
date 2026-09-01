@@ -343,8 +343,18 @@ def auth_enabled() -> bool:
     ``secrets.py``: empty or unset is off, and off is the only default that
     keeps every existing local install behaving exactly as it did before
     this module existed.
+
+    The environment variable wins outright, on or off. With it unset, the
+    Settings screen's saved choice in ``config.json`` decides instead --
+    that is what lets a reviewer turn multi-user mode on from the desktop
+    app and have it survive a restart without ever touching an environment
+    variable.
     """
-    return os.environ.get(AUTH_ENV, "").strip().lower() in {"1", "true", "on", "yes"}
+    env = os.environ.get(AUTH_ENV, "").strip().lower()
+    if env:
+        return env in {"1", "true", "on", "yes"}
+    saved = str(config.load_config().get("auth_enabled", "")).strip().lower()
+    return saved in {"1", "true", "on", "yes"}
 
 
 def default_db_path() -> Path:
@@ -416,7 +426,7 @@ class _SerializedConnection:
     separate connections, never two threads sharing this one).
     """
 
-    def __init__(self, real: sqlite3.Connection, lock: "threading.RLock"):
+    def __init__(self, real: sqlite3.Connection, lock: threading.RLock):
         self._real = real
         self._lock = lock
 
