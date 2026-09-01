@@ -24,11 +24,23 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import parse_qs, urlsplit
 
-from . import authcrypto, authstore, policy, projects, rbac
+from . import (
+    authcrypto,
+    authstore,
+    authui,
+    dashboard,
+    depgraph,
+    policy,
+    projects,
+    rbac,
+    secrets,
+    telemetry,
+    testspec,
+)
 from . import behavior as behavior_model
-from . import dashboard, depgraph, secrets, telemetry, testspec
 from . import risk as risk_model
 from .ai import (
     ENV_FOR,
@@ -43,7 +55,6 @@ from .ai import (
     provider_from_env,
     setting,
 )
-from .policy import PolicyViolation
 from .analysis import analyze_task, summarize
 from .apexlang import export_apexlang
 from .config import (
@@ -57,8 +68,8 @@ from .config import (
 from .convert import Proposal, build_tasks, propose
 from .oracle import OracleToolchainError, convert_module, detect_toolchain, expected_xml_name
 from .parser import parse_xml
+from .policy import PolicyViolation
 from .store import JOB_CANCELLED, JOB_COMPLETED, JOB_CRASHED, STATES, Store
-from . import authui
 from .ui import INDEX_HTML
 
 MAX_BODY = 4 * 1024 * 1024
@@ -739,7 +750,7 @@ class Handler(BaseHTTPRequestHandler):
     # SS7.1/SS7.2: what a restricted session may reach. A scope missing from
     # this table (NORMAL) is unrestricted; a path missing from a scope's set
     # is ACCESS_DENIED until the session graduates to NORMAL.
-    _SCOPE_ALLOWED_POST = {
+    _SCOPE_ALLOWED_POST: ClassVar[dict[str, frozenset[str]]] = {
         authstore.BOOTSTRAP_MFA: frozenset(
             {"/api/auth/logout", "/api/auth/mfa/enroll", "/api/auth/mfa/confirm"}
         ),
@@ -945,7 +956,7 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             if wb.auth_store is None and (
-                path.startswith("/api/auth/") or path.startswith("/api/projects")
+                path.startswith(("/api/auth/", "/api/projects"))
             ):
                 # A 404, not a 401 -- with the subsystem off, these routes
                 # simply do not exist, same as any other unknown path.
@@ -1018,7 +1029,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if wb.auth_store is None and (
-            path.startswith("/api/auth/") or path.startswith("/api/projects")
+            path.startswith(("/api/auth/", "/api/projects"))
         ):
             self._drain()
             self._json({"error": "not found"}, 404)

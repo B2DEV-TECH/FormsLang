@@ -15,6 +15,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 import pytest
+from conftest import next_mfa_code, setup_confirmed_mfa
 
 from formslang import authstore, authui, totp
 from formslang.ai import EchoProvider
@@ -24,8 +25,6 @@ from formslang.parser import parse_xml
 from formslang.store import Store
 from formslang.ui import INDEX_HTML
 from formslang.workbench import Handler, Workbench
-
-from conftest import next_mfa_code, setup_confirmed_mfa
 
 EMAIL = "owner@example.com"
 PASSWORD = "correct horse battery staple"
@@ -190,7 +189,7 @@ def test_every_response_carries_the_hardening_headers(server):
 
 
 def test_a_bootstrap_mfa_session_is_kept_off_data_routes_and_audited(server):
-    base, wb, owner = server
+    base, wb, _owner = server
     _status, _body, token = _login(base, EMAIL, PASSWORD)
     assert _scope(base, token) == authstore.BOOTSTRAP_MFA
 
@@ -238,7 +237,7 @@ def test_whoami_still_answers_a_restricted_session_with_its_scope(server):
 
 
 def test_the_full_http_enrollment_flow_graduates_to_a_normal_session(server):
-    base, wb, owner = server
+    base, _wb, _owner = server
     _status, _body, token = _login(base, EMAIL, PASSWORD)
     csrf = _csrf(base, token)
 
@@ -274,7 +273,7 @@ def test_the_http_mfa_step_completes_a_pending_login(server):
     _status, _body, pending = _login(base, "dev@example.com", PASSWORD)
     assert _scope(base, pending) == authstore.MFA_PENDING
 
-    status, body, normal = _post(
+    status, _body, normal = _post(
         base, "/api/auth/mfa",
         {"code": next_mfa_code(wb.auth_store, dev_id, mfa["secret"])},
         cookie=pending, csrf=_csrf(base, pending),

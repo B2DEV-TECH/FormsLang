@@ -14,7 +14,7 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from formslang.ai import EchoProvider
-from formslang.authstore import AuthStore, DEVELOPER, VIEWER
+from formslang.authstore import DEVELOPER, VIEWER, AuthStore
 from formslang.convert import build_tasks
 from formslang.parser import parse_xml
 from formslang.store import Store
@@ -119,7 +119,7 @@ def test_a_viewer_gets_403_not_404_adopting_a_project_in_their_own_org(server, t
     """Membership already proves the project is visible to this user, so a
     role that merely lacks ADOPT_PROJECT must be a permission denial -- a 404
     here would be a lie: the caller already knows the project exists."""
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     owner = auth_store.bootstrap_owner("owner@example.com", PASSWORD)
     viewer_id = auth_store.create_user("viewer@example.com", PASSWORD)
     auth_store.create_membership(owner["organization_id"], viewer_id, VIEWER)
@@ -143,7 +143,7 @@ def test_a_viewer_gets_403_not_404_adopting_a_project_in_their_own_org(server, t
 
 
 def test_a_developer_gets_403_not_404_adopting_a_project_in_their_own_org(server, tmp_path):
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     owner = auth_store.bootstrap_owner("owner2@example.com", PASSWORD)
     dev_id = auth_store.create_user("dev@example.com", PASSWORD)
     auth_store.create_membership(owner["organization_id"], dev_id, DEVELOPER)
@@ -158,7 +158,7 @@ def test_a_developer_gets_403_not_404_adopting_a_project_in_their_own_org(server
     _status, who = _get(base, "/api/auth/whoami", cookie=token)
     assert who["role"] == "DEVELOPER"
 
-    status, body = _post(
+    status, _body = _post(
         base, "/api/projects/adopt", {"project_id": project["id"]},
         cookie=token, csrf=who["csrf_token"],
     )
@@ -170,7 +170,7 @@ def test_a_project_id_belonging_to_another_org_is_404_not_403(server, tmp_path):
     pointing at a project_id from an org they are not a member of gets a
     404 -- the role check never even runs, because membership itself is
     what's missing, and existence must not be revealed."""
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     owner_a = auth_store.bootstrap_owner("ownera@example.com", PASSWORD, org_slug="org-a", org_name="A")
     org_b = auth_store.create_organization("org-b", "B")
     owner_b_id = auth_store.create_user("ownerb@example.com", PASSWORD)
@@ -185,7 +185,7 @@ def test_a_project_id_belonging_to_another_org_is_404_not_403(server, tmp_path):
     _status, who = _get(base, "/api/auth/whoami", cookie=token)
     assert who["role"] == "OWNER"
 
-    status, body = _post(
+    status, _body = _post(
         base, "/api/projects/adopt", {"project_id": other_org_project["id"]},
         cookie=token, csrf=who["csrf_token"],
     )
@@ -193,12 +193,12 @@ def test_a_project_id_belonging_to_another_org_is_404_not_403(server, tmp_path):
 
 
 def test_a_nonexistent_project_id_is_also_404(server):
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     owner = auth_store.bootstrap_owner("owner3@example.com", PASSWORD)
     token = _login_normal(base, auth_store, owner)
     _status, who = _get(base, "/api/auth/whoami", cookie=token)
 
-    status, body = _post(
+    status, _body = _post(
         base, "/api/projects/adopt", {"project_id": "not-a-real-id"},
         cookie=token, csrf=who["csrf_token"],
     )
@@ -206,18 +206,18 @@ def test_a_nonexistent_project_id_is_also_404(server):
 
 
 def test_an_unauthenticated_request_to_list_projects_is_401(server):
-    base, wb, auth_store = server
+    base, _wb, _auth_store = server
     status, _body = _get(base, "/api/projects")
     assert status == 401
 
 
 def test_an_unauthenticated_adopt_attempt_is_401_not_a_leak(server, tmp_path):
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     owner = auth_store.bootstrap_owner("owner4@example.com", PASSWORD)
     project = auth_store.register_external_project(
         owner["organization_id"], "Some project",
         _fresh_session_file(tmp_path, "some.session.db"),
         created_by=owner["user_id"],
     )
-    status, body = _post(base, "/api/projects/adopt", {"project_id": project["id"]})
+    status, _body = _post(base, "/api/projects/adopt", {"project_id": project["id"]})
     assert status == 401

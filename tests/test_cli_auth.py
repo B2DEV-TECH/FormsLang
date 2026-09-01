@@ -184,7 +184,7 @@ def test_reset_owner_refuses_a_non_owner_account(monkeypatch, capsys):
     _bootstrap(monkeypatch)
     store = authstore.AuthStore(authstore.default_db_path())
     try:
-        owner = store.get_user_by_email(EMAIL)
+        _owner = store.get_user_by_email(EMAIL)
         org = store.get_organization_by_slug("local")
         store.create_user("dev@example.com", PASSWORD)
         dev = store.get_user_by_email("dev@example.com")

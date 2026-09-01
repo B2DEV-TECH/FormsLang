@@ -15,10 +15,9 @@ import threading
 import time
 
 import pytest
+from conftest import next_mfa_code, setup_confirmed_mfa
 
 from formslang import authstore, secrets, totp
-
-from conftest import next_mfa_code, setup_confirmed_mfa
 
 PASSWORD = "correct horse battery staple"
 

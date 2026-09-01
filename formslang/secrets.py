@@ -55,6 +55,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import ClassVar
 
 # One well-known identity in whatever store answers. Changing either string
 # orphans every key already saved, so they are constants on purpose.
@@ -301,7 +302,7 @@ class _MemoryBackend:
 
     name = "memory"
     label = "in-memory (testing)"
-    _store: dict[tuple[str, str], str] = {}
+    _store: ClassVar[dict[tuple[str, str], str]] = {}
 
     def available(self) -> bool:
         return True
@@ -360,7 +361,7 @@ def _build(forced: str):
             continue
         try:
             backend = cls()
-        except Exception:  # a missing DLL, a broken install: try the next one
+        except Exception:  # noqa: BLE001, S112 -- a missing DLL, a broken install: try the next one
             continue
         if backend.available():
             return backend
@@ -401,7 +402,7 @@ def get_key() -> str:
         return ""
     try:
         return b.get(SERVICE, ACCOUNT)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- an unreadable store is not an error here
         return ""
 
 
@@ -424,7 +425,7 @@ def delete_key() -> None:
         return
     try:
         b.delete(SERVICE, ACCOUNT)
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 -- nothing to forget is not an error
         pass
 
 
@@ -483,5 +484,5 @@ def delete_secret(service: str, account: str) -> None:
         return
     try:
         b.delete(service, account)
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 -- nothing to forget is not an error
         pass

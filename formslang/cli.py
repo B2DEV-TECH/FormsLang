@@ -124,7 +124,7 @@ def cmd_assess(args: argparse.Namespace) -> int:
                 fm.source_path = str(source)
                 pf.modules.append(assess_module(fm))
                 mark = "ok "
-            except Exception as e:  # one bad module must not kill the batch
+            except Exception as e:  # noqa: BLE001 -- one bad module must not kill the batch
                 pf.failures.append((source.name, f"{type(e).__name__}: {e}"))
                 mark = "FAIL"
             if done % 10 == 0 or done == len(modules) or mark == "FAIL":

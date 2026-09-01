@@ -322,6 +322,7 @@ class CliProvider(Provider):
                     text=True,
                     encoding="utf-8",
                     errors="replace",
+                    check=False,
                     cwd=workdir,
                     timeout=self.timeout,
                     shell=False,
@@ -505,9 +506,9 @@ def setting(name: str, config: dict | None = None) -> str:
 
 
 _ENTERPRISE_BLOCK_HINT = (
-    "Blocked by enterprise mode ({env}=1): this provider would send source "
+    f"Blocked by enterprise mode ({policy.ENTERPRISE_ENV}=1): this provider would send source "
     "code off this machine."
-).format(env=policy.ENTERPRISE_ENV)
+)
 
 
 def provider_catalog() -> list[dict]:
@@ -610,7 +611,7 @@ def check_provider(provider: Provider) -> tuple[bool, str]:
         ).strip()
     except ProviderError as e:
         return False, str(e)
-    except Exception as e:  # never leak a key through an unexpected traceback
+    except Exception as e:  # noqa: BLE001 -- never leak a key through an unexpected traceback
         return False, f"{type(e).__name__}: {e}"
     if not out:
         return False, "provider answered with empty text"

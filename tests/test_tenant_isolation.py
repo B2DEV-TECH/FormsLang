@@ -12,7 +12,7 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from formslang.ai import EchoProvider
-from formslang.authstore import AuthStore, DEVELOPER
+from formslang.authstore import DEVELOPER, AuthStore
 from formslang.convert import build_tasks
 from formslang.parser import parse_xml
 from formslang.store import Store
@@ -139,7 +139,7 @@ def _login_normal(base, auth_store, user, *, org_id=None):
 
 
 def test_a_session_only_lists_projects_from_its_own_org(server, tmp_path):
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     alice, bob = _two_orgs(auth_store)
 
     auth_store.register_external_project(
@@ -162,7 +162,7 @@ def test_a_project_id_from_another_org_is_a_404_not_a_403(server, tmp_path):
     """The IDOR chokepoint (SS3): existence of another org's project is never
     revealed to a non-member, even one who is a fully valid, logged-in Owner
     of a different organization."""
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     alice, bob = _two_orgs(auth_store)
 
     bobs_project = auth_store.register_external_project(
@@ -182,7 +182,7 @@ def test_a_project_id_from_another_org_is_a_404_not_a_403(server, tmp_path):
 
 
 def test_switching_to_an_org_you_do_not_belong_to_is_refused(server):
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     alice, bob = _two_orgs(auth_store)
 
     alice_token = _login_normal(base, auth_store, alice)
@@ -201,7 +201,7 @@ def test_switching_to_an_org_you_do_not_belong_to_is_refused(server):
 
 
 def test_switching_to_an_org_you_do_belong_to_rotates_the_session(server, tmp_path):
-    base, wb, auth_store = server
+    base, _wb, auth_store = server
     alice, bob = _two_orgs(auth_store)
     # Add Alice as a Developer of Bob's org too.
     auth_store.create_membership(bob["organization_id"], alice["user_id"], DEVELOPER)

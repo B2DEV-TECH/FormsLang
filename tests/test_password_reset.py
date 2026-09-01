@@ -7,10 +7,9 @@ enumeration). The last-Owner CLI path lives here too.
 from __future__ import annotations
 
 import pytest
+from conftest import next_mfa_code, setup_confirmed_mfa
 
 from formslang import authstore
-
-from conftest import next_mfa_code, setup_confirmed_mfa
 
 PASSWORD = "correct horse battery staple"
 NEW_PASSWORD = "a brand new passphrase 42"
@@ -209,7 +208,7 @@ def test_a_password_reset_preserves_confirmed_mfa(auth_store):
 
 
 def test_the_cli_reset_recovers_an_owner_and_revokes_sessions(auth_store):
-    org_id, people = _org(auth_store)
+    _org_id, people = _org(auth_store)
     mfa = setup_confirmed_mfa(auth_store, people[authstore.OWNER])
 
     pending = auth_store.login("owner@example.com", PASSWORD)

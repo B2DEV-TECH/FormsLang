@@ -153,6 +153,7 @@ def convert_module(
                 text=True,
                 cwd=str(work),
                 timeout=timeout,
+                check=False,
                 **kwargs,
             )
         except subprocess.TimeoutExpired:

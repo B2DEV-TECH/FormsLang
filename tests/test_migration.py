@@ -98,7 +98,7 @@ def test_two_concurrent_registration_runs_do_not_duplicate_a_project(tmp_path):
                         created_by=owner["user_id"],
                     )
                 )
-            except Exception as e:  # pragma: no cover -- surfaced via `errors`
+            except Exception as e:  # pragma: no cover -- surfaced via `errors` # noqa: BLE001
                 errors.append(e)
 
         threads = [threading.Thread(target=register) for _ in range(5)]

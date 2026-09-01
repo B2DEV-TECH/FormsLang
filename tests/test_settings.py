@@ -17,7 +17,6 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from formslang.ai import EchoProvider, provider_from_env
-from formslang import secrets
 from formslang.config import config_path, key_location, load_config, save_config
 from formslang.convert import build_tasks
 from formslang.parser import parse_xml

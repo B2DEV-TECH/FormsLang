@@ -562,7 +562,7 @@ def test_the_job_names_the_unit_being_converted(server):
     """A run that reports only "0 of 6" is indistinguishable from a hang.
     The job has to name the unit in flight and the ones still queued, so
     the screen can show a spinner where the work actually is."""
-    base, wb = server
+    _base, wb = server
     gate = threading.Event()
 
     class SlowProvider(EchoProvider):
