@@ -266,15 +266,10 @@ Every decision, with its reviewer and comment, is written to the session
 file as it happens. **Propose all** drafts the whole module in one pass;
 review remains one unit at a time.
 
-<p align="center">
-  <img src="assets/screenshots/conversion-progress.png" width="900"
-       alt="A conversion in progress: the top bar tracks elapsed time, the queued units show a spinner, and the unit being read gets an overlay on the APEX pane">
-</p>
-
-<p align="center">
-  <sub>A CLI provider takes 15 to 60 seconds per unit — the screen accounts for
-  every second of it instead of going quiet.</sub>
-</p>
+A CLI provider takes 15 to 60 seconds per unit. While it runs, the top bar
+tracks elapsed time, queued units show a spinner, and the unit being read
+gets an overlay on the APEX pane — the screen accounts for every second of
+it instead of going quiet.
 
 ### What the screen tells you before you decide
 
