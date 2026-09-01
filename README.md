@@ -582,6 +582,8 @@ proprietary business rules, credentials or production data.
 
 ## Roadmap
 
+### Available
+
 - [x] Oracle toolchain bridge and XML parser
 - [x] Forms→APEX classification catalog
 - [x] Portfolio assessment with copy-paste deduplication
@@ -590,7 +592,29 @@ proprietary business rules, credentials or production data.
 - [x] APEXlang 26.1 project and import ZIP generation
 - [x] Windows desktop app (bundled engine, MSI / NSIS installers)
 - [x] Secure multi-user workspaces: RBAC, MFA/TOTP, and per-organization isolation
+- [x] Proof that a generated export actually imports on a real Oracle
+      APEX 26.1 instance (App Builder's Import screen), not just a template
+      instruction string -- SQLcl's own `apex import` still can't reach
+      oracleapex.com, a free shared host whose REST endpoint routes to a
+      generic error page instead of ORDS; tracked separately, since that is
+      a host-specific routing gap, not a FormsLang defect
+
+### In progress
+
+- [ ] Continuous integration (GitHub Actions: pytest + ruff, Python 3.10–3.13, Linux + Windows)
+- [ ] Functional validation workflow: turn `testspec`'s generated test
+      cases into a tracked execute/pass/fail loop instead of a static list
+- [ ] `ui.py` modularization (single ~100KB file → `ui/{shell,auth,
+      projects,conversion,review,validation,settings,shared}`)
+
+### Later
+
 - [ ] Semantic diff and merge across module versions
+- [ ] Larger benchmark corpus (100 / 500 modules) with tracked performance
+      budgets
+- [ ] Broader LOV / validation / navigation / process-flow coverage
+- [ ] Installer code signing
+- [ ] Team / server mode
 
 ## Community
 
