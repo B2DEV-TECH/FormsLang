@@ -2,6 +2,8 @@
 
     formslang assess <dir|file>...   -> convert, analyze and write the report
     formslang inspect <file.fmb>     -> detail of a single module, in the terminal
+    formslang doc <file.fmb>         -> HTML technical documentation of a module
+    formslang diff <a.fmb> <b.fmb>   -> structural diff between two versions of a module
     formslang catalog                -> catalog size and coverage
     formslang convert <file.fmb>     -> AI proposals for every code body, headless
     formslang workbench <file.fmb>   -> the review UI, in the browser
@@ -20,7 +22,7 @@ import getpass
 import sys
 from pathlib import Path
 
-from . import __version__, authstore, config, rules
+from . import __version__, authstore, config, formdiff, formdoc, rules
 from .ai import PROVIDERS, check_provider, provider_from_env
 from .assess import (
     HOURS_PER_POINT_DEFAULT,
@@ -267,6 +269,51 @@ def _open_session(args: argparse.Namespace) -> tuple[Store, int]:
     return store, added
 
 
+def cmd_doc(args: argparse.Namespace) -> int:
+    out_dir = Path(args.out)
+    try:
+        fm = _load_module(Path(args.path), out_dir, args.oracle_home)
+    except OracleToolchainError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    path = formdoc.write_report(fm, out_dir / "doc")
+    print(f"{fm.name}: {len(fm.blocks)} blocks, {len(fm.all_items)} items, "
+          f"{len(fm.all_triggers)} triggers, {len(fm.program_units)} program units")
+    print(f"HTML : {path}")
+    return 0
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    out_dir = Path(args.out)
+    try:
+        a = _load_module(Path(args.path_a), out_dir, args.oracle_home)
+        b = _load_module(Path(args.path_b), out_dir, args.oracle_home)
+    except OracleToolchainError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    diff = formdiff.compare_modules(a, b)
+    path = formdiff.write_report(diff, out_dir / "diff")
+
+    print(f"{diff.name_a} -> {diff.name_b}")
+    sections = [
+        ("Blocks", diff.blocks),
+        ("Form triggers", diff.triggers),
+        ("Program units", diff.program_units),
+        ("LOVs", diff.lovs),
+        ("Record groups", diff.record_groups),
+        ("Relations", diff.relations),
+    ]
+    for label, c in sections:
+        if c.added or c.removed or c.modified:
+            print(f"  {label:<14} +{len(c.added)}  -{len(c.removed)}  ~{len(c.modified)}  ={c.unchanged}")
+    if not diff.has_changes:
+        print("  no structural changes")
+    print(f"HTML : {path}")
+    return 0
+
+
 def cmd_convert(args: argparse.Namespace) -> int:
     """Headless conversion: propose for everything still unconverted."""
     try:
@@ -485,6 +532,19 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("-o", "--out", default="formslang-out", help="working directory")
     i.add_argument("--oracle-home", default=None, help="explicit ORACLE_HOME")
     i.set_defaults(func=cmd_inspect)
+
+    d = sub.add_parser("doc", help="HTML technical documentation for one module")
+    d.add_argument("path", help=".fmb/.mmb/.xml file")
+    d.add_argument("-o", "--out", default="formslang-out", help="output directory")
+    d.add_argument("--oracle-home", default=None, help="explicit ORACLE_HOME")
+    d.set_defaults(func=cmd_doc)
+
+    df = sub.add_parser("diff", help="structural diff between two versions of a module")
+    df.add_argument("path_a", help=".fmb/.mmb/.xml file (before)")
+    df.add_argument("path_b", help=".fmb/.mmb/.xml file (after)")
+    df.add_argument("-o", "--out", default="formslang-out", help="output directory")
+    df.add_argument("--oracle-home", default=None, help="explicit ORACLE_HOME")
+    df.set_defaults(func=cmd_diff)
 
     c = sub.add_parser("catalog", help="Forms->APEX catalog coverage")
     c.set_defaults(func=cmd_catalog)

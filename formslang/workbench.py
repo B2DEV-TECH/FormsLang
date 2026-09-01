@@ -33,6 +33,8 @@ from . import (
     authui,
     dashboard,
     depgraph,
+    formdiff,
+    formdoc,
     policy,
     projects,
     rbac,
@@ -281,6 +283,35 @@ class Workbench:
         except (OSError, ValueError):
             return None
         return None
+
+    # -- documentation / diff ----------------------------------------------
+
+    def doc_html(self) -> str:
+        """Technical documentation for the module currently on screen."""
+        if self.module is None:
+            raise ValueError("no module open")
+        return formdoc.render_html(self.module)
+
+    def _load_other_module(self, path: str):
+        """Parse a second module for /api/diff, without touching the open session."""
+        target = Path(path).expanduser().resolve()
+        if not target.is_file():
+            raise ValueError(f"not a file: {target}")
+        if target.suffix.lower() not in MODULE_SUFFIXES:
+            raise ValueError(f"not a Forms module: {target.name}")
+        if target.suffix.lower() == ".xml":
+            return parse_xml(target)
+        toolchain = detect_toolchain(self.oracle_home)
+        xml, log = convert_module(target, self.out_dir / "xml", toolchain, overwrite=False)
+        return parse_xml(xml, convert_log=log)
+
+    def diff_html(self, other_path: str) -> str:
+        """Structural diff between the module on screen and another one."""
+        if self.module is None:
+            raise ValueError("no module open")
+        other = self._load_other_module(other_path)
+        diff = formdiff.compare_modules(self.module, other)
+        return formdiff.render_html(diff)
 
     # -- choosing a module -----------------------------------------------
 
@@ -1010,6 +1041,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(wb.tests_state(parse_qs(query).get("task", [""])[0]))
             elif path == "/api/dashboard":
                 self._json(wb.dashboard_state())
+            elif path == "/api/doc":
+                self._send(200, wb.doc_html().encode("utf-8"), "text/html; charset=utf-8")
+            elif path == "/api/diff":
+                other = parse_qs(query).get("other", [""])[0]
+                if not other:
+                    raise ValueError("missing 'other' query parameter")
+                self._send(200, wb.diff_html(other).encode("utf-8"), "text/html; charset=utf-8")
             else:
                 self._json({"error": "not found"}, 404)
         except authstore.ProjectNotFound:

@@ -17,6 +17,7 @@ order -- HTML head, then body, then script, top to bottom.
 from __future__ import annotations
 
 from .conversion import EXPORT_JS, JOB_PROGRESS_JS, PROPOSE_AND_POLL_JS
+from .formdoc import FORMDOC_JS
 from .projects import DASHBOARD_JS, PICKER_JS
 from .review import (
     DECIDE_JS,
@@ -67,6 +68,7 @@ INDEX_HTML = (
     + PROPOSE_AND_POLL_JS
     + MODAL_JS
     + PICKER_JS
+    + FORMDOC_JS
     + SETTINGS_JS
     + EXPORT_JS
     + DASHBOARD_JS

@@ -104,6 +104,54 @@ def test_index_is_served(server):
     assert b"FormsLang" in body
 
 
+def test_doc_route_serves_html_for_the_open_module(server):
+    base, _ = server
+    code, body = _get(base, "/api/doc")
+    assert code == 200
+    assert b"DEMO_ORDER" in body
+    assert b"<!doctype html>" in body.lower()
+
+
+def test_diff_route_serves_html_against_another_module(server, tmp_path, sample_xml):
+    from tests.conftest import SAMPLE_XML
+
+    other = tmp_path / "DEMO_ORDER_V2_fmb.xml"
+    other.write_text(SAMPLE_XML.replace("WHEN-BANANA-SPLIT\" TriggerText=\"NULL;\"",
+                                         "WHEN-BANANA-SPLIT\" TriggerText=\"COMMIT;\""),
+                      encoding="utf-8")
+
+    base, _ = server
+    code, body = _get(base, "/api/diff?other=" + urllib.parse.quote(str(other)))
+    assert code == 200
+    assert b"DEMO_ORDER" in body
+    assert b"COMMIT;" in body
+
+
+def test_diff_route_requires_the_other_query_param(server):
+    base, _ = server
+    code, body = _get(base, "/api/diff")
+    assert code == 400
+    assert b"other" in body
+
+
+def test_doc_route_refuses_when_no_module_is_open(tmp_path):
+    store = Store(tmp_path / "empty.db")
+    store.init_session("EMPTY")
+    wb = Workbench(store, EchoProvider(), tmp_path / "export")
+    handler = type("BoundHandler", (Handler,), {"workbench": wb})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_port}"
+    try:
+        code, body = _get(base, "/api/doc")
+        assert code == 400
+        assert b"no module" in body
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        store.close()
+
+
 def test_a_foreign_host_header_is_refused(server):
     """DNS rebinding is one of the two real attacks on a loopback server."""
     base, _ = server

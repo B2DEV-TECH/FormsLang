@@ -605,10 +605,16 @@ proprietary business rules, credentials or production data.
 - [x] `ui.py` modularization: the ~100KB single file is now
       `ui/{shell,auth,projects,conversion,review,validation,settings,shared}`,
       reassembled into the same page byte-for-byte
+- [x] `formdoc`/`formdiff`: self-contained HTML technical documentation for
+      one module, and a structural diff between two versions (blocks, items,
+      triggers, program units, LOVs, record groups, relations -- property
+      changes and code hunks alike), reachable from the CLI (`formslang doc`,
+      `formslang diff`) and from the workbench (`Doc` / `Diff` buttons)
 
 ### Later
 
-- [ ] Semantic diff and merge across module versions
+- [ ] Interactive hunk-by-hunk merge engine across module versions (`formdiff`
+      reports the structural diff; applying it is still manual)
 - [ ] Larger benchmark corpus (100 / 500 modules) with tracked performance
       budgets
 - [ ] Broader LOV / validation / navigation / process-flow coverage

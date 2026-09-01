@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-PICKER_JS = r"""async function browse(dir) {
+PICKER_JS = r"""async function browse(dir, opts) {
+  opts = opts || {};
+  const onPick = opts.onPick || openModule;
+  const allowUpload = opts.allowUpload !== false;
   let d;
   try { d = await api("/api/browse" + (dir ? "?dir=" + encodeURIComponent(dir) : "")); }
   catch (e) { toast(e.message, true); return; }
 
-  openModal("Import a Forms module");
+  openModal(opts.title || "Import a Forms module");
   $("modal-path").textContent = d.dir;
-  $("modal-hint").textContent =
+  $("modal-hint").textContent = opts.hint ||
     "Choose the exact FMB you want to convert. FormsLang works from a private copy and leaves the original untouched.";
   const dirs = d.dirs.map((x) =>
     `<div class="entry dir" data-dir="${esc(x.path)}"><span class="icon">DIR</span><span class="name">${esc(x.name)}</span><span class="tag">Open folder</span></div>`).join("");
@@ -21,7 +24,7 @@ PICKER_JS = r"""async function browse(dir) {
   }).join("");
   $("modal-body").innerHTML = `
     <div class="picker-shell">
-      <div class="picker-hero">
+      ${allowUpload ? `<div class="picker-hero">
         <div class="dropzone" tabindex="0">
           <div class="dropmark">FMB</div>
           <div class="dropcopy">
@@ -36,7 +39,7 @@ PICKER_JS = r"""async function browse(dir) {
           <p>Oracle reads the FMB, then FormsLang opens a resumable review session for that module.</p>
           <div class="safety"><i>&#10003;</i><span>The original file and its folder are never changed.</span></div>
         </div>
-      </div>
+      </div>` : ""}
       <div class="picker-nav">
         <button class="btn" type="button" data-home>&#8962; Start folder</button>
         ${d.parent ? `<button class="btn" type="button" data-up>&uarr; Up</button>` : ""}
@@ -45,26 +48,32 @@ PICKER_JS = r"""async function browse(dir) {
       <div class="group">Folders and Forms modules</div>
       <div class="picker-files">${dirs + mods || `<div class="picker-empty">No Forms modules in this folder.<br>Drop a file above or choose another folder.</div>`}</div>
     </div>`;
-  foot({ placeholder: "Paste a full path to .fmb, .mmb, .xml or .session.db", button: "Open path", run: openModule });
+  foot({
+    placeholder: "Paste a full path to .fmb, .mmb, .xml or .session.db",
+    button: opts.buttonLabel || "Open path",
+    run: onPick,
+  });
 
   const body = $("modal-body");
-  body.querySelectorAll(".entry.dir").forEach((e) => (e.onclick = () => browse(e.dataset.dir)));
-  body.querySelectorAll(".entry.mod").forEach((e) => (e.onclick = () => openModule(e.dataset.mod)));
-  const input = body.querySelector('input[type="file"]');
-  const drop = body.querySelector(".dropzone");
-  body.querySelector("[data-pick]").onclick = () => input.click();
-  body.querySelector("[data-home]").onclick = () => browse("");
+  body.querySelectorAll(".entry.dir").forEach((e) => (e.onclick = () => browse(e.dataset.dir, opts)));
+  body.querySelectorAll(".entry.mod").forEach((e) => (e.onclick = () => onPick(e.dataset.mod)));
+  body.querySelector("[data-home]").onclick = () => browse("", opts);
   const up = body.querySelector("[data-up]");
-  if (up) up.onclick = () => browse(d.parent);
-  input.onchange = () => input.files[0] && uploadModule(input.files[0]);
-  drop.onkeydown = (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
-  };
-  for (const event of ["dragenter", "dragover"])
-    drop.addEventListener(event, (e) => { e.preventDefault(); drop.classList.add("drag"); });
-  for (const event of ["dragleave", "drop"])
-    drop.addEventListener(event, (e) => { e.preventDefault(); drop.classList.remove("drag"); });
-  drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && uploadModule(e.dataTransfer.files[0]));
+  if (up) up.onclick = () => browse(d.parent, opts);
+  if (allowUpload) {
+    const input = body.querySelector('input[type="file"]');
+    const drop = body.querySelector(".dropzone");
+    body.querySelector("[data-pick]").onclick = () => input.click();
+    input.onchange = () => input.files[0] && uploadModule(input.files[0]);
+    drop.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+    };
+    for (const event of ["dragenter", "dragover"])
+      drop.addEventListener(event, (e) => { e.preventDefault(); drop.classList.add("drag"); });
+    for (const event of ["dragleave", "drop"])
+      drop.addEventListener(event, (e) => { e.preventDefault(); drop.classList.remove("drag"); });
+    drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && uploadModule(e.dataTransfer.files[0]));
+  }
 }
 
 async function uploadModule(file) {
