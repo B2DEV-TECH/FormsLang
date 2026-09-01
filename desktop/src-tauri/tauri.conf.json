@@ -7,17 +7,6 @@
     "frontendDist": "../ui-shell"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "FormsLang - by B2DEV TECH",
-        "width": 1380,
-        "height": 880,
-        "minWidth": 1100,
-        "minHeight": 700,
-        "center": true
-      }
-    ],
     "security": {
       "csp": null
     }

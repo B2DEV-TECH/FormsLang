@@ -8,7 +8,9 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::{Manager, RunEvent};
+use tauri::webview::NewWindowResponse;
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
@@ -25,6 +27,7 @@ fn free_port() -> u16 {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Engine(Mutex::new(None)))
         .setup(|app| {
             let port = free_port();
@@ -50,7 +53,21 @@ fn main() {
                 .spawn()?;
             app.state::<Engine>().0.lock().unwrap().replace(child);
 
-            let win = app.get_webview_window("main").expect("main window");
+            // Doc/Diff open their report in a new tab via window.open(); the
+            // webview has no tabs and silently drops that request unless we
+            // intercept it here and hand the URL to the system browser.
+            let opener = app.handle().clone();
+            let win = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                .title("FormsLang - by B2DEV TECH")
+                .inner_size(1380.0, 880.0)
+                .min_inner_size(1100.0, 700.0)
+                .center()
+                .on_new_window(move |url, _features| {
+                    let _ = opener.opener().open_url(url.to_string(), None::<String>);
+                    NewWindowResponse::Deny
+                })
+                .build()?;
+
             std::thread::spawn(move || {
                 let addr: SocketAddr = ([127, 0, 0, 1], port).into();
                 for _ in 0..300 {
