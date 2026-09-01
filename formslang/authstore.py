@@ -848,34 +848,39 @@ class AuthStore:
             raise RateLimited(max(1, int(remaining)))
 
     def rate_limit_record_failure(self, key: str) -> None:
-        now_dt = dt.datetime.now().replace(microsecond=0)
-        now = now_dt.isoformat(sep=" ")
-        row = self.db.execute(
-            "SELECT failures, window_started_at FROM rate_limit_bucket WHERE key = ?", (key,)
-        ).fetchone()
-        if row is None:
+        # SELECT-then-INSERT-or-UPDATE, same as every other read-modify-write
+        # in this store -- must run inside _immediate() or two concurrent
+        # failures for the same key can both see no row and both INSERT,
+        # tripping the UNIQUE constraint on rate_limit_bucket.key.
+        with self._immediate():
+            now_dt = dt.datetime.now().replace(microsecond=0)
+            now = now_dt.isoformat(sep=" ")
+            row = self.db.execute(
+                "SELECT failures, window_started_at FROM rate_limit_bucket WHERE key = ?", (key,)
+            ).fetchone()
+            if row is None:
+                self.db.execute(
+                    "INSERT INTO rate_limit_bucket (key, failures, window_started_at, locked_until) "
+                    "VALUES (?, 1, ?, NULL)",
+                    (key, now),
+                )
+                return
+            window_started = dt.datetime.fromisoformat(row["window_started_at"])
+            if (now_dt - window_started).total_seconds() > _RL_WINDOW_SECONDS:
+                failures, window_started_at = 1, now
+            else:
+                failures, window_started_at = row["failures"] + 1, row["window_started_at"]
+            locked_until = None
+            if failures >= _RL_THRESHOLD:
+                lock_seconds = min(
+                    _RL_BASE_LOCK_SECONDS * (2 ** (failures - _RL_THRESHOLD)), _RL_MAX_LOCK_SECONDS
+                )
+                locked_until = (now_dt + dt.timedelta(seconds=lock_seconds)).isoformat(sep=" ")
             self.db.execute(
-                "INSERT INTO rate_limit_bucket (key, failures, window_started_at, locked_until) "
-                "VALUES (?, 1, ?, NULL)",
-                (key, now),
+                "UPDATE rate_limit_bucket SET failures = ?, window_started_at = ?, locked_until = ? "
+                "WHERE key = ?",
+                (failures, window_started_at, locked_until, key),
             )
-            return
-        window_started = dt.datetime.fromisoformat(row["window_started_at"])
-        if (now_dt - window_started).total_seconds() > _RL_WINDOW_SECONDS:
-            failures, window_started_at = 1, now
-        else:
-            failures, window_started_at = row["failures"] + 1, row["window_started_at"]
-        locked_until = None
-        if failures >= _RL_THRESHOLD:
-            lock_seconds = min(
-                _RL_BASE_LOCK_SECONDS * (2 ** (failures - _RL_THRESHOLD)), _RL_MAX_LOCK_SECONDS
-            )
-            locked_until = (now_dt + dt.timedelta(seconds=lock_seconds)).isoformat(sep=" ")
-        self.db.execute(
-            "UPDATE rate_limit_bucket SET failures = ?, window_started_at = ?, locked_until = ? "
-            "WHERE key = ?",
-            (failures, window_started_at, locked_until, key),
-        )
 
     def rate_limit_record_success(self, key: str) -> None:
         self.db.execute("DELETE FROM rate_limit_bucket WHERE key = ?", (key,))

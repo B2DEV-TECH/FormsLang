@@ -5,8 +5,9 @@ runs unattended. The whole point of a golden file is that it changes only
 when a human looked at the diff and decided the new behaviour is correct;
 wiring this into CI or a test would defeat that on the first commit that
 introduced a regression, since the "check" would just rewrite itself to
-match. (There is no CI configuration in this repository at all -- this
-script has to be run by hand from a developer's machine.)
+match. (CI runs the golden-corpus *tests* on every push -- see
+.github/workflows/ci.yml -- but never this script; regeneration stays a
+human decision made by hand on a developer's machine.)
 
 Usage:
     py tests/update_golden.py --tier medium

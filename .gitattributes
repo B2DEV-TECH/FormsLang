@@ -1,0 +1,28 @@
+# Normalize line endings to LF everywhere, on every platform, regardless of a
+# runner's or a contributor's core.autocrlf. Without this, a fresh checkout on
+# a Windows runner (GitHub's windows-latest images default to
+# core.autocrlf=true) rewrites LF -> CRLF for anything git's own heuristic
+# guesses is text -- which silently changes the bytes, and therefore the
+# hash, of vendored files pinned by content (see formslang/authui.py's
+# QR_SHA256 check against formslang/vendor/qrcode-generator-1.4.4.js).
+* text=auto eol=lf
+
+# Never touch these -- they are binary, full stop, no heuristic needed.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.bmp binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.msi binary
+*.exe binary
+*.zip binary
+*.pdf binary
