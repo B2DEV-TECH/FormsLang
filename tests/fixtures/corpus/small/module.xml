@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Synthetic FormsLang golden-corpus fixture: "small".
+  100% synthetic, no client data, no real Form. Roughly ten objects,
+  independently authored from tests/conftest.py's SAMPLE_XML (same order
+  of magnitude, not a copy). See tests/golden.py and
+  tests/fixtures/README.md.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms" version="12.2.1.4.0">
+  <FormModule Name="SMALL_INVOICE" Title="Invoice entry" FirstNavigationBlockName="INVOICES">
+    <Trigger Name="WHEN-NEW-FORM-INSTANCE"
+             TriggerText="BEGIN&amp;#10;&amp;#9;GO_BLOCK('INVOICES');&amp;#10;END;"/>
+    <Trigger Name="KEY-EXIT" TriggerText="EXIT_FORM;"/>
+    <Block Name="INVOICES" DatabaseBlock="true" QueryDataSourceName="INVOICES"
+           RecordsDisplayCount="1">
+      <Trigger Name="PRE-INSERT"
+               TriggerText="BEGIN&amp;#10;  :INVOICES.CREATED := SYSDATE;&amp;#10;END;"/>
+      <Item Name="INV_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="INV_ID" DatabaseItem="true" Required="true"/>
+      <Item Name="INV_TOTAL" ItemType="Text Item" DataType="Number"
+            ColumnName="INV_TOTAL" DatabaseItem="true" Prompt="Total"
+            LOVName="LOV_STATUS">
+        <Trigger Name="WHEN-VALIDATE-ITEM"
+                 TriggerText="BEGIN&amp;#10;  IF :INVOICES.INV_TOTAL &amp;lt; 0 THEN&amp;#10;    MESSAGE('total must not be negative');&amp;#10;  END IF;&amp;#10;END;"/>
+      </Item>
+    </Block>
+    <ProgramUnit Name="P_RECALC" ProgramUnitType="Procedure"
+                 ProgramUnitText="PROCEDURE P_RECALC IS&amp;#10;BEGIN&amp;#10;  SELECT SUM(AMOUNT) INTO :INVOICES.INV_TOTAL FROM INVOICE_LINES;&amp;#10;END;"/>
+    <RecordGroup Name="RG_STATUS" RecordGroupType="Query"
+                 RecordGroupQuery="SELECT LABEL, CODE FROM INVOICE_STATUS"/>
+    <LOV Name="LOV_STATUS" RecordGroupName="RG_STATUS" Title="Status">
+      <LOVColumnMapping Name="LABEL"/>
+      <LOVColumnMapping Name="CODE"/>
+    </LOV>
+    <Canvas Name="CV_MAIN"/>
+    <Window Name="WIN_MAIN"/>
+    <Alert Name="AL_CONFIRM"/>
+    <AttachedLibrary Name="INV_LIB"/>
+  </FormModule>
+</Module>

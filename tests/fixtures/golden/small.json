@@ -1,0 +1,279 @@
+{
+  "export": {
+    "approved_sql_sha256": "3aed352ea66d527780f453a1b3cdcec7c32ed5239d91822f6e6a686bc1ccb240",
+    "files": [
+      "approved.sql",
+      "session.json"
+    ],
+    "session_json_sha256": "a701f1911071d826a98ad40f246577c2bc4777cb4862dba913fd3f597b5ea343"
+  },
+  "graph_summary": {
+    "by_kind": {
+      "alert": 1,
+      "block": 1,
+      "item": 3,
+      "library": 1,
+      "lov": 1,
+      "module": 1,
+      "program_unit": 1,
+      "record_group": 1,
+      "table": 3,
+      "trigger": 4
+    },
+    "edges": 21,
+    "external": 4,
+    "hubs": [
+      {
+        "id": "item:INVOICES.INV_TOTAL",
+        "in": 3,
+        "kind": "item",
+        "label": "Item",
+        "name": "INVOICES.INV_TOTAL",
+        "out": 2,
+        "risk": ""
+      },
+      {
+        "id": "block:INVOICES",
+        "in": 2,
+        "kind": "block",
+        "label": "Block",
+        "name": "INVOICES",
+        "out": 4,
+        "risk": ""
+      },
+      {
+        "id": "lov:LOV_STATUS",
+        "in": 2,
+        "kind": "lov",
+        "label": "LOV",
+        "name": "LOV_STATUS",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "record_group:RG_STATUS",
+        "in": 2,
+        "kind": "record_group",
+        "label": "Record group",
+        "name": "RG_STATUS",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "program_unit:P_RECALC",
+        "in": 1,
+        "kind": "program_unit",
+        "label": "Program unit",
+        "name": "P_RECALC",
+        "out": 2,
+        "risk": ""
+      },
+      {
+        "id": "trigger:INVOICES.INV_TOTAL.WHEN-VALIDATE-ITEM",
+        "in": 1,
+        "kind": "trigger",
+        "label": "Trigger",
+        "name": "INVOICES.INV_TOTAL.WHEN-VALIDATE-ITEM",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "trigger:INVOICES.PRE-INSERT",
+        "in": 1,
+        "kind": "trigger",
+        "label": "Trigger",
+        "name": "INVOICES.PRE-INSERT",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "trigger:WHEN-NEW-FORM-INSTANCE",
+        "in": 1,
+        "kind": "trigger",
+        "label": "Trigger",
+        "name": "WHEN-NEW-FORM-INSTANCE",
+        "out": 1,
+        "risk": ""
+      }
+    ],
+    "missing": 1,
+    "module": "SMALL_INVOICE",
+    "nodes": 17,
+    "unresolved": 0,
+    "version": "depgraph/1"
+  },
+  "module": {
+    "alerts": [
+      "AL_CONFIRM"
+    ],
+    "attached_libraries": [
+      "INV_LIB"
+    ],
+    "blocks": 1,
+    "canvases": [
+      "CV_MAIN"
+    ],
+    "convert_warnings": [],
+    "editors": [],
+    "first_block": "INVOICES",
+    "graphics_count": 0,
+    "items": 2,
+    "lovs": 1,
+    "name": "SMALL_INVOICE",
+    "object_groups": [],
+    "parameters": [],
+    "plsql_lines": 16,
+    "program_units": 1,
+    "record_groups": 1,
+    "relations": 0,
+    "reports": [],
+    "tab_pages": [],
+    "title": "Invoice entry",
+    "triggers": 4,
+    "windows": [
+      "WIN_MAIN"
+    ]
+  },
+  "proposals": {
+    "541ae373b0e8": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "8d42fa18d17f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "a5ffbcd9101e": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "c5075fdf1e60": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    }
+  },
+  "tasks": [
+    {
+      "apex_hint": "Procedure -- normally moves to a database package",
+      "builtins": [],
+      "globals_used": [],
+      "id": "541ae373b0e8",
+      "item_refs": [
+        "INVOICES.INV_TOTAL"
+      ],
+      "kind": "program_unit",
+      "lines": 4,
+      "name": "P_RECALC",
+      "owner": "",
+      "verdict": "UNKNOWN"
+    },
+    {
+      "apex_hint": "Pre-DML process or table trigger",
+      "builtins": [],
+      "globals_used": [],
+      "id": "8d42fa18d17f",
+      "item_refs": [
+        "INVOICES.CREATED"
+      ],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "PRE-INSERT",
+      "owner": "INVOICES",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "a5ffbcd9101e",
+      "item_refs": [
+        "INVOICES.INV_TOTAL"
+      ],
+      "kind": "trigger",
+      "lines": 5,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "INVOICES.INV_TOTAL",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Before Header process / page On Load",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "c5075fdf1e60",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-NEW-FORM-INSTANCE",
+      "owner": "",
+      "verdict": "ASSISTED"
+    }
+  ],
+  "tier": "small",
+  "verdict_counts": {
+    "ASSISTED": 2,
+    "AUTO": 1,
+    "DROP": 0,
+    "MANUAL": 0,
+    "UNKNOWN": 1
+  }
+}

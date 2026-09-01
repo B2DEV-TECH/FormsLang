@@ -1,0 +1,162 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Module xmlns="http://xmlns.oracle.com/Forms" version="12.2.1.4.0">
+  <FormModule Name="MEDIUM_FORM" Title="Medium Fixture" FirstNavigationBlockName="B_01">
+    <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="GO_BLOCK('B_01');" />
+    <Trigger Name="WHEN-BANANA-EVENT" TriggerText="NULL" />
+    <Block Name="B_01" DatabaseBlock="true" QueryDataSourceName="TBL_01" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="BEGIN&amp;#10;  GO_BLOCK('B_01');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_02" DatabaseBlock="true" QueryDataSourceName="TBL_02" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-NEW-BLOCK-INSTANCE" TriggerText="BEGIN&amp;#10;  GO_ITEM('B_01.ITEM_01');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_03" DatabaseBlock="true" QueryDataSourceName="TBL_03" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-NEW-RECORD-INSTANCE" TriggerText="BEGIN&amp;#10;  SET_ITEM_PROPERTY('B_01.ITEM_01', ENABLED, PROPERTY_TRUE);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_04" DatabaseBlock="true" QueryDataSourceName="TBL_04" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  MESSAGE('validated');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_05" DatabaseBlock="true" QueryDataSourceName="TBL_05" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-VALIDATE-RECORD" TriggerText="BEGIN&amp;#10;  CHECK_RECORD_UNIQUENESS;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="MESSAGE('required');" />
+      </Item>
+    </Block>
+    <Block Name="B_06" DatabaseBlock="true" QueryDataSourceName="TBL_06" RecordsDisplayCount="1">
+      <Trigger Name="POST-QUERY" TriggerText="BEGIN&amp;#10;  SET_BLOCK_PROPERTY('B_01', DEFAULT_WHERE, 'ID=1');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_07" DatabaseBlock="true" QueryDataSourceName="TBL_07" RecordsDisplayCount="1">
+      <Trigger Name="PRE-QUERY" TriggerText="BEGIN&amp;#10;  SET_BLOCK_PROPERTY('B_01', ORDER_BY, 'ID');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_08" DatabaseBlock="true" QueryDataSourceName="TBL_08" RecordsDisplayCount="1">
+      <Trigger Name="PRE-INSERT" TriggerText="BEGIN&amp;#10;  GET_APPLICATION_PROPERTY(USERNAME);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_09" DatabaseBlock="true" QueryDataSourceName="TBL_09" RecordsDisplayCount="1">
+      <Trigger Name="POST-INSERT" TriggerText="BEGIN&amp;#10;  DBMS_OUTPUT.PUT_LINE('inserted');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_10" DatabaseBlock="true" QueryDataSourceName="TBL_10" RecordsDisplayCount="1">
+      <Trigger Name="PRE-UPDATE" TriggerText="BEGIN&amp;#10;  COPY('X', 'B_01.ITEM_01');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="MESSAGE('required');" />
+      </Item>
+    </Block>
+    <Block Name="B_11" DatabaseBlock="true" QueryDataSourceName="TBL_11" RecordsDisplayCount="1">
+      <Trigger Name="POST-UPDATE" TriggerText="BEGIN&amp;#10;  NAME_IN('B_01.ITEM_01');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_12" DatabaseBlock="true" QueryDataSourceName="TBL_12" RecordsDisplayCount="1">
+      <Trigger Name="PRE-DELETE" TriggerText="BEGIN&amp;#10;  DELETE_RECORD;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_13" DatabaseBlock="true" QueryDataSourceName="TBL_13" RecordsDisplayCount="1">
+      <Trigger Name="POST-DELETE" TriggerText="BEGIN&amp;#10;  COMMIT_FORM;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_14" DatabaseBlock="true" QueryDataSourceName="TBL_14" RecordsDisplayCount="1">
+      <Trigger Name="KEY-COMMIT" TriggerText="BEGIN&amp;#10;  COMMIT_FORM;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_15" DatabaseBlock="true" QueryDataSourceName="TBL_15" RecordsDisplayCount="1">
+      <Trigger Name="KEY-NEXT-ITEM" TriggerText="BEGIN&amp;#10;  NEXT_ITEM;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="MESSAGE('required');" />
+      </Item>
+    </Block>
+    <Block Name="B_16" DatabaseBlock="true" QueryDataSourceName="TBL_16" RecordsDisplayCount="1">
+      <Trigger Name="KEY-EXIT" TriggerText="BEGIN&amp;#10;  EXIT_FORM;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_17" DatabaseBlock="true" QueryDataSourceName="TBL_17" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN&amp;#10;  SHOW_ALERT('AL_CONFIRM');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_18" DatabaseBlock="true" QueryDataSourceName="TBL_18" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-CHECKBOX-CHANGED" TriggerText="BEGIN&amp;#10;  SET_ITEM_PROPERTY('B_01.ITEM_01', VISIBLE, PROPERTY_TRUE);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_19" DatabaseBlock="true" QueryDataSourceName="TBL_19" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-LIST-CHANGED" TriggerText="BEGIN&amp;#10;  POPULATE_GROUP('RG_STATUS');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_20" DatabaseBlock="true" QueryDataSourceName="TBL_20" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-RADIO-CHANGED" TriggerText="BEGIN&amp;#10;  GET_ITEM_PROPERTY('B_01.ITEM_01', VALUE);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="MESSAGE('required');" />
+      </Item>
+    </Block>
+    <Block Name="B_21" DatabaseBlock="true" QueryDataSourceName="TBL_21" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-WINDOW-ACTIVATED" TriggerText="BEGIN&amp;#10;  SHOW_WINDOW('WIN_MAIN');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_22" DatabaseBlock="true" QueryDataSourceName="TBL_22" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-WINDOW-CLOSED" TriggerText="BEGIN&amp;#10;  HIDE_WINDOW('WIN_MAIN');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_23" DatabaseBlock="true" QueryDataSourceName="TBL_23" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-TIMER-EXPIRED" TriggerText="BEGIN&amp;#10;  CREATE_TIMER('T1', 1000, NO_REPEAT);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_24" DatabaseBlock="true" QueryDataSourceName="TBL_24" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-MOUSE-CLICK" TriggerText="BEGIN&amp;#10;  SET_CANVAS_PROPERTY('CV_MAIN', VISIBLE, PROPERTY_TRUE);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_25" DatabaseBlock="true" QueryDataSourceName="TBL_25" RecordsDisplayCount="1">
+      <Trigger Name="ON-ERROR" TriggerText="BEGIN&amp;#10;  GET_APPLICATION_PROPERTY(TIMER_NAME);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="MESSAGE('required');" />
+      </Item>
+    </Block>
+    <Block Name="B_26" DatabaseBlock="true" QueryDataSourceName="TBL_26" RecordsDisplayCount="1">
+      <Trigger Name="ON-MESSAGE" TriggerText="BEGIN&amp;#10;  MESSAGE('on message');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_27" DatabaseBlock="true" QueryDataSourceName="TBL_27" RecordsDisplayCount="1">
+      <Trigger Name="ON-INSERT" TriggerText="BEGIN&amp;#10;  INSERT INTO B_01_TBL (ID) VALUES (1);&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_28" DatabaseBlock="true" QueryDataSourceName="TBL_28" RecordsDisplayCount="1">
+      <Trigger Name="ON-UPDATE" TriggerText="BEGIN&amp;#10;  UPDATE B_01_TBL SET ID = 1;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_29" DatabaseBlock="true" QueryDataSourceName="TBL_29" RecordsDisplayCount="1">
+      <Trigger Name="ON-DELETE" TriggerText="BEGIN&amp;#10;  DELETE FROM B_01_TBL;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_30" DatabaseBlock="true" QueryDataSourceName="TBL_30" RecordsDisplayCount="1">
+      <Trigger Name="ON-LOCK" TriggerText="BEGIN&amp;#10;  LOCK_RECORD;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="MESSAGE('required');" />
+      </Item>
+    </Block>
+    <Block Name="B_31" DatabaseBlock="true" QueryDataSourceName="TBL_31" RecordsDisplayCount="1">
+      <Trigger Name="KEY-LISTVAL" TriggerText="BEGIN&amp;#10;  LIST_VALUES;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <Block Name="B_32" DatabaseBlock="true" QueryDataSourceName="TBL_32" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-IMAGE-ACTIVATED" TriggerText="BEGIN&amp;#10;  OPEN_FORM('OTHER_FORM');&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="true" />
+    </Block>
+    <Block Name="B_33" DatabaseBlock="true" QueryDataSourceName="TBL_33" RecordsDisplayCount="1">
+      <Trigger Name="WHEN-CUSTOM-ITEM-EVENT" TriggerText="BEGIN&amp;#10;  WEBUTIL_CORE.CUSTOMEVENTHANDLER;&amp;#10;END;" />
+      <Item Name="ITEM_01" ItemType="Text Item" DataType="Char" ColumnName="ITEM_01" DatabaseItem="true" Required="false" />
+    </Block>
+    <ProgramUnit Name="P_HELPER" ProgramUnitType="Function" ProgramUnitText="FUNCTION P_HELPER RETURN NUMBER IS&amp;#10;  v_n NUMBER;&amp;#10;BEGIN&amp;#10;  SELECT COUNT(*) INTO v_n FROM TBL_01;&amp;#10;  RETURN v_n;&amp;#10;END;" />
+    <RecordGroup Name="RG_STATUS" RecordGroupType="Query" RecordGroupQuery="SELECT LABEL, CODE FROM STATUS_LOOKUP" />
+    <LOV Name="LOV_STATUS" RecordGroupName="RG_STATUS" Title="Status">
+      <LOVColumnMapping Name="LABEL" />
+      <LOVColumnMapping Name="CODE" />
+    </LOV>
+    <Canvas Name="CV_MAIN" />
+    <Window Name="WIN_MAIN" />
+    <Alert Name="AL_CONFIRM" />
+    <AttachedLibrary Name="MEDIUM_LIB" />
+    <ModuleParameter Name="P_MODE" />
+  </FormModule>
+</Module>

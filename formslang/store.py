@@ -19,7 +19,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import policy, sensitive, testspec
+from . import policy, rules, sensitive, testspec
 from .ai import setting as ai_setting
 from .analysis import ENGINE_VERSION, UnitAnalysis
 from .convert import ConversionTask, Proposal
@@ -123,7 +123,43 @@ CREATE TABLE IF NOT EXISTS module_meta (
     payload     TEXT NOT NULL DEFAULT '{}',
     updated_at  TEXT NOT NULL DEFAULT ''
 );
+
+-- One row per pipeline stage timing. Wall-clock only -- see telemetry.py
+-- for why CPU/memory are not sampled. error_kind is the exception's class
+-- name, never str(exception): a stage can fail while holding source text
+-- or a model answer, and neither may ever land in this table.
+CREATE TABLE IF NOT EXISTS stage_timing (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    stage        TEXT NOT NULL,
+    started_at   TEXT NOT NULL,
+    duration_ms  REAL NOT NULL DEFAULT 0,
+    item_count   INTEGER NOT NULL DEFAULT 0,
+    ok           INTEGER NOT NULL DEFAULT 1,
+    error_kind   TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS stage_timing_stage ON stage_timing(stage, id);
+
+-- One row per "convert" run. This is the durable half of Workbench.job --
+-- that dict lives in memory and is gone the moment the process restarts;
+-- this row is what lets the UI say "that run was interrupted, N units
+-- never got a proposal" instead of silently forgetting it happened.
+-- A row left at status='running' after a restart is not a queryable
+-- steady state -- see Store.reconcile_job_runs, called once at open().
+CREATE TABLE IF NOT EXISTS job_run (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at        TEXT NOT NULL,
+    ended_at          TEXT NOT NULL DEFAULT '',
+    status            TEXT NOT NULL DEFAULT 'running',
+    total             INTEGER NOT NULL DEFAULT 0,
+    done              INTEGER NOT NULL DEFAULT 0,
+    failed            INTEGER NOT NULL DEFAULT 0,
+    cancel_requested  INTEGER NOT NULL DEFAULT 0
+);
 """
+
+JOB_RUNNING, JOB_COMPLETED, JOB_CANCELLED, JOB_CRASHED = (
+    "running", "completed", "cancelled", "crashed",
+)
 
 # Columns added after the first release. New tables come free from
 # CREATE TABLE IF NOT EXISTS above; new columns do not, so they are applied
@@ -185,6 +221,7 @@ class Store:
         self.db.executescript(SCHEMA)
         self._migrate()
         self.db.commit()
+        self.reconcile_job_runs()
 
     def _migrate(self) -> None:
         """Add columns that older session files do not have yet.
@@ -255,7 +292,8 @@ class Store:
         meta = json.loads(row["meta"] or "{}")
         return ConversionTask(
             id=row["id"], module=row["module"], kind=row["kind"], name=row["name"],
-            owner=row["owner"], verdict=row["verdict"], apex_hint=row["apex_hint"],
+            owner=row["owner"], verdict=row["verdict"] or rules.UNKNOWN,
+            apex_hint=row["apex_hint"],
             source=row["source"], lines=row["lines"], fingerprint=row["fingerprint"],
             builtins=[(b["name"], b["verdict"], b["apex"]) for b in meta.get("builtins", [])],
             item_refs=meta.get("item_refs", []),
@@ -636,6 +674,112 @@ class Store:
 
     def all_views(self) -> list[TaskView]:
         return [v for v in (self.view(i) for i in self.task_ids()) if v is not None]
+
+    # -- telemetry ---------------------------------------------------------
+
+    def record_stage(
+        self, name: str, duration_ms: float, item_count: int = 0,
+        ok: bool = True, error_kind: str = "",
+    ) -> None:
+        """Persist one stage timing. See telemetry.stage() -- the recorder
+        this method is built to be passed as."""
+        self.db.execute(
+            "INSERT INTO stage_timing (stage, started_at, duration_ms, item_count, "
+            "ok, error_kind) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, _now(), duration_ms, item_count, 1 if ok else 0, error_kind),
+        )
+        self.db.commit()
+
+    def stage_summary(self) -> dict:
+        """count/min/p50/p95/max/total per stage, for the performance baseline.
+
+        Deliberately not a report of what the numbers *should* be -- this is
+        only ever what was actually measured on this machine, this session.
+        """
+        from . import telemetry
+
+        rows = self.db.execute(
+            "SELECT stage, duration_ms, ok FROM stage_timing ORDER BY stage, id"
+        ).fetchall()
+        by_stage: dict[str, list[float]] = {}
+        failures: dict[str, int] = {}
+        for r in rows:
+            by_stage.setdefault(r["stage"], []).append(r["duration_ms"])
+            if not r["ok"]:
+                failures[r["stage"]] = failures.get(r["stage"], 0) + 1
+        return {
+            stage: {**telemetry.summarize(durations), "failed": failures.get(stage, 0)}
+            for stage, durations in by_stage.items()
+        }
+
+    # -- job runs ------------------------------------------------------
+
+    def reconcile_job_runs(self) -> int:
+        """Flip any run left at 'running' to 'crashed'.
+
+        Called once when a session file is opened. A row can only be stuck
+        at 'running' if the process that owned it never reached start_job's
+        finally block -- a crash, a killed process, a forced shutdown. Runs
+        this method itself starts and finishes cannot trigger it; it only
+        ever sees what an *earlier* process left behind.
+        """
+        cur = self.db.execute(
+            "UPDATE job_run SET status = ?, ended_at = ? "
+            "WHERE status = ?",
+            (JOB_CRASHED, _now(), JOB_RUNNING),
+        )
+        self.db.commit()
+        return cur.rowcount
+
+    def start_job_run(self, total: int) -> int:
+        cur = self.db.execute(
+            "INSERT INTO job_run (started_at, status, total) VALUES (?, ?, ?)",
+            (_now(), JOB_RUNNING, total),
+        )
+        self.db.commit()
+        return int(cur.lastrowid or 0)
+
+    def update_job_run(self, run_id: int, done: int, failed: int) -> None:
+        self.db.execute(
+            "UPDATE job_run SET done = ?, failed = ? WHERE id = ?",
+            (done, failed, run_id),
+        )
+        self.db.commit()
+
+    def finish_job_run(self, run_id: int, status: str) -> None:
+        if status not in (JOB_COMPLETED, JOB_CANCELLED, JOB_CRASHED):
+            raise ValueError(f"unknown job_run status {status!r}")
+        self.db.execute(
+            "UPDATE job_run SET status = ?, ended_at = ? WHERE id = ?",
+            (status, _now(), run_id),
+        )
+        self.db.commit()
+
+    def request_job_cancel(self, run_id: int) -> bool:
+        """Set the flag _run_job polls between tasks. True if the run
+        exists and was still running -- False for an unknown or already
+        finished id, so the caller can tell a no-op from a real request."""
+        cur = self.db.execute(
+            "UPDATE job_run SET cancel_requested = 1 WHERE id = ? AND status = ?",
+            (run_id, JOB_RUNNING),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def is_job_cancel_requested(self, run_id: int) -> bool:
+        row = self.db.execute(
+            "SELECT cancel_requested FROM job_run WHERE id = ?", (run_id,)
+        ).fetchone()
+        return bool(row and row["cancel_requested"])
+
+    def last_job_run(self) -> dict | None:
+        """The most recent run, finished or not -- what the UI needs to say
+        'this run was interrupted, N of M units never got a proposal' even
+        after Workbench.job (in-memory) has been reset by a restart."""
+        row = self.db.execute(
+            "SELECT * FROM job_run ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
 
     def stats(self) -> dict:
         views = self.all_views()

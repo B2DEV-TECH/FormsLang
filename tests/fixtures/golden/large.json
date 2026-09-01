@@ -1,0 +1,2211 @@
+{
+  "export": {
+    "approved_sql_sha256": "2ed0a09950a18003371a6395789c19c86b5c8a7db8c49e29db93ac8ec60e5750",
+    "files": [
+      "approved.sql",
+      "session.json"
+    ],
+    "session_json_sha256": "5efa8f2e430d1f97271dac257495da987a99fbd071fef7ecda66cddf1300a635"
+  },
+  "graph_summary": {
+    "by_kind": {
+      "block": 60,
+      "item": 60,
+      "module": 1,
+      "procedure": 60,
+      "table": 120,
+      "trigger": 61
+    },
+    "edges": 480,
+    "external": 180,
+    "hubs": [
+      {
+        "id": "block:B_01",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_01",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_03",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_03",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_04",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_04",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_05",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_05",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_06",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_06",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_07",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_07",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_08",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_08",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_09",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_09",
+        "out": 3,
+        "risk": ""
+      }
+    ],
+    "missing": 60,
+    "module": "LARGE_FORM",
+    "nodes": 362,
+    "unresolved": 0,
+    "version": "depgraph/1"
+  },
+  "module": {
+    "alerts": [],
+    "attached_libraries": [],
+    "blocks": 60,
+    "canvases": [],
+    "convert_warnings": [],
+    "editors": [],
+    "first_block": "B_01",
+    "graphics_count": 0,
+    "items": 60,
+    "lovs": 0,
+    "name": "LARGE_FORM",
+    "object_groups": [],
+    "parameters": [],
+    "plsql_lines": 299,
+    "program_units": 0,
+    "record_groups": 0,
+    "relations": 0,
+    "reports": [],
+    "tab_pages": [],
+    "title": "Large Fixture",
+    "triggers": 61,
+    "windows": []
+  },
+  "proposals": {
+    "0115039e4e1e": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "07ed34e9d508": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "0903dfecac84": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "0a22b557d13a": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "133425705a2e": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "1c42ee3f0645": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "1f2eb3b42ed5": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "2074e864047d": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "239a5069c13d": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "2bbe755cad3f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "37a56d7538e4": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "399cb83bc585": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "3f9982ac3ff8": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "409fbac8df60": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "45c180be25b1": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "4f6f1909080a": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "4f99edf5d404": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "535ca62539f3": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "55d18dbb2f7a": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "5c14d7eb6e51": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "5e2648d878ee": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "6dd928a21aac": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "6e3c135308cf": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "7d30097b0076": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "7f85522cc5c7": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "8fbec7c4f007": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "905249546cea": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "9171fa53fdb0": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "96f84c11229c": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "98a34038c4ff": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "9c9f9a170518": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "9dee5457d2e6": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "9f115a668f9f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "a16f3d55e595": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "a2b17447a956": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "a3f6110916f2": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "a68f3e1758e4": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "aed021aad040": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "b526af67559e": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "b923c1832eaf": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "c7d6289168a1": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ca20d7a99b1d": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "cbb22b74edbd": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ce6d91deb88d": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ce741e695a29": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "cebeab12e9c3": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "cf46a8c20f58": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "d476c7e89438": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "d9cb3439a3a3": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "d9e1efac9772": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "df9f0f32a641": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "e38bade1521a": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ea6e6eb7ddca": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "f1d91665398a": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "f234fe8c8d9f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "f69324038cd5": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "f7bc5f006883": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "fc55d7a5ea88": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "fdb17b2e4dea": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ff05b7b9c42d": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ff7121265da3": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    }
+  },
+  "tasks": [
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "0115039e4e1e",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_03",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "07ed34e9d508",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_18",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "0903dfecac84",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_37",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "0a22b557d13a",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_49",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "133425705a2e",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 62,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_01",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "1c42ee3f0645",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_14",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "1f2eb3b42ed5",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_09",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "2074e864047d",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_43",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "239a5069c13d",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_24",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "2bbe755cad3f",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_45",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "37a56d7538e4",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_19",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "399cb83bc585",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_52",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "3f9982ac3ff8",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_21",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "409fbac8df60",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_20",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "45c180be25b1",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_27",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "4f6f1909080a",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_40",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "4f99edf5d404",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_07",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "535ca62539f3",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_28",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "55d18dbb2f7a",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_06",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "5c14d7eb6e51",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_31",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "5e2648d878ee",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_32",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "6dd928a21aac",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_46",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "6e3c135308cf",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_26",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "7d30097b0076",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_55",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "7f85522cc5c7",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_08",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "8fbec7c4f007",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_25",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "905249546cea",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_38",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "9171fa53fdb0",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_34",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "96f84c11229c",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_04",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "98a34038c4ff",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_13",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "9c9f9a170518",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_05",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "9dee5457d2e6",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_47",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "9f115a668f9f",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_56",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "a16f3d55e595",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_48",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "a2b17447a956",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_51",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "a3f6110916f2",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_59",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "a68f3e1758e4",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_44",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "aed021aad040",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_22",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "b526af67559e",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_50",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "b923c1832eaf",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_23",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "c7d6289168a1",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_39",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "ca20d7a99b1d",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_42",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "cbb22b74edbd",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_58",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "ce6d91deb88d",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_15",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "ce741e695a29",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_53",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "cebeab12e9c3",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_33",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "cf46a8c20f58",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_10",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "d476c7e89438",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_30",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "d9cb3439a3a3",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_12",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "d9e1efac9772",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_02",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "df9f0f32a641",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_17",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "e38bade1521a",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_35",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "ea6e6eb7ddca",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_54",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "f1d91665398a",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_16",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "f234fe8c8d9f",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_41",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "f69324038cd5",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_11",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Before Header process / page On Load",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "f7bc5f006883",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-NEW-FORM-INSTANCE",
+      "owner": "",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "fc55d7a5ea88",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_57",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "fdb17b2e4dea",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_36",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "ff05b7b9c42d",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_60",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "ff7121265da3",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 4,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_29",
+      "verdict": "MANUAL"
+    }
+  ],
+  "tier": "large",
+  "verdict_counts": {
+    "ASSISTED": 1,
+    "AUTO": 0,
+    "DROP": 0,
+    "MANUAL": 60,
+    "UNKNOWN": 0
+  }
+}

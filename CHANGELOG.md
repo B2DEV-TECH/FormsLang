@@ -5,7 +5,64 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.5] — 2026-08-31
+
+### Fixed
+
+- **A converted trigger could carry an empty verdict.** A task's catalog
+  verdict is now always one of `rules.VERDICT_ORDER` -- never the empty
+  string -- closing a gap where an unexpected value could slip past
+  `classify_trigger`/`classify_builtin` and show up unlabeled in the
+  workbench and in every export.
+
+### Added — wall-clock performance instrumentation
+
+- **`formslang/telemetry.py`.** A stdlib-only `stage()` context manager
+  records duration, item count and outcome for each pipeline stage
+  (parse, task-build, convert, export). On failure it records only the
+  exception's class name, never `str(exception)` -- an error message can
+  quote source, a prompt or a stack frame, and none of that belongs in a
+  timing log. `percentile()`/`summarize()` reduce a run's stage samples to
+  p50/p95/count with no third-party dependency.
+
+### Added — resumable, cancelable conversion runs
+
+- A `convert` run now persists its progress to a `job_run` row in the
+  session's own SQLite file as it goes, instead of only living in memory
+  for the duration of one process. Reopening a session after a crash or a
+  closed terminal picks the run back up where it left off instead of
+  starting over; a new cancel endpoint stops a run in flight; and an
+  orphaned run (the process that owned it is gone) is detected and
+  reported rather than left silently "in progress" forever.
+
+### Added — synthetic golden-corpus regression suite
+
+- **`tests/fixtures/corpus/{tiny,small,medium,large,pathological}`.** Five
+  versioned, 100% synthetic Oracle Forms fixtures -- no client data, no
+  real Form, ever -- sized from a single trigger up to a 60-block, 480-edge
+  dependency graph, plus a `pathological` tier purpose-built for a
+  circular block dependency, an unresolvable dynamic `GO_BLOCK` target, a
+  cp1252-mojibake `Prompt`, and a 200+ line PL/SQL body. `tiny`/`small`/
+  `pathological` are hand-authored; `medium`/`large` are built by
+  `tests/fixtures/generate_corpus.py` (no randomness, run once by hand) so
+  a 200+ object fixture never silently drifts from what it claims to
+  cover. Full layout in `tests/fixtures/README.md`.
+- **`tests/golden.py`.** Runs each tier through the real pipeline --
+  parse, task queue, dependency graph, an offline `EchoProvider` proposal,
+  and a real `Store.export()` -- and reduces the result to deterministic
+  JSON, stripping only the two fields that vary between two runs on two
+  machines (an export timestamp and a session's `created_at`).
+- **`tests/test_golden_corpus.py`.** Fails with a readable line-level diff
+  the moment a tier's committed golden stops matching what the pipeline
+  produces today -- verified by deliberately mis-classifying
+  `WHEN-VALIDATE-ITEM` in `rules.py` and confirming the `small`/`medium`
+  tiers failed with the exact verdict that moved, then reverting. A
+  second test proves the pipeline is actually deterministic: the same
+  tier built twice in one run is byte-identical.
+- **`tests/update_golden.py`.** The only sanctioned way to change a golden
+  file: always prints the diff first, always requires an interactive `y`
+  (or an explicit `--yes`) before writing, is never imported by a test and
+  never invoked by CI -- no CI configuration exists in this repository.
 
 ## [0.1.4] — 2026-08-31
 

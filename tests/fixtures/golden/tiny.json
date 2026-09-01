@@ -1,0 +1,114 @@
+{
+  "export": {
+    "approved_sql_sha256": "75e014a532833c91500659f7481834337973f69f4a4c9388fa7b568568f7e2a3",
+    "files": [
+      "approved.sql",
+      "session.json"
+    ],
+    "session_json_sha256": "7e76d8007bf4ad5a4b4752165a48923bf31f83e253955c907398bf5d4748fd43"
+  },
+  "graph_summary": {
+    "by_kind": {
+      "block": 1,
+      "module": 1,
+      "trigger": 1
+    },
+    "edges": 2,
+    "external": 0,
+    "hubs": [
+      {
+        "id": "trigger:WHEN-NEW-FORM-INSTANCE",
+        "in": 1,
+        "kind": "trigger",
+        "label": "Trigger",
+        "name": "WHEN-NEW-FORM-INSTANCE",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "block:MAIN",
+        "in": 1,
+        "kind": "block",
+        "label": "Block",
+        "name": "MAIN",
+        "out": 0,
+        "risk": ""
+      }
+    ],
+    "missing": 1,
+    "module": "TINY_FORM",
+    "nodes": 3,
+    "unresolved": 0,
+    "version": "depgraph/1"
+  },
+  "module": {
+    "alerts": [],
+    "attached_libraries": [],
+    "blocks": 0,
+    "canvases": [],
+    "convert_warnings": [],
+    "editors": [],
+    "first_block": "",
+    "graphics_count": 0,
+    "items": 0,
+    "lovs": 0,
+    "name": "TINY_FORM",
+    "object_groups": [],
+    "parameters": [],
+    "plsql_lines": 1,
+    "program_units": 0,
+    "record_groups": 0,
+    "relations": 0,
+    "reports": [],
+    "tab_pages": [],
+    "title": "Tiny Fixture",
+    "triggers": 1,
+    "windows": []
+  },
+  "proposals": {
+    "354b9b0a4310": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    }
+  },
+  "tasks": [
+    {
+      "apex_hint": "Before Header process / page On Load",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "354b9b0a4310",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-NEW-FORM-INSTANCE",
+      "owner": "",
+      "verdict": "ASSISTED"
+    }
+  ],
+  "tier": "tiny",
+  "verdict_counts": {
+    "ASSISTED": 1,
+    "AUTO": 0,
+    "DROP": 0,
+    "MANUAL": 0,
+    "UNKNOWN": 0
+  }
+}

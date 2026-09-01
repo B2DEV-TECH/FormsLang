@@ -1,0 +1,293 @@
+{
+  "export": {
+    "approved_sql_sha256": "d37ee0acd88b300af48d6f5f75cac2682daa58a0749d89413c2fc335b81d93a6",
+    "files": [
+      "approved.sql",
+      "session.json"
+    ],
+    "session_json_sha256": "166700709073379ae3e8970cb1b60bff2c8cb374695094cfd03b29ae18d422f4"
+  },
+  "graph_summary": {
+    "by_kind": {
+      "block": 2,
+      "item": 5,
+      "module": 1,
+      "procedure": 26,
+      "program_unit": 1,
+      "table": 27,
+      "trigger": 3
+    },
+    "edges": 68,
+    "external": 53,
+    "hubs": [
+      {
+        "id": "block:BLOCK_A",
+        "in": 3,
+        "kind": "block",
+        "label": "Block",
+        "name": "BLOCK_A",
+        "out": 4,
+        "risk": ""
+      },
+      {
+        "id": "block:BLOCK_B",
+        "in": 2,
+        "kind": "block",
+        "label": "Block",
+        "name": "BLOCK_B",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "item:BLOCK_A.STATUS",
+        "in": 2,
+        "kind": "item",
+        "label": "Item",
+        "name": "BLOCK_A.STATUS",
+        "out": 0,
+        "risk": ""
+      },
+      {
+        "id": "program_unit:P_GIANT_RECALC",
+        "in": 1,
+        "kind": "program_unit",
+        "label": "Program unit",
+        "name": "P_GIANT_RECALC",
+        "out": 54,
+        "risk": ""
+      },
+      {
+        "id": "trigger:BLOCK_A.WHEN-NEW-BLOCK-INSTANCE",
+        "in": 1,
+        "kind": "trigger",
+        "label": "Trigger",
+        "name": "BLOCK_A.WHEN-NEW-BLOCK-INSTANCE",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "trigger:BLOCK_B.WHEN-NEW-BLOCK-INSTANCE",
+        "in": 1,
+        "kind": "trigger",
+        "label": "Trigger",
+        "name": "BLOCK_B.WHEN-NEW-BLOCK-INSTANCE",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "trigger:WHEN-NEW-FORM-INSTANCE",
+        "in": 1,
+        "kind": "trigger",
+        "label": "Trigger",
+        "name": "WHEN-NEW-FORM-INSTANCE",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "table:AUDIT_LOG_01",
+        "in": 1,
+        "kind": "table",
+        "label": "Table or view",
+        "name": "AUDIT_LOG_01",
+        "out": 0,
+        "risk": ""
+      }
+    ],
+    "missing": 28,
+    "module": "PATHOLOGICAL_FORM",
+    "nodes": 65,
+    "unresolved": 1,
+    "version": "depgraph/1"
+  },
+  "module": {
+    "alerts": [],
+    "attached_libraries": [],
+    "blocks": 2,
+    "canvases": [],
+    "convert_warnings": [],
+    "editors": [],
+    "first_block": "BLOCK_A",
+    "graphics_count": 0,
+    "items": 3,
+    "lovs": 0,
+    "name": "PATHOLOGICAL_FORM",
+    "object_groups": [],
+    "parameters": [],
+    "plsql_lines": 225,
+    "program_units": 1,
+    "record_groups": 0,
+    "relations": 0,
+    "reports": [],
+    "tab_pages": [],
+    "title": "Pathological Fixture",
+    "triggers": 3,
+    "windows": []
+  },
+  "proposals": {
+    "3ccbcf597f99": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "9228e4c3210e": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "a8cd51b872b6": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "e9fbabf8a4df": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    }
+  },
+  "tasks": [
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "3ccbcf597f99",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "BLOCK_B",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Procedure -- normally moves to a database package",
+      "builtins": [
+        {
+          "apex": "Implicit commit at the end of the APEX request",
+          "name": "COMMIT",
+          "verdict": "AUTO"
+        },
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        },
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        },
+        {
+          "apex": "APEX rolls back on error; explicit rollback changes the design",
+          "name": "ROLLBACK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "9228e4c3210e",
+      "item_refs": [
+        "BLOCK_A.STATUS",
+        "ORDERS.ORDER_ID",
+        "ORDERS.STATUS"
+      ],
+      "kind": "program_unit",
+      "lines": 218,
+      "name": "P_GIANT_RECALC",
+      "owner": "",
+      "verdict": "UNKNOWN"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "a8cd51b872b6",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "BLOCK_A",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Before Header process / page On Load",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "e9fbabf8a4df",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-NEW-FORM-INSTANCE",
+      "owner": "",
+      "verdict": "ASSISTED"
+    }
+  ],
+  "tier": "pathological",
+  "verdict_counts": {
+    "ASSISTED": 1,
+    "AUTO": 0,
+    "DROP": 0,
+    "MANUAL": 2,
+    "UNKNOWN": 1
+  }
+}

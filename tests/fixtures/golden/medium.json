@@ -1,0 +1,1508 @@
+{
+  "export": {
+    "approved_sql_sha256": "68033ce83e821fba0f4b6b086d1c8c1f6f2e42e41b0c320bffef5820a76b52eb",
+    "files": [
+      "approved.sql",
+      "session.json"
+    ],
+    "session_json_sha256": "1ba9a91a67b808b41b6752c6ebdfad2d46e59bdfa8fe023fd3eb8fc03ef4d8fb"
+  },
+  "graph_summary": {
+    "by_kind": {
+      "alert": 1,
+      "block": 33,
+      "form": 1,
+      "item": 33,
+      "library": 1,
+      "lov": 1,
+      "module": 1,
+      "package": 1,
+      "parameter": 1,
+      "procedure": 1,
+      "program_unit": 1,
+      "record_group": 1,
+      "table": 35,
+      "timer": 1,
+      "trigger": 41
+    },
+    "edges": 168,
+    "external": 39,
+    "hubs": [
+      {
+        "id": "item:B_01.ITEM_01",
+        "in": 7,
+        "kind": "item",
+        "label": "Item",
+        "name": "B_01.ITEM_01",
+        "out": 0,
+        "risk": ""
+      },
+      {
+        "id": "block:B_01",
+        "in": 5,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_01",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "record_group:RG_STATUS",
+        "in": 3,
+        "kind": "record_group",
+        "label": "Record group",
+        "name": "RG_STATUS",
+        "out": 1,
+        "risk": ""
+      },
+      {
+        "id": "table:B_01_TBL",
+        "in": 3,
+        "kind": "table",
+        "label": "Table or view",
+        "name": "B_01_TBL",
+        "out": 0,
+        "risk": ""
+      },
+      {
+        "id": "alert:AL_CONFIRM",
+        "in": 2,
+        "kind": "alert",
+        "label": "Alert",
+        "name": "AL_CONFIRM",
+        "out": 0,
+        "risk": ""
+      },
+      {
+        "id": "table:TBL_01",
+        "in": 2,
+        "kind": "table",
+        "label": "Table or view",
+        "name": "TBL_01",
+        "out": 0,
+        "risk": ""
+      },
+      {
+        "id": "block:B_02",
+        "in": 1,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_02",
+        "out": 3,
+        "risk": ""
+      },
+      {
+        "id": "block:B_03",
+        "in": 1,
+        "kind": "block",
+        "label": "Block",
+        "name": "B_03",
+        "out": 3,
+        "risk": ""
+      }
+    ],
+    "missing": 1,
+    "module": "MEDIUM_FORM",
+    "nodes": 153,
+    "unresolved": 0,
+    "version": "depgraph/1"
+  },
+  "module": {
+    "alerts": [
+      "AL_CONFIRM"
+    ],
+    "attached_libraries": [
+      "MEDIUM_LIB"
+    ],
+    "blocks": 33,
+    "canvases": [
+      "CV_MAIN"
+    ],
+    "convert_warnings": [],
+    "editors": [],
+    "first_block": "B_01",
+    "graphics_count": 0,
+    "items": 33,
+    "lovs": 1,
+    "name": "MEDIUM_FORM",
+    "object_groups": [],
+    "parameters": [
+      "P_MODE"
+    ],
+    "plsql_lines": 113,
+    "program_units": 1,
+    "record_groups": 1,
+    "relations": 0,
+    "reports": [],
+    "tab_pages": [],
+    "title": "Medium Fixture",
+    "triggers": 41,
+    "windows": [
+      "WIN_MAIN"
+    ]
+  },
+  "proposals": {
+    "004da4494805": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "04b1b9221030": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "0ed0e2cbf89f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "132321619ee5": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "162cff96425f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "2a7c74e86eb6": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "2de3c6768d6c": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "30c621e2ba31": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "415519336db7": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "4adfc2231387": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "50f2bc5df79e": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "520fc291b698": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "542b4421e3bd": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "5b7aa04c6842": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "65b8d7205120": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "664529c249d6": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "67f62c9f87d0": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "6ebc810e9fc6": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "80ff574acd01": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "81e0591ba7fc": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "8596b61a73fc": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "85a48b0ea69f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "8a0981914a4a": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "8c88737a46fd": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "90e13d54e853": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "966c53750456": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "97812e0efab0": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "9d68b02c8eea": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "a8cc6b6f929f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ae9f856122dd": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "b264f80e0c05": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "bbfb048a4e95": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "c29d1ce3ccf5": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "c944e136906c": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "cd2e59797cd7": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ce0380f288aa": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "d3df3e127380": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "d81b29f59c79": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "d846a0eb29ec": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "ea6370003206": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "fb3dc696eb63": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    }
+  },
+  "tasks": [
+    {
+      "apex_hint": "Replaces default DML: becomes a custom DML process",
+      "builtins": [],
+      "globals_used": [],
+      "id": "004da4494805",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "ON-UPDATE",
+      "owner": "B_28",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "04b1b9221030",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "B_04",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Post-DML process",
+      "builtins": [],
+      "globals_used": [],
+      "id": "0ed0e2cbf89f",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "POST-INSERT",
+      "owner": "B_09",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Java bean / WebUtil event: redesign",
+      "builtins": [],
+      "globals_used": [],
+      "id": "132321619ee5",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-CUSTOM-ITEM-EVENT",
+      "owner": "B_33",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Filter moves into the region source WHERE clause",
+      "builtins": [
+        {
+          "apex": "Depends on the property (WHERE/ORDER BY -> region source)",
+          "name": "SET_BLOCK_PROPERTY",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "162cff96425f",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "PRE-QUERY",
+      "owner": "B_07",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "APEX error handling function",
+      "builtins": [
+        {
+          "apex": "Depends on the property (USER, DATASOURCE, etc.)",
+          "name": "GET_APPLICATION_PROPERTY",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "2a7c74e86eb6",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "ON-ERROR",
+      "owner": "B_25",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Forms function key: becomes an explicit page button",
+      "builtins": [
+        {
+          "apex": "Native APEX popup LOV",
+          "name": "LIST_VALUES",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "2de3c6768d6c",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "KEY-LISTVAL",
+      "owner": "B_31",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "MDI windows do not exist in APEX",
+      "builtins": [
+        {
+          "apex": "Becomes a modal dialog or a separate page",
+          "name": "SHOW_WINDOW",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "30c621e2ba31",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-WINDOW-ACTIVATED",
+      "owner": "B_21",
+      "verdict": "DROP"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "415519336db7",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "B_30.ITEM_01",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Dynamic action on Change",
+      "builtins": [
+        {
+          "apex": "Depends on the property being read",
+          "name": "GET_ITEM_PROPERTY",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "4adfc2231387",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-RADIO-CHANGED",
+      "owner": "B_20",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Replaces default DML: becomes a custom DML process",
+      "builtins": [],
+      "globals_used": [],
+      "id": "50f2bc5df79e",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "ON-DELETE",
+      "owner": "B_29",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Forms function key: becomes an explicit page button",
+      "builtins": [
+        {
+          "apex": "Page DML process plus APEX implicit commit",
+          "name": "COMMIT_FORM",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "520fc291b698",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "KEY-COMMIT",
+      "owner": "B_14",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "No timer; evaluate periodic region refresh",
+      "builtins": [
+        {
+          "apex": "No server-side timer; consider periodic region refresh",
+          "name": "CREATE_TIMER",
+          "verdict": "MANUAL"
+        }
+      ],
+      "globals_used": [],
+      "id": "542b4421e3bd",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-TIMER-EXPIRED",
+      "owner": "B_23",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "5b7aa04c6842",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "B_15.ITEM_01",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Dynamic action on Change",
+      "builtins": [
+        {
+          "apex": "Dynamic action (Show/Hide/Enable/Disable/Set Value)",
+          "name": "SET_ITEM_PROPERTY",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "65b8d7205120",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-CHECKBOX-CHANGED",
+      "owner": "B_18",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Pre-DML process or table trigger",
+      "builtins": [
+        {
+          "apex": "Interactive Grid Delete Row or DML process",
+          "name": "DELETE_RECORD",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "664529c249d6",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "PRE-DELETE",
+      "owner": "B_12",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Depends on block navigation, which APEX has no notion of",
+      "builtins": [
+        {
+          "apex": "$('#ITEM').focus() via Execute JavaScript dynamic action",
+          "name": "GO_ITEM",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "67f62c9f87d0",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-NEW-BLOCK-INSTANCE",
+      "owner": "B_02",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Dynamic action on Click",
+      "builtins": [
+        {
+          "apex": "Canvas geometry does not exist in APEX",
+          "name": "SET_CANVAS_PROPERTY",
+          "verdict": "DROP"
+        }
+      ],
+      "globals_used": [],
+      "id": "6ebc810e9fc6",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-MOUSE-CLICK",
+      "owner": "B_24",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "APEX message handling",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "80ff574acd01",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "ON-MESSAGE",
+      "owner": "B_26",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Pre-DML process or table trigger",
+      "builtins": [
+        {
+          "apex": "Indirect write; becomes APEX_UTIL.SET_SESSION_STATE",
+          "name": "COPY",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "81e0591ba7fc",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "PRE-UPDATE",
+      "owner": "B_10",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Pre-DML process or table trigger",
+      "builtins": [
+        {
+          "apex": "Depends on the property (USER, DATASOURCE, etc.)",
+          "name": "GET_APPLICATION_PROPERTY",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "8596b61a73fc",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "PRE-INSERT",
+      "owner": "B_08",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Post-DML process",
+      "builtins": [
+        {
+          "apex": "Indirect read; becomes V() or explicit logic",
+          "name": "NAME_IN",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "85a48b0ea69f",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "POST-UPDATE",
+      "owner": "B_11",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "8a0981914a4a",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "B_25.ITEM_01",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Replaces default DML: becomes a custom DML process",
+      "builtins": [],
+      "globals_used": [],
+      "id": "8c88737a46fd",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "ON-INSERT",
+      "owner": "B_27",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Close dialog",
+      "builtins": [
+        {
+          "apex": "Becomes closing a dialog",
+          "name": "HIDE_WINDOW",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "90e13d54e853",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-WINDOW-CLOSED",
+      "owner": "B_22",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "APEX row validation",
+      "builtins": [],
+      "globals_used": [],
+      "id": "966c53750456",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-VALIDATE-RECORD",
+      "owner": "B_05",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Forms function key: becomes an explicit page button",
+      "builtins": [
+        {
+          "apex": "Tab order is native to HTML",
+          "name": "NEXT_ITEM",
+          "verdict": "DROP"
+        }
+      ],
+      "globals_used": [],
+      "id": "97812e0efab0",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "KEY-NEXT-ITEM",
+      "owner": "B_15",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Post-DML process",
+      "builtins": [
+        {
+          "apex": "Page DML process plus APEX implicit commit",
+          "name": "COMMIT_FORM",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "9d68b02c8eea",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "POST-DELETE",
+      "owner": "B_13",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Derived columns move into the query itself",
+      "builtins": [
+        {
+          "apex": "Depends on the property (WHERE/ORDER BY -> region source)",
+          "name": "SET_BLOCK_PROPERTY",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "a8cc6b6f929f",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "POST-QUERY",
+      "owner": "B_06",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Before Header process / page On Load",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "ae9f856122dd",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-NEW-FORM-INSTANCE",
+      "owner": "B_01",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Dynamic action or page process",
+      "builtins": [
+        {
+          "apex": "Confirmation becomes a modal dialog or a DA confirm",
+          "name": "SHOW_ALERT",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "b264f80e0c05",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-BUTTON-PRESSED",
+      "owner": "B_17",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Dynamic action on Change",
+      "builtins": [
+        {
+          "apex": "Record group becomes a dynamic LOV or a collection",
+          "name": "POPULATE_GROUP",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "bbfb048a4e95",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-LIST-CHANGED",
+      "owner": "B_19",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "c29d1ce3ccf5",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "B_10.ITEM_01",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "c944e136906c",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "B_05.ITEM_01",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "APEX item validation",
+      "builtins": [
+        {
+          "apex": "APEX_ERROR.ADD_ERROR or inline notification",
+          "name": "MESSAGE",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "cd2e59797cd7",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-VALIDATE-ITEM",
+      "owner": "B_20.ITEM_01",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Pessimistic locking; APEX uses optimistic checksums",
+      "builtins": [
+        {
+          "apex": "Pessimistic locking; APEX uses optimistic checksums",
+          "name": "LOCK_RECORD",
+          "verdict": "MANUAL"
+        }
+      ],
+      "globals_used": [],
+      "id": "ce0380f288aa",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "ON-LOCK",
+      "owner": "B_30",
+      "verdict": "MANUAL"
+    },
+    {
+      "apex_hint": "Function -- normally moves to a database package",
+      "builtins": [],
+      "globals_used": [],
+      "id": "d3df3e127380",
+      "item_refs": [],
+      "kind": "program_unit",
+      "lines": 6,
+      "name": "P_HELPER",
+      "owner": "",
+      "verdict": "UNKNOWN"
+    },
+    {
+      "apex_hint": "Before Header process / page On Load",
+      "builtins": [
+        {
+          "apex": "Navigation between regions or pages; depends on page design",
+          "name": "GO_BLOCK",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "d81b29f59c79",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-NEW-FORM-INSTANCE",
+      "owner": "",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Dynamic action on Double Click",
+      "builtins": [
+        {
+          "apex": "Becomes a new page/tab; the APEX session is single",
+          "name": "OPEN_FORM",
+          "verdict": "ASSISTED"
+        }
+      ],
+      "globals_used": [],
+      "id": "d846a0eb29ec",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-IMAGE-ACTIVATED",
+      "owner": "B_32",
+      "verdict": "AUTO"
+    },
+    {
+      "apex_hint": "Forms function key: becomes an explicit page button",
+      "builtins": [
+        {
+          "apex": "Branch/redirect to another page",
+          "name": "EXIT_FORM",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "ea6370003206",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "KEY-EXIT",
+      "owner": "B_16",
+      "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Depends on record navigation",
+      "builtins": [
+        {
+          "apex": "Dynamic action (Show/Hide/Enable/Disable/Set Value)",
+          "name": "SET_ITEM_PROPERTY",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "fb3dc696eb63",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 3,
+      "name": "WHEN-NEW-RECORD-INSTANCE",
+      "owner": "B_03",
+      "verdict": "MANUAL"
+    }
+  ],
+  "tier": "medium",
+  "verdict_counts": {
+    "ASSISTED": 18,
+    "AUTO": 13,
+    "DROP": 1,
+    "MANUAL": 8,
+    "UNKNOWN": 1
+  }
+}

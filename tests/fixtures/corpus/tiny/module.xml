@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Synthetic FormsLang golden-corpus fixture: "tiny".
+  100% synthetic, no client data, no real Form. Purpose: the minimum
+  input that still produces exactly one conversion task: one form-level
+  trigger, no blocks at all. See tests/golden.py and
+  tests/fixtures/README.md.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="TINY_FORM" Title="Tiny Fixture" Comment="Golden corpus: tiny tier">
+    <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="GO_BLOCK('MAIN');" />
+  </FormModule>
+</Module>

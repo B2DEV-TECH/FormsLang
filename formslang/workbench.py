@@ -28,7 +28,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import authcrypto, authstore, policy, projects, rbac
 from . import behavior as behavior_model
-from . import dashboard, depgraph, secrets, testspec
+from . import dashboard, depgraph, secrets, telemetry, testspec
 from . import risk as risk_model
 from .ai import (
     ENV_FOR,
@@ -57,7 +57,7 @@ from .config import (
 from .convert import Proposal, build_tasks, propose
 from .oracle import OracleToolchainError, convert_module, detect_toolchain, expected_xml_name
 from .parser import parse_xml
-from .store import STATES, Store
+from .store import JOB_CANCELLED, JOB_COMPLETED, JOB_CRASHED, STATES, Store
 from . import authui
 from .ui import INDEX_HTML
 
@@ -108,7 +108,7 @@ class Workbench:
         # whether a field is missing or empty.
         self.job = {
             "running": False, "done": 0, "failed": 0, "total": 0,
-            "error": "", "last_error": "",
+            "error": "", "last_error": "", "run_id": 0,
             "current": "", "current_id": "", "queue": [], "provider": "",
         }
         self.module = self._module_from_session()
@@ -129,11 +129,12 @@ class Workbench:
         rules themselves change.
         """
         ids = self.store.task_ids() if force else self.store.stale_task_ids()
-        for task_id in ids:
-            task = self.store.get_task(task_id)
-            if task is None:
-                continue
-            self.store.save_analysis(analyze_task(task))
+        with telemetry.stage(self.store.record_stage, "analysis", item_count=len(ids)):
+            for task_id in ids:
+                task = self.store.get_task(task_id)
+                if task is None:
+                    continue
+                self.store.save_analysis(analyze_task(task))
         return self.store.analysis_coverage()
 
     # -- dependencies -----------------------------------------------------
@@ -158,8 +159,9 @@ class Workbench:
             level = ((view.analysis or {}).get("risk") or {}).get("level", "")
             if level:
                 risks[t["id"]] = level
-        graph = depgraph.build(self.module, task_ids=task_ids, risks=risks)
-        self.store.save_graph(self.module.name, graph)
+        with telemetry.stage(self.store.record_stage, "depgraph"):
+            graph = depgraph.build(self.module, task_ids=task_ids, risks=risks)
+            self.store.save_graph(self.module.name, graph)
         return graph
 
     def deps_state(self, task_id: str = "", node: str = "", depth: int = 2) -> dict:
@@ -185,14 +187,15 @@ class Workbench:
         """
         items = testspec.items_of(self.module) if self.module is not None else None
         ids = self.store.task_ids() if force else self.store.stale_test_task_ids()
-        for task_id in ids:
-            task = self.store.get_task(task_id)
-            if task is None:
-                continue
-            cases = testspec.generate(
-                task, analysis=self.store.get_analysis(task_id), items=items
-            )
-            self.store.save_test_cases(task_id, cases)
+        with telemetry.stage(self.store.record_stage, "testspec", item_count=len(ids)):
+            for task_id in ids:
+                task = self.store.get_task(task_id)
+                if task is None:
+                    continue
+                cases = testspec.generate(
+                    task, analysis=self.store.get_analysis(task_id), items=items
+                )
+                self.store.save_test_cases(task_id, cases)
         return self.store.test_coverage()
 
     def tests_state(self, task_id: str = "") -> dict:
@@ -318,15 +321,26 @@ class Workbench:
             added = 0
             module = None
         else:
-            if target.suffix.lower() == ".xml":
-                module = parse_xml(target)
-            else:
-                # Oracle writes the XML next to the .fmb, so convert in our
-                # own directory and never touch the source tree.
-                toolchain = detect_toolchain(self.oracle_home)
-                xml, log = convert_module(target, self.out_dir / "xml", toolchain, overwrite=False)
-                module = parse_xml(xml, convert_log=log)
+            # A fresh store has no rows yet to time a stage against, so the
+            # parse itself is measured with a throwaway recorder and folded
+            # into the real store's stage_timing once it exists below.
+            timings: list[tuple[str, float, int, bool, str]] = []
+            with telemetry.stage(
+                lambda *a: timings.append(a), "parse",
+            ):
+                if target.suffix.lower() == ".xml":
+                    module = parse_xml(target)
+                else:
+                    # Oracle writes the XML next to the .fmb, so convert in
+                    # our own directory and never touch the source tree.
+                    toolchain = detect_toolchain(self.oracle_home)
+                    xml, log = convert_module(
+                        target, self.out_dir / "xml", toolchain, overwrite=False
+                    )
+                    module = parse_xml(xml, convert_log=log)
             store = Store(self.out_dir / f"{module.name}.session.db")
+            for name, duration_ms, item_count, ok, error_kind in timings:
+                store.record_stage(name, duration_ms, item_count, ok, error_kind)
             store.init_session(module.name, str(target))
             added = store.add_tasks(build_tasks(module))
 
@@ -366,7 +380,9 @@ class Workbench:
         if module is None:
             raise ValueError("open a Forms module before exporting APEX")
         self.module = module
-        return export_apexlang(self.store, module, self.export_dir, config).to_dict()
+        with telemetry.stage(self.store.record_stage, "export"):
+            result = export_apexlang(self.store, module, self.export_dir, config)
+        return result.to_dict()
 
     def list_exports(self) -> dict:
         """Every APEXlang ZIP built so far, newest first."""
@@ -558,16 +574,38 @@ class Workbench:
         with self._lock:
             if self.job["running"]:
                 return False
+            run_id = self.store.start_job_run(len(task_ids))
             self.job = {
                 "running": True, "done": 0, "failed": 0, "total": len(task_ids),
-                "error": "", "last_error": "",
+                "error": "", "last_error": "", "run_id": run_id,
                 # What the UI needs to show a run honestly: the unit the model
                 # is reading right now, and everything still waiting in line.
                 "current": "", "current_id": "", "queue": list(task_ids),
                 "provider": self.provider.label,
             }
-        threading.Thread(target=self._run_job, args=(task_ids,), daemon=True).start()
+        threading.Thread(target=self._run_job, args=(task_ids, run_id), daemon=True).start()
         return True
+
+    def cancel_job(self) -> dict:
+        """Ask the running job to stop after its current unit.
+
+        Never aborts mid-task: the task in flight always finishes and its
+        proposal is saved normally, so a cancel can never leave a half
+        written proposal behind. Only the units still in the queue are
+        skipped.
+        """
+        with self._lock:
+            running = self.job["running"]
+            run_id = self.job.get("run_id")
+        if not running or not run_id:
+            raise ValueError("no conversion is running")
+        self.store.request_job_cancel(run_id)
+        return {"ok": True}
+
+    def _sync_job_run(self, run_id: int) -> None:
+        with self._lock:
+            done, failed = self.job["done"], self.job["failed"]
+        self.store.update_job_run(run_id, done, failed)
 
     def _job_advance(self, task_id: str, counted: bool = True, error: str = "") -> None:
         """One unit is finished: count it and take it out of the queue."""
@@ -582,10 +620,18 @@ class Workbench:
                 self.job["current_id"] = ""
                 self.job["current"] = ""
 
-    def _run_job(self, task_ids: list[str]) -> None:
+    def _run_job(self, task_ids: list[str], run_id: int) -> None:
         seen: dict[str, str] = {}  # fingerprint -> task already converted here
+        status = JOB_COMPLETED
         try:
             for task_id in task_ids:
+                if self.store.is_job_cancel_requested(run_id):
+                    # Every task before this point already has its proposal
+                    # saved -- see save_proposal() below, called before the
+                    # next loop iteration ever starts. Nothing in flight is
+                    # torn; only the units still in the queue are skipped.
+                    status = JOB_CANCELLED
+                    break
                 task = self.store.get_task(task_id)
                 if task is None:
                     self._job_advance(task_id, counted=False)
@@ -613,23 +659,35 @@ class Workbench:
                         self.store.save_proposal(task_id, reused)
                         self._merge_behavior(task_id, reused)
                         self._job_advance(task_id)
+                        self._sync_job_run(run_id)
                         continue
                 # The model sees the same measured facts the reviewer sees.
-                result = propose(task, self.provider, analysis=self.store.get_analysis(task_id))
+                with telemetry.stage(self.store.record_stage, "ai_propose", item_count=1):
+                    result = propose(task, self.provider, analysis=self.store.get_analysis(task_id))
                 self.store.save_proposal(task_id, result)
                 self._merge_behavior(task_id, result)
                 if task.fingerprint and result.ok:
                     seen.setdefault(task.fingerprint, task_id)
                 self._job_advance(task_id, error="" if result.ok else (result.error or "unknown error"))
+                self._sync_job_run(run_id)
         except Exception as e:  # noqa: BLE001 - a job must not take the server down
             with self._lock:
                 self.job["error"] = f"{type(e).__name__}: {e}"
+            # Reusing 'crashed' for an in-process exception, not only a dead
+            # process: both mean the same thing to a reviewer -- this run
+            # did not finish normally, and the done/failed counts stop
+            # short of total. reconcile_job_runs() only ever needs to catch
+            # the case this except block could not: the process itself dying
+            # before reaching here.
+            status = JOB_CRASHED
         finally:
             with self._lock:
                 self.job["running"] = False
                 self.job["current"] = ""
                 self.job["current_id"] = ""
                 self.job["queue"] = []
+            self._sync_job_run(run_id)
+            self.store.finish_job_run(run_id, status)
 
     def _merge_behavior(self, task_id: str, result: Proposal) -> None:
         """Fold the model's reading of the behaviour into the stored analysis.
@@ -656,7 +714,17 @@ class Workbench:
         with self._lock:
             state = dict(self.job)
         state["queue"] = list(state.get("queue", []))
+        # The persisted half of the picture: what the last run looked like,
+        # even after a restart wiped self.job back to its idle shape. A run
+        # this process never saw finish shows here as status='crashed' --
+        # see Store.reconcile_job_runs(), run once when the session opened.
+        state["last_run"] = self.store.last_job_run()
         return state
+
+    def stage_summary(self) -> dict:
+        """Wall-clock measurements taken so far, per pipeline stage. See
+        telemetry.py for why only wall-clock -- CPU/memory are not sampled."""
+        return self.store.stage_summary()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -898,6 +966,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(wb.state())
             elif path == "/api/job":
                 self._json(wb.job_state())
+            elif path == "/api/telemetry":
+                self._json(wb.stage_summary())
             elif path == "/api/providers":
                 self._json({"providers": wb.providers()})
             elif path == "/api/settings":
@@ -1174,6 +1244,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": "a conversion is already running"}, 409)
                     return
                 self._json({"started": len(ids)})
+
+            elif self.path == "/api/job/cancel":
+                self._json(wb.cancel_job())
 
             elif self.path == "/api/decision":
                 task_id = body.get("task_id") or ""

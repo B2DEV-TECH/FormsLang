@@ -164,7 +164,7 @@ def test_the_model_may_make_the_behaviour_more_conservative(bench):
     })
     try:
         assert store.get_analysis("t1").behavior.value == behavior.PRESERVED
-        wb._run_job(["t1"])
+        wb._run_job(["t1"], store.start_job_run(1))
         merged = store.get_analysis("t1").behavior
         assert merged.value == behavior.CHANGED
         assert merged.source == "rules+ai"
@@ -181,7 +181,7 @@ def test_the_model_may_not_talk_the_behaviour_back_down(bench):
     try:
         before = store.get_analysis("t1").behavior
         assert before.value == behavior.CHANGED
-        wb._run_job(["t1"])
+        wb._run_job(["t1"], store.start_job_run(1))
         after = store.get_analysis("t1").behavior
         assert after.value == behavior.CHANGED
         assert after.source == "rules"
@@ -196,7 +196,7 @@ def test_the_second_opinion_is_stored_next_to_the_proposal_not_inside_it(bench):
         "behavior_reason": "the commit point is not visible from here",
     })
     try:
-        wb._run_job(["t1"])
+        wb._run_job(["t1"], store.start_job_run(1))
         saved = store.latest_proposal("t1")
         assert saved["behavior"] == "UNCERTAIN"
         assert saved["behavior_reason"].startswith("the commit point")
@@ -207,7 +207,7 @@ def test_the_second_opinion_is_stored_next_to_the_proposal_not_inside_it(bench):
 def test_a_silent_model_leaves_the_engine_answer_untouched(bench):
     store, wb = bench(ARITHMETIC, "POST-CHANGE", {"code": "x;", "confidence": 0.8})
     try:
-        wb._run_job(["t1"])
+        wb._run_job(["t1"], store.start_job_run(1))
         kept = store.get_analysis("t1").behavior
         assert kept.value == behavior.PRESERVED
         assert kept.source == "rules"

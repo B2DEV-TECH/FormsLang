@@ -23,7 +23,7 @@ from formslang.ai import EchoProvider
 from formslang.cli import _work_dir
 from formslang.convert import build_tasks
 from formslang.parser import parse_xml
-from formslang.store import APPROVED, Store
+from formslang.store import APPROVED, JOB_CANCELLED, Store
 from formslang.workbench import Handler, Workbench
 
 NEWLINE = chr(10)
@@ -597,8 +597,8 @@ def test_an_idle_job_has_the_same_shape_as_a_running_one(server):
     idle = wb.job_state()
     assert idle["running"] is False
     assert set(idle) == {
-        "running", "done", "failed", "total", "error", "last_error",
-        "current", "current_id", "queue", "provider",
+        "running", "done", "failed", "total", "error", "last_error", "run_id",
+        "current", "current_id", "queue", "provider", "last_run",
     }
     status, _ = _post(base, "/api/propose", {"all": True})
     assert status == 200
@@ -623,6 +623,61 @@ def test_the_job_queue_is_handed_out_as_a_copy(server):
     assert after["done"] == 1 and after["failed"] == 1
     assert after["last_error"] == "boom"
     assert after["queue"] == [ids[1]]
+
+
+def test_cancel_lets_the_unit_in_flight_finish_and_skips_the_rest(server):
+    """Cancellation is only ever checked between tasks -- the unit already
+    being converted when cancel is requested must still get its proposal
+    saved, so a cancel can never leave a half written proposal behind."""
+    base, wb = server
+    gate = threading.Event()
+
+    class SlowProvider(EchoProvider):
+        def complete(self, messages, max_tokens=4096):
+            gate.wait(10)
+            return super().complete(messages, max_tokens)
+
+    wb.provider = SlowProvider()
+    ids = wb.store.task_ids()[:3]
+    assert wb.start_job(ids) is True
+    try:
+        stop = threading.Event()
+        threading.Timer(10, stop.set).start()
+        while not stop.is_set() and not wb.job_state()["current_id"]:
+            stop.wait(0.02)
+        assert wb.job_state()["current_id"] == ids[0]
+
+        status, body = _post(base, "/api/job/cancel", {})
+        assert status == 200 and body["ok"] is True
+    finally:
+        gate.set()  # let the in-flight unit finish now that cancel is requested
+
+    done = _wait_for_job(wb)
+    assert done["done"] == 1
+    assert wb.store.latest_proposal(ids[0]) is not None
+    assert wb.store.latest_proposal(ids[1]) is None
+    assert wb.store.latest_proposal(ids[2]) is None
+
+    run = wb.store.last_job_run()
+    assert run["status"] == JOB_CANCELLED
+    assert run["done"] == 1
+
+
+def test_cancelling_with_no_job_running_is_a_400_not_a_crash(server):
+    base, _wb = server
+    status, body = _post(base, "/api/job/cancel", {})
+    assert status == 400
+    assert "no conversion is running" in body["error"]
+
+
+def test_job_state_carries_the_last_run_after_a_normal_completion(server):
+    base, wb = server
+    task_id = wb.store.task_ids()[0]
+    status, _ = _post(base, "/api/propose", {"task_id": task_id})
+    assert status == 200
+    done = _wait_for_job(wb)
+    assert done["last_run"]["status"] == "completed"
+    assert done["last_run"]["done"] == 1
 
 
 def test_a_refusal_stays_readable_with_a_body_attached(server):

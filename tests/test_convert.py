@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from formslang import ai
+from formslang import ai, rules
 from formslang.convert import (
     ConversionTask,
     build_prompt,
@@ -38,6 +38,12 @@ def test_task_carries_the_catalog_verdict(sample_xml):
     t = next(t for t in _tasks(sample_xml) if t.name == "WHEN-CUSTOM-ITEM-EVENT")
     assert t.verdict == "MANUAL"
     assert t.apex_hint
+
+
+def test_every_task_carries_a_known_verdict(sample_xml):
+    allowed = {rules.AUTO, rules.ASSISTED, rules.MANUAL, rules.DROP, rules.UNKNOWN}
+
+    assert {task.verdict for task in _tasks(sample_xml)} <= allowed
 
 
 def test_task_ids_are_stable(sample_xml):

@@ -331,6 +331,58 @@ instead of quietly leaving the denominator. Blockers are deliberately kept
 out of the score — a blocker is work to do, not a percentage. The full model
 is in [docs/risk-model.md](docs/risk-model.md).
 
+## Authentication and multi-user workspaces
+
+By default the workbench is single-user with no login screen — exactly as
+before this feature existed. Set `FORMSLANG_AUTH=1` (read once, at process
+start) to turn on organization-scoped identity instead: email/password
+login, four roles (Owner, Admin, Developer, Viewer) and mandatory TOTP MFA
+for Owner and Admin accounts.
+
+```bash
+# PowerShell; use `export` on macOS/Linux
+$env:FORMSLANG_AUTH = "1"
+formslang workbench "D:\legacy\forms" -o out
+```
+
+The same switch is also a persistent choice in the Settings screen, so a
+reviewer can turn multi-user mode on from the desktop app and have it
+survive a restart without ever touching an environment variable — the
+variable, when set, always wins over that saved choice.
+
+With no Owner yet, the login screen has no self-registration on purpose:
+the first Owner is created from the host machine, never over HTTP.
+
+```bash
+formslang auth bootstrap-owner owner@example.com
+# --org-slug / --org-name default to "local" / "Local"
+```
+
+The command prompts for the password twice (hidden input via `getpass`) and
+never accepts it as a `--password` flag — a flag would land in shell
+history and process listings, the same class of leak as a password written
+to a log line.
+
+| Role | Can |
+|---|---|
+| `OWNER` | Everything, including managing other members and their roles. Exactly one is created by `bootstrap-owner`; an organization can have more. |
+| `ADMIN` | Manage Developer/Viewer members; cannot touch Owners or other Admins. |
+| `DEVELOPER` | Convert and review — the working role for most reviewers. |
+| `VIEWER` | Read-only. |
+
+Owner and Admin accounts must enroll an authenticator app (TOTP — Google
+Authenticator, Microsoft Authenticator, 1Password or similar) the first
+time they log in; that session can reach nothing but the enrollment screen
+until it's done. Developer and Viewer accounts may enroll voluntarily.
+Once any account has confirmed MFA, every later login asks it for a fresh
+code. Lost the device? `formslang auth reset-owner owner@example.com
+--clear-mfa` is the same host-CLI-only, never-HTTP break-glass path.
+
+Identity lives in its own `auth.db` (`%APPDATA%\FormsLang\auth.db` on
+Windows, next to `config.json`), separate from each module's
+`.session.db`, and is never bundled into an export. Design reference:
+[docs/auth-multitenancy-design.md](docs/auth-multitenancy-design.md).
+
 ## AI-assisted conversion
 
 ### Providers
@@ -537,7 +589,7 @@ proprietary business rules, credentials or production data.
 - [x] AI-assisted conversion workbench (proposal + approval per hunk)
 - [x] APEXlang 26.1 project and import ZIP generation
 - [x] Windows desktop app (bundled engine, MSI / NSIS installers)
-- [ ] Secure multi-user workspaces: RBAC, MFA/TOTP, and per-organization isolation
+- [x] Secure multi-user workspaces: RBAC, MFA/TOTP, and per-organization isolation
 - [ ] Semantic diff and merge across module versions
 
 ## Community

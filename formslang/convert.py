@@ -221,7 +221,7 @@ def build_tasks(mod: FormModule) -> list[ConversionTask]:
                 kind=kind,
                 name=name,
                 owner=owner,
-                verdict=verdict,
+                verdict=verdict if verdict in rules.VERDICT_ORDER else rules.UNKNOWN,
                 apex_hint=hint,
                 source=text,
                 lines=text.count("\n") + 1,
@@ -246,7 +246,14 @@ def build_tasks(mod: FormModule) -> list[ConversionTask]:
                 verdict, hint = rules.classify_trigger(t.name)
                 add("trigger", t.name, f"{b.name}.{it.name}", t.text, verdict, hint)
     for p in mod.program_units:
-        add("program_unit", p.name, "", p.text, "", f"{p.kind} -- normally moves to a database package")
+        add(
+            "program_unit",
+            p.name,
+            "",
+            p.text,
+            rules.UNKNOWN,
+            f"{p.kind} -- normally moves to a database package",
+        )
 
     return tasks
 
