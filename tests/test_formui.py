@@ -73,6 +73,34 @@ def test_unconfirmed_item_types_are_flagged_approx_not_claimed_as_mapped():
     assert "approx" in html
 
 
+def test_apex_label_spaces_out_an_underscored_prompt():
+    """A raw internal-code prompt is one unbroken word -- it must not stay that way.
+
+    Real Forms modules sometimes leave Prompt as the developer's own code
+    (e.g. ``ATSF_101ENDERECO_COMPLEMENTO``) instead of real copy. With no
+    space to break on, that string doesn't wrap and blows out the two-column
+    layout instead. Spacing it out fixes the overflow and the readability
+    in one move.
+    """
+    item = Item(name="X", item_type="Check Box", prompt="ATSF_101ENDERECO_COMPLEMENTO")
+    module = FormModule(name="M", blocks=[Block(name="B", items=[item])])
+
+    html = render_html(module)
+
+    assert "ATSF_101ENDERECO_COMPLEMENTO" not in html
+    assert "ATSF 101ENDERECO COMPLEMENTO" in html
+
+
+def test_apex_label_keeps_an_authored_prompt_as_written():
+    """A prompt with no underscores -- real copy -- is shown verbatim, not title-cased."""
+    item = Item(name="X", item_type="Text Item", prompt="Posição de Estocagem")
+    module = FormModule(name="M", blocks=[Block(name="B", items=[item])])
+
+    html = render_html(module)
+
+    assert "Posição de Estocagem" in html
+
+
 def test_write_report_creates_named_file(tmp_path):
     module = FormModule(name="DEMO_ORDER")
     path = write_report(module, tmp_path / "preview")

@@ -60,8 +60,9 @@ h2{font-size:19px;margin:32px 0 14px;letter-spacing:-.01em;
 .entity>.hd b{font-size:15px}
 .none{color:var(--mut);font-style:italic;padding:8px 0;font-size:13px}
 .warn{background:#3A2E10;border:1px solid #5A4620;color:var(--gold);border-radius:8px;
- padding:10px 14px;margin:6px 0 20px;font-size:13px}
+ padding:10px 14px;margin:6px 0 20px;font-size:13px;overflow-wrap:anywhere}
 .compare{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.compare>div{min-width:0}
 .canvas-mock{position:relative;background:#0B0D11;border:1px solid var(--line);
  border-radius:6px;margin-top:10px;overflow:auto;max-width:100%}
 .item-mock{position:absolute;border:1px solid var(--line2);border-radius:3px;
@@ -73,13 +74,14 @@ h2{font-size:19px;margin:32px 0 14px;letter-spacing:-.01em;
 .item-mock.it-checkbox{background:transparent}
 .apex-block{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .apex-row{display:flex;align-items:center;gap:8px}
-.mock-field{flex:1;background:#0B0D11;border:1px solid var(--line);border-radius:6px;
- padding:6px 10px;font-size:12.5px;color:var(--mut);min-height:16px}
+.mock-field{flex:1;min-width:0;background:#0B0D11;border:1px solid var(--line);border-radius:6px;
+ padding:6px 10px;font-size:12.5px;color:var(--mut);min-height:16px;overflow-wrap:anywhere}
 .mock-field.mock-area{min-height:44px;align-items:flex-start}
 .mock-field.mock-display{border-style:dashed;font-style:italic}
-.mock-check{flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut)}
+.mock-check{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:12.5px;
+ color:var(--mut);overflow-wrap:anywhere}
 .mock-btn{background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);
- border-radius:6px;padding:6px 14px;font-size:12.5px;cursor:default}
+ border-radius:6px;padding:6px 14px;font-size:12.5px;cursor:default;overflow-wrap:anywhere}
 @media print{.compare{grid-template-columns:1fr}
  .card,.entity,.canvas-mock{background:#f6f6f6;border-color:#ccc}}
 """
@@ -119,7 +121,7 @@ def _canvas_box_size(canvas: Canvas, items: list[Item]) -> tuple[int, int]:
     return max(xs, default=400) or 400, max(ys, default=300) or 300
 
 
-def _scale(width: int, *, max_width: int = 460) -> float:
+def _scale(width: int, *, max_width: int = 600) -> float:
     return min(1.0, max_width / width) if width else 1.0
 
 
@@ -180,11 +182,27 @@ def _forms_column(module: FormModule) -> str:
     return "".join(out) if out else '<div class="none">no canvases in this module</div>'
 
 
+def _label(item: Item) -> str:
+    """A readable caption -- never the raw underscored identifier.
+
+    Forms prompts are sometimes left as the developer's internal code
+    (``ATSF_101ENDERECO_COMPLEMENTO``) rather than real copy: with no space
+    to break on, that string is one unbroken word that blows out a fixed-
+    width layout instead of wrapping. Spacing out underscores fixes both
+    the readability and the overflow at once; ``.title()`` is applied only
+    to the item-name fallback, never to an author-written prompt, so real
+    prompt wording/casing is left alone.
+    """
+    if item.prompt:
+        return item.prompt.replace("_", " ")
+    return item.name.replace("_", " ").title()
+
+
 def _apex_item_row(item: Item) -> str:
     kind = _apex_kind(item)
     approx = not _has_confirmed_mapping(item)
     badge = f'<span class="tag {"no" if approx else "yes"}">{_esc(kind)}{" &middot; approx" if approx else ""}</span>'
-    label = _esc(item.prompt or item.name.replace("_", " ").title())
+    label = _esc(_label(item))
     if kind == "button":
         control = f'<button class="mock-btn" disabled>{label}</button>'
     elif kind == "checkbox":
