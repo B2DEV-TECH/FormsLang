@@ -28,6 +28,7 @@ from typing import ClassVar
 from urllib.parse import parse_qs, urlsplit
 
 from . import (
+    apeximport,
     authcrypto,
     authstore,
     authui,
@@ -457,7 +458,71 @@ class Workbench:
                     }
                 )
         exports.sort(key=lambda e: e["mtime"], reverse=True)
-        return {"exports": exports, "dir": str(self.export_dir)}
+        return {"exports": exports, "dir": str(self.export_dir), "import": self._import_defaults()}
+
+    def _import_defaults(self) -> dict:
+        """What the "Import to database" form should show -- never a password."""
+        cfg = load_config()
+        connect_string = str(cfg.get("apex_connect_string") or "")
+        username = str(cfg.get("apex_username") or "")
+        has_saved_password = False
+        if connect_string and username:
+            try:
+                has_saved_password = bool(
+                    secrets.get_secret(apeximport.SERVICE, apeximport.account_key(username, connect_string))
+                )
+            except SecureStorageUnavailable:
+                has_saved_password = False
+        return {
+            "connect_string": connect_string,
+            "username": username,
+            "has_saved_password": has_saved_password,
+            "sqlcl_found": bool(apeximport.sqlcl_binary()),
+        }
+
+    def import_export(self, body: dict) -> dict:
+        """Push one exported ZIP into a live APEX workspace (or just validate it), via SQLcl.
+
+        Opt-in per call: a password is supplied fresh, or pulled from the OS
+        credential store this user chose to save it in -- it never reaches
+        ``config.json`` or a subprocess argument list (see apeximport.py).
+        """
+        clean = Path(str(body.get("name") or "")).name
+        target = self.export_dir / clean
+        if not clean.endswith(".apex.zip") or not target.is_file():
+            raise ValueError("no such export -- build one with Export APEX 26.1")
+
+        connect_string = str(body.get("connect_string") or "").strip()
+        username = str(body.get("username") or "").strip()
+        remember = bool(body.get("remember"))
+        account = apeximport.account_key(username, connect_string)
+
+        password = str(body.get("password") or "")
+        if not password and connect_string and username:
+            try:
+                password = secrets.get_secret(apeximport.SERVICE, account)
+            except SecureStorageUnavailable:
+                password = ""
+
+        with telemetry.stage(self.store.record_stage, "apex_import"):
+            result = apeximport.run_import(
+                target,
+                connect_string=connect_string,
+                username=username,
+                password=password,
+                validate_only=bool(body.get("validate_only")),
+            )
+
+        if remember:
+            secrets.set_secret(apeximport.SERVICE, account, password, comment="FormsLang APEX import")
+            cfg = load_config()
+            cfg["apex_connect_string"] = connect_string
+            cfg["apex_username"] = username
+            save_config(cfg)
+        else:
+            secrets.delete_secret(apeximport.SERVICE, account)
+
+        return {"ok": result.ok, "exit_code": result.exit_code, "stdout": result.stdout, "stderr": result.stderr}
 
     def reveal_export(self, name: str) -> dict:
         """Open the OS file manager with one exported ZIP selected.
@@ -1378,6 +1443,9 @@ class Handler(BaseHTTPRequestHandler):
 
             elif self.path == "/api/exports/open":
                 self._json(wb.reveal_export(str(body.get("name") or "")))
+
+            elif self.path == "/api/exports/import":
+                self._json(wb.import_export(body))
 
             else:
                 self._json({"error": "not found"}, 404)

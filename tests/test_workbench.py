@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from formslang import testspec
+from formslang import apeximport, secrets, testspec
 from formslang.ai import EchoProvider
 from formslang.cli import _work_dir
 from formslang.convert import build_tasks
@@ -598,11 +598,20 @@ def test_explicit_out_still_wins(tmp_path):
 # -- exported ZIPs: the list and the reveal --------------------------------
 
 
-def test_exports_are_listed_newest_first(server):
+def test_exports_are_listed_newest_first(server, monkeypatch):
+    # Whether SQLcl happens to be on this machine's PATH is not this test's
+    # business -- pin it so the assertion is the same on every machine.
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "")
     base, wb = server
     status, body = _get(base, "/api/exports")
     assert status == 200
-    assert json.loads(body) == {"exports": [], "dir": str(wb.export_dir)}
+    assert json.loads(body) == {
+        "exports": [],
+        "dir": str(wb.export_dir),
+        "import": {
+            "connect_string": "", "username": "", "has_saved_password": False, "sqlcl_found": False,
+        },
+    }
 
     wb.export_dir.mkdir(parents=True, exist_ok=True)
     old = wb.export_dir / "old-app.apex.zip"
@@ -630,6 +639,106 @@ def test_reveal_refuses_traversal_and_misses(server):
         status, data = _post(base, "/api/exports/open", {"name": name})
         assert status == 400, name
         assert "no such export" in data["error"], name
+
+
+def test_import_refuses_an_export_that_does_not_exist(server):
+    base, _wb = server
+    status, data = _post(
+        base, "/api/exports/import",
+        {"name": "ghost.apex.zip", "connect_string": "h:1521/S", "username": "U", "password": "p"},
+    )
+    assert status == 400
+    assert "no such export" in data["error"]
+
+
+def test_import_requires_a_password_when_nothing_is_saved(server, monkeypatch):
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+    base, wb = server
+    wb.export_dir.mkdir(parents=True, exist_ok=True)
+    (wb.export_dir / "app.apex.zip").write_bytes(b"PK")
+
+    status, data = _post(
+        base, "/api/exports/import",
+        {"name": "app.apex.zip", "connect_string": "h:1521/S", "username": "U"},
+    )
+    assert status == 400
+    assert "password is required" in data["error"]
+
+
+def test_import_runs_sqlcl_and_reports_the_result(server, monkeypatch):
+    base, wb = server
+    wb.export_dir.mkdir(parents=True, exist_ok=True)
+    (wb.export_dir / "app.apex.zip").write_bytes(b"PK")
+
+    seen = {}
+
+    def fake_run_import(zip_path, *, connect_string, username, password, validate_only=False):
+        seen.update(
+            zip_path=zip_path, connect_string=connect_string, username=username,
+            password=password, validate_only=validate_only,
+        )
+        return apeximport.ImportResult(ok=True, exit_code=0, stdout="done", stderr="")
+
+    monkeypatch.setattr(apeximport, "run_import", fake_run_import)
+
+    status, data = _post(
+        base, "/api/exports/import",
+        {
+            "name": "app.apex.zip", "connect_string": "host:1521/FREEPDB1", "username": "FORMSLANG",
+            "password": "s3cr3t!", "validate_only": True,
+        },
+    )
+    assert status == 200
+    assert data == {"ok": True, "exit_code": 0, "stdout": "done", "stderr": ""}
+    assert seen["zip_path"] == wb.export_dir / "app.apex.zip"
+    assert seen["connect_string"] == "host:1521/FREEPDB1"
+    assert seen["password"] == "s3cr3t!"
+    assert seen["validate_only"] is True
+
+    # Not remembered -- nothing left behind in the credential store or config.json.
+    account = apeximport.account_key("FORMSLANG", "host:1521/FREEPDB1")
+    assert secrets.get_secret(apeximport.SERVICE, account) == ""
+    _status, listing = _get(base, "/api/exports")
+    assert json.loads(listing)["import"]["connect_string"] == ""
+
+
+def test_import_remember_saves_the_password_and_reuses_it_next_time(server, monkeypatch):
+    base, wb = server
+    wb.export_dir.mkdir(parents=True, exist_ok=True)
+    (wb.export_dir / "app.apex.zip").write_bytes(b"PK")
+
+    seen_passwords = []
+
+    def fake_run_import(zip_path, *, connect_string, username, password, validate_only=False):
+        seen_passwords.append(password)
+        return apeximport.ImportResult(ok=True, exit_code=0, stdout="", stderr="")
+
+    monkeypatch.setattr(apeximport, "run_import", fake_run_import)
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+
+    status, data = _post(
+        base, "/api/exports/import",
+        {
+            "name": "app.apex.zip", "connect_string": "host:1521/FREEPDB1", "username": "FORMSLANG",
+            "password": "s3cr3t!", "remember": True,
+        },
+    )
+    assert status == 200 and data["ok"] is True
+
+    # The Import form now offers the connection back, and never the password itself.
+    _status, listing = _get(base, "/api/exports")
+    info = json.loads(listing)["import"]
+    assert info["connect_string"] == "host:1521/FREEPDB1"
+    assert info["username"] == "FORMSLANG"
+    assert info["has_saved_password"] is True
+
+    # A second call with no password supplied reuses the saved one.
+    status, data = _post(
+        base, "/api/exports/import",
+        {"name": "app.apex.zip", "connect_string": "host:1521/FREEPDB1", "username": "FORMSLANG"},
+    )
+    assert status == 200 and data["ok"] is True
+    assert seen_passwords == ["s3cr3t!", "s3cr3t!"]
 
 
 def test_the_job_names_the_unit_being_converted(server):

@@ -40,7 +40,10 @@ from .secrets import SecureStorageUnavailable  # re-exported for callers
 # authstore.auth_enabled), so the same value reads the same way whether it
 # came from the environment or from this file. Absent means off, same as
 # every other setting here.
-SETTING_KEYS = ("provider", "model", "api_key", "base_url", "deployment", "api_version", "auth_enabled")
+SETTING_KEYS = (
+    "provider", "model", "api_key", "base_url", "deployment", "api_version", "auth_enabled",
+    "sqlcl_path", "apex_connect_string", "apex_username",
+)
 
 # What may actually be written to disk. The key is deliberately absent.
 FILE_KEYS = tuple(k for k in SETTING_KEYS if k != "api_key")

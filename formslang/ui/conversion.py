@@ -206,6 +206,7 @@ async function showExports(freshName) {
       <span class="exp-name">${esc(e.name)}</span>
       <span class="exp-meta">${size(e.size)} &middot; ${esc(new Date(e.mtime * 1000).toLocaleString())}</span>
       <button class="btn" data-reveal="${esc(e.name)}">Show in folder</button>
+      <button class="btn" data-import="${esc(e.name)}">Import to database…</button>
     </div>`).join("");
   $("modal-body").innerHTML =
     `<div class="exports-list">${rows || '<div class="empty">No exports yet — press Export APEX 26.1 first.</div>'}</div>`;
@@ -215,6 +216,60 @@ async function showExports(freshName) {
       catch (e) { toast(e.message, true); }
     };
   });
+  $("modal-body").querySelectorAll("[data-import]").forEach((b) => {
+    b.onclick = () => showImportForm(b.dataset.import, data.import || {});
+  });
+}
+
+function showImportForm(name, defaults) {
+  openModal(`Import into APEX`);
+  $("modal-path").textContent = name;
+  $("modal-hint").textContent =
+    "Runs SQLcl for you, locally. Your password is used once for this run and is never saved unless you " +
+    "check Remember, which puts it in this computer's own credential manager — nothing is shared with anyone else.";
+  const note = defaults.sqlcl_found
+    ? ""
+    : `<div class="import-note warn">SQLcl was not found on PATH. Set its path in Settings (or the FORMSLANG_SQLCL_PATH environment variable) first.</div>`;
+  $("modal-body").innerHTML = `
+    ${note}
+    <div class="export-form">
+      <label class="wide">Connection string<input name="connect_string" placeholder="host:port/service_name" value="${esc(defaults.connect_string || "")}"></label>
+      <label>Username (schema)<input name="username" value="${esc(defaults.username || "")}"></label>
+      <label>Password<input name="password" type="password" placeholder="${defaults.has_saved_password ? "using the saved password" : "required"}"></label>
+      <label class="wide checkbox"><input type="checkbox" name="remember"> Remember this connection (password goes to the OS credential store)</label>
+    </div>
+    <button class="import-secondary">Validate only, don't change anything</button>
+    <div class="import-result"></div>`;
+  $("modal-foot").style.display = "flex";
+  $("modal-input").style.display = "none";
+  $("modal-go").textContent = "Import into APEX";
+
+  const form = $("modal-body").querySelector(".export-form");
+  const validateBtn = $("modal-body").querySelector(".import-secondary");
+  const resultBox = $("modal-body").querySelector(".import-result");
+  const value = (n) => form.querySelector(`[name="${n}"]`).value.trim();
+
+  const run = async (validateOnly, button) => {
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = validateOnly ? "Validating…" : "Importing…";
+    try {
+      const r = await api("/api/exports/import", {
+        name,
+        connect_string: value("connect_string"),
+        username: value("username"),
+        password: form.querySelector('[name="password"]').value,
+        remember: form.querySelector('[name="remember"]').checked,
+        validate_only: validateOnly,
+      });
+      resultBox.className = "import-result " + (r.ok ? "ok" : "bad");
+      resultBox.textContent = (r.ok ? "OK" : `Failed (exit ${r.exit_code})`) + "\n" + (r.stdout || "") + (r.stderr || "");
+      if (r.ok) toast(validateOnly ? "Validation passed." : "Imported into APEX.");
+    } catch (e) { toast(e.message, true); }
+    finally { button.disabled = false; button.textContent = original; }
+  };
+  $("modal-go").onclick = () => run(false, $("modal-go"));
+  validateBtn.onclick = () => run(true, validateBtn);
 }
 
 /* ── the project view ──────────────────────────────────── */
