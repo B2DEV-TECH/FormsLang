@@ -169,27 +169,108 @@ EXPORT_JS = r"""function exportApex() {
       <label>Workspace (optional)<input name="workspace" placeholder="resolved during import"></label>
       <label>Parsing schema (optional)<input name="schema" placeholder="resolved during import"></label>
       <label>Page number<input name="page" type="number" min="1" value="1"></label>
-    </div>`;
+      <label class="wide checkbox"><input type="checkbox" name="import_now"> Import into APEX right after building (runs SQLcl for you, locally)</label>
+    </div>
+    <div class="import-note warn" hidden></div>
+    <div class="export-form import-fields" hidden>${importFieldsHtml({})}</div>
+    <div class="import-result" hidden></div>`;
   $("modal-foot").style.display = "flex";
   $("modal-input").style.display = "none";
-  $("modal-go").textContent = "Build import ZIP";
-  $("modal-go").onclick = async () => {
-    const form = $("modal-body").querySelector(".export-form");
+  const body = $("modal-body");
+  const form = body.querySelector(".export-form");
+  const importFields = body.querySelector(".import-fields");
+  const importNote = body.querySelector(".import-note");
+  const resultBox = body.querySelector(".import-result");
+  const importNow = form.querySelector('[name="import_now"]');
+  const go = $("modal-go");
+  const labelGo = () => { go.textContent = importNow.checked ? "Build ZIP & import into APEX" : "Build import ZIP"; };
+  importNow.onchange = () => {
+    importFields.hidden = !importNow.checked;
+    importNote.hidden = !(importNow.checked && importNote.textContent);
+    labelGo();
+  };
+  labelGo();
+  // The saved connection and whether SQLcl is reachable arrive after the dialog
+  // is already up, so a slow lookup never delays opening it.
+  api("/api/exports").then((data) => {
+    const d = data.import || {};
+    importFields.innerHTML = importFieldsHtml(d);
+    if (!d.sqlcl_found) {
+      importNote.textContent = "SQLcl was not found on PATH. Set its path in Settings (or the FORMSLANG_SQLCL_PATH environment variable) before importing.";
+      importNote.hidden = !importNow.checked;
+    }
+  }).catch(() => {});
+
+  go.onclick = async () => {
     const value = (name) => form.querySelector(`[name="${name}"]`).value.trim();
-    const go = $("modal-go");
     go.disabled = true;
     go.innerHTML = `<span class="spin"></span> Building ZIP…`;
+    let zipName;
     try {
       const r = await api("/api/export", {
         name: value("name"), alias: value("alias"), app_id: value("app_id"),
         workspace: value("workspace"), schema: value("schema"), page: value("page"),
       });
-      closeModal();
+      zipName = r.zip.split(/[\/]/).pop();
       toast(`APEXlang ZIP ready: ${r.zip}`);
-      showExports(r.zip.split(/[\/]/).pop());
-    } catch (e) { toast(e.message, true); }
-    finally { $("modal-go").disabled = false; $("modal-go").textContent = "Build import ZIP"; }
+    } catch (e) { toast(e.message, true); go.disabled = false; labelGo(); return; }
+    if (!importNow.checked) {
+      go.disabled = false; labelGo();
+      closeModal();
+      showExports(zipName);
+      return;
+    }
+    $("modal-path").textContent = zipName;
+    go.textContent = "Importing…";
+    const ok = await runImport(zipName, importFields, false, go, resultBox);
+    if (ok) {
+      go.textContent = "Show exports";
+      go.onclick = () => { closeModal(); showExports(zipName); };
+    } else {
+      // The ZIP is built; only the import failed. Fix the connection and try again without rebuilding.
+      go.textContent = "Retry import";
+      go.onclick = async () => {
+        const again = await runImport(zipName, importFields, false, go, resultBox);
+        if (again) { go.textContent = "Show exports"; go.onclick = () => { closeModal(); showExports(zipName); }; }
+      };
+    }
   };
+}
+
+/* Connection fields shared by the export dialog and the per-ZIP import
+   dialog. The password box is never pre-filled: a saved password stays in
+   the OS credential store and is only ever hinted at. */
+function importFieldsHtml(d) {
+  return `
+      <label class="wide">Connection string<input name="connect_string" placeholder="host:port/service_name" value="${esc(d.connect_string || "")}"></label>
+      <label>Username (schema)<input name="username" value="${esc(d.username || "")}"></label>
+      <label>Password<input name="password" type="password" placeholder="${d.has_saved_password ? "using the saved password" : "required"}"></label>
+      <label class="wide checkbox"><input type="checkbox" name="remember"> Remember this connection (password goes to the OS credential store)</label>`;
+}
+
+/* One import run against one ZIP. Returns true on success; the result box
+   keeps SQLcl's own output either way so a failure is readable in place. */
+async function runImport(name, form, validateOnly, button, resultBox) {
+  const value = (n) => form.querySelector(`[name="${n}"]`).value.trim();
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = validateOnly ? "Validating…" : "Importing…";
+  try {
+    const r = await api("/api/exports/import", {
+      name,
+      connect_string: value("connect_string"),
+      username: value("username"),
+      password: form.querySelector('[name="password"]').value,
+      remember: form.querySelector('[name="remember"]').checked,
+      validate_only: validateOnly,
+    });
+    resultBox.hidden = false;
+    resultBox.className = "import-result " + (r.ok ? "ok" : "bad");
+    resultBox.textContent = (r.ok ? "OK" : `Failed (exit ${r.exit_code})`) + "\n" + (r.stdout || "") + (r.stderr || "");
+    if (r.ok) toast(validateOnly ? "Validation passed." : "Imported into APEX.");
+    return !!r.ok;
+  } catch (e) { toast(e.message, true); return false; }
+  finally { button.disabled = false; button.textContent = original; }
 }
 
 async function showExports(freshName) {
@@ -232,14 +313,9 @@ function showImportForm(name, defaults) {
     : `<div class="import-note warn">SQLcl was not found on PATH. Set its path in Settings (or the FORMSLANG_SQLCL_PATH environment variable) first.</div>`;
   $("modal-body").innerHTML = `
     ${note}
-    <div class="export-form">
-      <label class="wide">Connection string<input name="connect_string" placeholder="host:port/service_name" value="${esc(defaults.connect_string || "")}"></label>
-      <label>Username (schema)<input name="username" value="${esc(defaults.username || "")}"></label>
-      <label>Password<input name="password" type="password" placeholder="${defaults.has_saved_password ? "using the saved password" : "required"}"></label>
-      <label class="wide checkbox"><input type="checkbox" name="remember"> Remember this connection (password goes to the OS credential store)</label>
-    </div>
+    <div class="export-form">${importFieldsHtml(defaults)}</div>
     <button class="import-secondary">Validate only, don't change anything</button>
-    <div class="import-result"></div>`;
+    <div class="import-result" hidden></div>`;
   $("modal-foot").style.display = "flex";
   $("modal-input").style.display = "none";
   $("modal-go").textContent = "Import into APEX";
@@ -247,29 +323,8 @@ function showImportForm(name, defaults) {
   const form = $("modal-body").querySelector(".export-form");
   const validateBtn = $("modal-body").querySelector(".import-secondary");
   const resultBox = $("modal-body").querySelector(".import-result");
-  const value = (n) => form.querySelector(`[name="${n}"]`).value.trim();
-
-  const run = async (validateOnly, button) => {
-    const original = button.textContent;
-    button.disabled = true;
-    button.textContent = validateOnly ? "Validating…" : "Importing…";
-    try {
-      const r = await api("/api/exports/import", {
-        name,
-        connect_string: value("connect_string"),
-        username: value("username"),
-        password: form.querySelector('[name="password"]').value,
-        remember: form.querySelector('[name="remember"]').checked,
-        validate_only: validateOnly,
-      });
-      resultBox.className = "import-result " + (r.ok ? "ok" : "bad");
-      resultBox.textContent = (r.ok ? "OK" : `Failed (exit ${r.exit_code})`) + "\n" + (r.stdout || "") + (r.stderr || "");
-      if (r.ok) toast(validateOnly ? "Validation passed." : "Imported into APEX.");
-    } catch (e) { toast(e.message, true); }
-    finally { button.disabled = false; button.textContent = original; }
-  };
-  $("modal-go").onclick = () => run(false, $("modal-go"));
-  validateBtn.onclick = () => run(true, validateBtn);
+  $("modal-go").onclick = () => runImport(name, form, false, $("modal-go"), resultBox);
+  validateBtn.onclick = () => runImport(name, form, true, validateBtn, resultBox);
 }
 
 /* ── the project view ──────────────────────────────────── */

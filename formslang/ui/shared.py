@@ -505,6 +505,8 @@ STYLE_BLOCK = r"""<style>
   .exports-list .exp-name { font: 12px var(--mono); overflow-wrap: anywhere; }
   .exports-list .exp-meta { margin-left: auto; white-space: nowrap; color: var(--ink-dim); font: 10px var(--mono); letter-spacing: .05em; }
   .exports-list .empty { color: var(--ink-dim); padding: 8px 2px; }
+  .export-form[hidden], .import-note[hidden], .import-result[hidden] { display: none; }
+  .export-form.import-fields { padding-top: 0; }
   .export-form label.checkbox { display: flex; flex-direction: row; align-items: center; gap: 8px; text-transform: none; font: 11px var(--mono); }
   .export-form label.checkbox input { padding: 0; }
   .import-note { margin: 0 18px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-dim); font: 11px var(--mono); }

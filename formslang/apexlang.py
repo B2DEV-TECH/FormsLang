@@ -170,6 +170,17 @@ def _deployment(config: ApexExportConfig) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
 
+def _caption(item: Item) -> str:
+    """The label an item or button gets in APEX.
+
+    The prompt when the .fmb has one; otherwise the ``Label`` -- Forms keeps
+    a button's or check box's caption there, not in the prompt -- and only
+    then the item name spelled out. Text only: no APEXlang vocabulary rides
+    on this.
+    """
+    return item.prompt or item.label or item.name.replace("_", " ").title()
+
+
 def _item_type(item: Item) -> str:
     kind = item.item_type.lower()
     if "display" in kind:
@@ -219,7 +230,7 @@ def _page_items(module: FormModule, page: int) -> tuple[list[str], dict[str, str
                 chunks.append(f"""
     button {button_id} (
         buttonName: {re.sub(r'[^A-Z0-9_$#]', '_', item.name.upper())[:255]}
-        label: {_text(item.prompt or item.name.replace('_', ' ').title())}
+        label: {_text(_caption(item))}
         layout {{
             sequence: {item_index * 10}
             region: @{region_id}
@@ -248,7 +259,7 @@ def _page_items(module: FormModule, page: int) -> tuple[list[str], dict[str, str
     pageItem {apex_name} (
         type: {_item_type(item)}
         label {{
-            label: {_text(item.prompt or item.name.replace('_', ' ').title())}
+            label: {_text(_caption(item))}
             alignment: left
         }}
         layout {{

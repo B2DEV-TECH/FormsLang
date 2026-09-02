@@ -5,6 +5,70 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] — 2026-09-02
+
+### Added — direct export + import into a live APEX instance
+
+- The **Export Oracle APEX 26.1** dialog has an **"Import into APEX right
+  after building"** option: tick it, fill the connection, and one click
+  builds the ZIP and runs SQLcl non-interactively (`apex import -input`)
+  against that instance. The same connection form backs the
+  **"Import to database…"** action on every past export, with a
+  **"Validate only"** dry run. Credentials are supplied at that moment,
+  per user: the password never touches argv or `config.json` -- it
+  travels only over SQLcl's own stdin for that one run, and reaches the
+  OS credential store only if the user checks **Remember**.
+- SQLcl's binary path is resolved from `FORMSLANG_SQLCL_PATH`, then
+  `config.json`'s `sqlcl_path`, then `PATH`.
+
+### Changed — the visual preview draws what Forms draws
+
+- Geometry is converted from the module's own `<Coordinate>` unit
+  (points for most real modules, 1pt = 1.33px) instead of being read as
+  pixels, so canvases are no longer squeezed to three quarters of their
+  size; each canvas is drawn at real size, clipped the way Forms clips a
+  canvas, inside its own scrolling frame.
+- Prompts are painted outside the field, on the edge the `.fmb` attaches
+  them to and anchored there with CSS (not a guessed width), honouring
+  `PromptAttachmentEdge` (default **Start**, i.e. to the left -- the
+  previous preview wrongly defaulted to Top and painted labels over the
+  field above), `PromptAlign`/`PromptAlignOffset` along that edge, and
+  `PromptAttachmentOffset` as the gap from the field.
+- A tabular block's items paint as many instances as `ItemsDisplay`
+  states (falling back to the block's record count), so audit fields
+  that Forms shows once no longer run one ghost copy per record over the
+  neighbouring block.
+- Each item is drawn in its own bevel, fill, font and colour -- straight
+  off the `.fmb`, through its `VisualAttribute` when it names one, with
+  the current record's own `RecordVisualAttributeGroupName` on its first
+  instance -- instead of every control looking like flat, identical
+  boxes.
+- A canvas's boilerplate (frames with their title, rectangles, lines,
+  text and image placeholders) is drawn under the items, in the same
+  bevels, fonts and colours as the `.fmb`, instead of being invisible.
+- Radio Group buttons are painted at each button's own recorded
+  position, never as one box for the whole group; iconic toolbar buttons
+  show a glyph, not their Forms label; disabled items are dimmed.
+- A canvas that belongs to a window is wrapped in that window's title
+  bar, with its horizontal toolbar canvas docked above the content
+  instead of listed as an unrelated canvas of its own.
+- Buttons, check boxes, radio groups and list items show their Forms
+  `Label`/choices; items with `Visible="false"` are listed instead of
+  drawn.
+- The APEX side now looks like the Universal Theme page the export
+  builds: one Standard region per block (collapsible), floating labels,
+  buttons in the region header, hidden-in-Forms and tabular blocks
+  called out with a note.
+
+### Fixed
+
+- APEX labels for buttons and check boxes now come from the Forms
+  `Label` (the caption Forms actually paints) before falling back to the
+  title-cased item name -- both in the exported APEXlang and the preview.
+- Long underscored field labels (raw Forms prompts like
+  `ATSF_101ENDERECO_COMPLEMENTO`) no longer blow out the fixed-width
+  Doc/Diff comparison layout.
+
 ## [0.1.7] — 2026-09-02
 
 ### Added — syntax highlighting on the APEX side of the diff pane

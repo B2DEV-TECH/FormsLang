@@ -1083,3 +1083,16 @@ def test_the_score_never_appears_on_screen_without_its_own_arithmetic():
     # And the page says what is missing instead of hiding it in the score.
     assert "still unanalysed and counted nowhere in this chart" in INDEX_HTML
     assert "a blocker is work to do, not a percentage" in INDEX_HTML
+
+
+def test_the_export_dialog_offers_to_import_straight_into_apex():
+    """Building the ZIP and pushing it into a live APEX are one decision at
+    export time, not a second dialog to discover afterwards."""
+    from formslang.ui import INDEX_HTML
+
+    assert 'name="import_now"' in INDEX_HTML
+    assert "Build ZIP & import into APEX" in INDEX_HTML
+    assert "Build import ZIP" in INDEX_HTML
+    # one import routine serves both the export dialog and the exports list
+    assert INDEX_HTML.count("async function runImport(") == 1
+    assert INDEX_HTML.count("runImport(") >= 4

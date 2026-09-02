@@ -24,12 +24,16 @@ from .model import (
     Block,
     Canvas,
     FormModule,
+    Graphic,
     Item,
     Lov,
     ProgramUnit,
+    RadioButton,
     RecordGroup,
     Relation,
     Trigger,
+    VisualAttribute,
+    Window,
 )
 
 NS = "{http://xmlns.oracle.com/Forms}"
@@ -85,6 +89,16 @@ def _i(el: ET.Element, attr: str, default: int | None = None) -> int | None:
         return default
 
 
+def _pt(el: ET.Element, attr: str) -> int:
+    """A font size, which Forms2XML writes in hundredths of a point (900 = 9pt)."""
+    raw = _i(el, attr)
+    return round(raw / 100) if raw else 0
+
+
+def _bold(el: ET.Element, attr: str) -> bool:
+    return _s(el, attr).lower() in ("bold", "demibold", "extrabold", "ultrabold")
+
+
 def _kids(el: ET.Element, tag: str) -> list[ET.Element]:
     return el.findall(f"{NS}{tag}")
 
@@ -115,16 +129,100 @@ def _parse_item(el: ET.Element, block_name: str) -> Item:
         database_item=_b(el, "DatabaseItem", True),
         required=_b(el, "Required", False),
         max_length=_i(el, "MaximumLength"),
-        prompt=_s(el, "Prompt"),
+        # Prompts can be multi-line ("Empilhamento&#10;Máx."): same double
+        # escaping as trigger text, so the same decoder.
+        prompt=decode_forms_text(el.get("Prompt")),
         canvas=_s(el, "CanvasName"),
         lov_name=_s(el, "LOVName"),
         list_elements=len(_kids(el, "ListItemElement")),
         triggers=_parse_triggers(el, "item", f"{block_name}.{name}"),
         subclassed=bool(el.get("ParentName")),
+        label=decode_forms_text(el.get("Label")),
+        visible=_b(el, "Visible", True),
+        choices=[_s(k, "Name") for k in _kids(el, "ListItemElement")]
+        + [_s(k, "Label") or _s(k, "Name") for k in _kids(el, "RadioButton")],
         x=_i(el, "XPosition"),
         y=_i(el, "YPosition"),
         width=_i(el, "Width"),
         height=_i(el, "Height"),
+        prompt_edge=_s(el, "PromptAttachmentEdge"),
+        prompt_offset=_i(el, "PromptAttachmentOffset", 0) or 0,
+        tab_page=_s(el, "TabPageName"),
+        records_distance=_i(el, "DistanceBetweenRecords", 0) or 0,
+        items_displayed=_i(el, "ItemsDisplay", 0) or 0,
+        prompt_align=_s(el, "PromptAlign"),
+        prompt_align_offset=_i(el, "PromptAlignOffset", 0) or 0,
+        prompt_display=_s(el, "PromptDisplayStyle"),
+        prompt_justify=_s(el, "PromptJustification"),
+        prompt_color=_s(el, "PromptForegroundColor"),
+        prompt_font_size=_pt(el, "PromptFontSize"),
+        prompt_bold=_bold(el, "PromptFontWeight"),
+        bevel=_s(el, "Bevel"),
+        fill=_s(el, "FillPattern"),
+        bg_color=_s(el, "BackColor"),
+        fg_color=_s(el, "ForegroundColor"),
+        font_name=_s(el, "FontName"),
+        font_size=_pt(el, "FontSize"),
+        font_bold=_bold(el, "FontWeight"),
+        visual_attribute=_s(el, "VisualAttributeName"),
+        record_visual_attribute=_s(el, "RecordVisualAttributeGroupName"),
+        enabled=_b(el, "Enabled", True),
+        iconic=_b(el, "Iconic", False),
+        icon_name=_s(el, "IconName"),
+        justification=_s(el, "Justification"),
+        radio_buttons=[
+            RadioButton(
+                name=_s(k, "Name"),
+                label=_s(k, "Label") or _s(k, "Name"),
+                x=_i(k, "XPosition"),
+                y=_i(k, "YPosition"),
+                width=_i(k, "Width"),
+                height=_i(k, "Height"),
+            )
+            for k in _kids(el, "RadioButton")
+        ],
+    )
+
+
+def _parse_graphic(el: ET.Element) -> Graphic:
+    # A Text graphic keeps its copy in TextSegment children (one per font
+    # run); a segment ending in a newline entity starts the next line.
+    segments = [
+        seg for ct in _kids(el, "CompoundText") for seg in _kids(ct, "TextSegment")
+    ]
+    first = segments[0] if segments else el
+    kind = _s(el, "GraphicsType")
+    text = decode_forms_text("".join(seg.get("Text") or "" for seg in segments))
+    if kind.lower() == "image":
+        text = _s(el, "ImageFilename")
+    return Graphic(
+        name=_s(el, "Name"),
+        kind=kind,
+        x=_i(el, "XPosition", 0) or 0,
+        y=_i(el, "YPosition", 0) or 0,
+        width=_i(el, "Width", 0) or 0,
+        height=_i(el, "Height", 0) or 0,
+        bevel=_s(el, "Bevel"),
+        fill=_s(el, "FillPattern"),
+        fill_color=_s(el, "BackColor"),
+        edge_color=_s(el, "EdgeForegroundColor"),
+        title=decode_forms_text(el.get("FrameTitle")),
+        title_align=_s(el, "FrameTitleAlign"),
+        title_offset=_i(el, "FrameTitleOffset", 0) or 0,
+        title_spacing=_i(el, "FrameTitleSpacing", 0) or 0,
+        title_size=_pt(el, "FrameTitleFontSize"),
+        title_bold=_bold(el, "FrameTitleFontWeight"),
+        title_color=_s(el, "FrameTitleForegroundColor"),
+        text=text,
+        text_size=_pt(first, "FontSize") or _pt(el, "GraphicsFontSize"),
+        text_bold=_bold(first, "FontWeight") or _bold(el, "GraphicsFontWeight"),
+        text_color=_s(first, "ForegroundColor")
+        or _s(el, "GraphicsFontColor")
+        or _s(el, "ForegroundColor"),
+        h_origin=_s(el, "HorizontalOrigin"),
+        v_origin=_s(el, "VerticalOrigin"),
+        h_justify=_s(el, "HorizontalJustification"),
+        wrap=_b(el, "WrapText", False),
     )
 
 
@@ -137,6 +235,33 @@ def _parse_canvas(el: ET.Element) -> Canvas:
         height=_i(el, "Height"),
         viewport_width=_i(el, "ViewportWidth"),
         viewport_height=_i(el, "ViewportHeight"),
+        tab_pages=_names(el, "TabPage"),
+        visible=_b(el, "Visible", True),
+        bg_color=_s(el, "BackColor"),
+        bevel=_s(el, "Bevel"),
+        graphics=[_parse_graphic(g) for g in el.iter(f"{NS}Graphics")],
+    )
+
+
+def _parse_visual_attribute(el: ET.Element) -> VisualAttribute:
+    return VisualAttribute(
+        name=_s(el, "Name"),
+        fg_color=_s(el, "ForegroundColor"),
+        bg_color=_s(el, "BackColor"),
+        font_name=_s(el, "FontName"),
+        font_size=_pt(el, "FontSize"),
+        font_bold=_bold(el, "FontWeight"),
+    )
+
+
+def _parse_window(el: ET.Element) -> Window:
+    return Window(
+        name=_s(el, "Name"),
+        title=decode_forms_text(el.get("Title")),
+        width=_i(el, "Width"),
+        height=_i(el, "Height"),
+        toolbar=_s(el, "HorizontalToolbarCanvasName"),
+        primary_canvas=_s(el, "PrimaryCanvas"),
     )
 
 
@@ -220,7 +345,21 @@ def parse_xml(path: str | Path, *, convert_log: str = "") -> FormModule:
         reports=_names(fm, "Report"),
         tab_pages=_names(fm, "TabPage"),
         graphics_count=len(list(fm.iter(f"{NS}Graphics"))),
+        visual_attributes={
+            va.name: va
+            for va in (_parse_visual_attribute(v) for v in fm.iter(f"{NS}VisualAttribute"))
+        },
+        window_details={
+            w.name: w for w in (_parse_window(x) for x in fm.iter(f"{NS}Window"))
+        },
     )
+
+    coordinate = fm.find(f"{NS}Coordinate")
+    if coordinate is not None:
+        mod.coordinate_system = _s(coordinate, "CoordinateSystem")
+        mod.coordinate_unit = _s(coordinate, "RealUnit")
+        mod.char_cell_width = _i(coordinate, "CharacterCellWidth")
+        mod.char_cell_height = _i(coordinate, "CharacterCellHeight")
 
     if convert_log:
         mod.convert_warnings = [
