@@ -19,6 +19,7 @@ HEADER_HTML = r"""<header>
   <button class="btn" id="btn-propose-all">Convert unconverted</button>
   <button class="btn" id="btn-dash" title="Project view — what this session says, counted">Project</button>
   <button class="btn" id="btn-doc" title="HTML technical documentation for this module">Doc</button>
+  <button class="btn" id="btn-preview" title="Read-only preview: Forms UI vs. the APEX default mapping">Preview</button>
   <button class="btn" id="btn-diff" title="Compare this module against another version">Diff</button>
   <button class="btn" id="btn-exports" title="Exported ZIPs — open in folder">Exports</button>
   <button class="btn primary" id="btn-export">Export APEX 26.1</button>
@@ -76,6 +77,7 @@ DATA_REFRESH_JS = r"""async function refresh(keep = true) {
   $("provider").textContent = data.provider;
   $("btn-export").disabled = !data.can_export_apex;
   $("btn-doc").disabled = !data.can_export_apex;
+  $("btn-preview").disabled = !data.can_export_apex;
   $("btn-diff").disabled = !data.can_export_apex;
   /* First run, nothing open: the welcome takes the whole stage. */
   $("welcome").classList.toggle("show", !state.tasks.length && !data.session.title);
@@ -109,8 +111,11 @@ $("btn-export").onclick = exportApex;
 $("btn-exports").onclick = () => showExports();
 $("btn-dash").onclick = showDashboard;
 $("btn-doc").onclick = openDoc;
+$("btn-preview").onclick = openPreview;
 $("btn-diff").onclick = pickDiffTarget;
 $("q").oninput = (e) => { query = e.target.value.toLowerCase(); renderList(); };
+$("out").oninput = syncOutHighlight;
+$("out").onscroll = syncOutScroll;
 
 document.addEventListener("keydown", (e) => {
   const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);

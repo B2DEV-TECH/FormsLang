@@ -3,6 +3,7 @@
     formslang assess <dir|file>...   -> convert, analyze and write the report
     formslang inspect <file.fmb>     -> detail of a single module, in the terminal
     formslang doc <file.fmb>         -> HTML technical documentation of a module
+    formslang preview <file.fmb>     -> read-only Forms UI vs. APEX default mapping
     formslang diff <a.fmb> <b.fmb>   -> structural diff between two versions of a module
     formslang catalog                -> catalog size and coverage
     formslang convert <file.fmb>     -> AI proposals for every code body, headless
@@ -22,7 +23,7 @@ import getpass
 import sys
 from pathlib import Path
 
-from . import __version__, authstore, config, formdiff, formdoc, rules
+from . import __version__, authstore, config, formdiff, formdoc, formui, rules
 from .ai import PROVIDERS, check_provider, provider_from_env
 from .assess import (
     HOURS_PER_POINT_DEFAULT,
@@ -284,6 +285,20 @@ def cmd_doc(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_preview(args: argparse.Namespace) -> int:
+    out_dir = Path(args.out)
+    try:
+        fm = _load_module(Path(args.path), out_dir, args.oracle_home)
+    except OracleToolchainError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    path = formui.write_report(fm, out_dir / "preview")
+    print(f"{fm.name}: {len(fm.canvases)} canvases, {len(fm.all_items)} items")
+    print(f"HTML : {path}")
+    return 0
+
+
 def cmd_diff(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     try:
@@ -538,6 +553,12 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("-o", "--out", default="formslang-out", help="output directory")
     d.add_argument("--oracle-home", default=None, help="explicit ORACLE_HOME")
     d.set_defaults(func=cmd_doc)
+
+    pv = sub.add_parser("preview", help="read-only Forms UI vs. APEX default mapping")
+    pv.add_argument("path", help=".fmb/.mmb/.xml file")
+    pv.add_argument("-o", "--out", default="formslang-out", help="output directory")
+    pv.add_argument("--oracle-home", default=None, help="explicit ORACLE_HOME")
+    pv.set_defaults(func=cmd_preview)
 
     df = sub.add_parser("diff", help="structural diff between two versions of a module")
     df.add_argument("path_a", help=".fmb/.mmb/.xml file (before)")

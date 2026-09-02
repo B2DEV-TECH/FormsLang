@@ -7,10 +7,26 @@ import zipfile
 
 import pytest
 
-from formslang.apexlang import ApexExportConfig, export_apexlang
+from formslang.apexlang import ApexExportConfig, _item_type, export_apexlang
 from formslang.convert import Proposal, build_tasks
+from formslang.model import Item
 from formslang.parser import parse_xml
 from formslang.store import APPROVED, REJECTED, Store
+
+
+@pytest.mark.parametrize(
+    "forms_type, apex_type",
+    [
+        ("Check Box", "checkbox"),
+        ("Display Item", "displayOnly"),
+        ("Text Item", "textField"),
+        ("Bean Area", "textArea"),
+        ("List Item", "textField"),  # no verified APEXlang keyword -> safe fallback
+        ("Radio Group", "textField"),  # no verified APEXlang keyword -> safe fallback
+    ],
+)
+def test_item_type_mapping(forms_type, apex_type):
+    assert _item_type(Item(name="X", item_type=forms_type)) == apex_type
 
 
 @pytest.fixture()

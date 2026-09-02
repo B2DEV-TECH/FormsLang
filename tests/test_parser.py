@@ -33,7 +33,7 @@ def test_parse_reads_the_whole_structure(sample_xml):
     assert len(mod.lovs) == 1 and mod.lovs[0].columns == 2
     assert len(mod.record_groups) == 1
     assert mod.attached_libraries == ["DEMO_LIB"]
-    assert mod.canvases == ["CV_MAIN"]
+    assert [c.name for c in mod.canvases] == ["CV_MAIN"]
 
 
 def test_triggers_are_collected_at_every_scope(sample_xml):
@@ -53,6 +53,21 @@ def test_item_prompt_mojibake_is_repaired(sample_xml):
     mod = parse_xml(sample_xml)
     customer = next(i for i in mod.all_items if i.name == "CUSTOMER")
     assert customer.prompt == "Conexão"
+
+
+def test_item_geometry_is_parsed(sample_xml):
+    mod = parse_xml(sample_xml)
+    order_id = next(i for i in mod.all_items if i.name == "ORDER_ID")
+    assert (order_id.x, order_id.y, order_id.width, order_id.height) == (20, 20, 100, 17)
+
+
+def test_canvas_geometry_is_parsed(sample_xml):
+    mod = parse_xml(sample_xml)
+    canvas = next(c for c in mod.canvases if c.name == "CV_MAIN")
+    assert canvas.window_name == "WIN_MAIN"
+    assert canvas.canvas_type == "Content"
+    assert (canvas.width, canvas.height) == (640, 480)
+    assert (canvas.viewport_width, canvas.viewport_height) == (600, 400)
 
 
 def test_non_form_module_is_rejected(tmp_path):

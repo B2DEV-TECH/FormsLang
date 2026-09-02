@@ -112,6 +112,32 @@ def test_doc_route_serves_html_for_the_open_module(server):
     assert b"<!doctype html>" in body.lower()
 
 
+def test_preview_route_serves_html_for_the_open_module(server):
+    base, _ = server
+    code, body = _get(base, "/api/preview")
+    assert code == 200
+    assert b"DEMO_ORDER" in body
+    assert b"<!doctype html>" in body.lower()
+
+
+def test_preview_route_refuses_when_no_module_is_open(tmp_path):
+    store = Store(tmp_path / "empty.db")
+    store.init_session("EMPTY")
+    wb = Workbench(store, EchoProvider(), tmp_path / "export")
+    handler = type("BoundHandler", (Handler,), {"workbench": wb})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_port}"
+    try:
+        code, body = _get(base, "/api/preview")
+        assert code == 400
+        assert b"no module" in body
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        store.close()
+
+
 def test_diff_route_serves_html_against_another_module(server, tmp_path, sample_xml):
     from tests.conftest import SAMPLE_XML
 

@@ -242,6 +242,21 @@ STYLE_BLOCK = r"""<style>
   }
   textarea.code::placeholder { color: var(--ink-faint); }
   textarea.code:focus { outline: none; box-shadow: inset 0 0 0 1px var(--gold-line); }
+  /* A transparent textarea sits on top of a highlighted <pre> underneath it --
+     the classic trick for a colourised, still-editable code box. Every box
+     model number (font, line-height, padding, tab-size, wrapping) must match
+     between the two layers exactly, or the caret drifts away from the glyph
+     it is supposed to sit on. */
+  .code-wrap { position: relative; flex: 1; min-height: 0; background: #090C11; }
+  .code-wrap pre.code,
+  .code-wrap textarea.code {
+    position: absolute; inset: 0; margin: 0; width: 100%; height: 100%;
+    padding: 12px 14px; font: 12.5px/1.65 var(--mono); tab-size: 4;
+    white-space: pre-wrap; word-break: break-word; overflow: auto;
+  }
+  .code-wrap pre.hl-overlay { background: transparent; color: #CBD3DF; pointer-events: none; }
+  .code-wrap textarea.code { background: transparent; color: transparent; caret-color: #CBD3DF; }
+  .code-wrap textarea.code::selection { background: rgba(245,166,64,.28); }
   .empty { padding: 40px 20px; text-align: center; color: var(--ink-dim); }
   .empty kbd, kbd.key {
     display: inline-block; border: 1px solid var(--line-hi); border-bottom-width: 2px; border-radius: 4px;

@@ -67,7 +67,7 @@ def _module_dump(mod) -> dict:
         "lovs": len(mod.lovs),
         "attached_libraries": sorted(mod.attached_libraries),
         "parameters": sorted(mod.parameters),
-        "canvases": sorted(mod.canvases),
+        "canvases": sorted(c.name for c in mod.canvases),
         "windows": sorted(mod.windows),
         "alerts": sorted(mod.alerts),
         "editors": sorted(mod.editors),

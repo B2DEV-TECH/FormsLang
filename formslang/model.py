@@ -1,8 +1,11 @@
 """Domain model of an Oracle Forms module.
 
-Only what matters for analysis and conversion. Layout properties (font,
-color, pixel position) are deliberately ignored: they do not survive a
-migration to APEX and would only add noise to the model.
+Only what matters for analysis and conversion. Font and color are
+deliberately ignored: they do not survive a migration to APEX and would
+only add noise to the model. Pixel geometry (item x/y/width/height, canvas
+size) is the one layout exception -- it drives the read-only Forms/APEX
+visual preview (see :mod:`formslang.formui`) and nothing else; it never
+feeds analysis, conversion or the exported APEXlang.
 """
 
 from __future__ import annotations
@@ -52,6 +55,11 @@ class Item:
     list_elements: int = 0
     triggers: list[Trigger] = field(default_factory=list)
     subclassed: bool = False
+    # Pixel geometry, for the visual preview only -- see the module docstring.
+    x: int | None = None
+    y: int | None = None
+    width: int | None = None
+    height: int | None = None
 
 
 @dataclass
@@ -99,6 +107,19 @@ class Lov:
 
 
 @dataclass
+class Canvas:
+    """A Forms canvas, geometry only -- see the module docstring."""
+
+    name: str
+    window_name: str = ""
+    canvas_type: str = ""  # "Content" | "Stacked" | "Horizontal Toolbar" | ...
+    width: int | None = None
+    height: int | None = None
+    viewport_width: int | None = None
+    viewport_height: int | None = None
+
+
+@dataclass
 class FormModule:
     """A whole .fmb, already normalized."""
 
@@ -116,7 +137,7 @@ class FormModule:
     lovs: list[Lov] = field(default_factory=list)
     attached_libraries: list[str] = field(default_factory=list)
     parameters: list[str] = field(default_factory=list)
-    canvases: list[str] = field(default_factory=list)
+    canvases: list[Canvas] = field(default_factory=list)
     windows: list[str] = field(default_factory=list)
     alerts: list[str] = field(default_factory=list)
     editors: list[str] = field(default_factory=list)

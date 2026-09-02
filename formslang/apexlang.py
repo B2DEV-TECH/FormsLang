@@ -176,6 +176,8 @@ def _item_type(item: Item) -> str:
         return "displayOnly"
     if "editor" in kind or "area" in kind:
         return "textArea"
+    if "check" in kind:
+        return "checkbox"
     return "textField"
 
 

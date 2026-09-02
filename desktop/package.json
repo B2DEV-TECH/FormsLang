@@ -1,7 +1,7 @@
 {
   "name": "formslang-desktop",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "scripts": {
     "tauri": "tauri",
     "icon:render": "node scripts/render-icon.mjs",

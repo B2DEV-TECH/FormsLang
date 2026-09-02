@@ -5,6 +5,44 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] — 2026-09-02
+
+### Added — syntax highlighting on the APEX side of the diff pane
+
+- The APEX code pane in the review screen (`<textarea id="out">`) is no
+  longer plain text. A transparent-text `<textarea>` now sits on top of a
+  colorized `<pre>` fed by the same tokenizer already used for the
+  read-only Forms pane (`hlLine`), kept in sync on every keystroke and on
+  scroll. Both sides of the diff are colorized PL/SQL now, not just one.
+
+### Added — read-only visual preview: Forms UI vs. APEX default mapping
+
+- **`formslang preview`** (CLI) and a new **Preview** button in the
+  workbench (`/api/preview`, `formslang/formui.py`) render a self-contained
+  HTML page showing every Forms canvas as an absolutely-positioned mockup
+  next to the APEX page it becomes, region by region, using the exporter's
+  own `apexlang._item_type()` -- the same function `formslang export`
+  uses, so the preview can never drift from what an actual export
+  produces. A coverage summary calls out how many items have a confirmed
+  mapping versus an approximated one (falls back to a text field), and
+  which items have no recorded position or sit on an unknown canvas, so a
+  reviewer can confirm the *whole* form -- interface included, not just
+  its trigger logic -- is accounted for.
+- By design there is no picker here: the preview shows only the automatic
+  default mapping. Substituting a different APEX item type for a Forms
+  object is a decision made later, in APEX Builder, after export.
+- `formslang/model.py` now tracks item and canvas pixel geometry
+  (`x`/`y`/`width`/`height` on `Item`, size/viewport on the new `Canvas`
+  dataclass) -- read from the same Forms2XML attributes already ingested,
+  used only to drive this preview. Font and color remain out of scope, as
+  before.
+- Confirmed one additional APEXlang keyword against the vendored 26.1
+  template project: Forms Check Box now maps to `checkbox` instead of
+  falling back to `textField`. Radio Group and List Item stay on the
+  `textField` fallback -- no matching keyword could be confirmed in the
+  templates, and guessing one risked shipping an export that fails to
+  compile.
+
 ## [0.1.6] — 2026-09-01
 
 ### Added — HTML technical documentation and structural diff

@@ -110,14 +110,17 @@ SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
       <Trigger Name="PRE-INSERT"
                TriggerText="BEGIN&amp;#10;  :ORDERS.CREATED := SYSDATE;&amp;#10;END;"/>
       <Item Name="ORDER_ID" ItemType="Text Item" DataType="Number"
-            ColumnName="ORDER_ID" DatabaseItem="true" Required="true"/>
+            ColumnName="ORDER_ID" DatabaseItem="true" Required="true"
+            CanvasName="CV_MAIN" XPosition="20" YPosition="20" Width="100" Height="17"/>
       <Item Name="CUSTOMER" ItemType="Text Item" DataType="Char"
             ColumnName="CUSTOMER" DatabaseItem="true" Prompt="ConexÃ£o"
-            LOVName="LOV_CUSTOMER">
+            LOVName="LOV_CUSTOMER"
+            CanvasName="CV_MAIN" XPosition="20" YPosition="50" Width="200" Height="17">
         <Trigger Name="WHEN-VALIDATE-ITEM"
                  TriggerText="BEGIN&amp;#10;  IF :ORDERS.CUSTOMER IS NULL THEN&amp;#10;    MESSAGE('required');&amp;#10;  END IF;&amp;#10;END;"/>
       </Item>
-      <Item Name="BTN_PRINT" ItemType="Push Button" DatabaseItem="false">
+      <Item Name="BTN_PRINT" ItemType="Push Button" DatabaseItem="false"
+            CanvasName="CV_MAIN" XPosition="20" YPosition="90" Width="80" Height="24">
         <Trigger Name="WHEN-BUTTON-PRESSED"
                  TriggerText="BEGIN&amp;#10;  WEBUTIL_FILE.FILE_SELECTION_DIALOG(:GLOBAL.DIR);&amp;#10;  HOST('print.bat');&amp;#10;END;"/>
       </Item>
@@ -130,7 +133,8 @@ SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
       <LOVColumnMapping Name="NAME"/>
       <LOVColumnMapping Name="ID"/>
     </LOV>
-    <Canvas Name="CV_MAIN"/>
+    <Canvas Name="CV_MAIN" CanvasType="Content" WindowName="WIN_MAIN"
+            Width="640" Height="480" ViewportWidth="600" ViewportHeight="400"/>
     <Window Name="WIN_MAIN"/>
     <Alert Name="AL_CONFIRM"/>
     <AttachedLibrary Name="DEMO_LIB"/>

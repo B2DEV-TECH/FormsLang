@@ -358,6 +358,20 @@ eighteen hours apart: one block modified — a new button added, a new
 every form-level trigger and all eighteen program units reported unchanged,
 because they were.
 
+### Visual preview (`Preview`)
+
+A third button, same idea: a read-only, side-by-side look at every Forms
+canvas next to the APEX page items each of their fields will become, using
+the exact mapping `formslang export` would produce — never a hypothetical
+one. There is no picker here to choose a different APEX item type; that
+choice happens in APEX Builder after export, not before it. Items whose
+Forms type isn't one FormsLang has confirmed evidence for are flagged as
+approximated rather than silently shown as a sure match.
+
+```bash
+formslang preview "D:\legacy\forms\ORDERS.fmb" -o out
+```
+
 ## Authentication and multi-user workspaces
 
 By default the workbench is single-user with no login screen — exactly as
@@ -637,6 +651,13 @@ proprietary business rules, credentials or production data.
       triggers, program units, LOVs, record groups, relations -- property
       changes and code hunks alike), reachable from the CLI (`formslang doc`,
       `formslang diff`) and from the workbench (`Doc` / `Diff` buttons)
+- [x] Syntax-highlighted APEXlang editor pane in the review screen (was
+      plain text; now matches the read-only Forms PL/SQL pane)
+- [x] `formui`: read-only visual preview of every Forms canvas next to the
+      APEX page items it maps to, using the same mapping `export` produces --
+      no picker to choose a different APEX item type, since that choice
+      belongs in APEX Builder after export (`formslang preview`, workbench
+      `Preview` button)
 
 ### Later
 

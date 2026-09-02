@@ -54,8 +54,8 @@ fn main() {
                 .spawn()?;
             app.state::<Engine>().0.lock().unwrap().replace(child);
 
-            // Doc/Diff open their report in a new tab via window.open(); the
-            // webview has no tabs and silently drops that request unless we
+            // Doc/Preview/Diff open their report in a new tab via window.open();
+            // the webview has no tabs and silently drops that request unless we
             // intercept it here and give it a real native window of its own
             // (a fresh label each time, since the caller may open several
             // reports side by side).
@@ -70,6 +70,7 @@ fn main() {
                     let title = match url.path() {
                         "/api/diff" => "FormsLang - Diff",
                         "/api/doc" => "FormsLang - Documentation",
+                        "/api/preview" => "FormsLang - Preview",
                         _ => "FormsLang",
                     };
                     match WebviewWindowBuilder::new(&report_app, label.as_str(), WebviewUrl::External(url.clone()))

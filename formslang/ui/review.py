@@ -34,7 +34,10 @@ DETAIL_SECTION_HTML = r"""  <section>
           <span class="qtag" id="out-queued" hidden>in queue</span>
           <span class="conf" id="t-conf"></span>
         </h2>
-        <textarea class="code" id="out" spellcheck="false" placeholder="No proposal yet — write the APEX replacement here yourself, or press P to ask the model."></textarea>
+        <div class="code-wrap">
+          <pre class="code hl-overlay" id="out-hl" aria-hidden="true"></pre>
+          <textarea class="code" id="out" spellcheck="false" placeholder="No proposal yet — write the APEX replacement here yourself, or press P to ask the model."></textarea>
+        </div>
         <div class="pane-busy" id="out-busy" hidden>
           <div class="spin big"></div>
           <strong id="busy-title"></strong>
@@ -107,6 +110,22 @@ function withLineNumbers(code) {
   const st = { c: false };
   return (code || "").split("\n").map((l, i) =>
     `<span class="ln">${i + 1}</span>${hlLine(l, st)}`).join("\n");
+}
+/* Same lexer, no gutter -- the APEX pane is a textarea overlay, not a
+   line-numbered read-only listing. */
+function highlightPlain(code) {
+  const st = { c: false };
+  return (code || "").split("\n").map((l) => hlLine(l, st)).join("\n");
+}
+/* The overlay behind the (transparently-coloured) textarea repaints on
+   every keystroke and follows its scroll -- the two must stay pixel-locked
+   or the colour drifts away from the letters it is supposed to colour. */
+function syncOutHighlight() {
+  $("out-hl").innerHTML = highlightPlain($("out").value);
+}
+function syncOutScroll() {
+  $("out-hl").scrollTop = $("out").scrollTop;
+  $("out-hl").scrollLeft = $("out").scrollLeft;
 }
 
 /* ── rendering ─────────────────────────────────────────── */
@@ -182,7 +201,7 @@ function renderDetail() {
   if (!t) {
     $("t-title").textContent = "—";
     $("t-where").textContent = "";
-    $("src").innerHTML = ""; $("out").value = ""; $("t-meta").innerHTML = "";
+    $("src").innerHTML = ""; $("out").value = ""; $("out-hl").innerHTML = ""; $("t-meta").innerHTML = "";
     $("notes").innerHTML = state.tasks.length
       ? `<div class="empty">Nothing selected.</div>`
       : `<div class="empty">No module open. Pick the .fmb you want to convert from the button at the top left.</div>`;
@@ -216,6 +235,7 @@ function renderDetail() {
   $("t-lines").textContent = t.lines + " lines";
   $("src").innerHTML = withLineNumbers(t.source);
   $("out").value = t.final_code || "";
+  syncOutHighlight();
 
   if (p) {
     const c = p.confidence || 0;

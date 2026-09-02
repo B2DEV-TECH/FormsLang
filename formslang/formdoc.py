@@ -280,7 +280,7 @@ def _relations(m: FormModule) -> str:
 
 def _misc_lists(m: FormModule) -> str:
     groups = [
-        ("Canvases", m.canvases),
+        ("Canvases", [c.name for c in m.canvases]),
         ("Windows", m.windows),
         ("Alerts", m.alerts),
         ("Parameters", m.parameters),

@@ -35,6 +35,7 @@ from . import (
     depgraph,
     formdiff,
     formdoc,
+    formui,
     policy,
     projects,
     rbac,
@@ -291,6 +292,12 @@ class Workbench:
         if self.module is None:
             raise ValueError("no module open")
         return formdoc.render_html(self.module)
+
+    def preview_html(self) -> str:
+        """Read-only Forms-UI-vs-APEX visual preview for the module on screen."""
+        if self.module is None:
+            raise ValueError("no module open")
+        return formui.render_html(self.module)
 
     def _load_other_module(self, path: str):
         """Parse a second module for /api/diff, without touching the open session."""
@@ -1043,6 +1050,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(wb.dashboard_state())
             elif path == "/api/doc":
                 self._send(200, wb.doc_html().encode("utf-8"), "text/html; charset=utf-8")
+            elif path == "/api/preview":
+                self._send(200, wb.preview_html().encode("utf-8"), "text/html; charset=utf-8")
             elif path == "/api/diff":
                 other = parse_qs(query).get("other", [""])[0]
                 if not other:
