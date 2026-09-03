@@ -11,13 +11,17 @@ unit converted to pixels, the boilerplate graphics under the items, each
 item at its bevel/font/colour, as many instances as a multi-record block
 shows, and every prompt hung on the edge the .fmb attaches it to with the
 .fmb's own alignment and offsets -- nothing measured, nothing guessed. The
-bottom half shows every block as APEX would receive it, using
-:func:`formslang.apexlang._item_type` and :func:`formslang.apexlang._caption`
--- the two functions that decide that mapping -- so this report can never
-drift from what an actual export produces: one region per block, one item
-per row, nothing invented. There is deliberately no control to pick a
-different APEX widget for a Forms item: that choice belongs in APEX Builder,
-after export, never here.
+bottom half shows the page as APEX would receive it, drawn from the very
+tree the exporter writes -- :func:`formslang.apexlayout.build_layout` for
+the regions, rows, columns, captions and boilerplate text,
+:func:`formslang.apexlang._item_type` and
+:func:`formslang.apexlang._label_template` for each item -- so this report
+can never drift from what an actual export produces: a region per canvas
+and frame, items on the 12-column grid where the geometry puts them, the
+label left of the field, above it or floating in it as the Forms prompt
+sits, nothing invented. There is deliberately no control to pick a different APEX widget
+for a Forms item: that choice belongs in APEX Builder, after export, never
+here.
 """
 
 from __future__ import annotations
@@ -27,7 +31,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .apexlang import _caption, _item_type
+from .apexlang import _item_type, _label_template
+from .apexlayout import GRID_COLUMNS, PageLayout, Placed, RegionNode, build_layout
 from .model import Block, Canvas, FormModule, Graphic, Item, VisualAttribute
 
 _CSS = """
@@ -121,39 +126,91 @@ h2{font-size:19px;margin:36px 0 6px;letter-spacing:-.01em;
 .f-off{opacity:.55}
 .f-prompt{position:absolute;white-space:pre;line-height:1.15;color:#000}
 
-/* APEX side: a Universal Theme page as the export builds it -- one Standard
-   region per block, floating labels, one item per row. */
+/* APEX side: the Universal Theme page as the export builds it -- a region
+   per canvas and per frame, every item in the row and 12-column cell its
+   Forms geometry maps to, the label left of the field, above it or floating
+   in it as the Forms prompt sits, boilerplate text as static regions. */
 .a-page{background:#F5F6F7;border:1px solid var(--line);border-radius:8px;padding:16px;
  color:#1B1F27;font:13px/1.4 "Segoe UI",Inter,system-ui,sans-serif;margin-top:14px}
 .a-region{background:#fff;border:1px solid #E0E3E8;border-radius:4px;
- box-shadow:0 1px 2px rgba(0,0,0,.06);margin:0 0 14px}
+ box-shadow:0 1px 2px rgba(0,0,0,.06);margin:0 0 14px;min-width:0}
 .a-region>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;
  padding:10px 14px;border-bottom:1px solid #E7EAEE;font-weight:600;font-size:14px;flex-wrap:wrap}
 .a-region>summary::-webkit-details-marker{display:none}
 .a-region>summary .meta{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.a-region.a-blank>summary{background:#F8F9FA;font-weight:500;font-size:12px;
+ color:#5A6270;padding:5px 14px}
+.a-region.a-dialog{border:1px dashed #9AA1AC;background:#FBFBFC}
+.a-region.a-tabs>summary{border-bottom:3px solid #1F5FBF}
+.untitled{color:#8A9099;font-weight:500;font-style:italic}
 .a-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-.a-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+.a-row{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;align-items:end}
+.a-row.a-flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.a-cell{min-width:0}
+.a-row:not(.a-flow)>.a-cell{container-type:inline-size}
+@container (max-width:150px){.kind:not(.no){display:none}.a-field .lbl{right:10px}}
+.a-cell.shared{display:flex;gap:6px;align-items:end}
+.a-cell.shared>.a-item{flex:1 1 0}
+.a-cell:has(>.a-region){align-self:start}
+.a-cell>.a-region{margin:0}
+.a-item{min-width:0;overflow:hidden}
+.a-row.a-flow .a-field{min-width:120px}
 .a-field{position:relative;border:1px solid #C5CAD3;border-radius:2px;background:#fff;
  min-height:40px;padding:19px 10px 4px}
-.a-field .lbl{position:absolute;left:10px;top:4px;right:10px;font-size:11px;color:#5A6270;
+.a-field .lbl{position:absolute;left:10px;top:4px;right:58px;font-size:11px;color:#5A6270;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a-above>.lbl{display:block;font-size:11px;color:#5A6270;margin:0 0 2px;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a-above>.a-field{min-height:30px;padding-top:8px}
+.a-above>.lbl{text-align:var(--al,left)}
+.a-left{display:grid;grid-template-columns:calc(var(--lbl,3)/12*100%) minmax(0,1fr);
+ gap:0 8px;align-items:center}
+.a-left>.lbl{font-size:12px;color:#1B1F27;text-align:var(--al,right);overflow:hidden;
+ text-overflow:ellipsis;white-space:nowrap}
+.a-left>.a-field{min-height:32px;padding:8px 10px 4px}
+.a-text{padding:6px 8px;background:transparent;border:1px dashed #D5D9E0;box-shadow:none;
+ font-size:13px;color:#1B1F27;white-space:pre-wrap;overflow-wrap:normal;overflow:hidden}
 .a-display{background:#F5F6F7;border-style:dashed}
 .a-area{min-height:72px}
-.a-check{display:flex;align-items:center;gap:8px;min-height:32px;overflow-wrap:anywhere}
+.a-select::after{content:"\\25BE";position:absolute;right:8px;bottom:6px;font-size:10px;color:#5A6270}
+.a-check{position:relative;display:flex;align-items:center;gap:8px;min-height:32px}
+.a-check .txt{min-width:0;line-height:1.25}
 .a-check i{width:16px;height:16px;border:1px solid #9AA1AC;border-radius:3px;background:#fff;flex:none}
-.a-btn{background:#fff;border:1px solid #C5CAD3;border-radius:2px;padding:5px 12px;
- font-size:12px;font-weight:600;color:#1B1F27;white-space:nowrap}
-.a-hidden .a-field,.a-hidden .a-check{opacity:.45}
+.a-radio{position:relative;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;
+ min-height:32px}
+.a-check .kind:not(.no),.a-radio .kind:not(.no){display:none}
+.a-check .kind.no,.a-radio .kind.no{position:static;flex:none;margin-left:auto}
+.a-radio>.lbl{flex:1 0 100%;font-size:11px;color:#5A6270}
+.a-radio span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.a-radio i{width:14px;height:14px;border:1px solid #9AA1AC;border-radius:50%;background:#fff;flex:none}
+.a-btn{position:relative;display:inline-block;background:#fff;border:1px solid #C5CAD3;
+ border-radius:2px;padding:5px 12px;font-size:12px;font-weight:600;color:#1B1F27;
+ white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.a-btn .kind{display:none}
+.kind{position:absolute;right:6px;top:4px;font-size:9px;line-height:12px;color:#9AA1AC;
+ white-space:nowrap}
+.kind.no{color:var(--bad);font-weight:600}
+.req{color:#C0392B;font-style:normal;margin-left:2px}
+.a-chips{display:flex;flex-wrap:wrap;gap:6px}
 .a-note{font-size:11.5px;color:#5A6270;background:#FFF7E6;border:1px solid #F5D7A1;
- border-radius:3px;padding:6px 10px;margin:0 0 4px}
+ border-radius:3px;padding:6px 10px;margin:0 0 4px;overflow-wrap:anywhere}
 @media print{.card,.entity{background:#f6f6f6;border-color:#ccc}
  .f-scroll{overflow:visible}}
 """
 
-# Widget shapes this report has direct evidence for -- everything else
-# lands on the same textField fallback _item_type() itself falls back to,
-# and is flagged "approx" rather than silently claimed as a real mapping.
-_CONFIRMED_HINTS = ("button", "display", "check", "editor", "area")
+# Widget shapes this report has direct evidence for (each APEXlang keyword
+# accepted by ``apex validate``) -- everything else (Image, Bean Area, OLE,
+# Tree, ...) lands on the same textField fallback _item_type() itself falls
+# back to, and is flagged "approx" rather than silently claimed as a mapping.
+_CONFIRMED_HINTS = ("button", "display", "check", "editor", "area", "radio", "list")
+
+# How the APEX side names a region's template when it is not the plain
+# Standard one; keyed on the slugs apexlayout assigns.
+_TEMPLATE_BADGES = {
+    "inline-dialog": "inline dialog",
+    "tabs-container": "tabs container",
+    "blank-with-attributes": "no chrome",
+}
 
 # CSS pixels per Forms real unit (CSS defines 1in = 96px, 1pt = 1/72in).
 _UNIT_PX = {
@@ -795,12 +852,13 @@ def _forms_column(module: FormModule) -> str:
 # -- APEX side -----------------------------------------------------------------
 
 
-def _label(item: Item) -> str:
+def _label(placed: Placed) -> str:
     """The caption APEX gets -- the exporter's own text, made readable.
 
-    :func:`formslang.apexlang._caption` decides the wording (prompt, else the
-    Forms ``Label`` a button or check box carries, else the name spelled
-    out). Forms prompts are sometimes left as the developer's internal code
+    :attr:`formslang.apexlayout.Placed.label` decides the wording (the Forms
+    prompt, else the ``Label`` a button or check box carries, else the name
+    spelled out -- and then the label template is hidden, as the screen
+    shows nothing). Forms prompts are sometimes left as the developer's internal code
     (``ATSF_101ENDERECO_COMPLEMENTO``) rather than real copy: with no space
     to break on, that string is one unbroken word that blows out a fixed-
     width layout instead of wrapping. Spacing out underscores fixes both the
@@ -808,74 +866,192 @@ def _label(item: Item) -> str:
     prompt's wording or casing. A multi-line prompt becomes one line, as the
     exporter itself writes it.
     """
-    return " ".join(_caption(item).replace("_", " ").split())
+    return " ".join(placed.label.replace("_", " ").split())
 
 
-def _apex_item_row(item: Item) -> str:
+def _apex_item_html(placed: Placed) -> str:
+    """One item or button, drawn as the Universal Theme widget the export names.
+
+    The widget comes from :func:`_apex_kind`, the label template from
+    :func:`formslang.apexlang._label_template` -- the exporter's own
+    answers -- so a label sits left of the field (with the prompt's share of
+    the cell), above it, floats inside it or is left out exactly as the
+    written page will show it.
+    """
+    item = placed.item
     kind = _apex_kind(item)
     approx = not _has_confirmed_mapping(item)
-    badges = (
-        f'<span class="tag {"no" if approx else "yes"}">{_esc(kind)}'
-        f'{" &middot; approx" if approx else ""}</span>'
+    label = _esc(_label(placed))
+    grid = placed.grid
+    where = (
+        "inline"
+        if grid.flow
+        else f"column {grid.column}, span {grid.span}"
+        + ("" if grid.new_row or grid.new_column else " (shares the cell)")
     )
-    if not item.visible:
-        badges = '<span class="tag dim" title="Visible=false in Forms">hidden in Forms</span>' + badges
-    label = _esc(_label(item))
+    title = _esc(
+        f"{placed.block.name}.{item.name} · {item.item_type} → {kind}"
+        f"{' (approximated)' if approx else ''} · {where}"
+        + (f" · {placed.note}" if placed.note else "")
+    )
+    if kind == "button":
+        return f'<div class="a-item" title="{title}"><span class="a-btn">{label}</span></div>'
+
+    template = _label_template(item, kind, side=placed.side, label_span=placed.label_span)
+    if template == "hidden" and not placed.caption:
+        title += _esc(" · no caption in Forms: label hidden")
+    kind_tag = (
+        f'<small class="kind{" no" if approx else ""}">{_esc(kind)}'
+        f'{" &middot; approx" if approx else ""}</small>'
+    )
+    mark = '<em class="req">*</em>' if template.startswith("required") else ""
+    lbl = "" if template == "hidden" else f'<span class="lbl">{label}{mark}</span>'
     if kind == "checkbox":
-        control = f'<div class="a-check"><i></i>{label}</div>'
-    elif kind == "textArea":
-        control = f'<div class="a-field a-area"><span class="lbl">{label}</span></div>'
-    elif kind == "displayOnly":
-        control = f'<div class="a-field a-display"><span class="lbl">{label}</span></div>'
+        control = f'<div class="a-check"><i></i><span class="txt">{label}{mark}</span>{kind_tag}</div>'
+    elif kind == "radioGroup":
+        entries = [rb.label or rb.name for rb in item.radio_buttons] or item.choices or [label]
+        options = "".join(f"<span><i></i>{_esc(entry)}</span>" for entry in entries)
+        control = f'<div class="a-radio">{lbl}{options}{kind_tag}</div>'
     else:
-        control = f'<div class="a-field"><span class="lbl">{label}</span></div>'
-    hidden = " a-hidden" if not item.visible else ""
-    title = _esc(f"{item.name} ({item.item_type})")
-    return f'<div class="a-item{hidden}" title="{title}">{control}<span>{badges}</span></div>'
+        shape = {
+            "textarea": " a-area",
+            "displayOnly": " a-display",
+            "selectList": " a-select",
+        }.get(kind, "")
+        field = f'<div class="a-field{shape}">{kind_tag}</div>'
+        if template.endswith("-above"):
+            align = f' style="--al:{placed.align}"' if placed.align != "left" else ""
+            control = f'<div class="a-above"{align}>{lbl}{field}</div>'
+        elif template in {"optional", "required"}:
+            share = f"--lbl:{placed.label_span or 3};--al:{placed.align}"
+            control = f'<div class="a-left" style="{share}">{lbl}{field}</div>'
+        else:
+            control = f'<div class="a-field{shape}">{lbl}{kind_tag}</div>'
+    return f'<div class="a-item" title="{title}">{control}</div>'
 
 
-def _apex_region(block: Block) -> str:
-    buttons = [it for it in block.items if _apex_kind(it) == "button"]
-    fields = [it for it in block.items if _apex_kind(it) != "button"]
-    hidden = sum(1 for it in block.items if not it.visible)
-    # Same title the exporter writes into the region.
-    title = _esc(block.name.replace("_", " ").title())
-    button_html = "".join(
-        f'<span class="a-btn" title="{_esc(it.name)} &middot; button, slot next">'
-        f"{_esc(_label(it))}</span>"
-        for it in buttons
+def _apex_cells(entries: list[tuple[Placed | RegionNode, str]], *, flow: bool) -> str:
+    """Boxes on the 12-column grid, row by row, as APEX will place them.
+
+    ``startNewRow`` opens a row; ``newColumn: false`` joins the previous
+    cell (two narrow controls Forms painted side by side). A flow region --
+    a toolbar, or the no-canvas fallback -- just lines its boxes up.
+    """
+    rows: list[list[tuple[Placed | RegionNode, list[str]]]] = []
+    for ref, markup in entries:
+        grid = ref.grid
+        if grid is None or grid.new_row or not rows:
+            rows.append([(ref, [markup])])
+        elif not grid.new_column and not grid.flow:
+            rows[-1][-1][1].append(markup)
+        else:
+            rows[-1].append((ref, [markup]))
+    out = []
+    for row in rows:
+        if flow:
+            out.append(f'<div class="a-row a-flow">{"".join("".join(m) for _, m in row)}</div>')
+            continue
+        cells = []
+        for ref, markup in row:
+            grid = ref.grid
+            column, span = (grid.column, grid.span) if grid else (1, GRID_COLUMNS)
+            shared = " shared" if len(markup) > 1 else ""
+            cells.append(
+                f'<div class="a-cell{shared}" style="grid-column:{column}/span {span}">'
+                f'{"".join(markup)}</div>'
+            )
+        out.append(f'<div class="a-row">{"".join(cells)}</div>')
+    return "".join(out)
+
+
+def _hidden_chip(placed: Placed) -> str:
+    item = placed.item
+    why = "hidden in Forms" if not item.visible else "not on a canvas"
+    title = _esc(f"{placed.block.name}.{item.name} · {item.item_type} → hidden")
+    return f'<span class="tag dim" title="{title}">{_esc(placed.apex_name)} &middot; {why}</span>'
+
+
+def _apex_region_html(node: RegionNode) -> str:
+    """One region of the export's tree, with its own rows, then its sub-regions;
+    a boilerplate text is just its text, chrome-less, where it was drawn."""
+    if node.text:
+        text = "<br>".join(_esc(line.strip()) for line in node.text.splitlines())
+        if node.text_bold:
+            text = f"<strong>{text}</strong>"
+        text_title = _esc(f"region {node.id} · {node.source}")
+        return f'<div class="a-region a-text" title="{text_title}">{text}</div>'
+    classes = ["a-region"]
+    if node.template == "inline-dialog":
+        classes.append("a-dialog")
+    elif node.template == "tabs-container":
+        classes.append("a-tabs")
+    elif node.template == "blank-with-attributes":
+        classes.append("a-blank")
+    title = (
+        _esc(node.title) if node.title else f'<span class="untitled">{_esc(node.name)}</span>'
     )
+    badges = []
+    if node.slot == "tabs":
+        badges.append("tab page")
+    elif node.template in _TEMPLATE_BADGES:
+        badges.append(_TEMPLATE_BADGES[node.template])
+    badge_html = "".join(f'<span class="tag yes">{_esc(b)}</span>' for b in badges)
+    count = len(node.body) + len(node.hidden)
+    count_html = f'<span class="tag dim">{count} item(s)</span>' if count else ""
+
     notes = ""
-    if block.is_tabular:
+    if node.note:
+        notes += f'<div class="a-note">{_esc(node.note)}</div>'
+    for block_name, records in node.tabular.items():
         notes += (
-            f'<div class="a-note">Forms shows {block.records_displayed} records of this block at '
-            "once (tabular). The export builds a single-record form region; a multi-row "
-            "grid is a Page Designer decision after import.</div>"
+            f'<div class="a-note">Forms shows {records} records of block {_esc(block_name)} at '
+            "once here (tabular): the first record's row is laid out; an Interactive Grid on "
+            "the block's table is the next stage.</div>"
         )
-    if hidden:
-        notes += (
-            f'<div class="a-note">{hidden} item(s) are hidden in Forms (Visible=false) but are '
-            "exported as ordinary items -- mark them Hidden in Page Designer if they only "
-            "carry data.</div>"
-        )
-    rows = "".join(_apex_item_row(it) for it in fields)
-    if not block.items:
-        rows = '<div class="none">no items</div>'
+    body = _apex_cells([(p, _apex_item_html(p)) for p in node.body], flow=node.flow)
+    chips = ""
+    if node.hidden:
+        chips = f'<div class="a-chips">{"".join(_hidden_chip(p) for p in node.hidden)}</div>'
+    subs = _apex_cells([(s, _apex_region_html(s)) for s in node.subs], flow=False)
+    if not (body or chips or subs):
+        body = '<div class="none">no items</div>'
+    region_title = _esc(f"region {node.id} · {node.source}")
     return (
-        '<details class="a-region" open><summary>'
-        f'<span>{title}</span><span class="meta">{button_html}'
-        f'<span class="tag dim">{len(block.items)} item(s)</span></span></summary>'
-        f'<div class="a-body">{notes}{rows}</div></details>'
+        f'<details class="{" ".join(classes)}" open><summary title="{region_title}">'
+        f'<span>{title}</span><span class="meta">{badge_html}{count_html}</span></summary>'
+        f'<div class="a-body">{notes}{body}{chips}{subs}</div></details>'
     )
 
 
-def _apex_column(module: FormModule) -> str:
+def _apex_column(module: FormModule, layout: PageLayout) -> str:
     if not module.blocks:
         return '<div class="none">no blocks in this module</div>'
-    return f'<div class="a-page">{"".join(_apex_region(b) for b in module.blocks)}</div>'
+    parts = []
+    if layout.skipped:
+        parts.append(
+            '<div class="a-note">Not exported: '
+            f"{'; '.join(_esc(reason) for reason in layout.skipped)}.</div>"
+        )
+    parts.extend(_apex_region_html(root) for root in layout.roots)
+    if layout.hidden:
+        parts.append(
+            '<details class="a-region a-blank" open><summary><span>Hidden items at page '
+            f'level</span><span class="meta"><span class="tag dim">{len(layout.hidden)} '
+            'item(s)</span></span></summary><div class="a-body"><div class="a-chips">'
+            f'{"".join(_hidden_chip(p) for p in layout.hidden)}</div></div></details>'
+        )
+    if layout.lovs:
+        names = ", ".join(
+            f"{_esc(lov.name)} ({len(lov.entries)} entries)" for lov in layout.lovs
+        )
+        parts.append(
+            f'<div class="a-note">{len(layout.lovs)} static list(s) of values written to '
+            f"shared-components/lovs.apx from the choices the .fmb declares: {names}.</div>"
+        )
+    return f'<div class="a-page">{"".join(parts)}</div>'
 
 
-def _overview(module: FormModule) -> str:
+def _overview(module: FormModule, layout: PageLayout) -> str:
     items = module.all_items
     positioned = sum(1 for it in items if it.x is not None and it.y is not None)
     confirmed = sum(1 for it in items if _has_confirmed_mapping(it))
@@ -886,6 +1062,7 @@ def _overview(module: FormModule) -> str:
         ("Items", len(items)),
         ("Positioned", positioned),
         ("Hidden in Forms", hidden),
+        ("APEX regions", sum(1 for _ in layout.regions())),
         ("Mapped (confirmed)", confirmed),
         ("Approximated", len(items) - confirmed),
     ]
@@ -898,8 +1075,9 @@ def _overview(module: FormModule) -> str:
 def render_html(module: FormModule, *, generated_at: str = "") -> str:
     """Render one self-contained HTML page: Forms UI vs. APEX default mapping."""
     generated_at = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    layout = build_layout(module, 1)
     body = (
-        f'<div class="grid">{_overview(module)}</div>'
+        f'<div class="grid">{_overview(module, layout)}</div>'
         '<div class="warn">This shows the automatic default mapping only -- there is no '
         "picker here. To use a different APEX item type, change it in APEX Builder after "
         "export.</div>"
@@ -909,9 +1087,14 @@ def render_html(module: FormModule, *, generated_at: str = "") -> str:
         "Hover anything for its name and geometry.</p>"
         f"{_forms_column(module)}"
         "<h2>APEX preview (destination, default mapping)</h2>"
-        '<p class="sub">One Standard region per block, one item per row, floating labels '
-        "&mdash; exactly what the export writes. Buttons sit in the region header.</p>"
-        f"{_apex_column(module)}"
+        '<p class="sub">The page exactly as the export writes it: a region per canvas and '
+        "per frame, a toolbar above its window, a hidden stacked canvas as an inline "
+        "dialog, and every item in the row and 12-column cell its Forms position maps to. "
+        "Labels sit left of, above or inside the field as the Forms prompt sat, boilerplate "
+        "text keeps its place as a caption or a text region. Hover an item "
+        "for its APEX type and cell, a region header for what in the .fmb it stands "
+        "for.</p>"
+        f"{_apex_column(module, layout)}"
     )
     return f"""<!doctype html>
 <html lang="en">

@@ -1,0 +1,394 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DEMO_ALL_ELEMENTS - fixture de referencia, 100% sintetico (nenhum dado de
+  cliente), seguindo a convencao do corpus dourado em
+  tests/fixtures/README.md ("hand-authored, illustrative, committable").
+
+  Objetivo: um unico modulo Forms2XML que cobre, de forma legivel, os
+  elementos mais usados tanto do lado Forms (parser.py/model.py) quanto do
+  lado APEX (apexlayout.py/apexlang.py/formui.py), para servir de exemplo
+  duradouro e de bancada de validacao (nao substitui o corpus de
+  triggers/dependencias em tests/fixtures/corpus/, que tem outro foco).
+
+  Cada bloco de comentario abaixo diz qual caminho de codigo aquele trecho
+  exercita. Convencoes de Forms2XML usadas aqui (confirmadas em parser.py e
+  nos fixtures reais tests/fixtures/corpus/{tiny,small}/module.xml e
+  tests/conftest.py):
+    - Coordinate em Points, sem mojibake (texto ja em UTF-8 correto).
+    - TriggerText/ProgramUnitText multi-linha usam a dupla-escapada
+      "&amp;#10;" (newline) / "&amp;#9;" (tab) - decode_forms_text()
+      desfaz isso numa segunda passada.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="DEMO_ALL_ELEMENTS"
+              Title="Demo All Elements"
+              Comment="Fixture sintetica de referencia - cobre os elementos Forms/APEX mais usados pelo FormsLang. Ver tests/fixtures/showcase/README.md."
+              FirstNavigationBlockName="BK_PRODUTO">
+
+    <Coordinate CoordinateSystem="Real" RealUnit="Point"
+                CharacterCellWidth="5" CharacterCellHeight="10"/>
+
+    <!-- Trigger de escopo FORM: exercita FormModule.triggers (scope="form"). -->
+    <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="GO_BLOCK('BK_PRODUTO');"/>
+
+    <!-- =====================================================================
+         BLOCO BK_PRODUTO - bloco "cabecalho" (single-record), dono da
+         maioria dos itens. Espalha itens por DUAS canvases (CV_MAIN e
+         CV_TABS): um bloco Forms pode ter itens em varias canvases/tab
+         pages ao mesmo tempo - isso e roteado por item, nao por bloco
+         (apexlayout.py bucketa por item.canvas, nao por block).
+         ===================================================================== -->
+    <Block Name="BK_PRODUTO" DatabaseBlock="true"
+           QueryDataSourceName="TAB_PRODUTO" QueryDataSourceType="Table"
+           RecordsDisplayCount="1">
+
+      <!-- Trigger de escopo BLOCK. -->
+      <Trigger Name="PRE-INSERT" TriggerText=":PK_ID := TAB_PRODUTO_SEQ.NEXTVAL;"/>
+
+      <!-- Row A: dois "Text Item" com prompt Start-edge (o caso default) +
+           Required=true -> _label_template() usa base "required" (nao
+           floating, ganha labelColumnSpan). -->
+      <Item Name="PK_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="PK_ID" DatabaseItem="true" Required="true"
+            Prompt="Codigo" MaximumLength="10" CanvasName="CV_MAIN"
+            XPosition="100" YPosition="35" Width="80" Height="17"/>
+      <Item Name="DS_NOME" ItemType="Text Item" DataType="Char"
+            ColumnName="DS_NOME" DatabaseItem="true" Required="true"
+            Prompt="Nome" MaximumLength="100" CanvasName="CV_MAIN"
+            XPosition="300" YPosition="35" Width="220" Height="17"/>
+
+      <!-- Row B: prompt Top-edge -> _label_template() "-above". -->
+      <Item Name="DS_DESCRICAO" ItemType="Text Item" DataType="Char"
+            ColumnName="DS_DESCRICAO" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Descricao" PromptAttachmentEdge="Top" MaximumLength="200"
+            XPosition="100" YPosition="65" Width="420" Height="17"/>
+
+      <!-- Row C: ItemType="Bean Area" -> _item_type() mapeia para o widget
+           "textarea" do APEX (convencao ja coberta por
+           test_apexlang.py::test_item_type_mapping; no Forms real isso
+           tende a aparecer em campos de observacao livres via bean/plugin,
+           nao um ItemType Forms dedicado a multi-linha). Prompt Start-edge
+           (default) + MaximumLength -> exercita a emissao de maxLength
+           tambem para textarea (nao so textField). -->
+      <Item Name="DS_OBS_LONGA" ItemType="Bean Area" DataType="Char"
+            ColumnName="DS_OBS_LONGA" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Observacoes" MaximumLength="500"
+            XPosition="100" YPosition="100" Width="420" Height="40"/>
+
+      <!-- Row D: End-edge e Bottom-edge -> ambos viram "-floating"
+           (_label_template: side in {right,below} -> floating). Terceiro
+           item usa LOVName dinamico (LOVName aponta pra LOV_CATEGORIA
+           declarada mais abaixo no FormModule). -->
+      <Item Name="VL_PRECO" ItemType="Text Item" DataType="Number"
+            ColumnName="VL_PRECO" DatabaseItem="true" Required="true" CanvasName="CV_MAIN"
+            Prompt="Preco" PromptAttachmentEdge="End"
+            XPosition="100" YPosition="150" Width="100" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM"
+                 TriggerText="IF :VL_PRECO &amp;#10;IS NOT NULL AND :VL_PRECO &amp;lt;= 0 THEN&amp;#10;&amp;#9;RAISE FORM_TRIGGER_FAILURE;&amp;#10;END IF;"/>
+      </Item>
+      <Item Name="DT_VALIDADE" ItemType="Text Item" DataType="Date"
+            ColumnName="DT_VALIDADE" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Validade" PromptAttachmentEdge="Bottom"
+            XPosition="300" YPosition="150" Width="100" Height="17"/>
+      <Item Name="FK_CATEGORIA" ItemType="Text Item" DataType="Number"
+            ColumnName="FK_CATEGORIA" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Categoria (LOV)" LOVName="LOV_CATEGORIA"
+            XPosition="470" YPosition="150" Width="150" Height="17"/>
+
+      <!-- Row E: "List Item" com ListItemElement estaticos (choices) e
+           "Radio Group" com RadioButton posicionados (item_box() usa a
+           uniao dos botoes, nao XPosition/Width do proprio Item). Ambos
+           alimentam apexlang._static_lovs() - LOV estatica gerada a
+           partir das choices, sem ida ao banco. -->
+      <Item Name="TP_UNIDADE" ItemType="List Item" DataType="Char"
+            ColumnName="TP_UNIDADE" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Unidade"
+            XPosition="100" YPosition="180" Width="150" Height="17">
+        <ListItemElement Name="UNIDADE" Label="Unidade"/>
+        <ListItemElement Name="CAIXA" Label="Caixa"/>
+        <ListItemElement Name="PALETE" Label="Palete"/>
+      </Item>
+      <Item Name="TP_STATUS" ItemType="Radio Group" DataType="Char"
+            ColumnName="TP_STATUS" DatabaseItem="true" Required="true" CanvasName="CV_MAIN"
+            Prompt="Status"
+            XPosition="300" YPosition="180" Width="260" Height="17">
+        <RadioButton Name="RB_ATIVO" Label="Ativo"
+                     XPosition="300" YPosition="180" Width="70" Height="17"/>
+        <RadioButton Name="RB_INATIVO" Label="Inativo"
+                     XPosition="380" YPosition="180" Width="70" Height="17"/>
+        <RadioButton Name="RB_BLOQUEADO" Label="Bloqueado"
+                     XPosition="460" YPosition="180" Width="90" Height="17"/>
+      </Item>
+
+      <!-- Row F: tres variacoes do "sem side left/top/right/bottom":
+           - Check Box sem Prompt mas com Label -> side "control" ->
+             _label_template() forca "-floating" mesmo sendo checkbox.
+           - Text Item com PromptDisplayStyle="Hidden" -> side "none" ->
+             template "hidden" (prompt existe no Forms mas nao e desenhado).
+           - Text Item sem Prompt e sem Label, longe de qualquer Graphics de
+             texto -> nao adotado como boilerplate -> cai no template
+             "hidden" tambem (caso "captionless" puro, ver apexlang.py). -->
+      <Item Name="FL_ATIVO" ItemType="Check Box" DataType="Char"
+            ColumnName="FL_ATIVO" DatabaseItem="true" Required="true" CanvasName="CV_MAIN"
+            Label="Ativo" VisualAttributeName="VA_DESTAQUE"
+            XPosition="100" YPosition="205" Width="20" Height="17"/>
+      <Item Name="ID_INTERNO" ItemType="Text Item" DataType="Number"
+            ColumnName="ID_INTERNO" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="ID Interno" PromptDisplayStyle="Hidden"
+            XPosition="250" YPosition="205" Width="100" Height="17"/>
+      <Item Name="OBS_INTERNA" ItemType="Text Item" DataType="Char"
+            ColumnName="OBS_INTERNA" DatabaseItem="true" CanvasName="CV_MAIN"
+            XPosition="450" YPosition="205" Width="150" Height="17"/>
+
+      <!-- Linha "espremida": 8 Text Item estreitos lado a lado dentro de um
+           Frame de 740pt - reproduz, em dado 100% sintetico, a classe de
+           bug WWV_FLOW_GRID_LAYOUT.LABEL_COLUMN_SPAN_TOO_BIG (labelColumnSpan
+           calculado em _fit() como fracao da grade CHEIA de 12 colunas,
+           independente do columnSpan final que _place_row()/_arrange()
+           calculam depois pra linha lotada - os dois numeros divergem e a
+           combinacao vira invalida pro APEX). Ver formslang/apexlayout.py
+           _fit()/_place_row(). -->
+      <Item Name="NR_SEQ" ItemType="Text Item" DataType="Number"
+            ColumnName="NR_SEQ" DatabaseItem="true" Prompt="Seq" CanvasName="CV_MAIN"
+            XPosition="20" YPosition="270" Width="40" Height="17"/>
+      <Item Name="CD_LOTE" ItemType="Text Item" DataType="Char"
+            ColumnName="CD_LOTE" DatabaseItem="true" Prompt="Lote" MaximumLength="15" CanvasName="CV_MAIN"
+            XPosition="90" YPosition="270" Width="60" Height="17"/>
+      <Item Name="CD_BARRA" ItemType="Text Item" DataType="Char"
+            ColumnName="CD_BARRA" DatabaseItem="true" Prompt="Cod. Barra" MaximumLength="20" CanvasName="CV_MAIN"
+            XPosition="190" YPosition="270" Width="90" Height="17"/>
+      <Item Name="NR_PALETE" ItemType="Text Item" DataType="Number"
+            ColumnName="NR_PALETE" DatabaseItem="true" Prompt="Palete" CanvasName="CV_MAIN"
+            XPosition="310" YPosition="270" Width="50" Height="17"/>
+      <Item Name="NR_CAIXA" ItemType="Text Item" DataType="Number"
+            ColumnName="NR_CAIXA" DatabaseItem="true" Prompt="Caixa" CanvasName="CV_MAIN"
+            XPosition="390" YPosition="270" Width="50" Height="17"/>
+      <Item Name="NR_UNIDADE" ItemType="Text Item" DataType="Number"
+            ColumnName="NR_UNIDADE" DatabaseItem="true" Prompt="Unidade" CanvasName="CV_MAIN"
+            XPosition="470" YPosition="270" Width="50" Height="17"/>
+      <Item Name="VL_PESO_BRUTO" ItemType="Text Item" DataType="Number"
+            ColumnName="VL_PESO_BRUTO" DatabaseItem="true" Prompt="Peso Bruto" CanvasName="CV_MAIN"
+            XPosition="550" YPosition="270" Width="70" Height="17"/>
+      <Item Name="VL_PESO_LIQ" ItemType="Text Item" DataType="Number"
+            ColumnName="VL_PESO_LIQ" DatabaseItem="true" Prompt="Peso Liq." CanvasName="CV_MAIN"
+            XPosition="650" YPosition="270" Width="70" Height="17"/>
+
+      <!-- Itens soltos (fora de qualquer Frame) perto de Graphics de texto
+           - exercitam a adocao de boilerplate como prompt
+           (apexlang.py _adopt_boilerplate): um "beside" (texto a esquerda,
+           gap <= 4 chars) e um "above" (texto em cima, drop <= altura,
+           NAO bold). Sem Prompt/Label proprios - se a adocao falhar o
+           teste falha claramente (item cairia em "hidden"). -->
+      <Item Name="PESO_KG" ItemType="Text Item" DataType="Number"
+            ColumnName="PESO_KG" DatabaseItem="true" CanvasName="CV_MAIN"
+            XPosition="265" YPosition="330" Width="60" Height="14"/>
+      <Item Name="QTDE_EST" ItemType="Text Item" DataType="Number"
+            ColumnName="QTDE_EST" DatabaseItem="true" CanvasName="CV_MAIN"
+            XPosition="400" YPosition="330" Width="40" Height="14"/>
+
+      <!-- Itens ocultos: um por Visible="false" (continua com CanvasName),
+           outro por simplesmente nao ter CanvasName (item Forms interno,
+           nunca desenhado). Ambos devem ir pra home region do bloco como
+           "hidden", sem aparecer em nenhuma canvas visivel
+           (formslang/apexlayout.py build_layout(), roteamento de hidden). -->
+      <Item Name="TOKEN_SESSAO" ItemType="Text Item" DataType="Char"
+            ColumnName="TOKEN_SESSAO" DatabaseItem="false" Visible="false"
+            CanvasName="CV_MAIN"
+            XPosition="0" YPosition="0" Width="1" Height="1"/>
+      <Item Name="FLAG_CTRL" ItemType="Text Item" DataType="Char"
+            ColumnName="FLAG_CTRL" DatabaseItem="false"
+            XPosition="0" YPosition="0" Width="1" Height="1"/>
+
+      <!-- Mesmo bloco, outra canvas: item da aba TAB_GERAL da CV_TABS.
+           Confirma que o roteamento por canvas/tab e por ITEM, nao por
+           bloco (um bloco single-record pode ter campos espalhados por
+           varias tabs). -->
+      <Item Name="OBS_GERAL" ItemType="Text Item" DataType="Char"
+            ColumnName="OBS_GERAL" DatabaseItem="true"
+            Prompt="Observacoes Gerais" PromptAttachmentEdge="Top"
+            MaximumLength="4000" CanvasName="CV_TABS" TabPageName="TAB_GERAL"
+            XPosition="20" YPosition="20" Width="600" Height="60"/>
+    </Block>
+
+    <!-- =====================================================================
+         BLOCO BK_ITENS - bloco tabular (master-detail via Relation
+         REL_ITENS abaixo), varios registros visiveis (RecordsDisplayCount).
+         Vive todo na aba TAB_ITENS da CV_TABS.
+         ===================================================================== -->
+    <Block Name="BK_ITENS" DatabaseBlock="true"
+           QueryDataSourceName="TAB_PRODUTO_ITEM" QueryDataSourceType="Table"
+           RecordsDisplayCount="5">
+      <Item Name="SEQ_ITEM" ItemType="Text Item" DataType="Number"
+            ColumnName="SEQ_ITEM" DatabaseItem="true" Prompt="Seq"
+            CanvasName="CV_TABS" TabPageName="TAB_ITENS"
+            ItemsDisplay="5" DistanceBetweenRecords="20"
+            XPosition="20" YPosition="20" Width="50" Height="17"/>
+      <Item Name="DS_ITEM" ItemType="Text Item" DataType="Char"
+            ColumnName="DS_ITEM" DatabaseItem="true" Prompt="Item" MaximumLength="120"
+            CanvasName="CV_TABS" TabPageName="TAB_ITENS"
+            ItemsDisplay="5" DistanceBetweenRecords="20"
+            XPosition="90" YPosition="20" Width="280" Height="17"/>
+      <Item Name="QT_ITEM" ItemType="Text Item" DataType="Number"
+            ColumnName="QT_ITEM" DatabaseItem="true" Prompt="Qtd"
+            CanvasName="CV_TABS" TabPageName="TAB_ITENS"
+            ItemsDisplay="5" DistanceBetweenRecords="20"
+            XPosition="390" YPosition="20" Width="60" Height="17"/>
+      <Item Name="VL_UNIT" ItemType="Text Item" DataType="Number"
+            ColumnName="VL_UNIT" DatabaseItem="true" Prompt="Vl Unit"
+            CanvasName="CV_TABS" TabPageName="TAB_ITENS"
+            ItemsDisplay="5" DistanceBetweenRecords="20"
+            XPosition="470" YPosition="20" Width="80" Height="17"/>
+    </Block>
+
+    <!-- =====================================================================
+         BLOCO CONTROL - bloco nao-database (sem QueryDataSourceName),
+         so botoes. BT_SALVAR/BT_CANCELAR moram na toolbar horizontal;
+         BT_CONFIRMAR/BT_FECHAR moram na canvas Stacked (dialogo inline).
+         ItemType="Push Button" -> "button" in item_type.lower() (caso
+         especial tratado a parte em toda a apexlang.py/apexlayout.py).
+         ===================================================================== -->
+    <Block Name="CONTROL" DatabaseBlock="false">
+      <Item Name="BT_SALVAR" ItemType="Push Button" Label="Salvar"
+            CanvasName="CV_TOOLBAR"
+            XPosition="10" YPosition="3" Width="70" Height="22">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="COMMIT_FORM;"/>
+      </Item>
+      <Item Name="BT_CANCELAR" ItemType="Push Button" Label="Cancelar"
+            CanvasName="CV_TOOLBAR"
+            XPosition="90" YPosition="3" Width="70" Height="22"/>
+      <Item Name="BT_CONFIRMAR" ItemType="Push Button" Label="Confirmar"
+            CanvasName="CV_CONFIRMA"
+            XPosition="40" YPosition="70" Width="110" Height="24"/>
+      <Item Name="BT_FECHAR" ItemType="Push Button" Label="Fechar"
+            CanvasName="CV_CONFIRMA"
+            XPosition="170" YPosition="70" Width="110" Height="24"/>
+    </Block>
+
+    <!-- ProgramUnit - so pra completude do lado Forms (nao consumido pelo
+         layout engine, so pelo model/round-trip). -->
+    <ProgramUnit Name="P_CALC_TOTAL" ProgramUnitType="Procedure"
+                 ProgramUnitText="PROCEDURE P_CALC_TOTAL IS&amp;#10;BEGIN&amp;#10;&amp;#9;:VL_PRECO := NVL(:VL_PRECO, 0);&amp;#10;END P_CALC_TOTAL;"/>
+
+    <!-- RecordGroup + LOV - alimentam FK_CATEGORIA.LOVName acima. Nao sao
+         consumidos pelo layout engine (confirmado: zero referencias a
+         module.lovs/record_groups em apexlayout.py/apexlang.py), ficam so
+         pra completude/round-trip do lado Forms. -->
+    <RecordGroup Name="RG_CATEGORIA" RecordGroupType="Query"
+                 RecordGroupQuery="SELECT DS_CATEGORIA, ID_CATEGORIA FROM TAB_CATEGORIA ORDER BY 1"/>
+    <LOV Name="LOV_CATEGORIA" RecordGroupName="RG_CATEGORIA" Title="Categorias">
+      <LOVColumnMapping ColumnName="DS_CATEGORIA" ReturnItem="FK_CATEGORIA"/>
+      <LOVColumnMapping ColumnName="ID_CATEGORIA" ReturnItem="FK_CATEGORIA"/>
+    </LOV>
+
+    <VisualAttribute Name="VA_DESTAQUE" ForegroundColor="255,255,255"
+                      BackColor="0,128,0" FontName="Arial" FontSize="1000"
+                      FontWeight="Bold"/>
+
+    <Relation Name="REL_ITENS" DetailBlock="BK_ITENS"
+              JoinCondition="BK_PRODUTO.PK_ID = BK_ITENS.FK_PRODUTO_ID"
+              Deferred="false"/>
+
+    <Alert Name="AL_CONFIRM_EXCLUSAO"/>
+
+    <!-- =====================================================================
+         CANVASES - ordem de declaracao IMPORTA: build_layout() associa a
+         toolbar horizontal a PRIMEIRA canvas nao-toolbar da mesma Window
+         (ordem de <Canvas> no XML). CV_TOOLBAR precisa vir antes, e
+         CV_MAIN precisa vir antes de CV_TABS/CV_CONFIRMA pra ganhar essa
+         vaga (senao a toolbar seria hospedada em cima da canvas errada).
+         ===================================================================== -->
+
+    <!-- Horizontal Toolbar -> _hosted por cima da canvas de conteudo
+         principal da mesma window (nao vira root por conta propria). -->
+    <Canvas Name="CV_TOOLBAR" WindowName="WIN_MAIN" CanvasType="Horizontal Toolbar"
+            Width="760" Height="30"/>
+
+    <!-- Content - canvas principal: hospeda a toolbar, tem 2 Frames
+         (agrupamento por retangulo com titulo) e itens soltos com
+         Graphics de texto adjacentes (boilerplate). -->
+    <Canvas Name="CV_MAIN" WindowName="WIN_MAIN" CanvasType="Content"
+            Width="760" Height="400" ViewportWidth="760" ViewportHeight="400">
+
+      <!-- Frame com titulo -> vira sub-regiao propria (RegionNode), agrupa
+           as rows A-F acima por conteudo (smallest_around). -->
+      <Graphics GraphicsType="Frame" Name="FR_CABECALHO" FrameTitle="Dados do Produto"
+                XPosition="10" YPosition="10" Width="740" Height="225"/>
+
+      <!-- Segundo Frame, so pra linha espremida (bug labelColumnSpan). -->
+      <Graphics GraphicsType="Frame" Name="FR_IDENTIFICACAO" FrameTitle="Identificacao do Lote"
+                XPosition="10" YPosition="245" Width="740" Height="45"/>
+
+      <!-- Texto solto EM NEGRITO acima de itens soltos -> NAO e adotado
+           como prompt (bold sempre vira heading, ver apexlang.py
+           _adopt_boilerplate: "Bold text above a field stays a heading
+           region on purpose"). Vira sua propria staticContent region. -->
+      <Graphics GraphicsType="Text" Name="T_INFO_ADICIONAL"
+                XPosition="10" YPosition="305" Width="300" Height="16">
+        <CompoundText>
+          <TextSegment Text="Informacoes Adicionais" FontWeight="Bold"/>
+        </CompoundText>
+      </Graphics>
+
+      <!-- Texto "beside" (a esquerda de PESO_KG, gap pequeno, mesma
+           altura) -> adotado como o prompt do item (side "left" ->
+           labelColumnSpan). -->
+      <Graphics GraphicsType="Text" Name="T_PESO"
+                XPosition="200" YPosition="330" Width="60" Height="14">
+        <CompoundText>
+          <TextSegment Text="Peso (kg)"/>
+        </CompoundText>
+      </Graphics>
+
+      <!-- Texto "above" (em cima de QTDE_EST, nao bold, drop &lt;=
+           altura) -> adotado como prompt Top-edge do item. -->
+      <Graphics GraphicsType="Text" Name="T_QTDE"
+                XPosition="400" YPosition="313" Width="40" Height="14">
+        <CompoundText>
+          <TextSegment Text="Qtde."/>
+        </CompoundText>
+      </Graphics>
+
+      <!-- Texto longo (&gt;60 chars) -> NUNCA adotado (corte de
+           tamanho em _adopt_boilerplate), vira staticContent isolado
+           mesmo estando perto de itens. -->
+      <Graphics GraphicsType="Text" Name="T_AJUDA"
+                XPosition="10" YPosition="360" Width="600" Height="16">
+        <CompoundText>
+          <TextSegment Text="Preencha todos os campos obrigatorios antes de salvar o registro."/>
+        </CompoundText>
+      </Graphics>
+
+      <!-- Rectangle com titulo (alternativa ao Frame p/ agrupamento
+           visual) - soltinho, sem itens dentro, so pra cobertura do
+           GraphicsType="Rectangle" no lado Forms/preview. -->
+      <Graphics GraphicsType="Rectangle" Name="RT_RODAPE"
+                XPosition="10" YPosition="380" Width="740" Height="14"
+                EdgeForegroundColor="128,128,128"/>
+    </Canvas>
+
+    <!-- Tab - 2 TabPage: uma com item single-record (OBS_GERAL, bloco
+         BK_PRODUTO), outra com o bloco tabular inteiro (BK_ITENS). -->
+    <Canvas Name="CV_TABS" WindowName="WIN_MAIN" CanvasType="Tab"
+            Width="760" Height="260">
+      <TabPage Name="TAB_GERAL"/>
+      <TabPage Name="TAB_ITENS"/>
+    </Canvas>
+
+    <!-- Stacked, Visible="false" -> vira "inline-dialog" (dialogo modal
+         inline), nao aparece direto na canvas principal. -->
+    <Canvas Name="CV_CONFIRMA" WindowName="WIN_MAIN" CanvasType="Stacked"
+            Visible="false" Width="340" Height="140">
+      <Graphics GraphicsType="Text" Name="T_CONFIRMA_MSG"
+                XPosition="20" YPosition="20" Width="300" Height="20">
+        <CompoundText>
+          <TextSegment Text="Confirma exclusao do registro?"/>
+        </CompoundText>
+      </Graphics>
+    </Canvas>
+
+    <Window Name="WIN_MAIN" Title="Cadastro de Produto"
+            Width="780" Height="560"
+            HorizontalToolbarCanvasName="CV_TOOLBAR" PrimaryCanvas="CV_MAIN"/>
+
+  </FormModule>
+</Module>

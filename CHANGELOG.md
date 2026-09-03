@@ -5,6 +5,96 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] — 2026-09-03
+
+### Changed
+
+- **The exported APEX page now follows the layout of the original form.**
+  Until now every block became one Standard region with one item per row,
+  so a dense Forms screen came out as a long, unrecognisable column. The
+  export now reads the geometry the .fmb records and builds the page the
+  way the screen was laid out, with what APEX 26.1's Universal Theme
+  offers: each content canvas is a Standard region titled like its window;
+  a horizontal toolbar is a chrome-less region above it whose buttons flow
+  inline; a stacked canvas raised on demand (`Visible=false`) is an Inline
+  Dialog; a tab canvas is a Tabs Container with a region per tab page;
+  every frame -- and every rectangle with a text caption on its top edge,
+  the hand-drawn group box -- is a sub-region nested by containment; items
+  are clustered into rows by their vertical position and given a
+  `column`/`columnSpan` on the 12-column grid proportional to where they
+  sat, two narrow controls painted side by side sharing one cell; loose
+  items drawn below a frame are grouped so their order against the frames
+  survives. Prompts sit where Forms drew them: a prompt on the Start edge
+  (the default) is a label left of the field that claims the room the
+  prompt took on the canvas (`labelColumnSpan`), a prompt on the top edge
+  a label above, one on the end or bottom edge a floating label; an item
+  the screen captions with nothing gets the hidden label template instead
+  of a label invented from its name; a Forms `Required` item gets the
+  required template; a text field keeps its width in characters.
+  Boilerplate text survives too: a text drawn right before or right above
+  an uncaptioned field is read as its prompt (how screens were captioned
+  before Forms had prompts), and any other text -- bold headings, help
+  paragraphs, column headings spanning several fields -- becomes a
+  chrome-less static region placed where it was drawn. List
+  Items and Radio Groups are exported as `selectList`/`radioGroup` fed by
+  shared static LOVs built from the .fmb's choices (`lovs.apx`), instead
+  of falling back to text fields. Items without a canvas or hidden in
+  Forms become Hidden items under their block's home region; WebUtil's own
+  block and canvas are skipped. A block shown as several records keeps its
+  first row laid out and says so in the region comment (an Interactive Grid
+  on the block's table is the next stage). Every keyword the layout uses
+  was accepted by `apex validate` on APEX 26.1 before it was used, and the
+  layout tree is written into the review manifest.
+- The **APEX preview** now draws exactly that tree -- regions per canvas
+  and frame, rows and 12-column cells, labels left of the field with the
+  prompt's share of the cell, above it or hidden, boilerplate text where
+  it was drawn, inline dialogs, tab pages, hidden chips, static LOVs --
+  from the same layout engine the export uses, so the two can never
+  disagree. Radio Groups and List Items are no longer flagged as
+  approximations.
+
+### Fixed
+
+- The Settings sheet now has a **SQLcl path** field, so the "SQLcl was not
+  found on PATH" import error -- which has always told the user to "set its
+  path in Settings" -- can actually be fixed there, instead of only via the
+  `FORMSLANG_SQLCL_PATH` environment variable or a hand-edited
+  `config.json`. The field shows whether SQLcl is currently found, and is
+  disabled (with an explanation) when the environment variable is already
+  overriding it.
+- A Forms editor/multi-line item exported as an APEXlang page item with
+  `type: textArea`, which real Oracle APEX 26.1 does not recognize as a
+  native item type -- it tried to resolve it as a plugin instead and failed
+  the whole import (`PLUGIN_NOT_FOUND`). The correct, Oracle-confirmed
+  keyword is lowercase `textarea`.
+- A Forms *Display Item* marked Required was exported with
+  `validation { valueRequired: true }`, which APEX's compiler rejects on a
+  `displayOnly` item (`INVALID_PROPERTY` -- Display Only has no "Value
+  Required" in Page Designer either), again failing the whole import.
+  `valueRequired` is now emitted only for editable item types; the Forms
+  fact is preserved in the item's comment (`required in Forms`).
+- An import whose package failed to compile was shown as a green **OK**:
+  SQLcl prints an `APEXlang Compile Errors` table, imports nothing, and
+  still exits 0. That output is now recognised and reported as a failure
+  (`Failed (SQLcl reported errors; nothing was imported)`), so the result
+  matches what the workspace actually contains.
+- On a machine that also has an Oracle Database home on `PATH`, SQLcl
+  picked its OCI ("thick") JDBC driver for a plain `host:port/service`
+  target and the connection died before reaching the database
+  (`no ocijdbc23 in java.library.path`, `Incompatible version of
+  libocijdbc`). FormsLang now starts SQLcl with its documented `-thin`
+  option, so the pure-Java driver SQLcl ships is always used and a plain
+  `host:port/service` connection string works as advertised.
+- A crowded row could export a left-side label wider than the field's own
+  `columnSpan` (e.g. `columnSpan: 1, labelColumnSpan: 4`), which APEX
+  rejects **at page-render time** with
+  `WWV_FLOW_GRID_LAYOUT.LABEL_COLUMN_SPAN_TOO_BIG` -- neither
+  `apex validate` nor `apex import` catch it, only actually opening the
+  page does. The layout engine sizes a left label's share of the cell
+  before the row's final crowding is known; it's now capped once the row
+  is laid out, and when there's no room left for a separate label column
+  the item falls back to a floating label instead of an invalid export.
+
 ## [0.1.8] — 2026-09-02
 
 ### Added — direct export + import into a live APEX instance
@@ -452,7 +542,7 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.8...HEAD
 [0.1.6]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.3...v0.1.4

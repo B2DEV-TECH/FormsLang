@@ -1,12 +1,15 @@
 """Domain model of an Oracle Forms module.
 
 Only what matters for analysis and conversion -- with one carefully fenced
-exception: *look*. Geometry (item x/y/width/height, canvas size), prompt
-placement, fonts, colors, bevels and the boilerplate graphics a canvas
-paints exist here solely so the read-only visual preview
-(:mod:`formslang.formui`) can draw the screen the way Forms draws it. None
-of it survives a migration to APEX, and none of it ever feeds analysis,
-conversion or the exported APEXlang; every such field is marked below.
+exception: *look*. Geometry (item x/y/width/height, canvas size, frames and
+captioned rectangles, radio button positions) and prompt placement exist
+here so the read-only visual preview (:mod:`formslang.formui`) can draw the
+screen the way Forms draws it **and** so :mod:`formslang.apexlayout` can
+lay the exported APEX page out the way the screen was: which canvas and
+frame an item sits in, which row and 12-column cell, whether its label
+floats or sits above. Fonts, colours, bevels and the rest of the boilerplate
+are preview-only. None of it ever feeds analysis or PL/SQL conversion;
+every such field is marked below.
 """
 
 from __future__ import annotations

@@ -85,6 +85,59 @@ def test_run_import_never_puts_the_password_on_the_command_line(monkeypatch, tmp
     assert f"apex import -input {zip_path}" in captured["input"]
 
 
+def test_run_import_forces_sqlcl_thin_jdbc_driver(monkeypatch, tmp_path):
+    """A host with an Oracle DB home on PATH makes SQLcl default to the OCI
+    driver and fail before reaching the database; ``-thin`` (documented in
+    ``sql -h``) pins the pure-Java driver SQLcl ships."""
+    zip_path = tmp_path / "demo.apex.zip"
+    zip_path.write_bytes(b"x")
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+
+    captured = {}
+
+    def fake_run(argv, *, input, capture_output, text, timeout, check):
+        captured["argv"] = argv
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(apeximport.subprocess, "run", fake_run)
+
+    apeximport.run_import(zip_path, connect_string="h:1521/S", username="U", password="p")
+    assert captured["argv"] == ["sql", "-S", "-thin", "/nolog"]
+
+
+def test_run_import_treats_compile_errors_as_failure_even_when_sqlcl_exits_zero(
+    monkeypatch, tmp_path
+):
+    """Observed: ``apex import`` prints the error table, imports nothing, and
+    still exits 0 -- the exit code alone would report a false success."""
+    zip_path = tmp_path / "demo.apex.zip"
+    zip_path.write_bytes(b"x")
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+
+    def fake_run(argv, *, input, capture_output, text, timeout, check):
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=(
+                "APEXlang Compile Errors:\n"
+                "File: pages/p00001-demo.apx\n"
+                "Line: 42  Column: 15\n"
+                "Type: PLUGIN_NOT_FOUND\n"
+                "Error: Unable to find plugin for pageItem component: textArea\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(apeximport.subprocess, "run", fake_run)
+
+    result = apeximport.run_import(
+        zip_path, connect_string="h:1521/S", username="U", password="p",
+    )
+    assert result.ok is False
+    assert result.exit_code == 0
+    assert "PLUGIN_NOT_FOUND" in result.stdout
+
+
 def test_run_import_uses_validate_when_asked(monkeypatch, tmp_path):
     zip_path = tmp_path / "demo.apex.zip"
     zip_path.write_bytes(b"x")

@@ -7,9 +7,9 @@ import zipfile
 
 import pytest
 
-from formslang.apexlang import ApexExportConfig, _item_type, export_apexlang
+from formslang.apexlang import ApexExportConfig, _item_type, _page_items, export_apexlang
 from formslang.convert import Proposal, build_tasks
-from formslang.model import Item
+from formslang.model import Block, FormModule, Item
 from formslang.parser import parse_xml
 from formslang.store import APPROVED, REJECTED, Store
 
@@ -20,13 +20,44 @@ from formslang.store import APPROVED, REJECTED, Store
         ("Check Box", "checkbox"),
         ("Display Item", "displayOnly"),
         ("Text Item", "textField"),
-        ("Bean Area", "textArea"),
-        ("List Item", "textField"),  # no verified APEXlang keyword -> safe fallback
-        ("Radio Group", "textField"),  # no verified APEXlang keyword -> safe fallback
+        ("Bean Area", "textarea"),
+        ("List Item", "selectList"),
+        ("Radio Group", "radioGroup"),
+        ("Image", "textField"),  # no verified APEXlang keyword -> safe fallback
     ],
 )
 def test_item_type_mapping(forms_type, apex_type):
     assert _item_type(Item(name="X", item_type=forms_type)) == apex_type
+
+
+def test_value_required_is_emitted_only_for_editable_item_types():
+    """APEX's compiler rejects ``valueRequired`` on a ``displayOnly`` item
+    (INVALID_PROPERTY, observed against APEX 26.1) and one such line fails the
+    whole import; editable types accept it. The Forms fact survives in the
+    comment either way."""
+    module = FormModule(
+        name="REQ",
+        blocks=[
+            Block(
+                name="B",
+                items=[
+                    Item(name="SHOWN", item_type="Display Item", required=True),
+                    Item(name="TYPED", item_type="Text Item", required=True),
+                    Item(name="TICKED", item_type="Check Box", required=True),
+                    Item(name="FREE", item_type="Text Item", required=False),
+                ],
+            )
+        ],
+    )
+    chunks, _ = _page_items(module, 1)
+    by_item = {name: chunk for chunk in chunks for name in ("SHOWN", "TYPED", "TICKED", "FREE") if f"P1_{name}" in chunk}
+
+    assert "valueRequired" not in by_item["SHOWN"]
+    assert "required in Forms" in by_item["SHOWN"]
+    assert "valueRequired: true" in by_item["TYPED"]
+    assert "valueRequired: true" in by_item["TICKED"]
+    assert "valueRequired" not in by_item["FREE"]
+    assert "required in Forms" not in by_item["FREE"]
 
 
 @pytest.fixture()
@@ -85,7 +116,7 @@ def test_export_is_an_apexlang_261_project_and_import_zip(approved_session, tmp_
 
     page = next((result.project / "pages").glob("p00001-demo-order.apx"))
     text = page.read_text(encoding="utf-8")
-    assert "region orders" in text
+    assert "region cv-main" in text  # the canvas, not the block, is the region
     assert "pageItem P1_ORDER_ID" in text
     assert ":P1_ORDER_ID := 1" in text
     assert "serverSideCondition" in text and "type: never" in text

@@ -36,6 +36,12 @@ _TIMEOUT_SECONDS = 120
 
 _UNSAFE_ACCOUNT_CHARS = re.compile(r"[^A-Za-z0-9_.:-]")
 
+#: ``apex import``/``apex validate`` print this header (followed by File /
+#: Line / Column / Type / Error lines) when the APEXlang package does not
+#: compile -- and SQLcl still exits 0, so the exit code alone is not the
+#: verdict. Observed verbatim in SQLcl's own output; nothing else is assumed.
+_COMPILE_ERROR_MARKER = "APEXlang Compile Errors"
+
 
 @dataclass(frozen=True)
 class ImportResult:
@@ -96,6 +102,14 @@ def run_import(
     here. The password rides SQLcl's own ``connect user/password@target``
     line over stdin, the same place :mod:`formslang.secrets` puts a secret
     for ``secret-tool``/``security`` -- not a subprocess argument, not a file.
+
+    SQLcl is started with its documented ``-thin`` option (``sql -h``: "use
+    an Oracle thin JDBC") so a plain ``host:port/service`` target always goes
+    over the pure-Java driver SQLcl ships. Without it, a machine that also
+    has an Oracle Database home on PATH makes SQLcl pick the OCI ("thick")
+    driver and the connection dies before reaching the database
+    (``no ocijdbc23 in java.library.path`` / ``Incompatible version of
+    libocijdbc``) -- nothing FormsLang can fix from a connect string alone.
     """
     binary = sqlcl_binary()
     if not binary:
@@ -121,7 +135,7 @@ def run_import(
     )
     try:
         proc = subprocess.run(
-            [binary, "-S", "/nolog"],
+            [binary, "-S", "-thin", "/nolog"],
             input=script,
             capture_output=True,
             text=True,
@@ -137,8 +151,14 @@ def run_import(
     def scrub(text: str) -> str:
         return text.replace(password, "***") if password else text
 
+    # A package that fails to compile is reported in the output, not in the
+    # exit code: SQLcl prints the error table and exits 0 with nothing
+    # imported. Treating that as success would tell the user "OK" for an
+    # application that never appeared in the workspace.
+    compile_errors = _COMPILE_ERROR_MARKER in proc.stdout or _COMPILE_ERROR_MARKER in proc.stderr
+
     return ImportResult(
-        ok=proc.returncode == 0,
+        ok=proc.returncode == 0 and not compile_errors,
         exit_code=proc.returncode,
         stdout=scrub(proc.stdout),
         stderr=scrub(proc.stderr),

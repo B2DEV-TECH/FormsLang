@@ -74,12 +74,24 @@ def test_item_not_on_a_known_canvas_is_still_shown():
 
 
 def test_unconfirmed_item_types_are_flagged_approx_not_claimed_as_mapped():
-    item = Item(name="RG1", item_type="Radio Group")
+    item = Item(name="IMG1", item_type="Image")
     module = FormModule(name="M", blocks=[Block(name="B", items=[item])])
 
     html = render_html(module)
 
     assert "approx" in html
+
+
+def test_radio_group_and_list_item_are_confirmed_mappings():
+    """Both keywords were accepted by apex validate; the preview must not
+    call them approximations any more."""
+    items = [Item(name="RG1", item_type="Radio Group"), Item(name="LI1", item_type="List Item")]
+    module = FormModule(name="M", blocks=[Block(name="B", items=items)])
+
+    html = render_html(module)
+
+    assert "approx" not in html
+    assert "radioGroup" in html and "selectList" in html
 
 
 def test_apex_label_spaces_out_an_underscored_prompt():
@@ -227,7 +239,7 @@ def test_tabular_blocks_paint_one_instance_per_record_and_say_the_export_is_sing
 
     assert html.count("f-instance") == 2
     assert "record 3" in html
-    assert "Forms shows 3 records of this block at once (tabular)" in html
+    assert "Forms shows 3 records of block B at once here (tabular)" in html
 
 
 def test_items_display_overrides_the_block_record_count():
@@ -294,8 +306,8 @@ def test_check_box_and_button_use_the_forms_label_on_both_sides():
     html = render_html(module)
 
     assert "Atsf 101Ender Pick" not in html
-    assert html.count("Ender. Pick") == 2  # Forms mock + APEX row
-    assert html.count("Confirmar") == 2  # Forms mock + APEX region header button
+    assert html.count("Ender. Pick") == 2  # Forms mock + APEX check box
+    assert html.count("Confirmar") == 2  # Forms mock + APEX button in its own row
     assert 'class="a-btn"' in html
 
 
@@ -402,10 +414,80 @@ def test_window_chrome_and_toolbar_wrap_the_content_canvas():
     assert "hidden until raised (Visible=false)" in html
 
 
-def test_apex_side_is_one_region_per_block_with_one_item_per_row():
+def test_apex_side_puts_the_item_in_the_grid_cell_its_geometry_maps_to():
+    """The canvas is the region; a 61pt field at x=67 on a 780pt canvas lands
+    in column 2 of the 12-column grid, one column wide. With no prompt in
+    Forms there is no label either: the template is hidden."""
     module = _point_module()
     html = render_html(module)
+    apex = html.split("<h2>APEX preview", 1)[1]
 
     assert html.count('<details class="a-region" open>') == 1
     assert html.count('class="a-item"') == 1
-    assert '<div class="a-field"><span class="lbl">Codigo</span></div>' in html
+    assert 'style="grid-column:2/span 1"' in apex
+    assert '<span class="lbl">' not in apex and "no caption in Forms: label hidden" in apex
+    assert '<div class="a-field">' in apex
+
+
+def test_apex_side_puts_a_start_prompt_left_of_the_field_with_the_prompts_room():
+    """"Código" on the Start edge is 6 characters of a 5pt cell: 30pt left of
+    the field, so the pair starts at x=37 (column 1) and the label wants
+    round(30/91*12) = 4 twelfths of the cell -- but the field only got a
+    columnSpan of 1, no room to also carve out a label column, so it floats
+    instead of overflowing (APEX rejects labelColumnSpan >= columnSpan)."""
+    apex = render_html(_point_module(prompt="Código")).split("<h2>APEX preview", 1)[1]
+
+    assert 'style="grid-column:1/span 1"' in apex
+    assert '<div class="a-field"><span class="lbl">Código</span>' in apex
+    assert '<div class="a-left"' not in apex
+
+
+def test_apex_side_draws_boilerplate_text_as_a_static_region_where_it_was_drawn():
+    canvas = Canvas(name="CV", width=600, height=200, graphics=[
+        Graphic("T_TITULO", "Text", x=10, y=10, width=200, height=14,
+                text="Dados do produto", text_bold=True),
+    ])
+    items = [
+        Item(name="NOME", item_type="Text Item", canvas="CV", x=10, y=40, width=200, height=14,
+             prompt="Nome", prompt_edge="Top"),
+    ]
+    module = FormModule(name="M", canvases=[canvas], blocks=[Block(name="B", items=items)])
+    apex = render_html(module).split("<h2>APEX preview", 1)[1]
+
+    assert (
+        '<div class="a-region a-text" title="region dados-do-produto · text T_TITULO on '
+        'canvas CV"><strong>Dados do produto</strong></div>'
+    ) in apex
+
+
+def test_apex_side_draws_the_export_tree_frames_dialogs_and_hidden_items():
+    """Frame -> sub-region, hidden stacked canvas -> inline dialog, an
+    invisible item -> a hidden chip under its block's home region."""
+    items = [
+        Item(name="CODIGO", item_type="Text Item", canvas="CV", x=20, y=30, width=100, height=14,
+             prompt="Código", prompt_edge="Top", required=True),
+        Item(name="NOME", item_type="Text Item", canvas="CV", x=140, y=30, width=200, height=14),
+        Item(name="OCULTO", item_type="Text Item", canvas="CV", visible=False),
+        Item(name="OBS", item_type="Text Item", canvas="CV_ST", x=10, y=10, width=100, height=14),
+    ]
+    module = FormModule(
+        name="M",
+        canvases=[
+            Canvas(name="CV", window_name="WI", width=400, height=200, graphics=[
+                Graphic("FR_DADOS", "Frame", x=10, y=10, width=380, height=60, title="Dados"),
+            ]),
+            Canvas(name="CV_ST", window_name="WI", canvas_type="Stacked", visible=False,
+                   width=200, height=100),
+        ],
+        blocks=[Block(name="B", items=items)],
+        window_details={"WI": Window("WI", title="Cadastro")},
+    )
+
+    html = render_html(module)
+    apex = html.split("<h2>APEX preview", 1)[1]
+
+    assert "<span>Cadastro</span>" in apex and "<span>Dados</span>" in apex
+    assert 'class="a-region a-dialog"' in apex and "inline dialog" in apex
+    assert '<div class="a-above"><span class="lbl">Código<em class="req">*</em></span>' in apex
+    assert "P1_OCULTO &middot; hidden in Forms</span>" in apex
+    assert "APEX regions" in html

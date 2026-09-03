@@ -266,7 +266,12 @@ async function runImport(name, form, validateOnly, button, resultBox) {
     });
     resultBox.hidden = false;
     resultBox.className = "import-result " + (r.ok ? "ok" : "bad");
-    resultBox.textContent = (r.ok ? "OK" : `Failed (exit ${r.exit_code})`) + "\n" + (r.stdout || "") + (r.stderr || "");
+    // SQLcl exits 0 even when it prints "APEXlang Compile Errors" and imports
+    // nothing, so a failure with exit 0 is labelled by what actually happened.
+    const header = r.ok ? "OK"
+      : r.exit_code === 0 ? "Failed (SQLcl reported errors; nothing was imported)"
+      : `Failed (exit ${r.exit_code})`;
+    resultBox.textContent = header + "\n" + (r.stdout || "") + (r.stderr || "");
     if (r.ok) toast(validateOnly ? "Validation passed." : "Imported into APEX.");
     return !!r.ok;
   } catch (e) { toast(e.message, true); return false; }

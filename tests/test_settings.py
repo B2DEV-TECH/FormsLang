@@ -223,6 +223,43 @@ def test_settings_test_round_trips_the_offline_provider(server):
     assert data["ok"] is True
 
 
+def test_sqlcl_path_is_saved_and_reported_found(server, monkeypatch, tmp_path):
+    """The Settings sheet's own promise: a path typed here is what apeximport uses."""
+    monkeypatch.delenv("FORMSLANG_SQLCL_PATH", raising=False)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    base, _wb = server
+
+    status, body = _get(base, "/api/settings")
+    assert status == 200
+    state = json.loads(body)
+    assert state["sqlcl_path"] == ""
+    assert state["sqlcl_found"] is False
+    assert state["sqlcl_env_override"] is False
+
+    fake_sql = tmp_path / "sql.exe"
+    fake_sql.write_text("", encoding="utf-8")
+    status, data = _post(base, "/api/settings", {"sqlcl_path": str(fake_sql)})
+    assert status == 200
+    assert data["sqlcl_path"] == str(fake_sql)
+    assert data["sqlcl_found"] is True
+    assert load_config()["sqlcl_path"] == str(fake_sql)
+
+
+def test_the_sqlcl_env_var_wins_over_the_saved_path(server, monkeypatch):
+    base, _wb = server
+    _post(base, "/api/settings", {"sqlcl_path": r"C:\saved\sql.exe"})
+    monkeypatch.setenv("FORMSLANG_SQLCL_PATH", r"C:\env\sql.exe")
+
+    status, body = _get(base, "/api/settings")
+    assert status == 200
+    state = json.loads(body)
+    assert state["sqlcl_env_override"] is True
+    assert state["sqlcl_found"] is True
+    # The saved value is still there on disk -- only the effective binary
+    # (env, in apeximport.sqlcl_binary) is overridden, not the setting itself.
+    assert state["sqlcl_path"] == r"C:\saved\sql.exe"
+
+
 def test_terminal_refuses_anything_not_whitelisted(server):
     base, _wb = server
     # An API provider has no terminal; neither does an arbitrary command.

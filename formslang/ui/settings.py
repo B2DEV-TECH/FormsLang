@@ -75,9 +75,27 @@ SETTINGS_JS = r"""async function openSettings() {
     return `<div class="settings-form">${bits.join("")}</div>`;
   };
 
+  /* SQLcl path: independent of which AI provider is chosen, so it is its
+     own always-visible section rather than part of form(p). */
+  const sqlclSection = () => {
+    const found = cfg.sqlcl_found;
+    const status = cfg.sqlcl_env_override
+      ? `<i>&#10003;</i><span>Using ${esc(cfg.sqlcl_path ? "the saved path" : "FORMSLANG_SQLCL_PATH")} — the environment variable wins over this field.</span>`
+      : found
+      ? `<i>&#10003;</i><span>SQLcl found${cfg.sqlcl_path ? "" : " on PATH"}.</span>`
+      : `<i>&#9888;</i><span>SQLcl not found yet — needed to import an export straight into APEX.</span>`;
+    return `<div class="settings-form">
+      <label>SQLcl path (sql / sql.exe)
+        <input data-f="sqlcl_path" spellcheck="false" autocomplete="off"
+               value="${esc(cfg.sqlcl_path || "")}"
+               placeholder="blank = look on PATH, e.g. C:\\sqlcl\\bin\\sql.exe" ${cfg.sqlcl_env_override ? "disabled" : ""}></label>
+      <div class="keyline${found ? "" : " warn"}">${status}</div>
+    </div>`;
+  };
+
   const render = () => {
     const body = $("modal-body");
-    body.innerHTML = list.map(row).join("") + form(chosen);
+    body.innerHTML = list.map(row).join("") + form(chosen) + sqlclSection();
     body.querySelectorAll(".entry[data-p]").forEach((e) => (e.onclick = () => {
       chosen = list.find((p) => p.id === e.dataset.p);
       render();
@@ -95,6 +113,7 @@ SETTINGS_JS = r"""async function openSettings() {
       for (const name of ["base_url", "deployment", "api_version"])
         if (body.querySelector(`[data-f="${name}"]`)) out[name] = field(name);
       if (field("api_key")) out.api_key = field("api_key");
+      if (!cfg.sqlcl_env_override) out.sqlcl_path = field("sqlcl_path");
       return out;
     };
 

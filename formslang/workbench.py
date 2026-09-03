@@ -574,6 +574,9 @@ class Workbench:
             "deployment": setting("deployment", cfg),
             "api_version": setting("api_version", cfg),
             "has_key": bool(setting("api_key", cfg)),
+            "sqlcl_path": str(cfg.get("sqlcl_path") or "").strip(),
+            "sqlcl_found": bool(apeximport.sqlcl_binary()),
+            "sqlcl_env_override": bool(os.environ.get(apeximport.ENV_SQLCL_PATH, "").strip()),
             "key_source": "env" if env_key else key_location(),
             "secure_storage": {
                 "available": secrets.available(),
@@ -606,7 +609,9 @@ class Workbench:
                 known = ", ".join(sorted(PROVIDERS))
                 raise ValueError(f"unknown AI provider {chosen!r} (known: {known})")
             cfg = load_config()
-            for name in ("provider", "model", "api_key", "base_url", "deployment", "api_version"):
+            for name in (
+                "provider", "model", "api_key", "base_url", "deployment", "api_version", "sqlcl_path",
+            ):
                 if name in body:
                     value = str(body.get(name) or "").strip()
                     if value:
