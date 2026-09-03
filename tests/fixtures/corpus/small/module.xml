@@ -19,7 +19,7 @@
             ColumnName="INV_ID" DatabaseItem="true" Required="true"/>
       <Item Name="INV_TOTAL" ItemType="Text Item" DataType="Number"
             ColumnName="INV_TOTAL" DatabaseItem="true" Prompt="Total"
-            LOVName="LOV_STATUS">
+            LovName="LOV_STATUS">
         <Trigger Name="WHEN-VALIDATE-ITEM"
                  TriggerText="BEGIN&amp;#10;  IF :INVOICES.INV_TOTAL &amp;lt; 0 THEN&amp;#10;    MESSAGE('total must not be negative');&amp;#10;  END IF;&amp;#10;END;"/>
       </Item>

@@ -77,7 +77,7 @@
 
       <!-- Row D: End-edge e Bottom-edge -> ambos viram "-floating"
            (_label_template: side in {right,below} -> floating). Terceiro
-           item usa LOVName dinamico (LOVName aponta pra LOV_CATEGORIA
+           item usa LovName dinamico (LovName aponta pra LOV_CATEGORIA
            declarada mais abaixo no FormModule). -->
       <Item Name="VL_PRECO" ItemType="Text Item" DataType="Number"
             ColumnName="VL_PRECO" DatabaseItem="true" Required="true" CanvasName="CV_MAIN"
@@ -92,7 +92,7 @@
             XPosition="300" YPosition="150" Width="100" Height="17"/>
       <Item Name="FK_CATEGORIA" ItemType="Text Item" DataType="Number"
             ColumnName="FK_CATEGORIA" DatabaseItem="true" CanvasName="CV_MAIN"
-            Prompt="Categoria (LOV)" LOVName="LOV_CATEGORIA"
+            Prompt="Categoria (LOV)" LovName="LOV_CATEGORIA"
             XPosition="470" YPosition="150" Width="150" Height="17"/>
 
       <!-- Row E: "List Item" com ListItemElement estaticos (choices) e
@@ -104,9 +104,9 @@
             ColumnName="TP_UNIDADE" DatabaseItem="true" CanvasName="CV_MAIN"
             Prompt="Unidade"
             XPosition="100" YPosition="180" Width="150" Height="17">
-        <ListItemElement Name="UNIDADE" Label="Unidade"/>
-        <ListItemElement Name="CAIXA" Label="Caixa"/>
-        <ListItemElement Name="PALETE" Label="Palete"/>
+        <ListItemElement Index="1" Name="Unidade" Value="UNIDADE"/>
+        <ListItemElement Index="2" Name="Caixa" Value="CAIXA"/>
+        <ListItemElement Index="3" Name="Palete" Value="PALETE"/>
       </Item>
       <Item Name="TP_STATUS" ItemType="Radio Group" DataType="Char"
             ColumnName="TP_STATUS" DatabaseItem="true" Required="true" CanvasName="CV_MAIN"
@@ -208,6 +208,14 @@
             Prompt="Observacoes Gerais" PromptAttachmentEdge="Top"
             MaximumLength="4000" CanvasName="CV_TABS" TabPageName="TAB_GERAL"
             XPosition="20" YPosition="20" Width="600" Height="60"/>
+
+      <!-- Relation vive dentro do bloco mestre (BK_PRODUTO), nao solta no
+           FormModule: confirmado no forms.xsd, Relation so e filho valido
+           de Block. parser.py ja usa fm.iter() (busca recursiva), entao le
+           daqui do mesmo jeito que leria do nivel do modulo. -->
+      <Relation Name="REL_ITENS" DetailBlock="BK_ITENS"
+                JoinCondition="BK_PRODUTO.PK_ID = BK_ITENS.FK_PRODUTO_ID"
+                Deferred="false"/>
     </Block>
 
     <!-- =====================================================================
@@ -269,24 +277,20 @@
     <ProgramUnit Name="P_CALC_TOTAL" ProgramUnitType="Procedure"
                  ProgramUnitText="PROCEDURE P_CALC_TOTAL IS&amp;#10;BEGIN&amp;#10;&amp;#9;:VL_PRECO := NVL(:VL_PRECO, 0);&amp;#10;END P_CALC_TOTAL;"/>
 
-    <!-- RecordGroup + LOV - alimentam FK_CATEGORIA.LOVName acima. Nao sao
+    <!-- RecordGroup + LOV - alimentam FK_CATEGORIA.LovName acima. Nao sao
          consumidos pelo layout engine (confirmado: zero referencias a
          module.lovs/record_groups em apexlayout.py/apexlang.py), ficam so
          pra completude/round-trip do lado Forms. -->
     <RecordGroup Name="RG_CATEGORIA" RecordGroupType="Query"
                  RecordGroupQuery="SELECT DS_CATEGORIA, ID_CATEGORIA FROM TAB_CATEGORIA ORDER BY 1"/>
     <LOV Name="LOV_CATEGORIA" RecordGroupName="RG_CATEGORIA" Title="Categorias">
-      <LOVColumnMapping ColumnName="DS_CATEGORIA" ReturnItem="FK_CATEGORIA"/>
-      <LOVColumnMapping ColumnName="ID_CATEGORIA" ReturnItem="FK_CATEGORIA"/>
+      <LOVColumnMapping Name="DS_CATEGORIA" ReturnItem="FK_CATEGORIA"/>
+      <LOVColumnMapping Name="ID_CATEGORIA" ReturnItem="FK_CATEGORIA"/>
     </LOV>
 
     <VisualAttribute Name="VA_DESTAQUE" ForegroundColor="255,255,255"
                       BackColor="0,128,0" FontName="Arial" FontSize="1000"
                       FontWeight="Bold"/>
-
-    <Relation Name="REL_ITENS" DetailBlock="BK_ITENS"
-              JoinCondition="BK_PRODUTO.PK_ID = BK_ITENS.FK_PRODUTO_ID"
-              Deferred="false"/>
 
     <Alert Name="AL_CONFIRM_EXCLUSAO"/>
 
@@ -324,8 +328,8 @@
            region on purpose"). Vira sua propria staticContent region. -->
       <Graphics GraphicsType="Text" Name="T_INFO_ADICIONAL"
                 XPosition="10" YPosition="305" Width="300" Height="16">
-        <CompoundText>
-          <TextSegment Text="Informacoes Adicionais" FontWeight="Bold"/>
+        <CompoundText Name="CT_INFO_ADICIONAL">
+          <TextSegment Name="TS_INFO_ADICIONAL" Text="Informacoes Adicionais" FontWeight="Bold"/>
         </CompoundText>
       </Graphics>
 
@@ -334,8 +338,8 @@
            labelColumnSpan). -->
       <Graphics GraphicsType="Text" Name="T_PESO"
                 XPosition="200" YPosition="330" Width="60" Height="14">
-        <CompoundText>
-          <TextSegment Text="Peso (kg)"/>
+        <CompoundText Name="CT_PESO">
+          <TextSegment Name="TS_PESO" Text="Peso (kg)"/>
         </CompoundText>
       </Graphics>
 
@@ -343,8 +347,8 @@
            altura) -> adotado como prompt Top-edge do item. -->
       <Graphics GraphicsType="Text" Name="T_QTDE"
                 XPosition="400" YPosition="313" Width="40" Height="14">
-        <CompoundText>
-          <TextSegment Text="Qtde."/>
+        <CompoundText Name="CT_QTDE">
+          <TextSegment Name="TS_QTDE" Text="Qtde."/>
         </CompoundText>
       </Graphics>
 
@@ -353,8 +357,8 @@
            mesmo estando perto de itens. -->
       <Graphics GraphicsType="Text" Name="T_AJUDA"
                 XPosition="10" YPosition="360" Width="600" Height="16">
-        <CompoundText>
-          <TextSegment Text="Preencha todos os campos obrigatorios antes de salvar o registro."/>
+        <CompoundText Name="CT_AJUDA">
+          <TextSegment Name="TS_AJUDA" Text="Preencha todos os campos obrigatorios antes de salvar o registro."/>
         </CompoundText>
       </Graphics>
 
@@ -380,8 +384,8 @@
             Visible="false" Width="340" Height="140">
       <Graphics GraphicsType="Text" Name="T_CONFIRMA_MSG"
                 XPosition="20" YPosition="20" Width="300" Height="20">
-        <CompoundText>
-          <TextSegment Text="Confirma exclusao do registro?"/>
+        <CompoundText Name="CT_CONFIRMA_MSG">
+          <TextSegment Name="TS_CONFIRMA_MSG" Text="Confirma exclusao do registro?"/>
         </CompoundText>
       </Graphics>
     </Canvas>

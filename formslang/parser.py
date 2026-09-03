@@ -133,7 +133,7 @@ def _parse_item(el: ET.Element, block_name: str) -> Item:
         # escaping as trigger text, so the same decoder.
         prompt=decode_forms_text(el.get("Prompt")),
         canvas=_s(el, "CanvasName"),
-        lov_name=_s(el, "LOVName"),
+        lov_name=_s(el, "LovName"),
         list_elements=len(_kids(el, "ListItemElement")),
         triggers=_parse_triggers(el, "item", f"{block_name}.{name}"),
         subclassed=bool(el.get("ParentName")),

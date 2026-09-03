@@ -55,6 +55,15 @@ def test_item_prompt_mojibake_is_repaired(sample_xml):
     assert customer.prompt == "Conexão"
 
 
+def test_item_lov_name_is_read_case_correctly(sample_xml):
+    """Forms2XML's real attribute is ``LovName``, not ``LOVName`` -- a case
+    typo here matches nothing on a real export and silently drops the
+    item's LOV edge in depgraph.py."""
+    mod = parse_xml(sample_xml)
+    customer = next(i for i in mod.all_items if i.name == "CUSTOMER")
+    assert customer.lov_name == "LOV_CUSTOMER"
+
+
 def test_item_geometry_is_parsed(sample_xml):
     mod = parse_xml(sample_xml)
     order_id = next(i for i in mod.all_items if i.name == "ORDER_ID")

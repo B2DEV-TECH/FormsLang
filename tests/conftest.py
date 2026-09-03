@@ -114,7 +114,7 @@ SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
             CanvasName="CV_MAIN" XPosition="20" YPosition="20" Width="100" Height="17"/>
       <Item Name="CUSTOMER" ItemType="Text Item" DataType="Char"
             ColumnName="CUSTOMER" DatabaseItem="true" Prompt="ConexÃ£o"
-            LOVName="LOV_CUSTOMER"
+            LovName="LOV_CUSTOMER"
             CanvasName="CV_MAIN" XPosition="20" YPosition="50" Width="200" Height="17">
         <Trigger Name="WHEN-VALIDATE-ITEM"
                  TriggerText="BEGIN&amp;#10;  IF :ORDERS.CUSTOMER IS NULL THEN&amp;#10;    MESSAGE('required');&amp;#10;  END IF;&amp;#10;END;"/>

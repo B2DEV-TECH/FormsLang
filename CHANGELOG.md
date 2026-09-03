@@ -5,6 +5,27 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] — 2026-09-03
+
+### Fixed
+
+- **Every item's LOV attachment was silently dropped.** The parser read the
+  attribute as `LOVName`, but Forms2XML actually emits `LovName` -- the
+  lookup is case-sensitive, so it matched nothing on every real export and
+  left `item.lov_name` empty. This broke the LOV edge in the dependency
+  graph and in generated docs for every module ever parsed. The test suite
+  didn't catch it because its own sample fixture carried the identical
+  typo, so the assertion passed against the bug rather than the schema.
+  Fixed in the parser and in every test fixture, and added a regression
+  test that checks the attribute by name against `forms.xsd`.
+- Fixed several Forms2XML syntax inaccuracies in the showcase fixture,
+  found by round-tripping it through Oracle Forms Builder's own XML-to-Forms
+  tool: `ListItemElement` needs `Index`/`Name`/`Value`, not an invented
+  `Label`; `LOVColumnMapping` needs `Name`, not `ColumnName`; `Relation` is
+  only a valid child of `Block`, never of `FormModule` directly; and
+  `CompoundText`/`TextSegment` both require a `Name` attribute. None of
+  these touched `parser.py` -- they were fixture-accuracy fixes only.
+
 ## [0.1.9] — 2026-09-03
 
 ### Changed
