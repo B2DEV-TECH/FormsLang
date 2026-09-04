@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "formslang-desktop"
-version = "0.1.10"
+version = "0.1.12"
 dependencies = [
  "tauri",
  "tauri-build",

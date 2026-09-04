@@ -220,6 +220,8 @@ class Window:
     height: int | None = None
     toolbar: str = ""  # HorizontalToolbarCanvasName
     primary_canvas: str = ""
+    style: str = ""  # WindowStyle: "Document" | "Dialog" | "Utility" ...
+    modal: bool = False  # Modal="true": Forms opens it as its own modal dialog
 
 
 @dataclass

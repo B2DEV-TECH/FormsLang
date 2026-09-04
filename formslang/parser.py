@@ -262,6 +262,8 @@ def _parse_window(el: ET.Element) -> Window:
         height=_i(el, "Height"),
         toolbar=_s(el, "HorizontalToolbarCanvasName"),
         primary_canvas=_s(el, "PrimaryCanvas"),
+        style=_s(el, "WindowStyle"),
+        modal=_b(el, "Modal", False),
     )
 
 

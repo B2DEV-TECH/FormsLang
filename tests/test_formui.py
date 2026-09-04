@@ -415,16 +415,16 @@ def test_window_chrome_and_toolbar_wrap_the_content_canvas():
 
 
 def test_apex_side_puts_the_item_in_the_grid_cell_its_geometry_maps_to():
-    """The canvas is the region; a 61pt field at x=67 on a 780pt canvas lands
-    in column 2 of the 12-column grid, one column wide. With no prompt in
-    Forms there is no label either: the template is hidden."""
+    """The canvas is the region; alone on its row, a 61pt field on a 780pt
+    canvas (65pt a column) packs into column 1, one column wide. With no
+    prompt in Forms there is no label either: the template is hidden."""
     module = _point_module()
     html = render_html(module)
     apex = html.split("<h2>APEX preview", 1)[1]
 
     assert html.count('<details class="a-region" open>') == 1
     assert html.count('class="a-item"') == 1
-    assert 'style="grid-column:2/span 1"' in apex
+    assert 'style="grid-column:1/span 1"' in apex
     assert '<span class="lbl">' not in apex and "no caption in Forms: label hidden" in apex
     assert '<div class="a-field">' in apex
 

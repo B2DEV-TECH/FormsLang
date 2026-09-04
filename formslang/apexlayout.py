@@ -17,9 +17,10 @@ allows:
   hand-drawn group box every old form has) is a sub-region, nested by
   geometric containment;
 * items are clustered into **rows** by their vertical position and given a
-  ``column``/``columnSpan`` proportional to where they sit on their
-  container's width; two narrow controls that quantize to the same column
-  share the cell, the way Forms painted them side by side;
+  ``columnSpan`` proportional to their own width against their container's
+  real width, packed left to right with no gap between them -- the row
+  keeps Forms' relative sizing without reproducing incidental whitespace
+  as dead grid columns;
 * a **prompt** left of its field (Forms' default edge, Start) claims the
   room it takes on the grid and becomes a label left of the field, with the
   same share of the cell (``labelColumnSpan``); a prompt on the top edge is
@@ -47,7 +48,6 @@ before it was used here.
 
 from __future__ import annotations
 
-import math
 import re
 import unicodedata
 from collections.abc import Iterator
@@ -223,11 +223,18 @@ class PageLayout:
             yield from region.body
 
     def chars(self, units: float | None, *, vertical: bool = False) -> int | None:
-        """A Forms width/height as a character count, or None when unknowable."""
-        if not units or self.char_cell is None:
+        """A Forms width/height as a character count, or None when there is
+        no width at all to convert. When the module records no character
+        cell, fall back to the same per-unit estimate ``build_layout`` uses
+        for prompt room (:data:`_CHAR_WIDTH`) -- an APEX text field should
+        never go without a ``width`` just because the .fmb used Points."""
+        if not units:
             return None
-        cell = self.char_cell[1 if vertical else 0]
-        return max(1, round(units / cell)) if cell else None
+        if self.char_cell is not None:
+            cell = self.char_cell[1 if vertical else 0]
+            return max(1, round(units / cell)) if cell else None
+        cell = _CHAR_WIDTH.get(self.unit.lower(), 5.0)
+        return max(1, round(units / cell))
 
 
 # -- geometry helpers ---------------------------------------------------------
@@ -440,28 +447,28 @@ def _rows(boxes: list[_Box]) -> list[list[_Box]]:
 
 def _place_row(row: list[_Box], origin_x: float, width: float, *, first: bool) -> list[Grid]:
     """Column arithmetic for one row of boxes against a container ``width``
-    units wide starting at ``origin_x``."""
+    units wide. Each box gets a ``columnSpan`` proportional to its own width
+    against the container's -- so a lone narrow field stays narrow instead
+    of stretching to fill the row -- and boxes pack contiguously left to
+    right in the row's order (:func:`_rows` already sorted them by x). A
+    box never starts a column short of where the previous one ended: Forms'
+    incidental whitespace between fields is not a grid gap APEX should
+    reproduce. A row whose boxes outnumber the twelve columns overflows
+    onto as many 12-wide grid rows as it takes.
+    """
+    del origin_x  # column is now derived from packing order, not x position
     unit = max(width, 1.0) / GRID_COLUMNS
     grids: list[Grid] = []
     next_free = 1
-    prev: Grid | None = None
-    for box in row:
-        ideal = min(GRID_COLUMNS, max(1, math.floor((box.x - origin_x) / unit) + 1))
+    for index, box in enumerate(row):
         span = min(GRID_COLUMNS, max(1, round(box.w / unit)))
-        grid = Grid(new_row=prev is None, column=ideal, span=span)
-        if prev is not None and ideal < next_free:
-            if prev.span == 1 and span == 1 and ideal <= prev.column:
-                # Two narrow controls in the same column: side by side in one cell.
-                grid = Grid(new_row=False, new_column=False, column=prev.column, span=1)
-                grids.append(grid)
-                continue
-            if next_free > GRID_COLUMNS:
-                grid = Grid(new_row=True, column=1, span=span)
-            else:
-                grid = Grid(new_row=False, column=next_free, span=span)
+        if next_free > GRID_COLUMNS:
+            next_free = 1
+            grid = Grid(new_row=True, new_column=False, column=1, span=span)
+        else:
+            grid = Grid(new_row=False, new_column=index > 0, column=next_free, span=span)
         grid.span = min(grid.span, GRID_COLUMNS + 1 - grid.column)
         next_free = grid.column + grid.span
-        prev = grid
         grids.append(grid)
     if grids and first:
         grids[0].new_row = True
@@ -510,8 +517,29 @@ def apex_item_names(module: FormModule, page: int) -> dict[str, str]:
     return names
 
 
-def _arrange(node: RegionNode, items: list[Placed], children: list[RegionNode]) -> None:
-    """Lay ``items`` and ``children`` (sub-regions) out inside ``node``."""
+def _arrange(
+    node: RegionNode,
+    items: list[Placed],
+    children: list[RegionNode],
+    *,
+    ref_x: float | None = None,
+    ref_width: float | None = None,
+) -> None:
+    """Lay ``items`` and ``children`` (sub-regions) out inside ``node``.
+
+    ``ref_x``/``ref_width`` are the container ``columnSpan`` is computed
+    against -- ``node``'s own geometry by default. A chrome-less wrapper
+    group for loose items below a frame (below) is sized to only its own
+    items' tight bounding box; if spans were computed against that box, a
+    single item alone in the group would always claim the full grid width
+    regardless of how it actually compares to the real page. Passing the
+    true ancestor's ``x``/``width`` down for that recursive call keeps
+    spans proportional to the container Forms actually drew it on.
+    """
+    if ref_x is None:
+        ref_x = node.x
+    if ref_width is None:
+        ref_width = node.width
     boxes = [_Box(*p.bounds(), p) for p in items]
     boxes += [_Box(c.x, c.y, c.width, c.height, c) for c in children]
     for placed in items:
@@ -522,9 +550,15 @@ def _arrange(node: RegionNode, items: list[Placed], children: list[RegionNode]) 
             name = placed.block.name
             node.tabular[name] = max(node.tabular.get(name, 1), shown)
     if node.flow:
-        node.body = sorted(items, key=lambda p: (p.bounds()[0], p.bounds()[1]))
-        for index, placed in enumerate(node.body):
-            placed.grid = Grid(new_row=index == 0, new_column=False, flow=True)
+        # A toolbar's buttons flow inline with no column arithmetic, but
+        # still cluster by real row (Forms often docks a second rank of
+        # buttons/fields a few units below the first) rather than all
+        # flattening onto one line just because none of them carry columns.
+        node.body = []
+        for row in _rows(boxes):
+            for index, box in enumerate(row):
+                box.ref.grid = Grid(new_row=index == 0, new_column=index > 0, flow=True)
+                node.body.append(box.ref)
         return
 
     rows = _rows(boxes)
@@ -534,7 +568,7 @@ def _arrange(node: RegionNode, items: list[Placed], children: list[RegionNode]) 
     )
     # Rows above the first frame are the region's own body ...
     for index, row in enumerate(rows[:first_sub_row]):
-        for box, grid in zip(row, _place_row(row, node.x, node.width, first=True)):
+        for box, grid in zip(row, _place_row(row, ref_x, ref_width, first=True)):
             box.ref.grid = grid
             _reconcile_label(box.ref)
             node.body.append(box.ref)
@@ -564,13 +598,13 @@ def _arrange(node: RegionNode, items: list[Placed], children: list[RegionNode]) 
                     height=gh,
                     slot="subRegions",
                 )
-                _arrange(group, [b.ref for b in run], [])
+                _arrange(group, [b.ref for b in run], [], ref_x=ref_x, ref_width=ref_width)
                 sub_boxes.append(_Box(gx, gy, gw, gh, group))
                 run = []
             if box is not None:
                 sub_boxes.append(box)
     for row in _rows(sub_boxes):
-        for box, grid in zip(row, _place_row(row, node.x, node.width, first=True)):
+        for box, grid in zip(row, _place_row(row, ref_x, ref_width, first=True)):
             box.ref.grid = grid
             node.subs.append(box.ref)
 
@@ -710,12 +744,22 @@ def _canvas_node(
             _arrange(tab, on_tab, [])
             node.subs.append(tab)
         return node
+    window = module.window_details.get(canvas.window_name)
     if "stacked" in kind and not canvas.visible:
         node.template = "inline-dialog"
         node.title = title or humanize(canvas.name)
         node.note = (
             "Stacked canvas raised on demand in Forms (Visible=false): an inline dialog "
             "here; add a dynamic action that opens it where Forms called SHOW_VIEW."
+        )
+    elif window is not None and window.modal:
+        node.template = "inline-dialog"
+        node.title = title or humanize(canvas.name)
+        node.note = (
+            f"Forms opens window {window.name} as its own modal dialog"
+            + (f" (WindowStyle={window.style}, Modal=true)" if window.style else " (Modal=true)")
+            + f": an inline dialog here; add a dynamic action that opens it where Forms "
+            f"called SHOW_WINDOW/GO_ITEM into {window.name}."
         )
     _frame_nodes(canvas, pairs, node, ids, char_w)
     return node

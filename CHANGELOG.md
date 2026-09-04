@@ -5,6 +5,50 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12] — 2026-09-04
+
+### Fixed
+
+- **A lone field below a frame always claimed the full 12-column grid**,
+  regardless of its real proportion to the page. `_arrange`'s chrome-less
+  wrapper group for loose items (drawn below a canvas's first frame) sized
+  its column arithmetic against its own tight bounding box -- self-
+  referential for a group holding a single item, which then rounded up to
+  the group's whole width every time. `_arrange`/`_place_row` now thread
+  the real ancestor container's `x`/`width` down through that recursion,
+  so a field's `columnSpan` is always proportional to the page it is
+  actually on.
+- **Fields on the same row could leave a dead grid column between them, or
+  overflow past column 12.** `_place_row` derived `column` from the item's
+  literal Forms `x` position, which reproduces Forms' incidental
+  whitespace as a gap in the APEX grid and, on a crowded row, could hand
+  out columns beyond 12. Column is now purely a running total of the
+  row's own previous spans: items pack left to right with no gap, and a
+  row with more boxes than columns wraps onto as many 12-wide grid rows
+  as it needs instead of clipping.
+- **A window Forms declares `WindowStyle="Dialog" Modal="true"` now
+  exports as an Inline Dialog region**, the same verified template already
+  used for a stacked canvas raised on demand. Previously only the
+  stacked-canvas heuristic triggered it, so a small popup window (a
+  "reajuste de preço" prompt, a confirmation dialog) exported as a plain
+  Standard region indistinguishable from the main page.
+- **A Forms toolbar's second rank of buttons collapsed onto the same row
+  as the first.** The toolbar's flow layout sorted every button by
+  position but only ever marked the very first one `startNewRow`; buttons
+  Forms actually docked a few points lower (a second visual row) now
+  cluster onto their own row, the same vertical-overlap clustering used
+  for every other region.
+- **A text field's `width` (in characters) was never written for a Point-
+  based module with no recorded character cell** -- `PageLayout.chars()`
+  returned `None` outright, so Universal Theme's default 100%-of-cell
+  stretch applied to every text field on the page. It now falls back to
+  the same per-coordinate-unit character-width estimate `build_layout`
+  already uses for prompt room, and only returns `None` when there is
+  truly no width to convert.
+- `Window.modal`/`Window.style` (parsed from `Modal`/`WindowStyle`) added
+  to the model so the exporter can read what Forms itself declared about
+  a window, rather than infer it.
+
 ## [0.1.11] — 2026-09-04
 
 ### Changed

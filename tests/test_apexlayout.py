@@ -57,7 +57,9 @@ def _grids(node) -> dict[str, Grid]:
 
 def test_items_land_in_the_row_and_column_their_position_maps_to():
     """On a 600-unit canvas one grid column is 50 units: x=0 w=100 is column 1
-    span 2, x=150 w=150 is column 4 span 3, and a lower item opens a row."""
+    span 2. A second field packs right after it -- column 3, span 3 -- with
+    no grid gap left for the 50 units of whitespace Forms drew between them;
+    a lower item opens a new row."""
     module = _module([
         _item("A", 0, 20, width=100),
         _item("B", 150, 20, width=150),
@@ -68,27 +70,33 @@ def test_items_land_in_the_row_and_column_their_position_maps_to():
 
     assert (grids["P1_A"].new_row, grids["P1_A"].column, grids["P1_A"].span) == (True, 1, 2)
     assert (grids["P1_B"].new_row, grids["P1_B"].new_column) == (False, True)
-    assert (grids["P1_B"].column, grids["P1_B"].span) == (4, 3)
+    assert (grids["P1_B"].column, grids["P1_B"].span) == (3, 3)
     assert (grids["P1_C"].new_row, grids["P1_C"].column, grids["P1_C"].span) == (True, 1, 12)
 
     text = _page_text(module)
     assert "startNewRow: true\n            column: 1\n            columnSpan: 2" in text
-    assert "startNewRow: false\n            newColumn: true\n            column: 4" in text
+    assert "startNewRow: false\n            newColumn: true\n            column: 3" in text
 
 
-def test_two_narrow_controls_in_the_same_column_share_one_cell():
-    """Forms paints two 20-unit check boxes side by side inside what is one
-    grid column; APEX keeps them together with ``newColumn: false``."""
+def test_two_adjacent_narrow_controls_pack_into_neighbouring_columns():
+    """Forms paints two 20-unit check boxes side by side, 5 units apart; each
+    rounds down to a single grid column, and they pack into adjacent columns
+    (1 then 2) rather than leaving a gap where Forms' whitespace would
+    otherwise land."""
     module = _module([
         Item(name="A", item_type="Check Box", canvas="CV", x=0, y=20, width=20, height=14),
         Item(name="B", item_type="Check Box", canvas="CV", x=25, y=20, width=20, height=14),
     ])
     grids = _grids(build_layout(module).roots[0])
 
-    assert (grids["P1_B"].new_row, grids["P1_B"].new_column, grids["P1_B"].column) == (
-        False, False, 1,
-    )
-    assert "newColumn: false" in _page_text(module)
+    assert (grids["P1_A"].new_row, grids["P1_A"].column, grids["P1_A"].span) == (True, 1, 1)
+    assert (
+        grids["P1_B"].new_row,
+        grids["P1_B"].new_column,
+        grids["P1_B"].column,
+        grids["P1_B"].span,
+    ) == (False, True, 2, 1)
+    assert "newColumn: true" in _page_text(module)
 
 
 def test_rows_are_clustered_by_vertical_overlap_not_by_exact_y():
@@ -366,8 +374,9 @@ def test_label_template_follows_where_forms_draws_the_caption():
 def test_a_prompt_left_of_the_field_claims_its_room_on_the_grid():
     """"Código" is 6 characters of a 5-point cell plus a 5-point attachment
     offset: 35 points of room left of a 100-point field at x=100. The pair
-    spans 65..200 on a 600-point canvas (50 points a column): column 2, span
-    3, and the label wants round(35/135*12) = 3 twelfths of the cell -- but
+    spans 65..200, 135 points wide -- on a 600-point canvas (50 points a
+    column) that is a span of 3; alone on its row it packs into column 1.
+    The label wants round(35/135*12) = 3 twelfths of the cell -- but
     _reconcile_label caps it at span - 1 = 2, leaving the field a column of
     its own (APEX rejects labelColumnSpan >= columnSpan at render time)."""
     module = _module(
@@ -379,7 +388,7 @@ def test_a_prompt_left_of_the_field_claims_its_room_on_the_grid():
 
     assert (placed.caption, placed.side, placed.align) == ("Código", "left", "right")
     assert placed.bounds() == (65, 20, 135, 14)
-    assert (placed.grid.column, placed.grid.span, placed.label_span) == (2, 3, 2)
+    assert (placed.grid.column, placed.grid.span, placed.label_span) == (1, 3, 2)
     text = _page_text(module)
     assert "template: @/optional\n" in text
     assert "labelColumnSpan: 2" in text and "alignment: right" in text
@@ -442,9 +451,17 @@ def test_text_field_width_is_written_in_characters_of_the_module_cell():
     cells = _module([_item("A", 10, 10, width=20)], coordinate_system="Character")
     assert build_layout(cells).chars(20) == 20
 
-    unknown = _module([_item("A", 10, 10, width=61)])  # no cell size recorded
-    assert build_layout(unknown).chars(61) is None
-    assert "width:" not in _page_text(unknown)
+    # No char-cell metadata and no coordinate unit at all: fall back to the
+    # same per-unit estimate build_layout uses for prompt room, rather than
+    # leaving the field with no ``width`` -- a text field should never
+    # default to APEX's 100%-of-cell stretch just because the .fmb recorded
+    # no character cell. ``chars`` still returns None with nothing to
+    # convert in the first place.
+    unknown = _module([_item("A", 10, 10, width=61)])
+    unknown_layout = build_layout(unknown)
+    assert unknown_layout.chars(61) == 12
+    assert unknown_layout.chars(None) is None
+    assert "width: 12" in _page_text(unknown)
 
 
 def test_list_item_and_radio_group_get_shared_static_lovs_from_the_fmb_choices():
