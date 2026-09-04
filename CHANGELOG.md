@@ -5,6 +5,28 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] — 2026-09-04
+
+### Changed
+
+- **Showcase fixture (`tests/fixtures/showcase/`) rebuilt into a full
+  live demo**, on top of its existing role as the layout/rules test
+  bench: module parameters, a third detail block (audit trail) and a
+  summary block over an aggregate view, two window-modal reajuste flow,
+  and `demo_schema.sql` to seed a real `FORMSLANG` schema. Compiles
+  clean in Oracle Forms Builder 14c (61/61 units, no errors) and runs
+  end to end against Oracle APEX 26.1 after export.
+- Added a dedicated Frame (`FR_IDENTIFICACAO`) that reproduces
+  `WWV_FLOW_GRID_LAYOUT.LABEL_COLUMN_SPAN_TOO_BIG` with a squeezed row of
+  abbreviated-prompt items, as a standing regression case for the
+  `labelColumnSpan` capping added in 0.1.9 -- this class of error only
+  surfaces at APEX render time, never in `apex validate`/`apex import`.
+- README documents the full Forms Builder compile recipe (`frmxml2f`,
+  `frmcmp`) including two silent-failure gotchas: a malformed registry
+  `NLS_LANG` makes the database logon fail with `ORA-12705` and no
+  `module.err`, and `frmcmp.exe` is a GUI-subsystem executable that
+  PowerShell does not wait on unless launched with `Start-Process -Wait`.
+
 ## [0.1.10] — 2026-09-03
 
 ### Fixed
