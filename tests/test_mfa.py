@@ -244,10 +244,17 @@ def test_concurrent_validations_of_the_same_code_accept_it_at_most_once(auth_sto
     inside BEGIN IMMEDIATE lets exactly one win."""
     boot = _owner(auth_store)
     mfa = setup_confirmed_mfa(auth_store, boot["user_id"])
-    code = next_mfa_code(auth_store, boot["user_id"], mfa["secret"])
     pendings = [
         auth_store.login("owner@example.com", PASSWORD).session_token for _ in range(4)
     ]
+    # The current step's code, taken after the four scrypt logins -- not
+    # next_mfa_code's, which starts one step in the past so several logins
+    # fit in one window. Here only one code is ever spent, and a code from
+    # the previous step stops being valid at the next 30-second boundary:
+    # on a slow CI runner the logins above crossed it, every thread was
+    # rejected, and the assertion read 0 == 1. The current step stays inside
+    # verify_code's +-1 window for at least 30 more seconds.
+    code = totp.generate_code(mfa["secret"])
     outcomes: list[bool] = []
     lock = threading.Lock()
 

@@ -5,6 +5,17 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Test suite: the concurrent-MFA-validation test took its TOTP code from
+  the previous 30-second step and then ran four scrypt logins before using
+  it; on a slow CI runner the step boundary passed in between, every thread
+  was rejected and the job went red (`0 == 1`). The test now takes the
+  current step's code after the logins. Test-only; no product behavior
+  changed.
+
 ## [1.0.0] — 2026-09-04
 
 The first stable release. Everything a Forms team needs to convert,
