@@ -404,12 +404,19 @@ def _item_chunk(
     )
     width = layout.chars(item.width) if kind == "textField" else None
     width_line = f"\n            width: {width}" if width else ""
-    template = _label_template(item, kind, side=placed.side, label_span=placed.label_span)
+    # Belt-and-suspenders re-clamp of _reconcile_label's invariant: APEX
+    # rejects labelColumnSpan >= columnSpan at render time only (neither
+    # ``apex validate`` nor ``apex import`` catch it), so whatever upstream
+    # layout path produced this Placed, never emit a span that violates it.
+    label_span = placed.label_span
+    if label_span and not placed.grid.flow:
+        label_span = max(0, min(label_span, placed.grid.span - 1))
+    template = _label_template(item, kind, side=placed.side, label_span=label_span)
     # A label left of the field takes the share of the cell the prompt took
     # on the canvas, so the field keeps its proportion to the prompt.
     span_line = (
-        f"\n            labelColumnSpan: {placed.label_span}"
-        if template in {"optional", "required"} and placed.label_span
+        f"\n            labelColumnSpan: {label_span}"
+        if template in {"optional", "required"} and label_span
         else ""
     )
     lov_block = ""

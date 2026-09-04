@@ -5,6 +5,20 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] — 2026-09-04
+
+### Fixed
+
+- **A page item could still export with `labelColumnSpan >= columnSpan`**,
+  which APEX rejects only at render time (`WWV_FLOW_GRID_LAYOUT
+  .LABEL_COLUMN_SPAN_TOO_BIG`) -- never caught by `apex validate` or
+  `apex import`. `_reconcile_label` in `apexlayout.py` already caps this
+  after `_place_row` settles an item's real grid span, but the exporter
+  trusted `Placed.label_span` unconditionally at the point it wrote
+  `labelColumnSpan`. `_item_chunk` in `apexlang.py` now re-clamps the
+  span against the item's actual `columnSpan` right where it emits it,
+  closing the invariant regardless of which upstream layout path set it.
+
 ## [0.1.12] — 2026-09-04
 
 ### Fixed

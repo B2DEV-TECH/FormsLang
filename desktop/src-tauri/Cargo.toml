@@ -1,6 +1,6 @@
 [package]
 name = "formslang-desktop"
-version = "0.1.12"
+version = "0.1.13"
 description = "FormsLang desktop shell (B2DEV TECH)"
 edition = "2021"
 license = "Apache-2.0"
