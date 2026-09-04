@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/formslang-readme-banner.svg" alt="FormsLang" width="840">
+  <img src="assets/brand/formslang-readme-banner.png" alt="FormsLang" width="840">
 </p>
 
 <p align="center">
