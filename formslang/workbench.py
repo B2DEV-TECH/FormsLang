@@ -60,7 +60,7 @@ from .ai import (
     setting,
 )
 from .analysis import analyze_task, summarize
-from .apexlang import export_apexlang
+from .apexlang import export_apexlang, last_export_config
 from .config import (
     SecureStorageUnavailable,
     config_path,
@@ -262,6 +262,9 @@ class Workbench:
     def state(self) -> dict:
         return {
             "session": self.store.session(),
+            # The file a terminal or CI job would pass to `formslang export`
+            # to rebuild exactly what the Export button builds.
+            "session_path": str(self.store.path),
             "stats": self.store.stats(),
             "provider": self.provider.describe(),
             "provider_id": self.provider.type_id,
@@ -458,13 +461,18 @@ class Workbench:
                     }
                 )
         exports.sort(key=lambda e: e["mtime"], reverse=True)
-        return {"exports": exports, "dir": str(self.export_dir), "import": self._import_defaults()}
+        return {
+            "exports": exports,
+            "dir": str(self.export_dir),
+            "import": self._import_defaults(),
+            # The choices the last export used, so the dialog starts from
+            # them and a re-export reproduces the same application.
+            "last_export": last_export_config(self.store),
+        }
 
     def _import_defaults(self) -> dict:
         """What the "Import to database" form should show -- never a password."""
-        cfg = load_config()
-        connect_string = str(cfg.get("apex_connect_string") or "")
-        username = str(cfg.get("apex_username") or "")
+        connect_string, username = apeximport.connection_defaults()
         has_saved_password = False
         if connect_string and username:
             try:
@@ -589,6 +597,9 @@ class Workbench:
                 name for name, var in ENV_FOR.items()
                 if os.environ.get(var, "").strip()
             ),
+            "auth_enabled": authstore.auth_enabled(),
+            "auth_env_override": bool(os.environ.get(authstore.AUTH_ENV, "").strip()),
+            "auth_active": self.auth_store is not None,
         }
 
     def save_settings(self, body: dict) -> dict:
@@ -610,7 +621,8 @@ class Workbench:
                 raise ValueError(f"unknown AI provider {chosen!r} (known: {known})")
             cfg = load_config()
             for name in (
-                "provider", "model", "api_key", "base_url", "deployment", "api_version", "sqlcl_path",
+                "provider", "model", "api_key", "base_url", "deployment", "api_version",
+                "sqlcl_path", "auth_enabled",
             ):
                 if name in body:
                     value = str(body.get(name) or "").strip()

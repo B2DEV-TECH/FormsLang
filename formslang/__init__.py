@@ -16,6 +16,6 @@ except PackageNotFoundError:
     # Running from source with no installed distribution (e.g. a fresh
     # editable checkout before `pip install -e .`) -- pyproject.toml is
     # the source of truth; this is a fallback only, kept in sync by hand.
-    __version__ = "0.1.6"
+    __version__ = "1.0.0"
 
 __all__ = ["__version__"]

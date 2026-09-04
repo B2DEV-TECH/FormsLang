@@ -55,6 +55,21 @@ def test_item_prompt_mojibake_is_repaired(sample_xml):
     assert customer.prompt == "Conexão"
 
 
+def test_multiline_is_read_and_defaults_to_false(tmp_path, sample_xml):
+    """``MultiLine="true"`` decides textarea-vs-field on the APEX side, so
+    the parser has to carry it; an item without the attribute is one line."""
+    xml = sample_xml.read_text(encoding="utf-8").replace(
+        'Name="CUSTOMER" ItemType="Text Item"',
+        'Name="CUSTOMER" ItemType="Text Item" MultiLine="true"',
+    )
+    path = tmp_path / "MULTI_fmb.xml"
+    path.write_text(xml, encoding="utf-8")
+    mod = parse_xml(path)
+    by_name = {i.name: i for i in mod.all_items}
+    assert by_name["CUSTOMER"].multi_line is True
+    assert by_name["ORDER_ID"].multi_line is False
+
+
 def test_item_lov_name_is_read_case_correctly(sample_xml):
     """Forms2XML's real attribute is ``LovName``, not ``LOVName`` -- a case
     typo here matches nothing on a real export and silently drops the

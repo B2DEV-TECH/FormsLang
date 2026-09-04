@@ -29,6 +29,12 @@ _CANDIDATE_HOMES = (
     r"C:\DevSuiteHome_1",
 )
 
+# Oracle's installer names a Forms 12c/14c home whatever the user typed
+# (``C:\Oracle\FR1412``, ``C:\Oracle\FormsHome``...), so no fixed list can
+# know it. Any child of these folders that carries a ``jlib`` directory is
+# tried after the fixed list, in name order so detection is stable.
+_CANDIDATE_ROOTS = (r"C:\Oracle", r"C:\oracle")
+
 _JARS = (
     r"jlib\frmxmltools.jar",
     r"jlib\frmjdapi.jar",
@@ -53,12 +59,28 @@ class Toolchain:
         return self.oracle_home / "bin"
 
 
+def _scan_roots() -> list[Path]:
+    """Forms homes found under :data:`_CANDIDATE_ROOTS`, in name order."""
+    found: list[Path] = []
+    for root in _CANDIDATE_ROOTS:
+        base = Path(root)
+        if not base.is_dir():
+            continue
+        try:
+            children = sorted(base.iterdir())
+        except OSError:
+            continue
+        found.extend(p for p in children if p.is_dir() and (p / "jlib").is_dir())
+    return found
+
+
 def detect_toolchain(oracle_home: str | os.PathLike[str] | None = None) -> Toolchain:
     """Resolve the toolchain, validating that every piece actually exists.
 
     Order: explicit argument > ORACLE_HOME environment variable > known
-    install paths. Failing here is a fact about the environment, not a bug --
-    the message names exactly which file was missing.
+    install paths > any Forms-looking home under ``C:\\Oracle``. Failing here
+    is a fact about the environment, not a bug -- the message names exactly
+    which file was missing.
     """
     candidates: list[Path] = []
     if oracle_home:
@@ -67,6 +89,9 @@ def detect_toolchain(oracle_home: str | os.PathLike[str] | None = None) -> Toolc
     if from_env:
         candidates.append(Path(from_env))
     candidates.extend(Path(c) for c in _CANDIDATE_HOMES)
+    candidates.extend(_scan_roots())
+    # C:\Oracle and C:\oracle are one folder on Windows: try each home once.
+    candidates = list(dict.fromkeys(candidates))
 
     tried: list[str] = []
     for home in candidates:

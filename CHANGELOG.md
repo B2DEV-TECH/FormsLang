@@ -5,6 +5,104 @@ All notable changes to FormsLang are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-09-04
+
+The first stable release. Everything a Forms team needs to convert,
+document, diff and version its modules -- and to hand the result to a
+pipeline -- is in, and the shapes that matter (the CLI, the session file,
+the export layout, the HTTP API of the local workbench) are now promised
+stable within 1.x: what changes from here is additive, and every visible
+change keeps landing in this file.
+
+### Added
+
+- **`formslang export <session.db>`** -- the headless twin of the
+  workbench's *Export APEX 26.1* button: same exporter, same choices, same
+  bytes. Deployment choices (`--app-id`, `--alias`, `--name`,
+  `--workspace`, `--schema`, `--page`) are remembered on the session, so a
+  second run with no flags rebuilds exactly what was reviewed; a flag
+  overrides only what it names. Accepts a `.fmb`/`.xml` too, creating the
+  session beside it like every other command. `--json` for tooling.
+- **`formslang apex validate <zip>` / `formslang apex import <zip>`** --
+  SQLcl driven from the command line, for CI. Target from `--connect` /
+  `--user`, `FORMSLANG_APEX_CONNECT` / `FORMSLANG_APEX_USER`, or the
+  workbench's Settings; password from `FORMSLANG_APEX_PASSWORD`, the
+  connection saved from the workbench (OS credential store), or a hidden
+  prompt -- never a command-line argument, and a runner with no password
+  and no terminal fails at once instead of hanging on a prompt. Exit 0 on
+  success, 1 when SQLcl fails *or* prints `APEXlang Compile Errors` with
+  exit 0 (nothing imported), 2 when the command could not run. `--sqlcl`
+  and `--timeout` for runners that just unpacked SQLcl.
+- **Deterministic exports.** Two exports of the same session are now
+  byte-identical, ZIP included: entries are written in name order with a
+  fixed 1980-01-01 timestamp and one permission mask, and the
+  application's session-state checksum salt is drawn once per session
+  (from the OS CSPRNG) and kept, instead of once per export. This is what
+  lets a pipeline rebuild what was reviewed, cache it, and diff two
+  exports as two reviews rather than two clocks. Sessions carry a small
+  `session_setting` table for this and for the last export's choices.
+- **The export dialog shows the command line that reproduces it** --
+  `formslang export <session> --app-id … --alias …`, kept in step with the
+  fields as they are typed -- and pre-fills the previous export's choices;
+  the Import dialog names the `formslang apex validate|import` twins and
+  where the password goes. The manifest (`apexlang-manifest.json`) carries
+  the same three commands under `cli` and a `reproducible: true` flag.
+- **`docs/ci-cd.md`** and **`examples/ci/formslang-apex.yml`**: the
+  pipeline shape (export → validate → import on `main`), what to commit,
+  the exit codes, the secrets, the runner prerequisites and the known
+  SQLcl gotchas -- the ground for the SQLcl `project`-based promotion
+  flow that comes next.
+- **`MultiLine="true"` Text Items export as `textarea`** (the keyword
+  already verified live for Bean Areas) instead of a one-line
+  `textField`; the parser now reads `MultiLine` into `Item.multi_line`.
+  `Date`/`Number` items deliberately stay `textField` until
+  `datePicker`/`numberField` have been through a live `apex validate`,
+  because one unknown keyword fails the whole import.
+- **Oracle Forms homes named by the installer are found.** After the fixed
+  list, any child of `C:\Oracle` that carries a `jlib` folder is tried, in
+  name order -- so a `C:\Oracle\FR1412` (Forms 14c) is detected with no
+  `ORACLE_HOME` and no `--oracle-home`.
+- **Multi-user mode as a saved setting.** The Settings screen carries an
+  *Authentication* switch (`auth_enabled` in `config.json`, read once at
+  start; `FORMSLANG_AUTH` still wins when set) with the status of the
+  first Owner and an *Open terminal…* shortcut for `formslang auth
+  bootstrap-owner`.
+- **`docs/apex-import-verification.md`**: the repeatable procedure for
+  proving an export on a live APEX 26.1 through ORDS -- the class of
+  render-time defect `apex validate`/`apex import` cannot see.
+
+### Changed
+
+- The README is rewritten for 1.0: a CLI reference for every command, the
+  versioning workflow for Forms *and* APEXlang in git, the CI/CD section,
+  the complete environment-variable table and an architecture map that
+  matches the package as it is.
+- `formslang doc` in the README used a stale flag; every documented
+  command line is now the one the parser accepts.
+- The Settings hint for creating the first Owner used `--email`; the
+  command takes the address positionally.
+
+### Fixed
+
+- **A hidden-label item 1 or 2 grid columns wide still failed to render**
+  with `WWV_FLOW_GRID_LAYOUT.LABEL_COLUMN_SPAN_TOO_BIG` (`P1_ID_INTERNO`
+  in the Demo All Elements showcase), even after 0.1.13. The exporter
+  omitted `labelColumnSpan` for the `hidden` label template on the theory
+  that a hidden label needs no room -- but Universal Theme's `Hidden`
+  template still lays its (invisible) label out on the grid
+  (`col col-#LABEL_COLUMN_SPAN_NUMBER#`), and APEX fills an unset
+  `labelColumnSpan` from the page template's default (2 on every built-in
+  Universal Theme page template) before checking it against `columnSpan`.
+  A hidden label on a field spanning 1 or 2 columns therefore collided
+  with that default exactly like an oversized real one. `_item_chunk` in
+  `apexlang.py` now writes `labelColumnSpan: 0` for every hidden-label
+  item -- a value the item-level column accepts -- which renders as
+  `col-0` with the field at its full `columnSpan`. Verified by rendering
+  every `{template, columnSpan, labelColumnSpan}` shape on a live APEX
+  26.1 through ORDS, not just `apex validate`/`apex import`, which never
+  catch this class of error. Side benefit: hidden-label fields no longer
+  silently lose two grid columns to an invisible label.
+
 ## [0.1.13] — 2026-09-04
 
 ### Fixed

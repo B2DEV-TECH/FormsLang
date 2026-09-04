@@ -78,6 +78,9 @@ class Item:
     database_item: bool = True
     required: bool = False
     max_length: int | None = None
+    # ``MultiLine="true"``: a Text Item that wraps and scrolls -- a textarea,
+    # not a one-line field, on the APEX side.
+    multi_line: bool = False
     prompt: str = ""
     canvas: str = ""
     lov_name: str = ""

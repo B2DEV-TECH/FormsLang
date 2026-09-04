@@ -29,10 +29,17 @@ from .config import load_config
 SERVICE = "FormsLang:apex-import"
 ENV_SQLCL_PATH = "FORMSLANG_SQLCL_PATH"
 
+#: The CI route: a runner has no Settings screen and no credential store,
+#: so the target and the password come from the environment. The password
+#: is read by :mod:`formslang.cli` alone and still never reaches argv.
+ENV_APEX_CONNECT = "FORMSLANG_APEX_CONNECT"
+ENV_APEX_USER = "FORMSLANG_APEX_USER"
+ENV_APEX_PASSWORD = "FORMSLANG_APEX_PASSWORD"
+
 #: SQLcl hangs waiting for a password it will never get if the connect string
 #: is wrong; this is the ceiling on how long a broken target blocks the one
 #: workbench request thread handling it.
-_TIMEOUT_SECONDS = 120
+TIMEOUT_SECONDS = 120
 
 _UNSAFE_ACCOUNT_CHARS = re.compile(r"[^A-Za-z0-9_.:-]")
 
@@ -65,6 +72,23 @@ def sqlcl_binary() -> str:
     return shutil.which("sql") or shutil.which("sql.exe") or ""
 
 
+def connection_defaults() -> tuple[str, str]:
+    """``(connect_string, username)`` to start from: environment, then Settings.
+
+    Shared by the workbench's Import form and the ``formslang apex``
+    commands so both start from the same target -- never a password, which
+    has its own rules (module docstring).
+    """
+    import os
+
+    cfg = load_config()
+    connect_string = os.environ.get(ENV_APEX_CONNECT, "").strip() or str(
+        cfg.get("apex_connect_string") or ""
+    )
+    username = os.environ.get(ENV_APEX_USER, "").strip() or str(cfg.get("apex_username") or "")
+    return connect_string, username
+
+
 def account_key(username: str, connect_string: str) -> str:
     """A credential-store account name safe under ``secrets._clean_identifier``.
 
@@ -92,6 +116,8 @@ def run_import(
     username: str,
     password: str,
     validate_only: bool = False,
+    sqlcl: str = "",
+    timeout: int = TIMEOUT_SECONDS,
 ) -> ImportResult:
     """Drive SQLcl non-interactively against one exported ZIP.
 
@@ -110,8 +136,12 @@ def run_import(
     driver and the connection dies before reaching the database
     (``no ocijdbc23 in java.library.path`` / ``Incompatible version of
     libocijdbc``) -- nothing FormsLang can fix from a connect string alone.
+
+    ``sqlcl`` names the binary explicitly (a CI runner that just unpacked
+    SQLcl has no Settings to read); ``timeout`` is the ceiling in seconds
+    for one run, which a large import on a slow database may need raised.
     """
-    binary = sqlcl_binary()
+    binary = sqlcl or sqlcl_binary()
     if not binary:
         raise ValueError(
             "SQLcl was not found. Install it, or set its path in Settings "
@@ -139,7 +169,7 @@ def run_import(
             input=script,
             capture_output=True,
             text=True,
-            timeout=_TIMEOUT_SECONDS,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as e:

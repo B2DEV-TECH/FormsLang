@@ -10,6 +10,14 @@ The page itself follows the Forms screen: :mod:`formslang.apexlayout` turns
 canvas, frame and item geometry into a tree of regions on Universal Theme's
 12-column grid, and this module writes that tree with the APEXlang
 vocabulary that ``apex validate`` accepted on a real 26.1 database.
+
+An export is a pure function of the session: the same approved work, the
+same deployment choices, the same bytes -- ZIP included. That is what makes
+the APEXlang project something a team can commit, diff and rebuild in CI
+(see docs/ci-cd.md) instead of a one-off download. The only value that is
+not derived from the session is the application's session-state checksum
+salt, which APEX needs to be unpredictable; it is drawn once per session
+and then kept (:func:`checksum_salt`).
 """
 
 from __future__ import annotations
@@ -41,6 +49,14 @@ from .store import APPROVED, Store
 MMD_VERSION = "26.1.0+3102"
 _TEMPLATE = Path(__file__).with_name("templates") / "apexlang26"
 _SAFE_ALIAS = re.compile(r"^[a-z][a-z0-9-]{0,79}$")
+
+#: Session settings (``Store.setting``) this module owns.
+SETTING_SALT = "apex_checksum_salt"
+SETTING_EXPORT_CONFIG = "apex_export_config"
+
+#: Every ZIP entry carries this timestamp, so the archive depends on the
+#: project's bytes alone and never on the clock it was built at.
+_ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
 
 def slug(value: str, *, fallback: str = "formslang-app") -> str:
@@ -128,8 +144,36 @@ class ApexExportResult:
         }
 
 
-def _application(config: ApexExportConfig) -> str:
-    salt = secrets.token_hex(32).upper()
+def checksum_salt(store: Store) -> str:
+    """The session-state checksum salt every export of this session shares.
+
+    APEX signs URLs with it, so it must be unpredictable: drawn once from
+    the OS CSPRNG. But it is also the only byte of an export that is not
+    derived from the session, so it is drawn *once* -- a re-export of the
+    same approved work must produce the same ``application.apx``, or no
+    diff of two exports would ever be clean.
+    """
+    salt = store.setting(SETTING_SALT)
+    if not salt:
+        salt = secrets.token_hex(32).upper()
+        store.set_setting(SETTING_SALT, salt)
+    return salt
+
+
+def last_export_config(store: Store) -> dict:
+    """The deployment choices the previous export used, or ``{}``.
+
+    Shared by the workbench dialog (pre-filled) and ``formslang export``
+    (defaults), so a command line reproduces the last click by default.
+    """
+    try:
+        raw = json.loads(store.setting(SETTING_EXPORT_CONFIG) or "{}")
+    except ValueError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _application(config: ApexExportConfig, salt: str) -> str:
     return f"""app {config.alias.upper()} (
     name: {_text(config.name)}
     logo {{
@@ -193,7 +237,14 @@ def _item_type(item: Item) -> str:
 
     Every keyword here was accepted by ``apex validate`` on APEX 26.1: a
     List Item is a ``selectList`` and a Radio Group a ``radioGroup``, each
-    fed by a shared static LOV built from the choices the .fmb declares.
+    fed by a shared static LOV built from the choices the .fmb declares. A
+    Text Item declared ``MultiLine`` is a ``textarea`` -- the same verified
+    keyword an editor item already used.
+
+    Date and Number items deliberately stay ``textField``: the native date
+    picker and number field keywords have not yet been proven against a
+    live ``apex validate``, and one unknown keyword fails the whole import.
+    Format masks and data types survive in the item comment either way.
     """
     kind = item.item_type.lower()
     if "display" in kind:
@@ -206,7 +257,7 @@ def _item_type(item: Item) -> str:
         return "radioGroup"
     if "list" in kind:
         return "selectList"
-    return "textField"
+    return "textarea" if item.multi_line else "textField"
 
 
 def _label_template(item: Item, kind: str, *, side: str | None = None, label_span: int = 0) -> str:
@@ -413,12 +464,20 @@ def _item_chunk(
         label_span = max(0, min(label_span, placed.grid.span - 1))
     template = _label_template(item, kind, side=placed.side, label_span=label_span)
     # A label left of the field takes the share of the cell the prompt took
-    # on the canvas, so the field keeps its proportion to the prompt.
-    span_line = (
-        f"\n            labelColumnSpan: {label_span}"
-        if template in {"optional", "required"} and label_span
-        else ""
-    )
+    # on the canvas, so the field keeps its proportion to the prompt. A
+    # hidden label must say 0 explicitly: Universal Theme's ``Hidden``
+    # template still lays its (invisible) label out on the grid, and APEX
+    # fills an unset labelColumnSpan from the page template's default -- 2
+    # on every built-in page template -- before checking it against
+    # columnSpan, so a hidden label on a 1- or 2-column field fails at
+    # render time exactly like an oversized real one. 0 renders as
+    # ``col-0`` with the field at its full columnSpan (verified on 26.1).
+    if template == "hidden":
+        span_line = "\n            labelColumnSpan: 0"
+    elif template in {"optional", "required"} and label_span:
+        span_line = f"\n            labelColumnSpan: {label_span}"
+    else:
+        span_line = ""
     lov_block = ""
     if lov is not None:
         null_value = "\n            displayNullValue: false" if kind == "selectList" else ""
@@ -652,13 +711,36 @@ def _page(
     return body, mapping, layout
 
 
+def _write_zip(zip_path: Path, project: Path) -> None:
+    """Pack the project so the same files always give the same archive.
+
+    Entries are sorted, stamped with :data:`_ZIP_EPOCH` and given one fixed
+    permission mask -- nothing from the filesystem's clock or mode bits
+    leaks in. Two builds of an unchanged session are byte-identical, which
+    is what lets a CI job compare the ZIP it built against the one it was
+    handed, and what keeps a committed ZIP from churning on every rebuild.
+    """
+    files = {p.relative_to(project).as_posix(): p for p in project.rglob("*") if p.is_file()}
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name in sorted(files):  # by entry name, the one order every tool agrees on
+            entry = zipfile.ZipInfo(name, date_time=_ZIP_EPOCH)
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            entry.external_attr = 0o644 << 16
+            archive.writestr(entry, files[name].read_bytes())
+
+
 def export_apexlang(
     store: Store,
     module: FormModule,
     out_dir: Path | str,
     raw_config: dict | None = None,
 ) -> ApexExportResult:
-    """Write an expanded APEXlang project, import ZIP, and review artifacts."""
+    """Write an expanded APEXlang project, import ZIP, and review artifacts.
+
+    The deployment choices are remembered on the session (see
+    :func:`last_export_config`) and the checksum salt is the session's own,
+    so exporting again with the same choices reproduces the same bytes.
+    """
     if not _TEMPLATE.is_dir():
         raise RuntimeError(f"APEXlang 26.1 template is missing: {_TEMPLATE}")
     config = ApexExportConfig.from_dict(raw_config, module)
@@ -667,11 +749,13 @@ def export_apexlang(
     project = out / config.alias
     zip_path = out / f"{config.alias}.apex.zip"
     review = out / f"{config.alias}-review"
+    salt = checksum_salt(store)
+    store.set_setting(SETTING_EXPORT_CONFIG, json.dumps(asdict(config)))
 
     with tempfile.TemporaryDirectory(prefix="formslang-apex-", dir=out) as tmp:
         staged = Path(tmp) / config.alias
         shutil.copytree(_TEMPLATE, staged)
-        _write_lf(staged / "application.apx", _application(config))
+        _write_lf(staged / "application.apx", _application(config, salt))
         _write_lf(staged / "deployments" / "default.json", _deployment(config))
         _write_lf(
             staged / ".apex" / "apexlang.json",
@@ -729,6 +813,19 @@ def export_apexlang(
                     "command": f"apex import -input {config.alias}.apex.zip",
                     "database_required": True,
                 },
+                # The same three steps from a terminal or a CI runner --
+                # what docs/ci-cd.md builds on. Password never on the
+                # command line: FORMSLANG_APEX_PASSWORD, the credential
+                # store, or a prompt (see cli.py).
+                "cli": {
+                    "export": (
+                        f"formslang export {store.path.name} --app-id {config.app_id} "
+                        f"--alias {config.alias} --page {config.page}"
+                    ),
+                    "validate": f"formslang apex validate {zip_path.name}",
+                    "import": f"formslang apex import {zip_path.name}",
+                },
+                "reproducible": True,
             },
             ensure_ascii=False,
             indent=2,
@@ -736,9 +833,7 @@ def export_apexlang(
         encoding="utf-8",
     )
 
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for file in sorted(p for p in project.rglob("*") if p.is_file()):
-            archive.write(file, file.relative_to(project).as_posix())
+    _write_zip(zip_path, project)
 
     return ApexExportResult(
         project, zip_path, sql_path, json_path, manifest_path, store.stats()[APPROVED]

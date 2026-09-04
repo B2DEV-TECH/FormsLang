@@ -1,0 +1,116 @@
+# FormsLang → Oracle APEX 26.1, as a GitHub Actions pipeline.
+#
+# Copy to .github/workflows/ in the repository that holds your Forms
+# modules and their FormsLang sessions. Layout assumed here (adjust the
+# three MODULE_* variables for yours):
+#
+#   forms/
+#   ├── ORDERS.fmb              # the module Forms Builder edits (binary)
+#   ├── ORDERS_fmb.xml          # Forms2XML output, committed beside it (text)
+#   └── ORDERS.session.db       # the FormsLang review session
+#
+# Secrets to define: APEX_CONNECT (host:port/service), APEX_USER,
+# APEX_PASSWORD. The password only ever reaches SQLcl on stdin -- never a
+# command-line argument, never a log line (docs/ci-cd.md).
+
+name: FormsLang → APEX
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  MODULE_SESSION: forms/ORDERS.session.db
+  MODULE_XML: forms/ORDERS_fmb.xml
+  APP_ALIAS: orders
+  FORMSLANG_REF: v1.0.0
+
+jobs:
+  build:
+    name: export · validate · import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # SQLcl is a Java program; it needs a runtime, not an Oracle client.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install FormsLang
+        run: python -m pip install "formslang @ git+https://github.com/B2DEV-TECH/FormsLang.git@${FORMSLANG_REF}"
+
+      # Oracle's public SQLcl download needs no account. Pin a version by
+      # replacing sqlcl-latest.zip with sqlcl-<version>.zip if you prefer.
+      - name: Install SQLcl
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/sqlcl.zip" https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip
+          unzip -q "$RUNNER_TEMP/sqlcl.zip" -d "$RUNNER_TEMP"
+          echo "FORMSLANG_SQLCL_PATH=$RUNNER_TEMP/sqlcl/bin/sql" >> "$GITHUB_ENV"
+
+      # The session carries the app id / alias / page from the last export
+      # made in the workbench; nothing to repeat here. The export is
+      # deterministic: an unchanged session yields an identical ZIP.
+      - name: Build the APEX application from the reviewed session
+        run: formslang export "$MODULE_SESSION" --alias "$APP_ALIAS" --json | tee export.json
+
+      - name: Validate against the target workspace (changes nothing)
+        env:
+          FORMSLANG_APEX_CONNECT: ${{ secrets.APEX_CONNECT }}
+          FORMSLANG_APEX_USER: ${{ secrets.APEX_USER }}
+          FORMSLANG_APEX_PASSWORD: ${{ secrets.APEX_PASSWORD }}
+        run: formslang apex validate "$(dirname "$MODULE_SESSION")/export/$APP_ALIAS.apex.zip"
+
+      - name: Publish the ZIP and the review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_ALIAS }}-apex
+          path: |
+            forms/export/${{ env.APP_ALIAS }}.apex.zip
+            forms/export/${{ env.APP_ALIAS }}-review/
+
+      - name: Import into the workspace
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          FORMSLANG_APEX_CONNECT: ${{ secrets.APEX_CONNECT }}
+          FORMSLANG_APEX_USER: ${{ secrets.APEX_USER }}
+          FORMSLANG_APEX_PASSWORD: ${{ secrets.APEX_PASSWORD }}
+        run: formslang apex import "$(dirname "$MODULE_SESSION")/export/$APP_ALIAS.apex.zip"
+
+  forms-diff:
+    name: structural diff of the module
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the base revision beside it
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          path: base
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install FormsLang
+        run: python -m pip install "formslang @ git+https://github.com/B2DEV-TECH/FormsLang.git@${FORMSLANG_REF}"
+
+      # Blocks, items, triggers, program units, LOVs, record groups,
+      # relations -- property changes and code hunks -- between the two
+      # revisions of the same form. Needs no Oracle install: it reads the
+      # committed Forms2XML output.
+      - name: Diff base → head
+        run: formslang diff "base/$MODULE_XML" "$MODULE_XML" -o diff-out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forms-diff
+          path: diff-out/

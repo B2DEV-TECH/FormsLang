@@ -129,6 +129,7 @@ def _parse_item(el: ET.Element, block_name: str) -> Item:
         database_item=_b(el, "DatabaseItem", True),
         required=_b(el, "Required", False),
         max_length=_i(el, "MaximumLength"),
+        multi_line=_b(el, "MultiLine", False),
         # Prompts can be multi-line ("Empilhamento&#10;Máx."): same double
         # escaping as trigger text, so the same decoder.
         prompt=decode_forms_text(el.get("Prompt")),

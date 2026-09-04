@@ -433,10 +433,15 @@ def test_boilerplate_text_before_an_uncaptioned_field_is_its_prompt_the_rest_sta
 
 def test_an_item_the_screen_captions_with_nothing_gets_a_hidden_label():
     """No prompt, no label: Forms shows nothing beside the field, so APEX
-    hides the label instead of inventing one from the item name."""
-    text = _page_text(_module([_item("DSP_DESCRICAO", 100, 20, width=200)]))
+    hides the label instead of inventing one from the item name -- and says
+    ``labelColumnSpan: 0`` outright. Universal Theme's Hidden template still
+    puts the (invisible) label on the grid, and an unset span falls back to
+    the page template's default of 2, which a 2-column field cannot fit
+    (``LABEL_COLUMN_SPAN_TOO_BIG`` at render time)."""
+    text = _page_text(_module([_item("DSP_DESCRICAO", 100, 20, width=100)]))
 
     assert 'label: "Dsp Descricao"' in text and "template: @/hidden" in text
+    assert "columnSpan: 2\n            labelColumnSpan: 0" in text
     assert "no caption shown" in text and "label template is hidden" in text
 
 

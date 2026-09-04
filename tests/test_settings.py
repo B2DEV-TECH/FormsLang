@@ -260,6 +260,52 @@ def test_the_sqlcl_env_var_wins_over_the_saved_path(server, monkeypatch):
     assert state["sqlcl_path"] == r"C:\saved\sql.exe"
 
 
+def test_auth_enabled_is_saved_but_stays_inactive_until_a_restart(server, monkeypatch):
+    """The checkbox writes config.json; authstore.auth_enabled() reads it back,
+    but the running Workbench's own auth_store was built at startup and does
+    not change underneath a live request."""
+    monkeypatch.delenv("FORMSLANG_AUTH", raising=False)
+    base, wb = server
+
+    status, body = _get(base, "/api/settings")
+    assert status == 200
+    state = json.loads(body)
+    assert state["auth_enabled"] is False
+    assert state["auth_env_override"] is False
+    assert state["auth_active"] is False
+
+    status, data = _post(base, "/api/settings", {"auth_enabled": "1"})
+    assert status == 200
+    assert data["auth_enabled"] is True
+    assert data["auth_active"] is False
+    assert load_config()["auth_enabled"] == "1"
+    assert wb.auth_store is None
+
+    from formslang import authstore
+    assert authstore.auth_enabled() is True
+
+    status, data = _post(base, "/api/settings", {"auth_enabled": ""})
+    assert status == 200
+    assert data["auth_enabled"] is False
+    assert "auth_enabled" not in load_config()
+
+
+def test_the_auth_env_var_wins_over_the_saved_choice(server, monkeypatch):
+    base, _wb = server
+    _post(base, "/api/settings", {"auth_enabled": "1"})
+    monkeypatch.setenv("FORMSLANG_AUTH", "0")
+
+    status, body = _get(base, "/api/settings")
+    assert status == 200
+    state = json.loads(body)
+    assert state["auth_env_override"] is True
+    from formslang import authstore
+    assert authstore.auth_enabled() is False
+    # The saved value is untouched on disk -- only the effective flag is
+    # overridden by the environment, the same relationship sqlcl_path has.
+    assert load_config()["auth_enabled"] == "1"
+
+
 def test_terminal_refuses_anything_not_whitelisted(server):
     base, _wb = server
     # An API provider has no terminal; neither does an arbitrary command.

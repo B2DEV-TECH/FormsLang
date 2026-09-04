@@ -511,6 +511,8 @@ STYLE_BLOCK = r"""<style>
   .export-form label.checkbox input { padding: 0; }
   .import-note { margin: 0 18px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-dim); font: 11px var(--mono); }
   .import-note.warn { border-color: var(--red); color: var(--red); }
+  .import-note.cli { border-style: dashed; }
+  .import-note.cli code { color: var(--ink); user-select: all; overflow-wrap: anywhere; }
   .import-secondary { margin: 0 18px 12px; background: none; border: none; color: var(--ink-dim); font: 11px var(--mono); text-decoration: underline; cursor: pointer; padding: 0; }
   .import-result { margin: 0 18px 18px; padding: 10px 12px; border-radius: 6px; font: 11px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
   .import-result.ok { border: 1px solid var(--green); color: var(--green); }

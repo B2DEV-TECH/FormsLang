@@ -171,6 +171,7 @@ EXPORT_JS = r"""function exportApex() {
       <label>Page number<input name="page" type="number" min="1" value="1"></label>
       <label class="wide checkbox"><input type="checkbox" name="import_now"> Import into APEX right after building (runs SQLcl for you, locally)</label>
     </div>
+    <div class="import-note cli"><span>Same build from a terminal or CI:</span> <code data-cli></code></div>
     <div class="import-note warn" hidden></div>
     <div class="export-form import-fields" hidden>${importFieldsHtml({})}</div>
     <div class="import-result" hidden></div>`;
@@ -179,7 +180,7 @@ EXPORT_JS = r"""function exportApex() {
   const body = $("modal-body");
   const form = body.querySelector(".export-form");
   const importFields = body.querySelector(".import-fields");
-  const importNote = body.querySelector(".import-note");
+  const importNote = body.querySelector(".import-note.warn");
   const resultBox = body.querySelector(".import-result");
   const importNow = form.querySelector('[name="import_now"]');
   const go = $("modal-go");
@@ -190,8 +191,21 @@ EXPORT_JS = r"""function exportApex() {
     labelGo();
   };
   labelGo();
-  // The saved connection and whether SQLcl is reachable arrive after the dialog
-  // is already up, so a slow lookup never delays opening it.
+  // The exact command line that reproduces this dialog -- the same export,
+  // the same bytes -- kept in step with the fields as they are edited.
+  const value = (name) => form.querySelector(`[name="${name}"]`).value.trim();
+  const cliLine = body.querySelector("[data-cli]");
+  const showCli = () => {
+    cliLine.textContent = exportCommand(state.session_path, {
+      app_id: value("app_id"), alias: value("alias"), page: value("page"),
+      workspace: value("workspace"), schema: value("schema"),
+    });
+  };
+  form.oninput = showCli;
+  showCli();
+  // The saved connection, whether SQLcl is reachable and the previous
+  // export's choices arrive after the dialog is already up, so a slow lookup
+  // never delays opening it. A field the user already changed is left alone.
   api("/api/exports").then((data) => {
     const d = data.import || {};
     importFields.innerHTML = importFieldsHtml(d);
@@ -199,10 +213,16 @@ EXPORT_JS = r"""function exportApex() {
       importNote.textContent = "SQLcl was not found on PATH. Set its path in Settings (or the FORMSLANG_SQLCL_PATH environment variable) before importing.";
       importNote.hidden = !importNow.checked;
     }
+    const last = data.last_export || {};
+    for (const name of ["name", "alias", "app_id", "workspace", "schema", "page"]) {
+      const el = form.querySelector(`[name="${name}"]`);
+      const v = last[name];
+      if (el && el.value === el.defaultValue && v !== undefined && v !== null && v !== "") el.value = v;
+    }
+    showCli();
   }).catch(() => {});
 
   go.onclick = async () => {
-    const value = (name) => form.querySelector(`[name="${name}"]`).value.trim();
     go.disabled = true;
     go.innerHTML = `<span class="spin"></span> Building ZIP…`;
     let zipName;
@@ -235,6 +255,19 @@ EXPORT_JS = r"""function exportApex() {
       };
     }
   };
+}
+
+/* The `formslang export` line that rebuilds what the dialog is about to
+   build. Only values the CLI would not derive on its own are spelled out. */
+function exportCommand(sessionPath, c) {
+  const file = (sessionPath || "<session.db>").split(/[\\/]/).pop();
+  const parts = ["formslang export", file];
+  if (c.app_id) parts.push("--app-id", c.app_id);
+  if (c.alias) parts.push("--alias", c.alias);
+  if (c.page && c.page !== "1") parts.push("--page", c.page);
+  if (c.workspace) parts.push("--workspace", c.workspace);
+  if (c.schema) parts.push("--schema", c.schema);
+  return parts.join(" ");
 }
 
 /* Connection fields shared by the export dialog and the per-ZIP import
@@ -284,7 +317,7 @@ async function showExports(freshName) {
   openModal("Exported APEX applications");
   $("modal-path").textContent = data.dir || "";
   $("modal-hint").textContent =
-    "Each ZIP imports straight into APEX 26.1 — App Builder or SQLcl. Show in folder selects the file on disk.";
+    "Each ZIP imports straight into APEX 26.1 — App Builder, SQLcl, or `formslang apex import <zip>` from a terminal or CI. Show in folder selects the file on disk.";
   $("modal-foot").style.display = "none";
   const size = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
   const rows = (data.exports || []).map((e) => `
@@ -320,6 +353,8 @@ function showImportForm(name, defaults) {
     ${note}
     <div class="export-form">${importFieldsHtml(defaults)}</div>
     <button class="import-secondary">Validate only, don't change anything</button>
+    <div class="import-note cli"><span>Same from a terminal or CI (password via FORMSLANG_APEX_PASSWORD, never an argument):</span>
+      <code>formslang apex validate ${esc(name)}</code> · <code>formslang apex import ${esc(name)}</code></div>
     <div class="import-result" hidden></div>`;
   $("modal-foot").style.display = "flex";
   $("modal-input").style.display = "none";

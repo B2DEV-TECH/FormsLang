@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS session (
     created_at  TEXT NOT NULL
 );
 
+-- Small per-session facts that must survive between runs but are not
+-- part of the session identity above: the APEX checksum salt an export was
+-- born with (so re-exporting an unchanged session yields the same bytes)
+-- and the export choices the last run used (so the next one starts from
+-- them, in the workbench and on the command line alike).
+CREATE TABLE IF NOT EXISTS session_setting (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS task (
     id          TEXT PRIMARY KEY,
     module      TEXT NOT NULL,
@@ -260,6 +270,20 @@ class Store:
     def session(self) -> dict:
         row = self.db.execute("SELECT * FROM session WHERE id = 1").fetchone()
         return dict(row) if row else {}
+
+    def setting(self, key: str, default: str = "") -> str:
+        """A per-session value saved with :meth:`set_setting`, or ``default``."""
+        row = self.db.execute(
+            "SELECT value FROM session_setting WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.db.execute(
+            "INSERT OR REPLACE INTO session_setting (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        self.db.commit()
 
     # -- tasks -----------------------------------------------------------
 

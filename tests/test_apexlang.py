@@ -7,7 +7,14 @@ import zipfile
 
 import pytest
 
-from formslang.apexlang import ApexExportConfig, _item_type, _page_items, export_apexlang
+from formslang.apexlang import (
+    ApexExportConfig,
+    _item_type,
+    _page_items,
+    checksum_salt,
+    export_apexlang,
+    last_export_config,
+)
 from formslang.convert import Proposal, build_tasks
 from formslang.model import Block, FormModule, Item
 from formslang.parser import parse_xml
@@ -28,6 +35,14 @@ from formslang.store import APPROVED, REJECTED, Store
 )
 def test_item_type_mapping(forms_type, apex_type):
     assert _item_type(Item(name="X", item_type=forms_type)) == apex_type
+
+
+def test_a_multiline_text_item_becomes_a_textarea():
+    """``MultiLine="true"`` is the Forms spelling of "a box that wraps and
+    scrolls"; the same verified ``textarea`` keyword a Bean Area already
+    maps to. A plain Text Item stays a one-line field."""
+    assert _item_type(Item(name="X", item_type="Text Item", multi_line=True)) == "textarea"
+    assert _item_type(Item(name="X", item_type="Text Item", multi_line=False)) == "textField"
 
 
 def test_value_required_is_emitted_only_for_editable_item_types():
@@ -170,3 +185,72 @@ def test_workspace_and_schema_can_be_resolved_only_at_import(approved_session, t
     )
     assert "workspace" not in deployment
     assert "databaseSession" not in deployment["app"]
+
+
+# -- determinism: the same session yields the same bytes ---------------------
+
+
+def test_the_same_session_exports_the_same_bytes(approved_session, tmp_path):
+    """What makes an export a build artifact rather than a snapshot: two
+    exports of the same reviewed session are identical -- ZIP included --
+    so CI can rebuild what was reviewed and a diff between two commits is a
+    diff between two reviews, never between two clocks."""
+    store, module = approved_session
+    config = {"app_id": 321, "alias": "demo-orders", "workspace": "WS", "schema": "S"}
+    first = export_apexlang(store, module, tmp_path / "one", config)
+    second = export_apexlang(store, module, tmp_path / "two", config)
+
+    assert first.zip_path.read_bytes() == second.zip_path.read_bytes()
+    assert (first.project / "application.apx").read_bytes() == (
+        second.project / "application.apx"
+    ).read_bytes()
+
+
+def test_zip_entries_never_carry_the_build_clock(approved_session, tmp_path):
+    store, module = approved_session
+    result = export_apexlang(store, module, tmp_path / "export")
+    with zipfile.ZipFile(result.zip_path) as archive:
+        infos = archive.infolist()
+    assert infos, "an empty ZIP would import nothing"
+    assert {info.date_time for info in infos} == {(1980, 1, 1, 0, 0, 0)}
+    assert [info.filename for info in infos] == sorted(info.filename for info in infos)
+
+
+def test_the_checksum_salt_is_drawn_once_per_session(approved_session, tmp_path, sample_xml):
+    store, _ = approved_session
+    salt = checksum_salt(store)
+    assert len(salt) == 64 and salt == salt.upper()
+    assert checksum_salt(store) == salt
+
+    other = Store(tmp_path / "other.session.db")
+    try:
+        other.init_session("OTHER", str(sample_xml))
+        assert checksum_salt(other) != salt  # unpredictable, per application
+    finally:
+        other.close()
+
+
+def test_the_export_remembers_its_choices_on_the_session(approved_session, tmp_path):
+    store, module = approved_session
+    assert last_export_config(store) == {}
+
+    export_apexlang(store, module, tmp_path / "export", {"app_id": 321, "alias": "demo-orders"})
+    remembered = last_export_config(store)
+    assert remembered["app_id"] == 321
+    assert remembered["alias"] == "demo-orders"
+    assert remembered["page"] == 1
+
+    # Whatever is remembered must be a valid starting point for the next one.
+    ApexExportConfig.from_dict(remembered, module)
+
+
+def test_the_manifest_tells_the_cli_way_back(approved_session, tmp_path):
+    store, module = approved_session
+    result = export_apexlang(store, module, tmp_path / "export", {"alias": "demo-orders"})
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["reproducible"] is True
+    cli = manifest["cli"]
+    assert cli["export"].startswith(f"formslang export {store.path.name} ")
+    assert "--alias demo-orders" in cli["export"]
+    assert cli["validate"] == "formslang apex validate demo-orders.apex.zip"
+    assert cli["import"] == "formslang apex import demo-orders.apex.zip"

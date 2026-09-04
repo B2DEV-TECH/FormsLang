@@ -228,9 +228,12 @@ existem no xsd do Forms 14c.
 
 ### Limitações conhecidas do mapeamento (de propósito, pra demo ser honesta)
 
-- `MultiLine`/`WrapStyle` de `OBS_GERAL` não são lidos pelo parser -- vira
-  `textField` no APEX; só `Bean Area` vira `textarea` (convenção
-  documentada em `test_apexlang.py`).
+- `MultiLine="true"` de `OBS_GERAL` é lido pelo parser desde a 1.0 e vira
+  `textarea` no APEX (mesma keyword já validada ao vivo pro `Bean Area`);
+  `WrapStyle` continua ignorado. `Date`/`Number` seguem `textField` de
+  propósito: `datePicker`/`numberField` ainda não passaram por um
+  `apex validate` ao vivo, e uma keyword desconhecida derruba o import
+  inteiro (convenção documentada em `test_apexlang.py`).
 - `WIN_REAJUSTE` (janela modal) vira uma região comum na mesma página, não
   uma página modal separada.
 - `CalculateMode="Formula"` de `VL_TOTAL_LINHA` vira `Display Item` sem

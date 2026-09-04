@@ -8,7 +8,17 @@
     formslang catalog                -> catalog size and coverage
     formslang convert <file.fmb>     -> AI proposals for every code body, headless
     formslang workbench <file.fmb>   -> the review UI, in the browser
+    formslang export <session.db>    -> APEXlang 26.1 project + import ZIP from approved work
+    formslang apex validate <zip>    -> check the ZIP against a workspace through SQLcl
+    formslang apex import <zip>      -> import it, through SQLcl
     formslang ai                     -> which provider is configured, and does it answer
+    formslang auth ...               -> multi-user mode: the first Owner, break-glass recovery
+
+``export`` and ``apex`` are the CI pair (docs/ci-cd.md): a pipeline rebuilds
+the application from a committed session, validates it against a real APEX
+and imports it -- with the same bytes the workbench would have produced,
+and with the database password read from the environment, the credential
+store or a prompt, never from the command line.
 
 Assessment runs in parallel because each module is an independent Java
 process: the bottleneck is process I/O, not Python CPU.
@@ -20,11 +30,14 @@ import argparse
 import concurrent.futures as cf
 import datetime as dt
 import getpass
+import json
+import os
 import sys
 from pathlib import Path
 
-from . import __version__, authstore, config, formdiff, formdoc, formui, rules
+from . import __version__, apeximport, authstore, config, formdiff, formdoc, formui, rules
 from .ai import PROVIDERS, check_provider, provider_from_env
+from .apexlang import export_apexlang, last_export_config
 from .assess import (
     HOURS_PER_POINT_DEFAULT,
     TIERS,
@@ -42,6 +55,7 @@ from .oracle import (
 )
 from .parser import parse_xml
 from .report import write_reports
+from .secrets import SecureStorageUnavailable, get_secret
 from .store import Store
 from .workbench import Workbench, serve
 
@@ -415,6 +429,172 @@ def cmd_workbench(args: argparse.Namespace) -> int:
     return 0
 
 
+def _session_module(store: Store, out_dir: Path, oracle_home: str | None) -> FormModule:
+    """The module a session was built from, without reconverting it when the
+    Forms2XML output is still cached beside the session."""
+    source = Path(store.session().get("source_path") or "")
+    if not source.name or source.suffix.lower() == ".db":
+        raise ValueError(
+            "this session has no Forms module yet: open one in the workbench, "
+            "or pass the .fmb/.xml itself"
+        )
+    if source.suffix.lower() == ".xml":
+        return parse_xml(source)
+    cached = out_dir / "xml" / expected_xml_name(source)
+    if cached.is_file():
+        return parse_xml(cached)
+    return _load_module(source, out_dir, oracle_home)
+
+
+def _export_config(args: argparse.Namespace, store: Store) -> dict:
+    """Deployment choices: what the last export used, then what the flags say."""
+    raw = last_export_config(store)
+    for key in ("app_id", "name", "alias", "workspace", "schema", "page"):
+        value = getattr(args, key)
+        if value not in (None, ""):
+            raw[key] = value
+    return raw
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    """Build the APEXlang project and import ZIP from a session's approved work.
+
+    Headless twin of the workbench's Export button: same exporter, same
+    choices (remembered on the session, overridable per flag), same bytes.
+    """
+    try:
+        store, _ = _open_session(args)
+    except OracleToolchainError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    work = _work_dir(args)
+    try:
+        module = _session_module(store, work, args.oracle_home)
+        result = export_apexlang(store, module, work / "export", _export_config(args, store))
+    except (OracleToolchainError, ValueError, RuntimeError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    finally:
+        store.close()
+
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0
+    print(f"Session  : {store.path}")
+    print(f"Module   : {module.name}")
+    print(f"Project  : {result.project}")
+    print(f"ZIP      : {result.zip_path}")
+    print(f"Review   : {result.manifest_path.parent}")
+    print(f"Approved : {result.approved} component(s)")
+    print(f"Next     : formslang apex validate \"{result.zip_path}\"")
+    return 0
+
+
+def _apex_password(username: str, connect_string: str) -> str:
+    """The database password, from the places a password is allowed to be.
+
+    In order: the environment (CI), the OS credential store the workbench's
+    *Remember this connection* saved to, then a hidden prompt when a person
+    is at the terminal. Never a command-line argument -- see apeximport.py.
+    """
+    from_env = os.environ.get(apeximport.ENV_APEX_PASSWORD, "")
+    if from_env:
+        return from_env
+    try:
+        saved = get_secret(apeximport.SERVICE, apeximport.account_key(username, connect_string))
+    except SecureStorageUnavailable:
+        saved = ""
+    if saved:
+        return saved
+    if sys.stdin.isatty():
+        return getpass.getpass(f"Password for {username}@{connect_string}: ")
+    return ""
+
+
+def _cmd_apex(args: argparse.Namespace, validate_only: bool) -> int:
+    """``apex validate`` / ``apex import`` of one exported ZIP through SQLcl.
+
+    Exit 0 when SQLcl succeeded, 1 when it failed -- including the case
+    where SQLcl exits 0 but prints ``APEXlang Compile Errors`` and imports
+    nothing -- and 2 when the command could not be run at all.
+    """
+    zip_path = Path(args.zip)
+    connect_string, username = apeximport.connection_defaults()
+    connect_string = args.connect or connect_string
+    username = args.user or username
+    if not connect_string or not username:
+        print(
+            "ERROR: a connection string and a username are required: --connect/--user, "
+            f"{apeximport.ENV_APEX_CONNECT}/{apeximport.ENV_APEX_USER}, or the workbench Settings",
+            file=sys.stderr,
+        )
+        return 2
+    password = _apex_password(username, connect_string)
+    if not password:
+        print(
+            f"ERROR: no password for {username}@{connect_string}: set "
+            f"{apeximport.ENV_APEX_PASSWORD}, save the connection from the workbench, "
+            "or run from a terminal to be prompted",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = apeximport.run_import(
+            zip_path,
+            connect_string=connect_string,
+            username=username,
+            password=password,
+            validate_only=validate_only,
+            sqlcl=args.sqlcl,
+            timeout=args.timeout,
+        )
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    verb = "validate" if validate_only else "import"
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "command": verb,
+                    "zip": str(zip_path),
+                    "target": f"{username}@{connect_string}",
+                    "ok": result.ok,
+                    "exit_code": result.exit_code,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                },
+                indent=2,
+            )
+        )
+        return 0 if result.ok else 1
+
+    print(f"{verb.capitalize():<9}: {zip_path.name}")
+    print(f"Target   : {username}@{connect_string}")
+    output = (result.stdout + result.stderr).strip()
+    if output:
+        print(output)
+    if result.ok:
+        status = "OK"
+    elif result.exit_code == 0:
+        status = "FAILED (SQLcl reported errors; nothing was imported)"
+    else:
+        status = f"FAILED (exit {result.exit_code})"
+    print(f"Result   : {status}")
+    return 0 if result.ok else 1
+
+
+def cmd_apex_validate(args: argparse.Namespace) -> int:
+    return _cmd_apex(args, validate_only=True)
+
+
+def cmd_apex_import(args: argparse.Namespace) -> int:
+    return _cmd_apex(args, validate_only=False)
+
+
 def cmd_ai(args: argparse.Namespace) -> int:
     """Show the configured provider and, on request, prove it answers."""
     provider = provider_from_env(args.provider)
@@ -590,6 +770,55 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--host", default="127.0.0.1", help="bind address (loopback only)")
     w.add_argument("--no-browser", action="store_true", help="do not open a browser")
     w.set_defaults(func=cmd_workbench)
+
+    ex = sub.add_parser(
+        "export",
+        help="APEXlang 26.1 project + import ZIP from a session's approved work",
+        description=(
+            "Builds exactly what the workbench's Export button builds, from a "
+            ".session.db (or a module, for a session that is still to be reviewed). "
+            "Choices default to the session's previous export, so re-running with "
+            "no flags reproduces it byte for byte."
+        ),
+    )
+    ex.add_argument("path", help="an existing .session.db, or a .fmb/.xml module")
+    ex.add_argument("-o", "--out", default=None, help="working directory (default: beside the session)")
+    ex.add_argument("--oracle-home", default=None, help="explicit ORACLE_HOME")
+    ex.add_argument("--app-id", dest="app_id", type=int, default=None, help="APEX application id (default: last export, else 100)")
+    ex.add_argument("--name", default="", help="application name (default: last export, else the module title)")
+    ex.add_argument("--alias", default="", help="application alias (default: last export, else from the module name)")
+    ex.add_argument("--workspace", default="", help="workspace, or leave it to be resolved at import")
+    ex.add_argument("--schema", default="", help="parsing schema, or leave it to be resolved at import")
+    ex.add_argument("--page", type=int, default=None, help="page number (default: last export, else 1)")
+    ex.add_argument("--json", action="store_true", help="print the result as JSON")
+    ex.set_defaults(func=cmd_export)
+
+    ap = sub.add_parser(
+        "apex",
+        help="validate or import an exported ZIP through SQLcl",
+        description=(
+            "Drives your own SQLcl against one <alias>.apex.zip. The password is never "
+            f"an argument: {apeximport.ENV_APEX_PASSWORD}, the connection saved from the "
+            "workbench, or a hidden prompt."
+        ),
+    )
+    ap_sub = ap.add_subparsers(dest="apex_cmd", required=True)
+
+    def add_apex_args(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument("zip", help="an <alias>.apex.zip built by export")
+        sp.add_argument("--connect", default="", help=f"host:port/service (default: {apeximport.ENV_APEX_CONNECT}, then Settings)")
+        sp.add_argument("--user", default="", help=f"database user (default: {apeximport.ENV_APEX_USER}, then Settings)")
+        sp.add_argument("--sqlcl", default="", help=f"SQLcl binary (default: {apeximport.ENV_SQLCL_PATH}, Settings, then PATH)")
+        sp.add_argument("--timeout", type=int, default=apeximport.TIMEOUT_SECONDS, help="seconds to allow SQLcl (default: %(default)s)")
+        sp.add_argument("--json", action="store_true", help="print the result as JSON")
+
+    av = ap_sub.add_parser("validate", help="check the ZIP against the target workspace; changes nothing")
+    add_apex_args(av)
+    av.set_defaults(func=cmd_apex_validate)
+
+    ai_ = ap_sub.add_parser("import", help="import the ZIP into the target workspace")
+    add_apex_args(ai_)
+    ai_.set_defaults(func=cmd_apex_import)
 
     ai = sub.add_parser("ai", help="show and test the AI provider configuration")
     ai.add_argument("--provider", default="", help="override FORMSLANG_AI_PROVIDER")

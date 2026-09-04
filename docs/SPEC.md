@@ -1,6 +1,6 @@
 # FormsLang — Product Specification
 
-**Version 0.2 — "Settings & Flow"** · maintained by B2DEV TECH · status: implemented
+**Version 1.0 — "Release"** · maintained by B2DEV TECH · status: implemented
 
 This document is the contract for what FormsLang does and, just as
 deliberately, what it refuses to do. Every behavioral claim here is backed
@@ -53,22 +53,32 @@ Five pillars, in priority order:
 │  webview → 127.0.0.1:port  │─────▶│  ThreadingHTTPServer, loopback,  │
 │  sidecar = frozen engine   │      │  Host-header check on every call │
 └────────────────────────────┘      │                                  │
-   or plain `formslang serve`       │  oracle.py   Forms2XML driver    │
-   in any browser                   │  parser.py   Forms XML → units   │
-                                    │  plsql.py    static analysis     │
-                                    │  rules.py    built-in catalog    │
-                                    │  risk.py     risk scoring        │
-                                    │  behavior.py PRESERVED/CHANGED   │
-                                    │  analysis.py one pass per unit   │
-                                    │  depgraph.py what breaks if...   │
-                                    │  testspec.py test cases          │
-                                    │  dashboard.py project counts     │
-                                    │  convert.py  rules + prompts     │
-                                    │  ai.py       provider layer      │
-                                    │  config.py   settings file       │
-                                    │  store.py    SQLite session      │
-                                    │  apexlang.py APEX 26.1 export    │
-                                    │  ui.py       one HTML document   │
+   or plain `formslang workbench`   │  oracle.py     Forms2XML driver  │
+   in any browser                   │  parser.py     Forms XML → units │
+                                    │  plsql.py      static analysis   │
+   `formslang export` / `apex …`    │  rules.py      built-in catalog  │
+   from a terminal or CI, same      │  risk.py       risk scoring      │
+   functions, no server             │  behavior.py   PRESERVED/CHANGED │
+                                    │  analysis.py   one pass per unit │
+                                    │  depgraph.py   what breaks if... │
+                                    │  testspec.py   test cases        │
+                                    │  sensitive.py  data scan, redact │
+                                    │  policy.py     egress gate       │
+                                    │  dashboard.py  project counts    │
+                                    │  formdoc.py    module reference  │
+                                    │  formdiff.py   structural diff   │
+                                    │  formui.py     canvas preview    │
+                                    │  convert.py    rules + prompts   │
+                                    │  ai.py         provider layer    │
+                                    │  config.py     settings file     │
+                                    │  secrets.py    OS credential st. │
+                                    │  store.py      SQLite session    │
+                                    │  apexlayout.py Forms → grid      │
+                                    │  apexlang.py   APEX 26.1 export  │
+                                    │  apeximport.py SQLcl driver      │
+                                    │  authstore.py  users, orgs, MFA  │
+                                    │  ui/           one HTML document │
+                                    │  cli.py        every command     │
                                     └──────────────────────────────────┘
 ```
 
@@ -101,9 +111,16 @@ The scoring model is documented in full in [risk-model.md](risk-model.md):
 every weight, every threshold, and the readiness formula that the workbench
 prints on screen beside its own number.
 
-The UI is a single self-contained HTML document served from the loopback
-interface. No CDN, no external font, no framework — enforced by test
-(`test_the_ui_carries_no_external_reference`).
+The UI is a single self-contained HTML document -- assembled from the
+`ui/` package (`shell`, `auth`, `projects`, `conversion`, `review`,
+`validation`, `settings`, `formdoc`, `shared`) into one string -- served
+from the loopback interface. No CDN, no external font, no framework —
+enforced by test (`test_the_ui_carries_no_external_reference`).
+
+Every operation the workbench offers is also a CLI command calling the
+same function (`formslang doc` / `diff` / `preview` / `export` /
+`apex validate` / `apex import`), so a pipeline reproduces what a reviewer
+saw without a server, a browser or a second code path.
 
 ## 4. The conversion flow
 
@@ -160,6 +177,23 @@ interface. No CDN, no external font, no framework — enforced by test
 6. **Export.** APEXlang project + import ZIP for APEX 26.1. Approved code
    only. `approved.sql` and `session.json` document who approved what,
    against which model answer.
+   - **Deterministic.** The same session exports the same bytes, ZIP
+     included: name-ordered entries with a fixed timestamp, and the
+     application's checksum salt drawn once per session and kept in the
+     session file. Enforced by test
+     (`test_the_same_session_exports_the_same_bytes`).
+   - **Remembered.** The export's choices (application id, name, alias,
+     workspace, schema, page) are written to the session, pre-filled in
+     the dialog next time and read by `formslang export` when a flag is
+     omitted -- the dialog shows the exact command line that reproduces
+     what it is about to build.
+7. **Validate and import.** `formslang apex validate|import <zip>` -- and
+   the same buttons in the workbench -- drive the user's own SQLcl. The
+   target comes from flags, `FORMSLANG_APEX_*` variables or Settings; the
+   password from the environment, the OS credential store or a hidden
+   prompt, and never from a command-line argument. Exit 1 when SQLcl
+   prints `APEXlang Compile Errors` with exit 0, because that is a failed
+   import. Full contract in [ci-cd.md](ci-cd.md).
 
 ## 5. Settings (in-app configuration)
 
@@ -172,10 +206,12 @@ environment variables in a terminal before launch.
   `$XDG_CONFIG_HOME/formslang/config.json` (default
   `~/.config/formslang/config.json`) elsewhere. `FORMSLANG_CONFIG_DIR`
   overrides the directory (also how tests isolate themselves).
-- **Contents:** only these keys — `provider`, `model`, `base_url`,
-  `deployment`, `api_version`. `api_key` is **not** among them: the
-  credential lives in the OS store (§5.2), never in this file. Unknown keys
-  are dropped on load and on save. Written atomically (temp file + rename),
+- **Contents:** only these keys — the AI provider (`provider`, `model`,
+  `base_url`, `deployment`, `api_version`), the APEX target (`sqlcl_path`,
+  `apex_connect_string`, `apex_username`) and the multi-user switch
+  (`auth_enabled`). `api_key` and the database password are **not** among
+  them: credentials live in the OS store (§5.2), never in this file.
+  Unknown keys are dropped on load and on save. Written atomically (temp file + rename),
   owner-only permissions where the OS supports it — a best-effort measure
   that is not equivalent protection on every operating system, which is
   exactly why no secret is kept here.
@@ -220,7 +256,7 @@ environment variables in a terminal before launch.
 | Route | Verb | Behavior |
 |---|---|---|
 | `/api/settings` | GET | Redacted settings: provider, model, endpoint fields, `has_key`, key source (`env`, `keychain`, `file`, or none), credential-store availability, config path, active env overrides |
-| `/api/settings` | POST | Save any subset of the six keys; validates the provider id first; rebuilds the live provider; returns the redacted state |
+| `/api/settings` | POST | Save any subset of the keys in §5.1; validates the provider id first; rebuilds the live provider; returns the redacted state |
 | `/api/settings/test` | POST | Round-trip test ("say ok") of the values in the form — nothing is saved; falls back to stored values for fields left blank |
 | `/api/terminal` | POST | Open a **native** terminal window running a whitelisted CLI (`claude` or `codex`) so the user can sign in. The command comes from a fixed server-side table; no browser input ever reaches a command line |
 
@@ -250,7 +286,7 @@ environment variables in a terminal before launch.
 |---|---|---|
 | Nothing leaves the machine by default | Default provider is the offline stub | `test_offline_provider_is_the_default` |
 | The browser never sees a key | Redacted `/api/settings`, boolean-only catalog | `test_get_settings_never_leaks_the_key` |
-| No remote access | Loopback bind + Host-header allowlist; `serve` refuses non-loopback hosts | `test_a_foreign_host_header_is_refused` |
+| No remote access | Loopback bind + Host-header allowlist; `workbench --host` refuses non-loopback addresses | `test_a_foreign_host_header_is_refused` |
 | A page in another tab cannot forge a request | Strict Content-Type on every POST; the server never answers a CORS preflight | `test_a_cross_site_content_type_is_refused` |
 | No external resources in the UI | Single self-contained document | `test_the_ui_carries_no_external_reference` |
 | Terminal launch cannot be weaponized | Fixed whitelist, browser sends an id, never a command | `test_terminal_refuses_anything_not_whitelisted` |
@@ -276,10 +312,13 @@ environment variables in a terminal before launch.
   to.
 - Editable APEX page layout (regions/items designer). FormsLang converts
   logic; layout stays a Page Designer job.
-- Windows keychain/DPAPI storage for the API key — candidate for v2;
-  today the documented trade is a plain local config file with owner-only
-  permissions, which is exactly how the majority of developer CLIs store
-  tokens.
+- **Promotion across environments** on top of SQLcl `project`
+  (`init/export/stage/release/deploy`): exporting the application *back*
+  from APEX so the committed APEXlang tree round-trips, and one ZIP
+  validated on DEV then imported on TEST and PROD with the workspace and
+  schema resolved per deployment. The next phase; the ground for it --
+  deterministic `formslang export`, `formslang apex validate|import`, the
+  environment contract -- is 1.0 (see [ci-cd.md](ci-cd.md) §6).
 
 ## 8. Decision log
 
@@ -300,3 +339,8 @@ environment variables in a terminal before launch.
 | Compliance report is not blocked per unit | Enterprise mode already blocks cloud egress for the whole session; a third, per-unit intermediate behaviour would add surface without closing a gap the session-level block does not already close |
 | Compliance report is not remediation | The product points out findings in client-owned source; it does not rewrite it |
 | `compliance.md` sits beside `tests.md`, never inside the APEX export ZIP | The ZIP is deliberately APEX-artifacts-only (`tests/test_apexlang.py:83`); the compliance record is an audit artifact for the reviewer, not a deployable |
+| The export is deterministic, down to the ZIP bytes | A pipeline that cannot rebuild what was reviewed cannot be trusted to deploy it; a ZIP that changes with the clock cannot be cached, compared or diffed. The one value that must be unpredictable (the checksum salt) is drawn once per session, not once per export |
+| `formslang export` is the button, not a second exporter | Two code paths drift; one function called from two places cannot. The CLI reads the choices the dialog wrote to the session, and the dialog shows the command line the CLI would need |
+| The database password never travels as an argument | `--password` would land in shell history, process listings and CI logs -- the same class of leak §5.2 refuses for the API key. Environment, credential store or a hidden prompt; a runner with neither fails at once rather than hanging |
+| `APEXlang Compile Errors` with exit 0 is a failure | SQLcl reports a failed import in its output, not its exit code; a pipeline that trusts the code alone deploys nothing and reports success |
+| `Date`/`Number` items export as `textField` | One unknown APEXlang keyword fails the whole import, and the item-type vocabulary lives in the target instance's plugins, not in the tool. Only keywords verified against a live 26.1 are emitted; a wider mapping follows a live `apex validate`, not a guess |

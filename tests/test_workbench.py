@@ -242,10 +242,11 @@ def test_a_cross_site_content_type_is_refused(server):
 
 
 def test_state_reports_the_session(server):
-    base, _ = server
+    base, wb = server
     _, body = _get(base, "/api/state")
     state = json.loads(body)
     assert state["session"]["title"] == "DEMO_ORDER"
+    assert state["session_path"] == str(wb.store.path)  # the export dialog's CLI hint needs it
     assert state["stats"]["tasks"] == len(state["tasks"])
     assert "echo" in state["provider"].lower() or "offline" in state["provider"].lower()
 
@@ -611,6 +612,7 @@ def test_exports_are_listed_newest_first(server, monkeypatch):
         "import": {
             "connect_string": "", "username": "", "has_saved_password": False, "sqlcl_found": False,
         },
+        "last_export": {},
     }
 
     wb.export_dir.mkdir(parents=True, exist_ok=True)

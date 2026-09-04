@@ -141,6 +141,27 @@ def test_session_survives_reopening(tmp_path, sample_xml):
 # -- telemetry --------------------------------------------------------------
 
 
+def test_session_settings_round_trip_and_survive_reopening(tmp_path, sample_xml):
+    """Small per-session facts (the export's checksum salt, its last
+    deployment choices) live with the session, not in the user's config."""
+    path = tmp_path / "settings.db"
+    s = Store(path)
+    s.init_session("DEMO_ORDER", str(sample_xml))
+    assert s.setting("missing") == ""
+    assert s.setting("missing", "fallback") == "fallback"
+
+    s.set_setting("apex_checksum_salt", "ABC")
+    s.set_setting("apex_checksum_salt", "DEF")  # a later write replaces, never appends
+    assert s.setting("apex_checksum_salt") == "DEF"
+    s.close()
+
+    reopened = Store(path)
+    try:
+        assert reopened.setting("apex_checksum_salt") == "DEF"
+    finally:
+        reopened.close()
+
+
 def test_stage_summary_is_empty_until_something_is_recorded(store):
     assert store.stage_summary() == {}
 

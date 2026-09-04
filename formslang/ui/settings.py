@@ -93,9 +93,33 @@ SETTINGS_JS = r"""async function openSettings() {
     </div>`;
   };
 
+  /* Multi-user mode: independent of which AI provider is chosen, so it is
+     its own always-visible section, mirroring sqlclSection(). The checkbox
+     only saves the choice -- authstore.auth_enabled() is read once when the
+     workbench starts, so a freshly saved change needs a restart to bite. */
+  const authSection = () => {
+    const warn = !cfg.auth_env_override && !cfg.auth_active && cfg.auth_enabled;
+    const status = cfg.auth_env_override
+      ? `<i>&#10003;</i><span>Set by FORMSLANG_AUTH — the environment variable wins over this checkbox.</span>`
+      : cfg.auth_active
+      ? `<i>&#10003;</i><span>Active for this session.</span>`
+      : cfg.auth_enabled
+      ? `<i>&#9888;</i><span>Saved, but not active yet — restart FormsLang to turn multi-user mode on.</span>`
+      : `<i>&#9702;</i><span>Off — everyone who opens this workbench shares one workspace.</span>`;
+    return `<div class="settings-form">
+      <label class="check">
+        <input type="checkbox" data-f="auth_enabled" ${cfg.auth_enabled ? "checked" : ""} ${cfg.auth_env_override ? "disabled" : ""}>
+        Require sign-in (RBAC, MFA, per-organization workspaces)
+      </label>
+      <div class="keyline${warn ? " warn" : ""}">${status}</div>
+      <div class="keyline"><i>&#9702;</i><span>First run after enabling: create the Owner from a terminal —
+        <code>formslang auth bootstrap-owner you@example.com</code></span></div>
+    </div>`;
+  };
+
   const render = () => {
     const body = $("modal-body");
-    body.innerHTML = list.map(row).join("") + form(chosen) + sqlclSection();
+    body.innerHTML = list.map(row).join("") + form(chosen) + sqlclSection() + authSection();
     body.querySelectorAll(".entry[data-p]").forEach((e) => (e.onclick = () => {
       chosen = list.find((p) => p.id === e.dataset.p);
       render();
@@ -114,6 +138,10 @@ SETTINGS_JS = r"""async function openSettings() {
         if (body.querySelector(`[data-f="${name}"]`)) out[name] = field(name);
       if (field("api_key")) out.api_key = field("api_key");
       if (!cfg.sqlcl_env_override) out.sqlcl_path = field("sqlcl_path");
+      if (!cfg.auth_env_override) {
+        const box = body.querySelector('[data-f="auth_enabled"]');
+        out.auth_enabled = box && box.checked ? "1" : "";
+      }
       return out;
     };
 

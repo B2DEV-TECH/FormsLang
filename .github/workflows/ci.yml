@@ -46,3 +46,29 @@ jobs:
 
       - name: Run ruff
         run: python -m ruff check .
+
+  # The promise docs/ci-cd.md is built on: the same session exports the
+  # same bytes. Export the showcase module from its XML, then again from
+  # the session that first run created, and require identical ZIPs.
+  export:
+    name: deterministic export (showcase module)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install formslang
+        run: python -m pip install -e .
+
+      - name: Export twice, compare bytes
+        run: |
+          python -m formslang export tests/fixtures/showcase/module.xml \
+            -o "$RUNNER_TEMP/smoke" --alias showcase --app-id 19078
+          cp "$RUNNER_TEMP/smoke/export/showcase.apex.zip" "$RUNNER_TEMP/first.zip"
+          python -m formslang export "$RUNNER_TEMP/smoke/DEMO_ALL_ELEMENTS.session.db" --json
+          cmp "$RUNNER_TEMP/first.zip" "$RUNNER_TEMP/smoke/export/showcase.apex.zip"
+          sha256sum "$RUNNER_TEMP/first.zip"
