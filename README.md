@@ -35,13 +35,15 @@ same session rebuilds, byte for byte, on a build server.
 
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"
-       alt="The FormsLang workbench reviewing a PRE-INSERT trigger: the Forms code on the left, the proposed APEX code on the right, and the model's reasoning underneath">
+       alt="The FormsLang workbench reviewing a WHEN-VALIDATE-ITEM trigger: the four lines of Forms code on the left, the APEX page validation proposed to replace them on the right at confidence 0.82, and underneath what changed, split into facts, inferences and assumptions">
 </p>
 
 <p align="center">
-  <sub>The workbench mid-review: a block-level <code>PRE-INSERT</code> trigger, the APEX code
-  proposed to replace it, what changed and why, and the questions the model refused
-  to answer on its own. The verdict on this one was <em>rejected</em> — by a human.</sub>
+  <sub>The workbench mid-review: unit 4 of 59, a <code>WHEN-VALIDATE-ITEM</code> on
+  <code>BK_PRODUTO.VL_PRECO</code>. Left, the four lines that run today; right, the page
+  validation proposed to replace them; underneath, <em>what changed</em> — facts first,
+  then inferences, then the two assumptions the model made and flagged as unverified.
+  The verdict is still open. The bar at the bottom is waiting for a name.</sub>
 </p>
 
 ## Creator
@@ -343,6 +345,18 @@ tracks elapsed time, queued units show a spinner, and the unit being read
 gets an overlay on the APEX pane — the screen accounts for every second of
 it instead of going quiet.
 
+<p align="center">
+  <img src="assets/screenshots/workbench-converting-cli.png" width="900"
+       alt="Converting WHEN-NEW-FORM-INSTANCE with the Claude Code CLI: the top bar names the unit and counts elapsed seconds, the APEX pane explains what the model is doing, and the risk, behaviour, compatibility and dependency panels below are already filled from the offline analysis">
+</p>
+
+<p align="center">
+  <sub>One unit, one CLI call. The top bar says which unit and how long; the APEX
+  pane says what is happening and how long it usually takes; and the panels below —
+  risk LOW with its single factor, behaviour PRESERVED, dependencies counted both
+  ways — were computed offline, before the model was asked anything.</sub>
+</p>
+
 ### What the screen tells you before you decide
 
 Every unit is measured the moment the module opens — offline, with no
@@ -417,8 +431,29 @@ formslang doc "D:\legacy\forms\ORDERS.fmb" -o out
 ```
 
 <p align="center">
-  <img src="assets/screenshots/doc-report.png" width="900"
-       alt="FormsLang Doc report for a real Forms module: overview counts (7 blocks, 121 items, 77 triggers, 14 program units, 4 LOVs, 4 record groups) and the first block's properties, including its query source table and WHERE clause">
+  <img src="assets/screenshots/doc-overview.png" width="900"
+       alt="FormsLang technical documentation for the showcase module DEMO_ALL_ELEMENTS: overview counts (5 blocks, 78 items, 55 triggers, 4 program units, 4 LOVs, 3 record groups, 2 relations, 500 PL/SQL lines), the module properties and the start of the block reference">
+</p>
+
+<table align="center">
+  <tr>
+    <td width="50%">
+      <img src="assets/screenshots/doc-block.png"
+           alt="The Blocks tab: BK_PRODUTO's properties — database block, query source TAB_PRODUTO, insert, update and delete allowed, ORDER BY DS_NOME — followed by its 33 items with type, datatype, column, required flag, maximum length, prompt and LOV">
+    </td>
+    <td width="50%">
+      <img src="assets/screenshots/doc-triggers.png"
+           alt="Block-level triggers of BK_PRODUTO exactly as Forms stored them: PRE-QUERY, 10 lines, and POST-QUERY, 25 lines">
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>Left: one block, property by property, then every item with its type, column,
+  required flag, maximum length, prompt and LOV. Right: the block's triggers,
+  verbatim — the <code>PRE-QUERY</code> that sets a default WHERE from a control
+  checkbox, the <code>POST-QUERY</code> that formats a price and looks up a category.
+  Nothing is summarized. The document <em>is</em> the module.</sub>
 </p>
 
 `Diff` structurally compares two versions of the same module — blocks,
@@ -436,6 +471,28 @@ every form-level trigger and all eighteen program units reported unchanged,
 because they were. A `.fmb` in git is a binary blob; this is the diff git
 cannot give you.
 
+<table align="center">
+  <tr>
+    <td width="50%">
+      <img src="assets/screenshots/diff-blocks.png"
+           alt="Structural diff summary: for blocks, form-level triggers, program units, LOVs, record groups and relations, how many were added, removed, modified and unchanged; below it the blocks added and removed as chips, and the one modified block with its property changed from N to Y">
+    </td>
+    <td width="50%">
+      <img src="assets/screenshots/diff-items-triggers.png"
+           alt="The same diff further down: items added and removed as chips, the form-level triggers removed, and a modified WHEN-NEW-FORM-INSTANCE shown as a unified diff hunk">
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>The screenshots are a different run — the showcase module diffed against an
+  unrelated one, so every section has something to report. The summary counts
+  what was added, removed and modified <em>and</em> what stayed the same; below
+  it, blocks, items and triggers as chips, one property per row, and every
+  modified code body as a unified hunk. On two revisions of the same module,
+  most of this page reads <em>unchanged</em>.</sub>
+</p>
+
 ### Visual preview (`Preview`)
 
 A third button, same idea: a read-only, side-by-side look at every Forms
@@ -449,6 +506,34 @@ approximated rather than silently shown as a sure match.
 ```bash
 formslang preview "D:\legacy\forms\ORDERS.fmb" -o out
 ```
+
+<p align="center">
+  <img src="assets/screenshots/preview-mapping.png" width="900"
+       alt="Visual preview of DEMO_ALL_ELEMENTS: 5 canvases, 5 blocks, 78 items, 74 positioned, 1 hidden in Forms, 25 APEX regions, 78 mapped with confirmed evidence and 0 approximated; a notice that this is the default mapping with no picker; and the first Forms canvas drawn at real size">
+</p>
+
+<table align="center">
+  <tr>
+    <td width="50%">
+      <img src="assets/screenshots/preview-forms-canvas.png"
+           alt="The Forms UI as the .fmb describes it: canvas CV_MAIN, 760 by 410 points, the window 'Cadastro de Produto' with its toolbar buttons, frames, prompts, a checkbox, a radio group and a list item, drawn at real size">
+    </td>
+    <td width="50%">
+      <img src="assets/screenshots/preview-apex-page.png"
+           alt="The APEX preview of the same canvas: a toolbar region, the 'Cadastro de Produto' region with 'Dados do Produto' inside it, every item in its 12-column cell and badged with the APEX type it will get — textField, textarea, selectList, displayOnly — and the five items that sit on no canvas listed above">
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>Source on the left, destination on the right — the same 24 items of
+  <code>CV_MAIN</code>. The Forms side is drawn from the <code>.fmb</code> geometry
+  (1 point = 1.33 px), bevels, prompts and boilerplate included. The APEX side is
+  the page exactly as the export writes it, each item badged with the APEX type it
+  gets. The five items that live on no canvas are listed, not lost. The counters
+  at the top say how much of that mapping rests on confirmed evidence: here, all
+  78 items, none approximated.</sub>
+</p>
 
 ## Authentication and multi-user workspaces
 
@@ -606,6 +691,26 @@ underneath, shows the exact command line that rebuilds the same ZIP from a
 terminal — `formslang export ORDERS.session.db --app-id 19078 --alias
 orders` — kept in step with the fields as you type.
 
+<table align="center">
+  <tr>
+    <td width="50%">
+      <img src="assets/screenshots/export-dialog-importing.png"
+           alt="The Export Oracle APEX 26.1 dialog: application name, alias, application ID 100, workspace and parsing schema left to be resolved during import, page 1, the 'Import into APEX right after building' checkbox, the equivalent command line, a JDBC thin connection to FREEPDB1, the schema user, a masked password, and the Importing… state; a toast says the APEXlang ZIP is ready">
+    </td>
+    <td width="50%">
+      <img src="assets/screenshots/export-dialog-imported.png"
+           alt="The same dialog after SQLcl returned: 'Importing application ID: 100 into workspace: FORMSLANG — Import successful.' in green, a Show exports button, and an 'Imported into APEX.' toast">
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>The same dialog, a few seconds apart. Workspace and parsing schema are
+  resolved during import, not baked into the ZIP. The line under the checkbox is
+  the build a pipeline runs. The password is masked here and goes to the OS
+  credential store, never to a file. On the right, SQLcl's own verdict, verbatim.</sub>
+</p>
+
 The export folder contains:
 
 - `<alias>.apex.zip` — the APEXlang 26.1 package for SQLcl validation/import
@@ -633,7 +738,7 @@ after every export.
 
 <p align="center">
   <img src="assets/screenshots/exports.png" width="900"
-       alt="Exported APEX applications panel listing demo-order.apex.zip with its size, timestamp and a Show in folder action">
+       alt="Exported APEX applications panel: the export folder path in the header, three ZIPs with size and timestamp, and Show in folder and Import to database… actions on each">
 </p>
 
 The ZIP is deliberately separate from the audit artifacts. Only approved
@@ -682,6 +787,46 @@ apex import   -input orders.apex.zip
 appears when a page is rendered. The repeatable procedure for that last
 mile — import, make the page public, fetch it through ORDS, read the HTML —
 is in [docs/apex-import-verification.md](docs/apex-import-verification.md).
+
+### What lands in APEX
+
+<table align="center">
+  <tr>
+    <td width="50%">
+      <img src="assets/screenshots/apex-builder-before.png"
+           alt="Oracle APEX 26.1 App Builder, workspace formslang, before the import: No Applications found">
+    </td>
+    <td width="50%">
+      <img src="assets/screenshots/apex-builder-after.png"
+           alt="The same App Builder after formslang apex import: application 100, DEMO_ALL_ELEMENTS, alias demo-all-elements, 3 pages">
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>Before and after one <code>formslang apex import</code> on a local APEX 26.1
+  (<code>FREEPDB1</code>): an empty workspace, then application 100 with its three
+  pages — the ZIP the dialog above built, nothing else.</sub>
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/apex-app-running.png" width="900"
+       alt="Page 1 of the imported application running in APEX 26.1 with Universal Theme: the toolbar buttons and the 'Somente ativos' checkbox at the top, the 'Cadastro de Produto' region with 'Dados do Produto' inside it, every Forms item as a page item — text fields, a textarea, a select list, a radio group, a checkbox — and the 'Identificacao do Lote' region below">
+</p>
+
+<p align="center">
+  <sub>The converted page, running. Every item of the canvas is on the page, in
+  Universal Theme, in the region and grid cell its Forms position mapped to, with
+  the required marks Forms declared.</sub>
+</p>
+
+> **Note — the layout of the converted application is being improved.** What
+> you see above is the scaffold 1.0 exports today: correct placement, correct
+> item types, correct required flags, but item widths, label alignment and
+> region packing still read as a migration scaffold rather than a finished
+> page. Tightening that layout is the current work on the exporter. Schema
+> binding, LOVs, validations and navigation remain the functional review
+> described above.
 
 ## Versioning Forms and APEXlang in git
 

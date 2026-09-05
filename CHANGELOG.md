@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- README: screenshots refreshed from the 1.0 workbench on the showcase
+  module — review and CLI conversion, Doc (overview, block, triggers),
+  Preview (Forms canvas next to the APEX page), Diff, the export dialog
+  before and after import, the Exports panel, App Builder before and after,
+  and the imported page running in APEX 26.1 — each with a caption, plus a
+  note that the layout of the converted application is being improved.
+
 ### Fixed
 
 - Test suite: the concurrent-MFA-validation test took its TOTP code from
