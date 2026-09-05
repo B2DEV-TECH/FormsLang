@@ -744,12 +744,16 @@ after every export.
 The ZIP is deliberately separate from the audit artifacts. Only approved
 proposals are included, and they are emitted as disabled page-process
 candidates until their execution point and condition are confirmed in Page
-Designer. Regions and page items are a migration scaffold — every Forms
-item lands on the page's 12-column grid at its canvas position, `MultiLine`
-text items become `textarea`, display-only items become `displayOnly`,
-Date and Number items deliberately stay `textField` until the richer
-keywords have been through a live validate — and schema binding, LOVs,
-validations and application navigation still require functional review.
+Designer. Regions and page items are native components on the page's
+12-column grid: canvases, frames and tab pages become regions, sub-regions
+and tab pages; single-record blocks become page items of the native type
+(`textarea`, `displayOnly`, `datePicker`, `numberField`, `checkbox`,
+`radioGroup`, `selectList`); multi-record blocks on a table become
+Interactive Grids with their columns in Forms order; and every export
+carries a per-element mapping report — see
+[docs/layout-mapping-matrix.md](docs/layout-mapping-matrix.md). Schema
+binding, LOVs, validations and application navigation still require
+functional review.
 
 ### Validate and import
 
@@ -785,8 +789,10 @@ apex import   -input orders.apex.zip
 
 `validate` proves the package compiles; it cannot see a defect that only
 appears when a page is rendered. The repeatable procedure for that last
-mile — import, make the page public, fetch it through ORDS, read the HTML —
-is in [docs/apex-import-verification.md](docs/apex-import-verification.md).
+mile — import, log in as a temporary end user, fetch the page through ORDS,
+read the HTML, remove the user — is in
+[docs/apex-import-verification.md](docs/apex-import-verification.md), and
+`examples/verify/apex_render_check.py` does exactly that.
 
 ### What lands in APEX
 
@@ -820,13 +826,16 @@ is in [docs/apex-import-verification.md](docs/apex-import-verification.md).
   the required marks Forms declared.</sub>
 </p>
 
-> **Note — the layout of the converted application is being improved.** What
-> you see above is the scaffold 1.0 exports today: correct placement, correct
-> item types, correct required flags, but item widths, label alignment and
-> region packing still read as a migration scaffold rather than a finished
-> page. Tightening that layout is the current work on the exporter. Schema
-> binding, LOVs, validations and navigation remain the functional review
-> described above.
+> **Note — the screenshots above show the 1.0 layout.** Since 1.1 the
+> exporter turns the Forms geometry into native components with their own
+> widths, label placement and region packing — frames as sub-regions,
+> multi-record blocks as Interactive Grids, dates and numbers as Date
+> Pickers and Number Fields, Universal Theme template options — and each
+> export ships a per-element mapping report with explicit denominators.
+> [docs/layout-mapping-matrix.md](docs/layout-mapping-matrix.md) has the
+> mapping matrix and the before/after of the showcase page at the same
+> viewport. Schema binding, LOVs, validations and navigation remain the
+> functional review described above.
 
 ## Versioning Forms and APEXlang in git
 
@@ -952,13 +961,13 @@ formslang/
 ├── report.py       # self-contained HTML + JSON
 ├── formdoc.py      # `doc`: the module's technical reference
 ├── formdiff.py     # `diff`: structural diff between two revisions
-├── formui.py       # `preview`: canvases next to the APEX items they become
+├── formui.py       # `preview`: Forms canvases next to the planned APEX layout (same model as the export)
 ├── ai.py           # provider layer (urllib only) + CLI providers + offline stub
 ├── config.py       # the settings file the in-app Settings screen writes
 ├── secrets.py      # the OS credential store: Credential Manager / Keychain / libsecret
 ├── convert.py      # conversion tasks, the doctrine prompt, answer parsing
 ├── store.py        # SQLite session: proposals, decisions, settings, audit trail
-├── apexlayout.py   # Forms canvas geometry -> the APEX 12-column grid
+├── apexlayout.py   # the shared layout model: geometry -> regions, grid rows, Interactive Grids, mapping report
 ├── apexlang.py     # APEXlang 26.1 project + deterministic import ZIP
 ├── apeximport.py   # SQLcl driver: validate / import, password on stdin only
 ├── authstore.py    # organizations, users, roles, sessions, MFA (auth.db)
@@ -969,6 +978,7 @@ formslang/
 desktop/            # Tauri 2 shell: native window, engine sidecar, MSI/NSIS
 packaging/          # PyInstaller entry: freezes the engine into one .exe
 examples/ci/        # the GitHub Actions workflow to copy
+examples/verify/    # render an imported page through ORDS as a temporary end user and inspect it
 docs/               # SPEC, risk model, CI/CD contract, import verification, auth design
 assets/brand/       # the FormsLang brand kit (SVG)
 ```
@@ -1028,6 +1038,11 @@ CI runs the suite on Linux and Windows across Python 3.10–3.13, runs
 - [x] Proof that a generated export imports on a real Oracle APEX 26.1
       instance, and the repeatable render-time check
       ([`docs/apex-import-verification.md`](docs/apex-import-verification.md))
+- [x] High-fidelity layout: the Forms geometry as native APEX components —
+      regions, sub-regions, tab pages, Interactive Grids for multi-record
+      blocks, native item types, template options — with a per-element
+      mapping report and the before/after of the showcase
+      ([`docs/layout-mapping-matrix.md`](docs/layout-mapping-matrix.md))
 - [x] Windows desktop app (bundled engine, MSI / NSIS installers)
 - [x] Secure multi-user workspaces: RBAC, MFA/TOTP, per-organization
       isolation — switched on from Settings or `FORMSLANG_AUTH`, the first

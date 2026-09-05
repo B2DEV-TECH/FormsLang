@@ -80,15 +80,66 @@ _CHAR_WIDTH = {
     "inch": 0.07,
     "centimeter": 0.18,
 }
+# Text rows per coordinate unit for the same fallback: how many lines a
+# multi-line item's height holds (a Forms text row is about 14 points).
+_CHAR_HEIGHT = {
+    "character": 1.0,
+    "cell": 1.0,
+    "point": 14.0,
+    "pixel": 18.0,
+    "decipoint": 140.0,
+    "inch": 0.19,
+    "centimeter": 0.5,
+}
 # Boilerplate text ending within this many characters of an uncaptioned
 # item's left edge is that item's prompt.
 _PROMPT_REACH = 4
+# Forms data types as the column data types an Interactive Grid declares.
+_DATA_TYPES = {
+    "char": "varchar2",
+    "alpha": "varchar2",
+    "number": "number",
+    "date": "date",
+    "datetime": "timestamp",
+    "long": "clob",
+}
+# Item types with no native APEX component: the field that takes their place
+# is a placeholder, reported as unsupported rather than as a mapping.
+_UNSUPPORTED_TYPES = ("image", "bean", "ole", "activex", "vbx", "sound", "tree", "chart", "custom")
 
 
 def _slug(value: str) -> str:
     ascii_text = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode()
     text = re.sub(r"[^a-z0-9]+", "-", ascii_text.strip().lower()).strip("-")
     return text[:60].rstrip("-")
+
+
+def slug(value: str, *, fallback: str = "formslang-app") -> str:
+    """A filesystem-safe APEX alias and human-readable component id."""
+    ascii_text = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode()
+    text = re.sub(r"[^a-z0-9]+", "-", ascii_text.strip().lower()).strip("-")
+    if not text or not text[0].isalpha():
+        text = f"app-{text}" if text else fallback
+    return text[:80].rstrip("-")
+
+
+def sql_name(name: str, limit: int = 128) -> str:
+    """A Forms name as the bare identifier APEXlang takes for a column or table."""
+    return re.sub(r"[^A-Z0-9_$#]", "_", name.strip().replace('"', "").upper())[:limit]
+
+
+def column_name(item: Item) -> str:
+    """The identifier of the Interactive Grid column a Forms item becomes:
+    its item name as a SQL identifier. The export writes it and the
+    mapping report points at it, so a reader can find the column in the
+    page file and in Page Designer by the same name."""
+    return sql_name(item.name)
+
+
+def button_id(placed: Placed) -> str:
+    """The APEXlang identifier of the button a Push Button becomes
+    (``block-item``), shared by the export and the mapping report."""
+    return slug(f"{placed.block.name}-{placed.item.name}", fallback=f"button-{placed.sequence}")
 
 
 def humanize(name: str) -> str:
@@ -146,6 +197,7 @@ class Placed:
     box: tuple[float, float, float, float] | None = None  # the item plus its prompt's room
     label_span: int = 0  # a left label's share of the cell, in twelfths; 0 when not left
     note: str = ""  # how the caption was found, when not the obvious way
+    radio_columns: int = 0  # radio buttons Forms paints side by side; 0 = geometry unknown
 
     @property
     def label(self) -> str:
@@ -182,6 +234,11 @@ class RegionNode:
     note: str = ""
     text: str = ""  # boilerplate text this region shows (a static region, no items)
     text_bold: bool = False
+    kind: str = "static"  # static (items and sub-regions) | grid (an Interactive Grid)
+    options: list[str] = field(default_factory=list)  # template options besides #DEFAULT#
+    columns: list[Placed] = field(default_factory=list)  # grid only: columns, left to right
+    block: Block | None = None  # grid only: the block whose table the grid shows
+    derived: bool = False  # a wrapper the layout invented (a row of loose items), not a Forms group
 
     @property
     def records(self) -> int:
@@ -202,6 +259,7 @@ class StaticLov:
     name: str
     entries: list[tuple[str, str]]  # (display, return)
     source: str
+    declared: bool = False  # return values come from the .fmb (Value), not from the labels
 
 
 @dataclass
@@ -219,8 +277,10 @@ class PageLayout:
             yield from root.walk()
 
     def placed(self) -> Iterator[Placed]:
+        """Every visible control: region bodies, then grid columns."""
         for region in self.regions():
             yield from region.body
+            yield from region.columns
 
     def chars(self, units: float | None, *, vertical: bool = False) -> int | None:
         """A Forms width/height as a character count, or None when there is
@@ -233,7 +293,8 @@ class PageLayout:
         if self.char_cell is not None:
             cell = self.char_cell[1 if vertical else 0]
             return max(1, round(units / cell)) if cell else None
-        cell = _CHAR_WIDTH.get(self.unit.lower(), 5.0)
+        table = _CHAR_HEIGHT if vertical else _CHAR_WIDTH
+        cell = table.get(self.unit.lower(), 14.0 if vertical else 5.0)
         return max(1, round(units / cell))
 
 
@@ -376,7 +437,190 @@ def _make_placed(item: Item, block: Block, apex_name: str, char_w: float) -> Pla
     if side in {"left", "right"}:
         room = len(text) * char_w + max(placed.item.prompt_offset, 0)
     _fit(placed, room)
+    if "radio" in item.item_type.lower():
+        placed.radio_columns = _radio_columns(item)
     return placed
+
+
+def _radio_columns(item: Item) -> int:
+    """How many radio buttons Forms paints side by side: the widest row of
+    the group's buttons, each of which has its own place on the canvas.
+    0 when the .fmb gives them no geometry, so APEX keeps its default."""
+    boxes = [
+        _Box(
+            float(rb.x),
+            float(rb.y),
+            float(rb.width or _DEFAULT_WIDTH),
+            float(rb.height or _DEFAULT_HEIGHT),
+            rb,
+        )
+        for rb in item.radio_buttons
+        if rb.x is not None and rb.y is not None
+    ]
+    if not boxes:
+        return 0
+    return max(len(row) for row in _rows(boxes))
+
+
+def database_column(item: Item) -> str:
+    """The table column a database item reads: ``ColumnName`` when the .fmb
+    spells it out, else the item's own name -- Forms' default, which
+    Forms2XML leaves out of the XML. A control item has none."""
+    if not item.database_item:
+        return ""
+    return item.column_name or item.name
+
+
+def apex_item_type(item: Item) -> str:
+    """The native APEX item type a Forms item becomes.
+
+    Every keyword here was accepted by ``apex validate`` on APEX 26.1, as a
+    page item and as an Interactive Grid column: a List Item is a
+    ``selectList`` and a Radio Group a ``radioGroup``, each fed by a shared
+    static LOV built from the choices the .fmb declares; a Text Item
+    declared ``MultiLine`` is a ``textarea``; a Text Item of data type Date
+    or Datetime is a ``datePicker`` and one of data type Number a
+    ``numberField``, so the format mask and the alignment Forms gave them
+    land on the native properties. Item types APEX has no component for
+    (Image, Bean Area, OLE, Tree ...) fall to a text placeholder and are
+    reported as unsupported, never as mapped.
+    """
+    kind = item.item_type.lower()
+    if "display" in kind:
+        return "displayOnly"
+    if "editor" in kind or "area" in kind:
+        return "textarea"
+    if "check" in kind:
+        return "checkbox"
+    if "radio" in kind:
+        return "radioGroup"
+    if "list" in kind:
+        return "selectList"
+    if item.multi_line:
+        return "textarea"
+    if "text" in kind:
+        data = item.data_type.lower()
+        if data in {"date", "datetime"}:
+            return "datePicker"
+        if data == "number":
+            return "numberField"
+    return "textField"
+
+
+def unsupported_reason(item: Item) -> str:
+    """Why an item has no native APEX component, or "" when it has one."""
+    kind = item.item_type.lower()
+    if "button" in kind or "text" in kind or "display" in kind:
+        return ""
+    if any(word in kind for word in _UNSUPPORTED_TYPES):
+        return (
+            f"APEX has no native component for a Forms {item.item_type}; a "
+            f"{apex_item_type(item)} placeholder keeps its place on the grid"
+        )
+    return ""
+
+
+def tabular_note(node: RegionNode, name: str, records: int) -> str:
+    """The note both the exporter and the preview attach to a region where
+    a multi-record block could not become an Interactive Grid: which block,
+    how many records Forms shows, and why the grid was not built."""
+    block = next(
+        (p.block for p in node.body + node.hidden + node.columns if p.block.name == name), None
+    )
+    if block is None or not block.database_block:
+        why = "the block is a control block, with no table behind it"
+    elif not block.query_data_source_name:
+        why = "the block declares no query data source"
+    else:
+        why = (
+            f"its query data source is a {block.query_data_source_type}, not a table, "
+            "and that query is business logic the .fmb only hints at"
+        )
+    return (
+        f"Forms shows {records} records of block {name} at once here (tabular): the "
+        f"first record's row is laid out as page items because {why}; an Interactive "
+        "Grid on the block's query is the developer's next step."
+    )
+
+
+def _table_bound(block: Block) -> bool:
+    """A block APEX can show as an Interactive Grid on its own table: a
+    database block whose query source is a table (Forms' default, so an
+    omitted type counts) with a name. Procedure, sub-query and FROM-clause
+    blocks are not: their SQL is business logic the .fmb only hints at."""
+    kind = (block.query_data_source_type or "table").lower()
+    return bool(block.database_block and block.query_data_source_name and kind == "table")
+
+
+def _records_shown(placed: Placed) -> int:
+    """How many records of its block the item shows at once: ItemsDisplay
+    when set (the audit fields of a grid block show once), else the
+    block's record count."""
+    return placed.item.items_displayed or placed.block.records_displayed or 1
+
+
+def _grid_nodes(
+    container: RegionNode, items: list[Placed], ids: _Ids
+) -> tuple[list[Placed], list[RegionNode]]:
+    """Pull the multi-record items of table-bound blocks out of ``items``
+    and return them as one Interactive Grid node per block, sized to the
+    area Forms paints the records on, columns in left-to-right order.
+    Items the block shows once (ItemsDisplay=1) stay page items, as they
+    stay outside the record rows in Forms."""
+    by_block: dict[str, list[Placed]] = {}
+    rest: list[Placed] = []
+    for placed in items:
+        is_button = "button" in placed.item.item_type.lower()
+        if _records_shown(placed) > 1 and _table_bound(placed.block) and not is_button:
+            by_block.setdefault(placed.block.name, []).append(placed)
+        else:
+            rest.append(placed)
+    grids: list[RegionNode] = []
+    for name, columns in by_block.items():
+        block = columns[0].block
+        columns.sort(key=lambda p: (item_box(p.item)[0], item_box(p.item)[1]))
+        x0 = min(p.bounds()[0] for p in columns)
+        y0 = min(p.bounds()[1] for p in columns)
+        x1 = max(p.bounds()[0] + p.bounds()[2] for p in columns)
+        y1 = y0
+        for placed in columns:
+            _, y, _, h = placed.bounds()
+            step = h + max(placed.item.records_distance, 0)
+            y1 = max(y1, y + h + (_records_shown(placed) - 1) * step)
+        for index, placed in enumerate(columns, 1):
+            placed.sequence = index * 10
+        grids.append(
+            RegionNode(
+                id=ids.take(name, "grid"),
+                name=name,
+                title="",
+                template="interactive-report",
+                source=(
+                    f"block {name} ({block.records_displayed} records at once) on "
+                    f"{container.source}"
+                ),
+                x=x0,
+                y=y0,
+                width=max(x1 - x0, 1),
+                height=max(y1 - y0, 1),
+                slot="subRegions",
+                kind="grid",
+                columns=columns,
+                block=block,
+            )
+        )
+    return rest, grids
+
+
+def _collapse_grid(node: RegionNode, grid: RegionNode) -> None:
+    """A frame (or tab page) that holds nothing but one block's record rows
+    is that block's Interactive Grid itself: its caption becomes the grid's
+    title, and no empty region is left around it."""
+    node.kind = "grid"
+    node.template = "interactive-report"
+    node.columns = grid.columns
+    node.block = grid.block
+    node.source = f"{node.source}, showing {grid.source.split(' on ', 1)[0]}"
 
 
 def _adopt_boilerplate(texts: list[Graphic], pairs: list[Placed], char_w: float) -> list[Graphic]:
@@ -597,6 +841,7 @@ def _arrange(
                     width=gw,
                     height=gh,
                     slot="subRegions",
+                    derived=True,
                 )
                 _arrange(group, [b.ref for b in run], [], ref_x=ref_x, ref_width=ref_width)
                 sub_boxes.append(_Box(gx, gy, gw, gh, group))
@@ -686,7 +931,11 @@ def _frame_nodes(
         kids = children.get(id(node), [])
         for kid in kids:
             arrange(kid)
-        _arrange(node, items_of.get(id(node), []), kids)
+        items, grids = _grid_nodes(node, items_of.get(id(node), []), ids)
+        if node is not root and not items and not kids and len(grids) == 1:
+            _collapse_grid(node, grids[0])
+            return
+        _arrange(node, items, kids + grids)
 
     arrange(root)
 
@@ -729,7 +978,8 @@ def _canvas_node(
             tab = RegionNode(
                 id=ids.take(page_name, "tab"),
                 name=page_name,
-                title=humanize(page_name),
+                title=" ".join(canvas.tab_page_labels.get(page_name, "").split())
+                or humanize(page_name),
                 template="standard",
                 source=f"tab page {page_name} of canvas {canvas.name}",
                 width=width,
@@ -741,7 +991,11 @@ def _canvas_node(
                 if p.item.tab_page == page_name
                 or (not p.item.tab_page and page_name == pages[0] if pages else True)
             ]
-            _arrange(tab, on_tab, [])
+            items, grids = _grid_nodes(tab, on_tab, ids)
+            if not items and len(grids) == 1:
+                _collapse_grid(tab, grids[0])
+            else:
+                _arrange(tab, items, grids)
             node.subs.append(tab)
         return node
     window = module.window_details.get(canvas.window_name)
@@ -787,7 +1041,32 @@ def _flow_layout(
                 node.body.append(placed)
             else:
                 node.hidden.append(placed)
-        if block.records_displayed > 1:
+        if block.records_displayed > 1 and _table_bound(block):
+            # Declaration order is the only column order there is.
+            columns = [p for p in node.body if "button" not in p.item.item_type.lower()]
+            for index, placed in enumerate(columns, 1):
+                placed.sequence = index * 10
+            node.body = [p for p in node.body if p not in columns]
+            grid = RegionNode(
+                id=ids.take(block.name, "grid"),
+                name=block.name,
+                title="",
+                template="interactive-report",
+                source=f"block {block.name} ({block.records_displayed} records at once)",
+                slot="subRegions",
+                kind="grid",
+                columns=columns,
+                block=block,
+            )
+            if node.body:
+                # The block's buttons keep the block region; its records go
+                # in a grid right under them.
+                grid.grid = Grid(new_row=True, flow=True)
+                node.subs.append(grid)
+            else:
+                node.flow = False
+                _collapse_grid(node, grid)
+        elif block.records_displayed > 1:
             node.tabular[block.name] = block.records_displayed
         roots.append(node)
     return roots
@@ -799,9 +1078,15 @@ def _static_lovs(layout_items: list[Placed], ids: _Ids) -> list[StaticLov]:
         item = placed.item
         kind = item.item_type.lower()
         if "radio" in kind and item.radio_buttons:
-            entries = [(rb.label or rb.name, rb.name) for rb in item.radio_buttons]
+            entries = [(rb.label or rb.name, rb.value or rb.name) for rb in item.radio_buttons]
+            declared = any(rb.value for rb in item.radio_buttons)
         elif ("list" in kind or "radio" in kind) and item.choices:
-            entries = [(choice, choice) for choice in item.choices]
+            values = item.choice_values
+            entries = [
+                (choice, values[i] if i < len(values) and values[i] else choice)
+                for i, choice in enumerate(item.choices)
+            ]
+            declared = any(values)
         else:
             continue
         lovs.append(
@@ -810,6 +1095,7 @@ def _static_lovs(layout_items: list[Placed], ids: _Ids) -> list[StaticLov]:
                 name=_APEX_NAME.sub("_", f"{placed.block.name}_{item.name}".upper())[:255],
                 entries=entries,
                 source=f"{placed.block.name}.{item.name}",
+                declared=declared,
             )
         )
     return lovs
@@ -864,6 +1150,7 @@ def build_layout(module: FormModule, page: int = 1) -> PageLayout:
         layout = PageLayout(roots, [], [], names, skipped, cell, unit)
         layout.lovs = _static_lovs(list(layout.placed()), ids)
         _number(layout)
+        _decorate(layout)
         return layout
 
     known = {c.name for c in canvases}
@@ -905,7 +1192,7 @@ def build_layout(module: FormModule, page: int = 1) -> PageLayout:
     # block, so Page Designer keeps the block together; page level otherwise.
     home_of: dict[str, RegionNode] = {}
     for region in (r for root in roots for r in root.walk()):
-        for placed in region.body:
+        for placed in region.body + region.columns:
             home_of.setdefault(placed.block.name, region)
     loose: list[Placed] = []
     for placed in hidden:
@@ -915,4 +1202,351 @@ def build_layout(module: FormModule, page: int = 1) -> PageLayout:
     layout = PageLayout(roots, loose, [], names, skipped, cell, unit)
     layout.lovs = _static_lovs(list(layout.placed()), ids)
     _number(layout)
+    _decorate(layout)
     return layout
+
+
+def _decorate(layout: PageLayout) -> None:
+    """Universal Theme template options, per region, from what the region
+    is (every value verified against ``apex validate`` on 26.1):
+
+    * a Standard region with no caption -- a frame drawn without a title, a
+      canvas in a window without one -- drops its header bar
+      (``t-Region--removeHeader js-removeLandmark``) instead of showing an
+      empty one;
+    * a region holding fields (Standard, Blank with Attributes or Inline
+      Dialog) stretches them to their grid cells (``t-Form--stretchInputs``),
+      so a field's width is its share of the row -- the proportion Forms
+      drew -- rather than a character count;
+    * an Interactive Grid with no caption hides its header the same way
+      (``t-IRR-region--hideHeader js-addHiddenHeadingRoleDesc``).
+    """
+    for node in layout.regions():
+        options: list[str] = []
+        if node.kind == "grid":
+            if not node.title:
+                options.append("t-IRR-region--hideHeader js-addHiddenHeadingRoleDesc")
+        else:
+            if node.template == "standard" and not node.title:
+                options.append("t-Region--removeHeader js-removeLandmark")
+            if (
+                node.template in {"standard", "blank-with-attributes", "inline-dialog"}
+                and not node.flow
+                and any("button" not in p.item.item_type.lower() for p in node.body)
+            ):
+                options.append("t-Form--stretchInputs")
+        node.options = options
+
+
+#: The desktop viewport the grid placement is designed and checked against.
+DESKTOP_VIEWPORT = (
+    "desktop, 1280 CSS px wide, Universal Theme Standard page template, 12-column "
+    "grid; on narrow screens Universal Theme stacks the cells of a row, one per line"
+)
+
+FAITHFUL = "faithful"
+APPROXIMATION = "approximation"
+UNSUPPORTED = "unsupported"
+
+
+def _geometry(item: Item) -> dict | None:
+    if item.x is None and item.y is None and not item.radio_buttons:
+        return None
+    x, y, w, h = item_box(item)
+    return {"x": x, "y": y, "width": w, "height": h}
+
+
+def _grid_dict(grid: Grid | None) -> dict:
+    if grid is None:
+        return {}
+    if grid.flow:
+        return {"flow": True, "startNewRow": grid.new_row}
+    return {
+        "startNewRow": grid.new_row,
+        "newColumn": grid.new_column,
+        "column": grid.column,
+        "columnSpan": grid.span,
+    }
+
+
+def _control_entry(
+    placed: Placed, region: RegionNode, layout: PageLayout, *, column_index: int = 0
+) -> dict:
+    """One visible control's line in the report: where it came from, where
+    it landed, which rule put it there, and how faithful that is."""
+    item, block = placed.item, placed.block
+    kind = item.item_type.lower()
+    is_button = "button" in kind
+    lov = next(
+        (l for l in layout.lovs if l.source.upper() == f"{block.name}.{item.name}".upper()), None
+    )
+    preserved: list[str] = ["name", "reading order"]
+    approximations: list[str] = []
+    unsupported: list[str] = []
+    missing: list[str] = []
+    if _geometry(item) is None:
+        missing.append("geometry")
+        approximations.append(
+            "no position or size in the .fmb: placed after its neighbours, full width"
+        )
+    if placed.caption:
+        preserved.append("caption")
+    if column_index:
+        component = "gridColumn"
+        target_type = apex_item_type(item)
+        rule = (
+            f"{item.item_type} of a multi-record block on a table: Interactive Grid "
+            f"column {column_index} of {len(region.columns)}, in the left-to-right "
+            "order Forms draws the record"
+        )
+    elif is_button:
+        component = "button"
+        target_type = "button"
+        rule = "Push Button: button in the region, at the row and column Forms draws it"
+    else:
+        component = "pageItem"
+        target_type = apex_item_type(item)
+        rule = f"{item.item_type}: {target_type} item in the region, at the row and column Forms draws it"
+        if placed.side in {"left", "above"}:
+            preserved.append("caption side")
+        elif placed.side == "right":
+            approximations.append(
+                "prompt right of the field floats inside it: Universal Theme has no label "
+                "template on that side"
+            )
+        elif placed.side == "below":
+            approximations.append(
+                "prompt below the field floats inside it: Universal Theme has no label "
+                "template on that side"
+            )
+        if placed.side == "left" and placed.grid is not None and not placed.grid.flow:
+            if placed.label_span:
+                preserved.append("label share of the row")
+            else:
+                approximations.append(
+                    "label floats inside the field: its row was too crowded to give the "
+                    "label its own grid columns"
+                )
+        if placed.note:
+            approximations.append(placed.note[0].upper() + placed.note[1:])
+        if block.name in region.tabular:
+            approximations.append(
+                f"first record's row only: Forms shows {region.tabular[block.name]} records "
+                "of this block here and no Interactive Grid could be built (see the region)"
+            )
+        if _records_shown(placed) == 1 and block.records_displayed > 1 and any(
+            r.block is block for r in layout.regions()
+        ):
+            approximations.append(
+                "shown once, outside the block's grid: ItemsDisplay=1 keeps it out of the "
+                "record rows in Forms too"
+            )
+    if not is_button:
+        if item.width:
+            preserved.append("width")
+        if item.multi_line and item.height:
+            preserved.append("height")
+        if item.required and target_type != "displayOnly":
+            preserved.append("required")
+        if item.format_mask and target_type in {"numberField", "datePicker"}:
+            preserved.append("format mask")
+        elif item.data_type.lower() == "datetime" and target_type == "datePicker":
+            approximations.append(
+                "Datetime without a format mask: the date picker shows the application "
+                "date format until a mask is set"
+            )
+        if item.tooltip or item.hint:
+            preserved.append("help text")
+        if item.case_restriction.lower() in {"upper", "lower"} and target_type == "textField":
+            preserved.append("case restriction")
+        if not item.enabled:
+            preserved.append("disabled (read only)")
+        if lov is not None:
+            preserved.append("static choices" + ("" if lov.declared else " (return values need review)"))
+            if not lov.declared:
+                approximations.append(
+                    "the .fmb declares no return values for the choices: labels stand in"
+                )
+        if placed.radio_columns > 1:
+            preserved.append("radio buttons per row")
+        if column_index and item.primary_key:
+            preserved.append("primary key")
+        if column_index and not item.database_item:
+            preserved.append("no database column")
+    if not column_index and placed.grid is not None and placed.grid.flow:
+        approximations.append(
+            "toolbar flow: controls keep their order and rows, not their exact positions"
+        )
+    reason = unsupported_reason(item)
+    if reason:
+        unsupported.append(reason)
+    status = UNSUPPORTED if unsupported else APPROXIMATION if approximations else FAITHFUL
+    # The name is the identifier the page file uses for the component, so
+    # the report and the export can be read side by side.
+    if column_index:
+        target_name = column_name(item)
+    elif is_button:
+        target_name = button_id(placed)
+    else:
+        target_name = placed.apex_name
+    target: dict = {
+        "component": component,
+        "type": target_type,
+        "name": target_name,
+        "region": region.id,
+        "sequence": placed.sequence,
+    }
+    if column_index:
+        target["column"] = column_index
+    else:
+        target["grid"] = _grid_dict(placed.grid)
+        if not is_button:
+            target["label"] = {
+                "text": placed.label,
+                "side": placed.side,
+                "labelColumnSpan": placed.label_span,
+                "alignment": placed.align,
+            }
+    return {
+        "source": f"{block.name}.{item.name}",
+        "kind": item.item_type,
+        "canvas": item.canvas,
+        "tab_page": item.tab_page,
+        "geometry": _geometry(item),
+        "target": target,
+        "rule": rule,
+        "preserved": preserved,
+        "approximations": approximations,
+        "unsupported": unsupported,
+        "missing": missing,
+        "status": status,
+    }
+
+
+def _group_entry(node: RegionNode, parent: RegionNode | None) -> dict:
+    """A region's line in the report: the Forms group it stands for."""
+    approximations: list[str] = []
+    if node.template == "inline-dialog":
+        approximations.append(
+            "shown on demand in Forms (a stacked canvas or secondary window): the inline "
+            "dialog needs a dynamic action, added by the developer, to open it"
+        )
+    if node.flow:
+        approximations.append("toolbar: controls flow inline, in their rows and order")
+    for name, records in node.tabular.items():
+        approximations.append(
+            f"block {name}: Forms shows {records} records here, the first record's row "
+            "is laid out (no table to build an Interactive Grid on)"
+        )
+    if node.kind == "grid":
+        approximations.append(
+            "Interactive Grid: record rows, paging and row height are the grid's own; "
+            "editing is off until the developer confirms the block's DML"
+        )
+    status = APPROXIMATION if approximations else FAITHFUL
+    return {
+        "id": node.id,
+        "name": node.name,
+        "title": node.title,
+        "source": node.source,
+        "kind": node.kind,
+        "template": node.template,
+        "template_options": list(node.options),
+        "parent": parent.id if parent is not None else "",
+        "slot": node.slot,
+        "grid": _grid_dict(node.grid),
+        "geometry": {"x": node.x, "y": node.y, "width": node.width, "height": node.height},
+        "controls": len(node.body) + len(node.columns),
+        "hidden_items": len(node.hidden),
+        "derived": node.derived,
+        "approximations": approximations,
+        "status": status,
+    }
+
+
+def _hidden_target(placed: Placed, node: RegionNode) -> dict:
+    """Where a hidden item went, named as the page file names it: a hidden
+    column of the block's grid when a database column stands behind it
+    (the exporter writes it inside the grid), otherwise a hidden page item."""
+    if node.kind == "grid" and database_column(placed.item):
+        return {
+            "component": "gridColumn",
+            "type": "hidden",
+            "name": column_name(placed.item),
+            "region": node.id,
+        }
+    return {"component": "pageItem", "type": "hidden", "name": placed.apex_name, "region": node.id}
+
+
+def layout_report(layout: PageLayout) -> dict:
+    """The layout mapping report: every visible Forms control and every
+    Forms group, where it landed and how faithfully, with explicit
+    denominators (no percentage is derived).
+
+    * ``controls`` counts every visible item, button and grid column once
+      -- the denominator is the number of visible controls the .fmb draws;
+    * ``groups`` counts the regions that stand for a Forms group (canvas,
+      frame, tab page, block grid, boilerplate text); the row wrappers the
+      layout invents to keep vertical order are listed but not counted;
+    * hidden items are listed, not scored: nothing of them is visible.
+    """
+    controls: list[dict] = []
+    groups: list[dict] = []
+    hidden: list[dict] = []
+
+    def walk(node: RegionNode, parent: RegionNode | None) -> None:
+        groups.append(_group_entry(node, parent))
+        for placed in node.body:
+            controls.append(_control_entry(placed, node, layout))
+        for index, placed in enumerate(node.columns, 1):
+            controls.append(_control_entry(placed, node, layout, column_index=index))
+        for placed in node.hidden:
+            hidden.append(
+                {
+                    "source": f"{placed.block.name}.{placed.item.name}",
+                    "kind": placed.item.item_type,
+                    "target": _hidden_target(placed, node),
+                    "database_column": database_column(placed.item),
+                }
+            )
+        for sub in node.subs:
+            walk(sub, node)
+
+    for root in layout.roots:
+        walk(root, None)
+    for placed in layout.hidden:
+        hidden.append(
+            {
+                "source": f"{placed.block.name}.{placed.item.name}",
+                "kind": placed.item.item_type,
+                "target": {"component": "pageItem", "type": "hidden", "name": placed.apex_name, "region": ""},
+                "database_column": database_column(placed.item),
+            }
+        )
+    names = [c["target"]["name"] for c in controls]
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    counted = [g for g in groups if not g["derived"]]
+
+    def tally(entries: list[dict]) -> dict:
+        return {
+            "total": len(entries),
+            FAITHFUL: sum(e["status"] == FAITHFUL for e in entries),
+            APPROXIMATION: sum(e["status"] == APPROXIMATION for e in entries),
+            UNSUPPORTED: sum(e["status"] == UNSUPPORTED for e in entries),
+        }
+
+    return {
+        "viewport": DESKTOP_VIEWPORT,
+        "totals": {
+            "controls": tally(controls),
+            "groups": tally(counted),
+            "derived_groups": len(groups) - len(counted),
+            "hidden_items": len(hidden),
+            "skipped": len(layout.skipped),
+            "controls_placed_twice": duplicates,
+        },
+        "controls": controls,
+        "groups": groups,
+        "hidden": hidden,
+        "skipped": list(layout.skipped),
+    }

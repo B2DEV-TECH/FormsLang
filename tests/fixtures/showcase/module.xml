@@ -502,24 +502,24 @@
             ColumnName="SEQ_ITEM" DatabaseItem="true" Prompt="Seq"
             InsertAllowed="false" UpdateAllowed="false"
             CanvasName="CV_TABS" TabPageName="TAB_ITENS"
-            ItemsDisplay="5" DistanceBetweenRecords="20"
+            ItemsDisplay="5" DistanceBetweenRecords="3"
             XPosition="20" YPosition="20" Width="50" Height="17"/>
       <Item Name="DS_ITEM" ItemType="Text Item" DataType="Char"
             ColumnName="DS_ITEM" DatabaseItem="true" Required="true" Prompt="Item" MaximumLength="120"
             CanvasName="CV_TABS" TabPageName="TAB_ITENS"
-            ItemsDisplay="5" DistanceBetweenRecords="20"
+            ItemsDisplay="5" DistanceBetweenRecords="3"
             XPosition="90" YPosition="20" Width="280" Height="17"/>
       <Item Name="QT_ITEM" ItemType="Text Item" DataType="Number"
             ColumnName="QT_ITEM" DatabaseItem="true" Required="true" Prompt="Qtd"
             LowestAllowedValue="1" HighestAllowedValue="99999"
             CanvasName="CV_TABS" TabPageName="TAB_ITENS"
-            ItemsDisplay="5" DistanceBetweenRecords="20"
+            ItemsDisplay="5" DistanceBetweenRecords="3"
             XPosition="390" YPosition="20" Width="60" Height="17"/>
       <Item Name="VL_UNIT" ItemType="Text Item" DataType="Number"
             ColumnName="VL_UNIT" DatabaseItem="true" Required="true" Prompt="Vl Unit"
             FormatMask="FM999G999G990D00"
             CanvasName="CV_TABS" TabPageName="TAB_ITENS"
-            ItemsDisplay="5" DistanceBetweenRecords="20"
+            ItemsDisplay="5" DistanceBetweenRecords="3"
             XPosition="470" YPosition="20" Width="80" Height="17"/>
       <Item Name="VL_TOTAL_LINHA" ItemType="Display Item" DataType="Number"
             DatabaseItem="false" Prompt="Total"
@@ -527,7 +527,7 @@
             Formula="NVL(:BK_ITENS.QT_ITEM, 0) * NVL(:BK_ITENS.VL_UNIT, 0)"
             FormatMask="FM999G999G990D00"
             CanvasName="CV_TABS" TabPageName="TAB_ITENS"
-            ItemsDisplay="5" DistanceBetweenRecords="20"
+            ItemsDisplay="5" DistanceBetweenRecords="3"
             XPosition="570" YPosition="20" Width="100" Height="17"/>
     </Block>
 
@@ -553,34 +553,34 @@
             ColumnName="DT_OPERACAO" DatabaseItem="true" Prompt="Quando"
             FormatMask="DD/MM/YYYY HH24:MI:SS"
             CanvasName="CV_TABS" TabPageName="TAB_AUDITORIA"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="20" YPosition="20" Width="120" Height="17"/>
       <Item Name="TP_OPERACAO" ItemType="Text Item" DataType="Char"
             ColumnName="TP_OPERACAO" DatabaseItem="true" Prompt="Operacao" MaximumLength="10"
             CanvasName="CV_TABS" TabPageName="TAB_AUDITORIA"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="150" YPosition="20" Width="60" Height="17"/>
       <Item Name="NM_USUARIO" ItemType="Text Item" DataType="Char"
             ColumnName="NM_USUARIO" DatabaseItem="true" Prompt="Usuario" MaximumLength="30"
             CanvasName="CV_TABS" TabPageName="TAB_AUDITORIA"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="220" YPosition="20" Width="90" Height="17"/>
       <Item Name="VL_PRECO_ANT" ItemType="Text Item" DataType="Number"
             ColumnName="VL_PRECO_ANT" DatabaseItem="true" Prompt="Preco Ant."
             FormatMask="FM999G999G990D00"
             CanvasName="CV_TABS" TabPageName="TAB_AUDITORIA"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="320" YPosition="20" Width="70" Height="17"/>
       <Item Name="VL_PRECO_NOVO" ItemType="Text Item" DataType="Number"
             ColumnName="VL_PRECO_NOVO" DatabaseItem="true" Prompt="Preco Novo"
             FormatMask="FM999G999G990D00"
             CanvasName="CV_TABS" TabPageName="TAB_AUDITORIA"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="400" YPosition="20" Width="70" Height="17"/>
       <Item Name="DS_DETALHE" ItemType="Text Item" DataType="Char"
             ColumnName="DS_DETALHE" DatabaseItem="true" Prompt="Detalhe" MaximumLength="400"
             CanvasName="CV_TABS" TabPageName="TAB_AUDITORIA"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="480" YPosition="20" Width="240" Height="17"/>
     </Block>
 
@@ -602,36 +602,36 @@
             ColumnName="DS_CATEGORIA" DatabaseItem="true" Prompt="Categoria" MaximumLength="60"
             Tooltip="Duplo clique filtra os produtos desta categoria"
             CanvasName="CV_TABS" TabPageName="TAB_RESUMO"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="20" YPosition="20" Width="150" Height="17">
         <Trigger Name="WHEN-MOUSE-DOUBLECLICK" TriggerText="BEGIN&amp;#10;  :PARAMETER.P_CATEGORIA_INICIAL := :BK_RESUMO.ID_CATEGORIA;&amp;#10;  GO_BLOCK('BK_PRODUTO');&amp;#10;  EXECUTE_QUERY;&amp;#10;END;"/>
       </Item>
       <Item Name="QT_PRODUTOS" ItemType="Text Item" DataType="Number"
             ColumnName="QT_PRODUTOS" DatabaseItem="true" Prompt="Produtos"
             CanvasName="CV_TABS" TabPageName="TAB_RESUMO"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="190" YPosition="20" Width="60" Height="17"/>
       <Item Name="QT_ATIVOS" ItemType="Text Item" DataType="Number"
             ColumnName="QT_ATIVOS" DatabaseItem="true" Prompt="Ativos"
             CanvasName="CV_TABS" TabPageName="TAB_RESUMO"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="270" YPosition="20" Width="60" Height="17"/>
       <Item Name="QT_BLOQUEADOS" ItemType="Text Item" DataType="Number"
             ColumnName="QT_BLOQUEADOS" DatabaseItem="true" Prompt="Bloqueados"
             CanvasName="CV_TABS" TabPageName="TAB_RESUMO"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="350" YPosition="20" Width="70" Height="17"/>
       <Item Name="VL_PRECO_MEDIO" ItemType="Text Item" DataType="Number"
             ColumnName="VL_PRECO_MEDIO" DatabaseItem="true" Prompt="Preco Medio"
             FormatMask="FM999G999G990D00"
             CanvasName="CV_TABS" TabPageName="TAB_RESUMO"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="440" YPosition="20" Width="90" Height="17"/>
       <Item Name="VL_ESTOQUE" ItemType="Text Item" DataType="Number"
             ColumnName="VL_ESTOQUE" DatabaseItem="true" Prompt="Vl. Estoque"
             FormatMask="FM999G999G999G990D00"
             CanvasName="CV_TABS" TabPageName="TAB_RESUMO"
-            ItemsDisplay="6" DistanceBetweenRecords="20"
+            ItemsDisplay="6" DistanceBetweenRecords="3"
             XPosition="550" YPosition="20" Width="110" Height="17"/>
     </Block>
 

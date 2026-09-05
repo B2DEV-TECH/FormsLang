@@ -7,8 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-05
+
+The layout release: a Forms screen becomes native APEX components that keep
+its structure — regions, sub-regions, tab pages, Interactive Grids, native
+item types, Universal Theme template options — with a per-element mapping
+report in every export and a login-based render check that never makes a
+page public.
+
+### Added
+
+- Layout model (`apexlayout.py`, one resolved layout shared by the exporter
+  and the preview): rows detected with a tolerance in Forms units, column
+  spans per parent width, the label's share of the row kept apart from the
+  item's, nested frames as sub-regions, items drawn beside or below a frame
+  in derived row regions that keep the vertical order of the screen.
+- Multi-record blocks on a table become `interactiveGrid` regions: one
+  column per item in the order Forms draws the record, headings from the
+  prompts, native column types, `primaryKey`, widths in characters,
+  required and max length, hidden database items as hidden columns,
+  non-database items with `source { type: none }`, a primary saved report.
+  Editing stays off until the block's DML is confirmed, and no table is
+  invented for a block without a query data source.
+- Native item types with their Forms properties: `datePicker` and
+  `numberField` with `formatMask` (and `numberAlignment: end`), `textarea`
+  with `width` / `height` from the item box, `checkbox` with the item's
+  checked and unchecked values, `radioGroup` with `noOfCols` and no empty
+  choice, `selectList` on a shared static LOV, `readOnly` for disabled
+  items, `textCase`, help text from hint and tooltip.
+- Universal Theme template options as native properties:
+  `t-Form--stretchInputs` on form regions and `t-IRR-region--hideHeader`
+  on a grid that sits inside a captioned frame.
+- Stacked canvases and secondary windows as `inline-dialog` regions;
+  toolbar canvases as blank regions with their controls in flow;
+  boilerplate text and rectangles as static regions; a frame whose only
+  content is a multi-record block hands its caption to the grid.
+- Per-element layout mapping report in `apexlang-manifest.json`
+  (`layout.mapping_report`): source identity, canvas, geometry, target
+  component and grid placement, the rule applied, preserved properties,
+  approximations, unsupported mappings, missing metadata, and a
+  `faithful` / `approximation` / `unsupported` status with explicit
+  denominators — never a score.
+- Preview: the planned APEX layout is drawn from the same resolved model
+  the export writes — Interactive Grids with their columns, date and
+  number shapes, a fidelity badge per control, Faithful / Approximated /
+  Unsupported / Grid columns counters.
+- `examples/verify/apex_render_check.py`: renders an imported page through
+  ORDS as a temporary workspace end user that the script creates and
+  removes (password never on the command line), then inspects the HTML.
+- `docs/layout-mapping-matrix.md`: the mapping matrix (source element,
+  native target, properties preserved, verified support, fallback, known
+  differences), the geometry-to-grid rules, the showcase denominators, the
+  before/after of the rendered page and the commands that reproduce it.
+- `tests/test_apexlayout_fidelity.py`: every visible control placed exactly
+  once, label spans always smaller than item spans
+  (`LABEL_COLUMN_SPAN_TOO_BIG`), grid columns and button identifiers
+  traceable from the report to the page file, unsupported item types
+  reported as such, no custom JavaScript or CSS in the page.
+
 ### Changed
 
+- Button identifiers and grid column names come from one place
+  (`apexlayout.button_id`, `apexlayout.column_name`), so the page file,
+  the manifest and the mapping report name every component the same way.
+- `docs/apex-import-verification.md`: the render-time check logs in as a
+  temporary end user instead of making the page public, and reads the
+  APEX dictionary before the HTML.
 - README: screenshots refreshed from the 1.0 workbench on the showcase
   module — review and CLI conversion, Doc (overview, block, triggers),
   Preview (Forms canvas next to the APEX page), Diff, the export dialog
@@ -761,7 +825,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.0.0...v1.1.0
 [0.1.6]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.3...v0.1.4

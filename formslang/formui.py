@@ -32,7 +32,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .apexlang import _item_type, _label_template
-from .apexlayout import GRID_COLUMNS, PageLayout, Placed, RegionNode, build_layout
+from .apexlayout import (
+    GRID_COLUMNS,
+    PageLayout,
+    Placed,
+    RegionNode,
+    _records_shown,
+    build_layout,
+    database_column,
+    layout_report,
+    tabular_note,
+)
 from .model import Block, Canvas, FormModule, Graphic, Item, VisualAttribute
 
 _CSS = """
@@ -194,6 +204,19 @@ h2{font-size:19px;margin:36px 0 6px;letter-spacing:-.01em;
 .a-chips{display:flex;flex-wrap:wrap;gap:6px}
 .a-note{font-size:11.5px;color:#5A6270;background:#FFF7E6;border:1px solid #F5D7A1;
  border-radius:3px;padding:6px 10px;margin:0 0 4px;overflow-wrap:anywhere}
+.a-grid>summary{background:#EEF3F9}
+.a-scroll{overflow-x:auto}
+.a-ig{border-collapse:collapse;width:100%;font-size:11.5px;background:#fff}
+.a-ig th,.a-ig td{border:1px solid #DDE1E6;padding:3px 8px;text-align:left;white-space:nowrap}
+.a-ig th{background:#F5F6F7;font-weight:600}
+.a-ig th.dim{color:#9AA1AC;font-weight:400}
+.a-ig tr.kinds td{padding:0 8px 2px}
+.a-ig tr.kinds .kind{position:static;font-size:9px}
+.a-ig tbody td{height:22px}
+.a-number{text-align:right}
+.a-field .cal{position:absolute;right:8px;bottom:6px;width:12px;height:11px;
+ border:1px solid #9AA1AC;border-top-width:3px;border-radius:2px}
+.a-field.a-date .kind{right:26px}
 @media print{.card,.entity{background:#f6f6f6;border-color:#ccc}
  .f-scroll{overflow:visible}}
 """
@@ -210,6 +233,7 @@ _TEMPLATE_BADGES = {
     "inline-dialog": "inline dialog",
     "tabs-container": "tabs container",
     "blank-with-attributes": "no chrome",
+    "interactive-report": "interactive grid",
 }
 
 # CSS pixels per Forms real unit (CSS defines 1in = 96px, 1pt = 1/72in).
@@ -917,8 +941,11 @@ def _apex_item_html(placed: Placed) -> str:
             "textarea": " a-area",
             "displayOnly": " a-display",
             "selectList": " a-select",
+            "numberField": " a-number",
+            "datePicker": " a-date",
         }.get(kind, "")
-        field = f'<div class="a-field{shape}">{kind_tag}</div>'
+        extra = '<i class="cal"></i>' if kind == "datePicker" else ""
+        field = f'<div class="a-field{shape}">{extra}{kind_tag}</div>'
         if template.endswith("-above"):
             align = f' style="--al:{placed.align}"' if placed.align != "left" else ""
             control = f'<div class="a-above"{align}>{lbl}{field}</div>'
@@ -926,7 +953,7 @@ def _apex_item_html(placed: Placed) -> str:
             share = f"--lbl:{placed.label_span or 3};--al:{placed.align}"
             control = f'<div class="a-left" style="{share}">{lbl}{field}</div>'
         else:
-            control = f'<div class="a-field{shape}">{lbl}{kind_tag}</div>'
+            control = f'<div class="a-field{shape}">{lbl}{extra}{kind_tag}</div>'
     return f'<div class="a-item" title="{title}">{control}</div>'
 
 
@@ -987,31 +1014,44 @@ def _apex_region_html(node: RegionNode) -> str:
         classes.append("a-tabs")
     elif node.template == "blank-with-attributes":
         classes.append("a-blank")
+    elif node.kind == "grid":
+        classes.append("a-grid")
     title = (
         _esc(node.title) if node.title else f'<span class="untitled">{_esc(node.name)}</span>'
     )
     badges = []
     if node.slot == "tabs":
         badges.append("tab page")
+    if node.kind == "grid":
+        badges.append(_TEMPLATE_BADGES["interactive-report"])
     elif node.template in _TEMPLATE_BADGES:
         badges.append(_TEMPLATE_BADGES[node.template])
     badge_html = "".join(f'<span class="tag yes">{_esc(b)}</span>' for b in badges)
-    count = len(node.body) + len(node.hidden)
-    count_html = f'<span class="tag dim">{count} item(s)</span>' if count else ""
+    if node.kind == "grid":
+        # A hidden database item of the block rides along as a hidden column
+        # (the exporter writes it inside the grid); only a control item with
+        # no column behind it stays a page-level hidden item.
+        hidden_columns = [p for p in node.hidden if database_column(p.item)]
+        chip_items = [p for p in node.hidden if not database_column(p.item)]
+        count = len(node.columns) + len(hidden_columns)
+        count_html = f'<span class="tag dim">{count} column(s)</span>'
+    else:
+        hidden_columns, chip_items = [], node.hidden
+        count = len(node.body) + len(node.hidden)
+        count_html = f'<span class="tag dim">{count} item(s)</span>' if count else ""
 
     notes = ""
     if node.note:
         notes += f'<div class="a-note">{_esc(node.note)}</div>'
     for block_name, records in node.tabular.items():
-        notes += (
-            f'<div class="a-note">Forms shows {records} records of block {_esc(block_name)} at '
-            "once here (tabular): the first record's row is laid out; an Interactive Grid on "
-            "the block's table is the next stage.</div>"
-        )
-    body = _apex_cells([(p, _apex_item_html(p)) for p in node.body], flow=node.flow)
+        notes += f'<div class="a-note">{_esc(tabular_note(node, block_name, records))}</div>'
+    if node.kind == "grid":
+        body = _apex_grid_html(node, hidden_columns)
+    else:
+        body = _apex_cells([(p, _apex_item_html(p)) for p in node.body], flow=node.flow)
     chips = ""
-    if node.hidden:
-        chips = f'<div class="a-chips">{"".join(_hidden_chip(p) for p in node.hidden)}</div>'
+    if chip_items:
+        chips = f'<div class="a-chips">{"".join(_hidden_chip(p) for p in chip_items)}</div>'
     subs = _apex_cells([(s, _apex_region_html(s)) for s in node.subs], flow=False)
     if not (body or chips or subs):
         body = '<div class="none">no items</div>'
@@ -1020,6 +1060,51 @@ def _apex_region_html(node: RegionNode) -> str:
         f'<details class="{" ".join(classes)}" open><summary title="{region_title}">'
         f'<span>{title}</span><span class="meta">{badge_html}{count_html}</span></summary>'
         f'<div class="a-body">{notes}{body}{chips}{subs}</div></details>'
+    )
+
+
+def _apex_grid_html(node: RegionNode, hidden_columns: list[Placed]) -> str:
+    """A multi-record block on a table, as the Interactive Grid the export
+    writes: one column per item of the record in the left-to-right order
+    Forms draws it, headed by the prompt, its column type underneath; the
+    block's hidden database items ride along as hidden columns. The rows are
+    empty and the grid read-only, as the region is until the developer
+    confirms which DML the Forms block performs.
+    """
+    block = node.block
+    table = (block.query_data_source_name if block else "") or "?"
+    records = max((_records_shown(p) for p in node.columns), default=1)
+    heads, kinds = [], []
+    for index, placed in enumerate(node.columns, 1):
+        item = placed.item
+        kind = _apex_kind(item)
+        approx = not _has_confirmed_mapping(item)
+        title = _esc(
+            f"{placed.block.name}.{item.name} · {item.item_type} → column {kind}"
+            f"{' (approximated)' if approx else ''} · column {index}"
+        )
+        mark = '<em class="req">*</em>' if item.required and kind != "displayOnly" else ""
+        heads.append(f'<th title="{title}">{_esc(_label(placed))}{mark}</th>')
+        kinds.append(
+            f'<td><small class="kind{" no" if approx else ""}">{_esc(kind)}'
+            f'{" &middot; approx" if approx else ""}</small></td>'
+        )
+    for placed in hidden_columns:
+        item = placed.item
+        title = _esc(f"{placed.block.name}.{item.name} · {item.item_type} → hidden column")
+        heads.append(f'<th class="dim" title="{title}">{_esc(item.name)}</th>')
+        kinds.append('<td><small class="kind">hidden</small></td>')
+    filler = "".join("<td></td>" for _ in heads)
+    rows = "".join(f"<tr>{filler}</tr>" for _ in range(min(records, 5)))
+    note = (
+        f"Interactive Grid on {table}: {len(node.columns)} column(s) in the order Forms draws "
+        f"the record; Forms shows {records} record(s) at once. Editing is off until the "
+        "block's DML is confirmed."
+    )
+    return (
+        f'<div class="a-note">{_esc(note)}</div>'
+        f'<div class="a-scroll"><table class="a-ig"><thead><tr>{"".join(heads)}</tr>'
+        f'<tr class="kinds">{"".join(kinds)}</tr></thead><tbody>{rows}</tbody></table></div>'
     )
 
 
@@ -1042,7 +1127,9 @@ def _apex_column(module: FormModule, layout: PageLayout) -> str:
         )
     if layout.lovs:
         names = ", ".join(
-            f"{_esc(lov.name)} ({len(lov.entries)} entries)" for lov in layout.lovs
+            f"{_esc(lov.name)} ({len(lov.entries)} entries"
+            f"{'' if lov.declared else ', return values not declared in the .fmb'})"
+            for lov in layout.lovs
         )
         parts.append(
             f'<div class="a-note">{len(layout.lovs)} static list(s) of values written to '
@@ -1054,8 +1141,10 @@ def _apex_column(module: FormModule, layout: PageLayout) -> str:
 def _overview(module: FormModule, layout: PageLayout) -> str:
     items = module.all_items
     positioned = sum(1 for it in items if it.x is not None and it.y is not None)
-    confirmed = sum(1 for it in items if _has_confirmed_mapping(it))
     hidden = sum(1 for it in items if not it.visible)
+    # The same report the export writes to apexlang-manifest.json: every
+    # visible control once, faithful / approximation / unsupported.
+    controls = layout_report(layout)["totals"]["controls"]
     cards = [
         ("Canvases", len(module.canvases)),
         ("Blocks", len(module.blocks)),
@@ -1063,8 +1152,10 @@ def _overview(module: FormModule, layout: PageLayout) -> str:
         ("Positioned", positioned),
         ("Hidden in Forms", hidden),
         ("APEX regions", sum(1 for _ in layout.regions())),
-        ("Mapped (confirmed)", confirmed),
-        ("Approximated", len(items) - confirmed),
+        ("Grid columns", sum(len(r.columns) for r in layout.regions())),
+        ("Faithful", controls["faithful"]),
+        ("Approximated", controls["approximation"]),
+        ("Unsupported", controls["unsupported"]),
     ]
     return "".join(
         f'<div class="card"><div class="n">{n}</div><div class="l">{_esc(label)}</div></div>'
@@ -1089,7 +1180,9 @@ def render_html(module: FormModule, *, generated_at: str = "") -> str:
         "<h2>APEX preview (destination, default mapping)</h2>"
         '<p class="sub">The page exactly as the export writes it: a region per canvas and '
         "per frame, a toolbar above its window, a hidden stacked canvas as an inline "
-        "dialog, and every item in the row and 12-column cell its Forms position maps to. "
+        "dialog, a multi-record block on a table as an Interactive Grid with one column per "
+        "item in Forms order, and every other item in the row and 12-column cell its Forms "
+        "position maps to. "
         "Labels sit left of, above or inside the field as the Forms prompt sat, boilerplate "
         "text keeps its place as a caption or a text region. Hover an item "
         "for its APEX type and cell, a region header for what in the .fmb it stands "

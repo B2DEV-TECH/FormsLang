@@ -51,6 +51,7 @@ class RadioButton:
 
     name: str
     label: str = ""
+    value: str = ""  # RadioButton Value: what the group returns for this button
     x: int | None = None
     y: int | None = None
     width: int | None = None
@@ -96,6 +97,19 @@ class Item:
     # Choices of a List Item (ListItemElement) or Radio Group (RadioButton),
     # in the order the .fmb declares them.
     choices: list[str] = field(default_factory=list)
+    # Return values of a List Item's choices (ListItemElement Value), in the
+    # same order as ``choices``; empty when the .fmb declares none.
+    choice_values: list[str] = field(default_factory=list)
+    # Forms facts the APEX item keeps as native properties: PrimaryKey,
+    # Tooltip and Hint (help text), FormatMask, CaseRestriction
+    # (Upper/Lower/Mixed) and a check box's checked/unchecked values.
+    primary_key: bool = False
+    tooltip: str = ""
+    hint: str = ""
+    format_mask: str = ""
+    case_restriction: str = ""
+    checked_value: str = ""
+    unchecked_value: str = ""
     # Geometry, for the visual preview only -- see the module docstring.
     # Values are in the module's coordinate unit (``FormModule.coordinate_unit``),
     # which Forms2XML writes as points far more often than as pixels.
@@ -239,6 +253,7 @@ class Canvas:
     viewport_width: int | None = None
     viewport_height: int | None = None
     tab_pages: list[str] = field(default_factory=list)  # Tab canvases only
+    tab_page_labels: dict[str, str] = field(default_factory=dict)  # TabPage Label by name
     visible: bool = True  # Visible="false": a stacked canvas raised on demand
     bg_color: str = ""  # BackColor
     bevel: str = ""

@@ -28,22 +28,30 @@ import re
 import secrets
 import shutil
 import tempfile
-import unicodedata
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .apexlayout import (
+    _DATA_TYPES,
     Grid,
     PageLayout,
     Placed,
     RegionNode,
     StaticLov,
+    apex_item_type,
     build_layout,
+    button_id,
+    column_name,
+    database_column,
     forms_caption,
     item_box,
+    layout_report,
+    slug,
+    sql_name,
+    tabular_note,
 )
-from .model import FormModule, Item
+from .model import Block, FormModule, Item
 from .store import APPROVED, Store
 
 MMD_VERSION = "26.1.0+3102"
@@ -57,15 +65,6 @@ SETTING_EXPORT_CONFIG = "apex_export_config"
 #: Every ZIP entry carries this timestamp, so the archive depends on the
 #: project's bytes alone and never on the clock it was built at.
 _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
-
-
-def slug(value: str, *, fallback: str = "formslang-app") -> str:
-    """A filesystem-safe APEX alias and human-readable component id."""
-    ascii_text = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode()
-    text = re.sub(r"[^a-z0-9]+", "-", ascii_text.strip().lower()).strip("-")
-    if not text or not text[0].isalpha():
-        text = f"app-{text}" if text else fallback
-    return text[:80].rstrip("-")
 
 
 def _text(value: str, limit: int = 255) -> str:
@@ -233,31 +232,36 @@ def _deployment(config: ApexExportConfig) -> str:
 
 
 def _item_type(item: Item) -> str:
-    """The native APEX item type a Forms item becomes.
+    """The native APEX item type a Forms item becomes -- see
+    :func:`formslang.apexlayout.apex_item_type`. The mapping lives with the
+    shared layout model so the preview and the exporter cannot disagree."""
+    return apex_item_type(item)
 
-    Every keyword here was accepted by ``apex validate`` on APEX 26.1: a
-    List Item is a ``selectList`` and a Radio Group a ``radioGroup``, each
-    fed by a shared static LOV built from the choices the .fmb declares. A
-    Text Item declared ``MultiLine`` is a ``textarea`` -- the same verified
-    keyword an editor item already used.
 
-    Date and Number items deliberately stay ``textField``: the native date
-    picker and number field keywords have not yet been proven against a
-    live ``apex validate``, and one unknown keyword fails the whole import.
-    Format masks and data types survive in the item comment either way.
-    """
-    kind = item.item_type.lower()
-    if "display" in kind:
-        return "displayOnly"
-    if "editor" in kind or "area" in kind:
-        return "textarea"
-    if "check" in kind:
-        return "checkbox"
-    if "radio" in kind:
-        return "radioGroup"
-    if "list" in kind:
-        return "selectList"
-    return "textarea" if item.multi_line else "textField"
+def _template_options(options: list[str]) -> str:
+    """Template options as APEXlang writes them: ``#DEFAULT#`` alone, or a
+    multi-line list of the Universal Theme option classes on top of it."""
+    if not options:
+        return "#DEFAULT#"
+    lines = "".join(f"\n                {option}" for option in ["#DEFAULT#", *options])
+    return f"[{lines}\n            ]"
+
+
+def _table_ref(block: Block) -> tuple[str, str]:
+    """(owner, table) from a block's query data source name: ``OWNER.TABLE``
+    keeps its owner; quotes are dropped; anything else is the table as written."""
+    raw = block.query_data_source_name.strip().replace('"', "")
+    owner, _, table = raw.rpartition(".")
+    return sql_name(owner), sql_name(table)
+
+
+def _help_text(item: Item) -> str:
+    """Forms' Hint (status-line help) and Tooltip as one help text."""
+    parts = [" ".join(text.split()) for text in (item.hint, item.tooltip)]
+    parts = [text for text in parts if text]
+    if len(parts) == 2 and parts[0].lower() == parts[1].lower():
+        parts = parts[:1]
+    return " ".join(parts)
 
 
 def _label_template(item: Item, kind: str, *, side: str | None = None, label_span: int = 0) -> str:
@@ -362,11 +366,7 @@ def _region_chunk(node: RegionNode, parent: RegionNode | None, layout: PageLayou
             + ". Data binding requires schema review."
         )
     for name, records in node.tabular.items():
-        notes.append(
-            f"Forms shows {records} records of block {name} at once here (tabular): the "
-            "first record's row is laid out; an Interactive Grid on the block's table "
-            "is the next stage."
-        )
+        notes.append(tabular_note(node, name, records))
     return f"""
     region {node.id} (
         name: {_text(node.name)}{title}
@@ -377,7 +377,7 @@ def _region_chunk(node: RegionNode, parent: RegionNode | None, layout: PageLayou
         }}
         appearance {{
             template: @/{node.template}
-            templateOptions: #DEFAULT#
+            templateOptions: {_template_options(node.options)}
         }}{source}
         comments {{
             comments: {_fence(" ".join(notes))}
@@ -386,11 +386,229 @@ def _region_chunk(node: RegionNode, parent: RegionNode | None, layout: PageLayou
 """
 
 
-def _button_chunk(placed: Placed, region: RegionNode) -> str:
+def _column_chunk(
+    placed: Placed, layout: PageLayout, lov: StaticLov | None, *, hidden: bool = False
+) -> str:
+    """One Interactive Grid column for a Forms item of a multi-record block.
+
+    Every keyword was accepted by ``apex validate`` on 26.1 (see
+    docs/layout-mapping-matrix.md): the heading is the item's prompt, the
+    width/height/format mask/required/max length are the item's own, the
+    source is the table column Forms binds (``ColumnName``, or the item's
+    name when the .fmb leaves it out) or ``none`` for a control item. A
+    hidden column carries the database items Forms keeps off the canvas --
+    the primary key among them.
+    """
     item, block = placed.item, placed.block
-    button_id = slug(f"{block.name}-{item.name}", fallback=f"button-{placed.sequence}")
+    kind = "hidden" if hidden else _item_type(item)
+    name = column_name(item)
+    right = item.justification.lower() in {"right", "end"}
+    heading = ""
+    if not hidden:
+        heading = f"""
+        heading {{
+            heading: {_text(placed.label)}
+            alignment: {"end" if right else "start"}
+        }}"""
+    alignment = "\n            columnAlignment: end" if right and not hidden else ""
+    validation_lines: list[str] = []
+    if item.required and kind not in {"displayOnly", "hidden"}:
+        validation_lines.append("valueRequired: true")
+    if item.max_length and kind in {"textField", "textarea"}:
+        validation_lines.append(f"maxLength: {item.max_length}")
+    validation = ""
+    if validation_lines:
+        validation = "\n        validation {" + "".join(
+            f"\n            {line}" for line in validation_lines
+        ) + "\n        }"
+    appearance_lines: list[str] = []
+    if kind in {"textField", "numberField", "datePicker", "textarea"}:
+        width = layout.chars(item.width)
+        if width:
+            appearance_lines.append(f"width: {width}")
+        if kind == "textarea" and item.height:
+            rows = layout.chars(item.height, vertical=True)
+            if rows and rows > 1:
+                appearance_lines.append(f"height: {rows}")
+        if item.format_mask and kind in {"numberField", "datePicker"}:
+            appearance_lines.append(f"formatMask: {_text(item.format_mask)}")
+    appearance = ""
+    if appearance_lines:
+        appearance = "\n        appearance {" + "".join(
+            f"\n            {line}" for line in appearance_lines
+        ) + "\n        }"
+    settings = ""
+    if kind == "checkbox" and item.checked_value and item.unchecked_value:
+        settings = f"""
+        settings {{
+            useDefaults: false
+            checkedValue: {_text(item.checked_value)}
+            uncheckedValue: {_text(item.unchecked_value)}
+        }}"""
+    lov_block = ""
+    if lov is not None and kind in {"selectList", "radioGroup"}:
+        lov_block = f"""
+        lov {{
+            type: sharedComponent
+            lov: @{lov.id}
+            displayNullValue: false
+        }}"""
+    column = database_column(item)
+    if column:
+        data_type = _DATA_TYPES.get(item.data_type.lower(), "varchar2")
+        primary = "\n            primaryKey: true" if item.primary_key else ""
+        source = f"""
+        source {{
+            databaseColumn: {sql_name(column)}
+            dataType: {data_type}{primary}
+        }}"""
+    else:
+        source = """
+        source {
+            type: none
+        }"""
+    notes = [
+        f"Forms item {block.name}.{item.name} ({item.item_type}); "
+        f"database column: {column or 'none'}; "
+        f"data type: {item.data_type or 'unknown'}"
+        + ("; primary key" if item.primary_key else "")
+        + ("; required in Forms" if item.required else "")
+        + ("; hidden in Forms" if hidden else "")
+        + "."
+    ]
+    if column and item.data_type.lower() not in _DATA_TYPES:
+        notes.append(
+            f"The Forms data type {item.data_type or 'unknown'} has no APEX column data "
+            "type here; varchar2 stands in until the table is reviewed."
+        )
+    if not hidden:
+        notes.append(_where(placed, layout) + ".")
+    if _help_text(item):
+        notes.append(f"Forms help: {_help_text(item)}")
+    if lov is not None:
+        notes.append(_lov_note(lov))
+    text = f"""
+    column {name} (
+        type: {kind}{heading}
+        layout {{
+            sequence: {placed.sequence}{alignment}
+        }}{validation}{appearance}{settings}{lov_block}{source}
+        comments {{
+            comments: {_fence(" ".join(notes))}
+        }}
+    )"""
+    # A column sits one level inside its region.
+    return chr(10).join(("    " + line) if line.strip() else line for line in text.split(chr(10)))
+
+
+def _grid_chunk(
+    node: RegionNode, parent: RegionNode | None, layout: PageLayout, lov_of: dict[str, StaticLov]
+) -> str:
+    """A multi-record block on a table as a native Interactive Grid.
+
+    The columns come in the order Forms draws the record's items, left to
+    right, each with the item's prompt as heading. The grid is read-only:
+    which DML the Forms block performs (and its WHERE/ORDER BY, kept in the
+    comment) is business behaviour for the developer to confirm, not for
+    the converter to invent.
+    """
+    block = node.block
+    assert block is not None
+    owner, table = _table_ref(block)
+    title = f"\n        title: {_text(node.title)}" if node.title else ""
+    placement = ""
+    if parent is not None:
+        placement = f"\n            parentRegion: @{parent.id}"
+    grid = _grid_lines(node.grid) if node.grid is not None else ""
+    owner_line = f"\n            tableOwner: {owner}" if owner else ""
+    visible = list(node.columns)
+    hidden_db = [p for p in node.hidden if database_column(p.item)]
+    hidden_other = [p for p in node.hidden if not database_column(p.item)]
+    sequence = max([p.sequence for p in visible] + [0])
+    for placed in hidden_db:
+        sequence += 10
+        placed.sequence = sequence
+    display = "".join(
+        f"""
+            displayColumn (
+                column: @{column_name(p.item)}
+                layout {{
+                    sequence: {index}
+                }}
+            )"""
+        for index, p in enumerate(visible, 1)
+    )
+    columns = "".join(
+        _column_chunk(p, layout, lov_of.get(f"{block.name}.{p.item.name}".upper()))
+        for p in visible
+    ) + "".join(_column_chunk(p, layout, None, hidden=True) for p in hidden_db)
+    notes = [
+        f"Forms {node.source}.",
+        (
+            f"Interactive Grid on {block.query_data_source_name}: one column per item of "
+            f"the record, in the left-to-right order Forms draws them; Forms shows "
+            f"{block.records_displayed} records at once."
+        ),
+        (
+            "Editing is off: which DML the Forms block performs is business behaviour "
+            "to confirm before enabling it."
+        ),
+    ]
+    if block.where_clause:
+        notes.append(f"Forms WHERE clause (not applied, review first): {block.where_clause}")
+    if block.order_by_clause:
+        notes.append(f"Forms ORDER BY (not applied, review first): {block.order_by_clause}")
+    if hidden_other:
+        notes.append(
+            "Control items hidden in Forms stay hidden page items in this region: "
+            + ", ".join(p.apex_name for p in hidden_other)
+            + "."
+        )
     return f"""
-    button {button_id} (
+    region {node.id} (
+        name: {_text(node.name)}{title}
+        type: interactiveGrid
+        source {{
+            location: localDatabase{owner_line}
+            tableName: {table}
+        }}
+        layout {{
+            sequence: {node.sequence}{placement}
+            slot: {node.slot}{grid}
+        }}
+        appearance {{
+            template: @/{node.template}
+            templateOptions: {_template_options(node.options)}
+        }}
+        comments {{
+            comments: {_fence(" ".join(notes))}
+        }}
+        savedReport primary (
+            visibility: primary
+            view {{
+                default: grid
+            }}{display}
+        ){columns}
+    )
+"""
+
+
+def _lov_note(lov: StaticLov) -> str:
+    if lov.declared:
+        return (
+            f"Choices come from the shared static LOV {lov.name}, with the return "
+            "values the .fmb declares."
+        )
+    return (
+        f"Choices come from the shared static LOV {lov.name}; the .fmb declares no "
+        "return values, so the button names/labels stand in and need review."
+    )
+
+
+def _button_chunk(placed: Placed, region: RegionNode) -> str:
+    item = placed.item
+    return f"""
+    button {button_id(placed)} (
         buttonName: {re.sub(r'[^A-Z0-9_$#]', '_', item.name.upper())[:255]}
         label: {_text(placed.label)}
         layout {{
@@ -414,8 +632,10 @@ def _hidden_chunk(placed: Placed, region: RegionNode | None) -> str:
     why = "Visible=false" if item.canvas and not item.visible else "no canvas"
     note = (
         f"Forms item {block.name}.{item.name} ({item.item_type}, {why} in Forms); "
-        f"database column: {item.column_name or 'none'}; "
-        f"data type: {item.data_type or 'unknown'}."
+        f"database column: {database_column(item) or 'none'}; "
+        f"data type: {item.data_type or 'unknown'}"
+        + ("; primary key" if item.primary_key else "")
+        + "."
     )
     return f"""
     pageItem {placed.apex_name} (
@@ -453,8 +673,18 @@ def _item_chunk(
         if required or max_length
         else ""
     )
-    width = layout.chars(item.width) if kind == "textField" else None
-    width_line = f"\n            width: {width}" if width else ""
+    appearance_lines: list[str] = []
+    if kind in {"textField", "numberField", "datePicker", "textarea"}:
+        width = layout.chars(item.width)
+        if width:
+            appearance_lines.append(f"width: {width}")
+        if kind == "textarea" and item.height:
+            rows = layout.chars(item.height, vertical=True)
+            if rows and rows > 1:
+                appearance_lines.append(f"height: {rows}")
+        if item.format_mask and kind in {"numberField", "datePicker"}:
+            appearance_lines.append(f"formatMask: {_text(item.format_mask)}")
+    width_line = "".join(f"\n            {line}" for line in appearance_lines)
     # Belt-and-suspenders re-clamp of _reconcile_label's invariant: APEX
     # rejects labelColumnSpan >= columnSpan at render time only (neither
     # ``apex validate`` nor ``apex import`` catch it), so whatever upstream
@@ -480,26 +710,60 @@ def _item_chunk(
         span_line = ""
     lov_block = ""
     if lov is not None:
-        null_value = "\n            displayNullValue: false" if kind == "selectList" else ""
         lov_block = f"""
         lov {{
             type: sharedComponent
-            lov: @{lov.id}{null_value}
+            lov: @{lov.id}
+            displayNullValue: false
         }}"""
+    # Native settings the Forms item declares -- each keyword verified by
+    # ``apex validate`` on 26.1 for the item type it goes with.
+    settings_lines: list[str] = []
+    if kind == "radioGroup" and placed.radio_columns > 1:
+        settings_lines.append(f"noOfCols: {placed.radio_columns}")
+    if kind == "checkbox" and item.checked_value and item.unchecked_value:
+        settings_lines.append("useDefaults: false")
+        settings_lines.append(f"checkedValue: {_text(item.checked_value)}")
+        settings_lines.append(f"uncheckedValue: {_text(item.unchecked_value)}")
+    if kind == "textField" and item.case_restriction.lower() in {"upper", "lower"}:
+        settings_lines.append(f"textCase: {item.case_restriction.lower()}")
+    if kind == "numberField" and item.justification.lower() in {"right", "end"}:
+        settings_lines.append("numberAlignment: end")
+    settings = ""
+    if settings_lines:
+        settings = "\n        settings {" + "".join(
+            f"\n            {line}" for line in settings_lines
+        ) + "\n        }"
+    help_block = ""
+    if _help_text(item):
+        help_block = f"""
+        help {{
+            helpText: {_text(_help_text(item), 4000)}
+        }}"""
+    # Enabled=false in Forms greys the field out but keeps its value in the
+    # record; APEX's read-only item does the same (a disabled item would
+    # drop out of the submit).
+    read_only = ""
+    if not item.enabled and kind != "displayOnly":
+        read_only = """
+        readOnly {
+            type: always
+        }"""
     notes = [
         f"Forms item {block.name}.{item.name} ({item.item_type}); "
-        f"database column: {item.column_name or 'none'}; "
+        f"database column: {database_column(item) or 'none'}; "
         f"data type: {item.data_type or 'unknown'}"
+        + ("; primary key" if item.primary_key else "")
         + ("; required in Forms" if item.required else "")
+        + ("; disabled in Forms (read only here)" if not item.enabled else "")
         + ". "
         + _where(placed, layout)
         + "."
     ]
+    if item.format_mask and kind not in {"numberField", "datePicker"}:
+        notes.append(f"Forms format mask (no native property on a {kind}): {item.format_mask}.")
     if lov is not None:
-        notes.append(
-            f"Choices come from the shared static LOV {lov.name}; its return values "
-            "were copied from the .fmb's button names/labels and need review."
-        )
+        notes.append(_lov_note(lov))
     if placed.note:
         notes.append(placed.note[0].upper() + placed.note[1:] + ".")
     elif template == "hidden" and not placed.caption:
@@ -523,7 +787,7 @@ def _item_chunk(
         appearance {{
             template: @/{template}
             templateOptions: #DEFAULT#{width_line}
-        }}{validation}{lov_block}
+        }}{validation}{settings}{lov_block}{help_block}{read_only}
         comments {{
             comments: {_fence(" ".join(notes))}
         }}
@@ -539,7 +803,10 @@ def _layout_chunks(layout: PageLayout) -> list[str]:
     lov_of = {lov.source.upper(): lov for lov in layout.lovs}
 
     def regions(node: RegionNode, parent: RegionNode | None) -> None:
-        chunks.append(_region_chunk(node, parent, layout))
+        if node.kind == "grid":
+            chunks.append(_grid_chunk(node, parent, layout, lov_of))
+        else:
+            chunks.append(_region_chunk(node, parent, layout))
         for sub in node.subs:
             regions(sub, node)
 
@@ -551,6 +818,10 @@ def _layout_chunks(layout: PageLayout) -> list[str]:
                 key = f"{placed.block.name}.{placed.item.name}".upper()
                 chunks.append(_item_chunk(placed, node, layout, lov_of.get(key)))
         for placed in node.hidden:
+            # A grid's database items became hidden columns of the grid;
+            # only its control items stay hidden page items.
+            if node.kind == "grid" and database_column(placed.item):
+                continue
             chunks.append(_hidden_chunk(placed, node))
         for sub in node.subs:
             contents(sub)
@@ -611,8 +882,12 @@ def _layout_manifest(layout: PageLayout) -> dict:
                 "template": node.template,
                 "parent": parent,
                 "source": node.source,
+                "kind": node.kind,
+                "template_options": list(node.options),
                 "items": [p.apex_name for p in node.body],
+                "columns": [column_name(p.item) for p in node.columns],
                 "hidden_items": [p.apex_name for p in node.hidden],
+                "derived": node.derived,
             }
         )
         for sub in node.subs:
@@ -624,10 +899,17 @@ def _layout_manifest(layout: PageLayout) -> dict:
         "regions": regions,
         "page_level_hidden_items": [p.apex_name for p in layout.hidden],
         "static_lovs": [
-            {"id": lov.id, "name": lov.name, "source": lov.source, "entries": len(lov.entries)}
+            {
+                "id": lov.id,
+                "name": lov.name,
+                "source": lov.source,
+                "entries": len(lov.entries),
+                "return_values_declared": lov.declared,
+            }
             for lov in layout.lovs
         ],
         "skipped": layout.skipped,
+        "mapping_report": layout_report(layout),
     }
 
 

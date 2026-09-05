@@ -142,6 +142,14 @@ def _parse_item(el: ET.Element, block_name: str) -> Item:
         visible=_b(el, "Visible", True),
         choices=[_s(k, "Name") for k in _kids(el, "ListItemElement")]
         + [_s(k, "Label") or _s(k, "Name") for k in _kids(el, "RadioButton")],
+        choice_values=[_s(k, "Value") for k in _kids(el, "ListItemElement")],
+        primary_key=_b(el, "PrimaryKey", False),
+        tooltip=decode_forms_text(el.get("Tooltip")),
+        hint=decode_forms_text(el.get("Hint")),
+        format_mask=_s(el, "FormatMask"),
+        case_restriction=_s(el, "CaseRestriction"),
+        checked_value=_s(el, "ValueWhenChecked"),
+        unchecked_value=_s(el, "ValueWhenUnchecked"),
         x=_i(el, "XPosition"),
         y=_i(el, "YPosition"),
         width=_i(el, "Width"),
@@ -175,6 +183,7 @@ def _parse_item(el: ET.Element, block_name: str) -> Item:
             RadioButton(
                 name=_s(k, "Name"),
                 label=_s(k, "Label") or _s(k, "Name"),
+                value=_s(k, "Value"),
                 x=_i(k, "XPosition"),
                 y=_i(k, "YPosition"),
                 width=_i(k, "Width"),
@@ -237,6 +246,9 @@ def _parse_canvas(el: ET.Element) -> Canvas:
         viewport_width=_i(el, "ViewportWidth"),
         viewport_height=_i(el, "ViewportHeight"),
         tab_pages=_names(el, "TabPage"),
+        tab_page_labels={
+            _s(k, "Name"): decode_forms_text(k.get("Label")) for k in el.iter(f"{NS}TabPage")
+        },
         visible=_b(el, "Visible", True),
         bg_color=_s(el, "BackColor"),
         bevel=_s(el, "Bevel"),

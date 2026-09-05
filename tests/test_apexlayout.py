@@ -496,7 +496,9 @@ def test_list_item_and_radio_group_get_shared_static_lovs_from_the_fmb_choices()
     assert "type: selectList" in pos
     assert "lov: @lov-b-pos\n            displayNullValue: false" in pos
     assert "type: radioGroup" in tipo and "lov: @lov-b-tipo" in tipo
-    assert "displayNullValue" not in tipo
+    # displayNullValue: false on a radioGroup was accepted by apex validate
+    # on 26.1 (probe 4), so both LOV-backed kinds hide the null entry.
+    assert "lov: @lov-b-tipo\n            displayNullValue: false" in tipo
 
 
 def test_export_appends_the_static_lovs_to_lovs_apx_with_lf_line_endings(tmp_path):

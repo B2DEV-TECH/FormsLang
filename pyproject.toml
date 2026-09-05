@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "formslang"
-version = "1.0.0"
+version = "1.1.0"
 description = "Oracle Forms analysis and AI-assisted conversion to Oracle APEX"
 readme = "README.md"
 requires-python = ">=3.10"
