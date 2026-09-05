@@ -169,6 +169,7 @@ EXPORT_JS = r"""function exportApex() {
       <label>Workspace (optional)<input name="workspace" placeholder="resolved during import"></label>
       <label>Parsing schema (optional)<input name="schema" placeholder="resolved during import"></label>
       <label>Page number<input name="page" type="number" min="1" value="1"></label>
+      <label class="wide checkbox"><input type="checkbox" name="ai_layout"> Ask the AI provider to lay out the regions the rules could not place cleanly (uses the model in Settings; the plan is cached on this session)</label>
       <label class="wide checkbox"><input type="checkbox" name="import_now"> Import into APEX right after building (runs SQLcl for you, locally)</label>
     </div>
     <div class="import-note cli"><span>Same build from a terminal or CI:</span> <code data-cli></code></div>
@@ -194,14 +195,17 @@ EXPORT_JS = r"""function exportApex() {
   // The exact command line that reproduces this dialog -- the same export,
   // the same bytes -- kept in step with the fields as they are edited.
   const value = (name) => form.querySelector(`[name="${name}"]`).value.trim();
+  const aiLayout = form.querySelector('[name="ai_layout"]');
   const cliLine = body.querySelector("[data-cli]");
   const showCli = () => {
     cliLine.textContent = exportCommand(state.session_path, {
       app_id: value("app_id"), alias: value("alias"), page: value("page"),
       workspace: value("workspace"), schema: value("schema"),
+      ai_layout: aiLayout.checked,
     });
   };
   form.oninput = showCli;
+  aiLayout.onchange = showCli;
   showCli();
   // The saved connection, whether SQLcl is reachable and the previous
   // export's choices arrive after the dialog is already up, so a slow lookup
@@ -230,6 +234,7 @@ EXPORT_JS = r"""function exportApex() {
       const r = await api("/api/export", {
         name: value("name"), alias: value("alias"), app_id: value("app_id"),
         workspace: value("workspace"), schema: value("schema"), page: value("page"),
+        ai_layout: aiLayout.checked ? "1" : "",
       });
       zipName = r.zip.split(/[\/]/).pop();
       toast(`APEXlang ZIP ready: ${r.zip}`);
@@ -267,6 +272,7 @@ function exportCommand(sessionPath, c) {
   if (c.page && c.page !== "1") parts.push("--page", c.page);
   if (c.workspace) parts.push("--workspace", c.workspace);
   if (c.schema) parts.push("--schema", c.schema);
+  if (c.ai_layout) parts.push("--ai-layout");
   return parts.join(" ");
 }
 

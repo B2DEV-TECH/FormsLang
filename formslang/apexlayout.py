@@ -147,6 +147,79 @@ def humanize(name: str) -> str:
     return " ".join(name.replace("_", " ").split()).title()
 
 
+#: An ``InitializeValue`` that is not a literal: a system variable
+#: (``$$DATE$$``), a bind (``:GLOBAL.x``, ``:PARAMETER.p``, ``:BLOCK.ITEM``),
+#: a substitution (``&x``) or a global/parameter reference without the colon.
+_FORMS_EXPRESSION = re.compile(r"^\s*(\$|:|&|GLOBAL\.|PARAMETER\.|SYSTEM\.)", re.IGNORECASE)
+
+
+def static_default(item: Item) -> str:
+    """The literal APEX can take as the item's static default: the .fmb's
+    ``InitializeValue`` when it is a plain value (``ATIVO``, ``N``, ``0``),
+    "" when there is none or when it is a Forms expression -- those need a
+    computation or a default of another type, and the report says so."""
+    value = item.initial_value.strip()
+    if not value or _FORMS_EXPRESSION.match(value):
+        return ""
+    return value
+
+
+def forms_expression_default(item: Item) -> str:
+    """The ``InitializeValue`` :func:`static_default` could not take, else ""."""
+    value = item.initial_value.strip()
+    return value if value and _FORMS_EXPRESSION.match(value) else ""
+
+
+def lov_entries(item: Item) -> list[tuple[str, str]]:
+    """The ``(display, return)`` choices of a Radio Group or List Item, as
+    the shared static LOV writes them: the .fmb's return values, or the
+    button names / labels standing in when it declares none. ``[]`` for
+    any other item."""
+    kind = item.item_type.lower()
+    if "radio" in kind and item.radio_buttons:
+        return [(rb.label or rb.name, rb.value or rb.name) for rb in item.radio_buttons]
+    if ("list" in kind or "radio" in kind) and item.choices:
+        values = item.choice_values
+        return [
+            (choice, values[i] if i < len(values) and values[i] else choice)
+            for i, choice in enumerate(item.choices)
+        ]
+    return []
+
+
+def item_default(item: Item) -> tuple[str, str, str]:
+    """``(value, display, note)``: the static default APEX can take for the
+    item, the text the preview shows for it, and the concession made.
+
+    A plain field keeps its literal ``InitializeValue``. An item fed by a
+    static LOV takes it only when it is one of the choices' return values:
+    APEX adds an unknown value to a radio group or select list as an extra
+    choice, selected, which is not the Forms screen. When the value is the
+    *label* of a choice instead -- the .fmb declares no return values and
+    the names stand in -- that choice's return value is the default, and
+    the note says so; when it is neither, there is no default, and the note
+    says why.
+    """
+    value = static_default(item)
+    entries = lov_entries(item)
+    if not value or not entries:
+        return value, value, ""
+    for display, ret in entries:
+        if ret == value:
+            return ret, display, ""
+    folded = value.casefold()
+    for display, ret in entries:
+        if display.casefold() == folded or ret.casefold() == folded:
+            return ret, display, (
+                f"initial value {value} is the label of a choice, not a return value: "
+                f"the choice returning {ret} is the default"
+            )
+    return "", "", (
+        f"initial value {value} is none of the choices: left without a default "
+        "(APEX would add it to the choices as an extra one)"
+    )
+
+
 def forms_caption(item: Item) -> tuple[str, str]:
     """What Forms writes for an item and where: ``(text, side)``.
 
@@ -198,6 +271,12 @@ class Placed:
     label_span: int = 0  # a left label's share of the cell, in twelfths; 0 when not left
     note: str = ""  # how the caption was found, when not the obvious way
     radio_columns: int = 0  # radio buttons Forms paints side by side; 0 = geometry unknown
+    label_room: float = 0.0  # units a left prompt takes before the field; 0 when not left
+    # Where the deterministic rules had to give (pushed, wrapped, shrunk,
+    # label-narrow, label-above): what the report explains and what the AI
+    # layout assistant is asked about.
+    flags: list[str] = field(default_factory=list)
+    placement: str = "rules"  # rules | ai -- who decided the grid cell
 
     @property
     def label(self) -> str:
@@ -271,6 +350,7 @@ class PageLayout:
     skipped: list[str]
     char_cell: tuple[float, float] | None  # units per character cell (width, height)
     unit: str = ""
+    ai: dict = field(default_factory=dict)  # the AI layout assistant's summary, when it ran
 
     def regions(self) -> Iterator[RegionNode]:
         for root in self.roots:
@@ -394,10 +474,11 @@ def _fit(placed: Placed, room: float) -> None:
     the label text sits: a prompt left of the field ends at the field, so it
     hugs the field's edge; one above follows the .fmb's ``PromptAlign``."""
     x, y, w, h = item_box(placed.item)
+    placed.label_room = 0.0
+    placed.label_span = 0
     if placed.side == "left" and room > 0:
         placed.box = (x - room, y, w + room, h)
-        share = round(room / (w + room) * GRID_COLUMNS)
-        placed.label_span = min(GRID_COLUMNS - 1, max(1, share))
+        placed.label_room = room
         placed.align = "right"
     elif placed.side == "right" and room > 0:
         placed.box = (x, y, w + room, h)
@@ -408,25 +489,32 @@ def _fit(placed: Placed, room: float) -> None:
         placed.align = {"center": "center", "end": "right"}.get(along, "left")
 
 
-def _reconcile_label(placed: Placed) -> None:
-    """Cap a left label's share of the cell below the ``columnSpan``
-    :func:`_place_row` actually gave the item.
-
-    :func:`_fit` sizes ``label_span`` against the item's own box, as if it
-    were getting the row to itself -- before the row's crowding is known.
-    On a crowded row ``_place_row`` can hand the item a ``columnSpan`` too
-    narrow for that share; APEX rejects ``labelColumnSpan >= columnSpan`` at
-    render time with ``WWV_FLOW_GRID_LAYOUT.LABEL_COLUMN_SPAN_TOO_BIG``,
-    which neither ``apex validate`` nor ``apex import`` catches -- only
-    actually opening the page does. Cap the share here, once the row is laid
-    out; when the span is too narrow to leave the field even one column,
-    drop the label's share entirely so
-    :func:`formslang.apexlang._label_template` floats it instead of losing
-    it (or the field) altogether.
+def _settle_labels(row: list[Placed], unit: float) -> None:
+    """Give each prompt drawn left of its field its share of the row, in grid
+    columns, once the row's ``columnSpan`` are known: the room the prompt
+    takes in Forms, in twelfths of the container, never the field's last
+    column. APEX rejects ``labelColumnSpan >= columnSpan`` only when the
+    page renders (``WWV_FLOW_GRID_LAYOUT.LABEL_COLUMN_SPAN_TOO_BIG``; neither
+    ``apex validate`` nor ``apex import`` sees it), so the cap is not
+    optional. A row that cannot give even one of its labels a column puts
+    every label of the row above its field instead -- one rhythm per row,
+    the way a person would redraw it -- and says so on each control.
     """
-    if not placed.label_span or placed.grid.flow:
+    lefts = [p for p in row if p.side == "left" and p.label_room > 0 and not p.grid.flow]
+    if not lefts:
         return
-    placed.label_span = max(0, min(placed.label_span, placed.grid.span - 1))
+    for placed in lefts:
+        want = max(1, round(placed.label_room / unit))
+        placed.label_span = min(want, placed.grid.span - 1)
+        if 0 < placed.label_span < want:
+            placed.flags.append("label-narrow")
+    if all(p.label_span >= 1 for p in lefts):
+        return
+    for placed in lefts:
+        placed.label_span = 0
+        placed.side = "above"
+        placed.align = "left"
+        placed.flags = [f for f in placed.flags if f != "label-narrow"] + ["label-above"]
 
 
 def _make_placed(item: Item, block: Block, apex_name: str, char_w: float) -> Placed:
@@ -689,34 +777,68 @@ def _rows(boxes: list[_Box]) -> list[list[_Box]]:
     return [sorted(members, key=lambda b: (b.x, b.y)) for _, members in rows]
 
 
-def _place_row(row: list[_Box], origin_x: float, width: float, *, first: bool) -> list[Grid]:
-    """Column arithmetic for one row of boxes against a container ``width``
-    units wide. Each box gets a ``columnSpan`` proportional to its own width
-    against the container's -- so a lone narrow field stays narrow instead
-    of stretching to fill the row -- and boxes pack contiguously left to
-    right in the row's order (:func:`_rows` already sorted them by x). A
-    box never starts a column short of where the previous one ended: Forms'
-    incidental whitespace between fields is not a grid gap APEX should
-    reproduce. A row whose boxes outnumber the twelve columns overflows
-    onto as many 12-wide grid rows as it takes.
+def _place_row(
+    row: list[_Box], origin_x: float, width: float, *, first: bool = True
+) -> list[Grid]:
+    """Column arithmetic for one row of boxes against a container that starts
+    at ``origin_x`` and is ``width`` units wide.
+
+    A box starts at the grid column its left edge maps to and spans as many
+    columns as its width covers, so a field keeps the horizontal position
+    Forms drew it at, and the whitespace before it stays a gap -- Universal
+    Theme renders skipped columns as empty cells, a leading one included. A
+    field with a prompt beside it gets at least two columns, one for the
+    label. Where two boxes round onto the same column the second moves right
+    to the first free column (``pushed``); a box left with less than half
+    its columns continues on the next grid row (``wrapped``), and the boxes
+    after it in the Forms row follow it there, keeping their distance from
+    it rather than their distance from the row's left edge -- a row that
+    is redrawn as two keeps its neighbours together; one that reaches past
+    the twelfth column is narrowed to the columns that remain (``shrunk``).
+    Each is recorded on the control, for the mapping report and for the AI
+    layout assistant, when it is enabled.
     """
-    del origin_x  # column is now derived from packing order, not x position
     unit = max(width, 1.0) / GRID_COLUMNS
     grids: list[Grid] = []
     next_free = 1
+    shift = 0  # columns the current grid row is offset from the Forms row
     for index, box in enumerate(row):
-        span = min(GRID_COLUMNS, max(1, round(box.w / unit)))
-        if next_free > GRID_COLUMNS:
-            next_free = 1
-            grid = Grid(new_row=True, new_column=False, column=1, span=span)
-        else:
-            grid = Grid(new_row=False, new_column=index > 0, column=next_free, span=span)
-        grid.span = min(grid.span, GRID_COLUMNS + 1 - grid.column)
-        next_free = grid.column + grid.span
-        grids.append(grid)
+        placed = box.ref if isinstance(box.ref, Placed) else None
+        raw = round((box.x - origin_x) / unit) + 1
+        natural = min(GRID_COLUMNS, max(1, raw - shift))
+        span = max(1, round(box.w / unit))
+        if placed is not None and placed.side == "left" and placed.label_room > 0:
+            span = max(span, 2)
+        column = natural
+        pushed = column < next_free
+        if pushed:
+            column = next_free
+        wrapped = False
+        left = GRID_COLUMNS + 1 - column
+        if index > 0 and (column > GRID_COLUMNS or left < max(1, span // 2)):
+            wrapped = True
+            pushed = False
+            column = 1
+            left = GRID_COLUMNS
+            shift = max(0, raw - 1)
+            if placed is not None:
+                placed.flags.append("wrapped")
+        if pushed and placed is not None:
+            placed.flags.append("pushed")
+        if span > left:
+            span = left
+            if placed is not None:
+                placed.flags.append("shrunk")
+        starts = index == 0 or wrapped
+        grids.append(Grid(new_row=starts, new_column=not starts, column=column, span=span))
+        next_free = column + span
     if grids and first:
         grids[0].new_row = True
     return grids
+
+
+def _is_button(placed: Placed) -> bool:
+    return "button" in placed.item.item_type.lower()
 
 
 def _union(boxes: list[_Box]) -> tuple[float, float, float, float]:
@@ -798,11 +920,25 @@ def _arrange(
         # still cluster by real row (Forms often docks a second rank of
         # buttons/fields a few units below the first) rather than all
         # flattening onto one line just because none of them carry columns.
+        # Buttons side by side share one cell, as a button bar does; a
+        # field, check box or clock gets a cell of its own, so its label
+        # and width are its own instead of stacking under the buttons.
         node.body = []
         for row in _rows(boxes):
+            previous: _Box | None = None
             for index, box in enumerate(row):
-                box.ref.grid = Grid(new_row=index == 0, new_column=index > 0, flow=True)
+                share = (
+                    previous is not None
+                    and isinstance(box.ref, Placed)
+                    and isinstance(previous.ref, Placed)
+                    and _is_button(box.ref)
+                    and _is_button(previous.ref)
+                )
+                box.ref.grid = Grid(
+                    new_row=index == 0, new_column=index > 0 and not share, flow=True
+                )
                 node.body.append(box.ref)
+                previous = box
         return
 
     rows = _rows(boxes)
@@ -811,15 +947,20 @@ def _arrange(
         len(rows),
     )
     # Rows above the first frame are the region's own body ...
-    for index, row in enumerate(rows[:first_sub_row]):
+    unit = max(ref_width, 1.0) / GRID_COLUMNS
+    for row in rows[:first_sub_row]:
         for box, grid in zip(row, _place_row(row, ref_x, ref_width, first=True)):
             box.ref.grid = grid
-            _reconcile_label(box.ref)
             node.body.append(box.ref)
+        _settle_labels([b.ref for b in row], unit)
     # ... everything from there on is a sub-region: real frames as they are,
     # runs of loose items wrapped in a chrome-less group so vertical order
-    # against the frames survives.
+    # against the frames survives. A group is laid out once its own cell is
+    # known: alone on its row it takes the full width and its items keep
+    # their columns on the parent; beside a frame it gets the frame's
+    # neighbouring cell and its items are placed within that cell.
     sub_boxes: list[_Box] = []
+    members: dict[int, list[Placed]] = {}
     group_count = 0
     for row in rows[first_sub_row:]:
         run: list[_Box] = []
@@ -843,15 +984,25 @@ def _arrange(
                     slot="subRegions",
                     derived=True,
                 )
-                _arrange(group, [b.ref for b in run], [], ref_x=ref_x, ref_width=ref_width)
+                members[id(group)] = [b.ref for b in run]
                 sub_boxes.append(_Box(gx, gy, gw, gh, group))
                 run = []
             if box is not None:
                 sub_boxes.append(box)
     for row in _rows(sub_boxes):
+        alone = len(row) == 1
         for box, grid in zip(row, _place_row(row, ref_x, ref_width, first=True)):
-            box.ref.grid = grid
-            node.subs.append(box.ref)
+            sub = box.ref
+            node.subs.append(sub)
+            if id(sub) not in members:
+                sub.grid = grid
+                continue
+            if alone:
+                sub.grid = Grid(new_row=True, new_column=True, column=1, span=GRID_COLUMNS)
+                _arrange(sub, members[id(sub)], [], ref_x=ref_x, ref_width=ref_width)
+            else:
+                sub.grid = grid
+                _arrange(sub, members[id(sub)], [], ref_x=box.x, ref_width=box.w)
 
 
 def _frame_nodes(
@@ -1077,18 +1228,13 @@ def _static_lovs(layout_items: list[Placed], ids: _Ids) -> list[StaticLov]:
     for placed in layout_items:
         item = placed.item
         kind = item.item_type.lower()
-        if "radio" in kind and item.radio_buttons:
-            entries = [(rb.label or rb.name, rb.value or rb.name) for rb in item.radio_buttons]
-            declared = any(rb.value for rb in item.radio_buttons)
-        elif ("list" in kind or "radio" in kind) and item.choices:
-            values = item.choice_values
-            entries = [
-                (choice, values[i] if i < len(values) and values[i] else choice)
-                for i, choice in enumerate(item.choices)
-            ]
-            declared = any(values)
-        else:
+        entries = lov_entries(item)
+        if not entries:
             continue
+        if "radio" in kind and item.radio_buttons:
+            declared = any(rb.value for rb in item.radio_buttons)
+        else:
+            declared = any(item.choice_values)
         lovs.append(
             StaticLov(
                 id=ids.take(f"lov-{placed.block.name}-{item.name}", "lov"),
@@ -1248,6 +1394,19 @@ FAITHFUL = "faithful"
 APPROXIMATION = "approximation"
 UNSUPPORTED = "unsupported"
 
+#: What each placement flag means, in the report's words.
+_FLAG_TEXT = {
+    "pushed": "moved right to the first free column: it rounded onto the same grid "
+    "column as the control before it",
+    "wrapped": "continues on the next grid row: its Forms row is too crowded for twelve "
+    "columns",
+    "shrunk": "narrowed to the columns left in its row",
+    "label-narrow": "label narrower than the prompt's room in Forms: the field's cell "
+    "has no more columns to give it",
+    "label-above": "prompt left of the field in Forms, label above it here: no column of "
+    "the row could hold a label beside the field",
+}
+
 
 def _geometry(item: Item) -> dict | None:
     if item.x is None and item.y is None and not item.radio_buttons:
@@ -1311,22 +1470,27 @@ def _control_entry(
             preserved.append("caption side")
         elif placed.side == "right":
             approximations.append(
-                "prompt right of the field floats inside it: Universal Theme has no label "
-                "template on that side"
+                "prompt right of the field in Forms, label above it here: Universal Theme "
+                "has no label template on that side"
             )
         elif placed.side == "below":
             approximations.append(
-                "prompt below the field floats inside it: Universal Theme has no label "
-                "template on that side"
+                "prompt below the field in Forms, label above it here: Universal Theme "
+                "has no label template on that side"
             )
         if placed.side == "left" and placed.grid is not None and not placed.grid.flow:
-            if placed.label_span:
-                preserved.append("label share of the row")
-            else:
-                approximations.append(
-                    "label floats inside the field: its row was too crowded to give the "
-                    "label its own grid columns"
-                )
+            preserved.append("label share of the row")
+        elif placed.side == "left":
+            approximations.append(
+                "label above the field: a flow region has no label columns to give it"
+            )
+        for flag in placed.flags:
+            approximations.append(_FLAG_TEXT[flag])
+        if placed.placement == "ai":
+            approximations.append(
+                "grid cell chosen by the AI layout assistant from the Forms geometry, not "
+                "by the deterministic rules (see layout.ai_layout in the manifest)"
+            )
         if placed.note:
             approximations.append(placed.note[0].upper() + placed.note[1:])
         if block.name in region.tabular:
@@ -1346,8 +1510,23 @@ def _control_entry(
             preserved.append("width")
         if item.multi_line and item.height:
             preserved.append("height")
-        if item.required and target_type != "displayOnly":
+        if item.required and target_type == "checkbox":
+            approximations.append(
+                "required in Forms means the item has a value, and a check box always "
+                "has one; a required APEX check box must be checked, so it is left optional"
+            )
+        elif item.required and target_type != "displayOnly":
             preserved.append("required")
+        default_value, _, default_note = item_default(item)
+        if default_note:
+            approximations.append(default_note)
+        if default_value and target_type not in {"displayOnly", "hidden"}:
+            preserved.append("initial value")
+        elif forms_expression_default(item):
+            approximations.append(
+                f"initial value {forms_expression_default(item)} is a Forms expression, "
+                "not a literal: needs a computation or a default of another type"
+            )
         if item.format_mask and target_type in {"numberField", "datePicker"}:
             preserved.append("format mask")
         elif item.data_type.lower() == "datetime" and target_type == "datePicker":
@@ -1400,6 +1579,7 @@ def _control_entry(
         target["column"] = column_index
     else:
         target["grid"] = _grid_dict(placed.grid)
+        target["placement"] = placed.placement
         if not is_button:
             target["label"] = {
                 "text": placed.label,
@@ -1544,6 +1724,7 @@ def layout_report(layout: PageLayout) -> dict:
             "hidden_items": len(hidden),
             "skipped": len(layout.skipped),
             "controls_placed_twice": duplicates,
+            "placed_by_ai": sum(c["target"].get("placement") == "ai" for c in controls),
         },
         "controls": controls,
         "groups": groups,

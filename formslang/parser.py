@@ -150,6 +150,7 @@ def _parse_item(el: ET.Element, block_name: str) -> Item:
         case_restriction=_s(el, "CaseRestriction"),
         checked_value=_s(el, "ValueWhenChecked"),
         unchecked_value=_s(el, "ValueWhenUnchecked"),
+        initial_value=_s(el, "InitializeValue"),
         x=_i(el, "XPosition"),
         y=_i(el, "YPosition"),
         width=_i(el, "Width"),

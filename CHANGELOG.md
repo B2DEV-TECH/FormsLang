@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-09-05
+
+The fidelity release: a Forms screen lands on the APEX grid where Forms
+drew it — each control on the column its x maps to, gaps kept, labels
+beside their fields with the room they had, toolbar buttons side by side,
+initial values filled in — plus an opt-in AI layout assistant for the
+regions the deterministic rules cannot lay out cleanly, with the rules'
+placement as the fallback and the plan cached for a deterministic replay.
+
+### Added
+
+- **AI layout assistant** (`ailayout.py`), opt-in per export: `--ai-layout`
+  on the CLI (`--provider` overrides `FORMSLANG_AI_PROVIDER`) and a checkbox
+  in the workbench's export dialog. Only the *hard regions* are sent — those
+  with a control the rules had to push, wrap, narrow or relabel, or a Forms
+  row of five or more controls — with the region's size, the controls'
+  names, Forms kinds, APEX types, geometry, captions and the rules' own
+  placement; never column names, code or data. The plan is validated
+  (every control exactly once, columns 1..12, no overlaps,
+  `labelColumnSpan < columnSpan`) and applied to the one layout model the
+  exporter and the preview share, so both show the same page. A rejected,
+  offline or failed answer keeps the rules' placement, and the manifest
+  says what happened (`layout.ai_layout.status`: `applied`, `cached`,
+  `not-needed`, `offline`, `rejected`, `error`). The plan is cached on the
+  session, keyed by a digest of the request, and replayed while the layout
+  is unchanged, so the export stays deterministic. The enterprise egress
+  policy is checked before any request leaves the machine.
+- **Static defaults.** A literal `InitializeValue` becomes the item's static
+  default (`default { type: static }`, verified to fill the field on
+  render); a Forms expression (`$$DATE$$`, `:GLOBAL.x`, `&PARAM`) is left as
+  a note. On a radio group or select list the default is written only when
+  it is one of the choices' return values — APEX would otherwise add it to
+  the choices as an extra, selected one; a value that is a choice's label
+  takes that choice's return value, and the report says so.
+- Buttons are wired for a dynamic action (`definedByDynamicAction`,
+  `requiresConfirmation: false`) and render as plain buttons, not submits.
+- The mapping report records every concession of the placement rules on
+  the control it touched (`pushed`, `wrapped`, `shrunk`, `label-narrow`,
+  `label-above`), the placement origin of each control (`rules` or `ai`)
+  and a `placed_by_ai` total.
+- `tests/test_apexlayout_geometry.py` and `tests/test_ailayout.py` (34
+  tests: every placement rule, and the assistant against a scripted
+  provider).
+
+### Changed
+
+- **Grid placement from x.** A control starts on the column its Forms x
+  maps to and spans the columns its width covers; the whitespace Forms drew
+  before it stays an empty column (Universal Theme pads skipped columns, a
+  leading one included). When two controls round onto the same column the
+  second moves right to the first free one; a row too crowded for twelve
+  columns continues on the next grid row, and the controls after the
+  wrapped one follow it there, keeping their distance from it.
+- **Labels beside their fields.** `labelColumnSpan` is in grid columns and
+  comes from the room the prompt takes in Forms; a field with a prompt left
+  of it gets at least two columns, one for the label. A row that cannot
+  give every label a column puts all its labels above — one rhythm per row
+  — and a caption right of or below a field becomes a label above
+  (`-above`), no longer a floating label that read as a placeholder.
+- **Toolbars**: adjacent buttons share a grid cell (`newColumn: false`), as
+  on the Forms toolbar; a field on the toolbar gets its own cell.
+- Loose items beside a frame are placed inside the cell next to it; loose
+  items below a frame keep their columns on the parent.
+- A required check box is left optional, with a note: a required APEX check
+  box must be *checked*, while Forms only meant "has a value".
+- The preview draws the static default inside the field, the radio button
+  the default selects, and the label's exact share of its cell.
+
 ## [1.1.0] — 2026-09-05
 
 The layout release: a Forms screen becomes native APEX components that keep

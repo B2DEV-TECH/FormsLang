@@ -415,31 +415,32 @@ def test_window_chrome_and_toolbar_wrap_the_content_canvas():
 
 
 def test_apex_side_puts_the_item_in_the_grid_cell_its_geometry_maps_to():
-    """The canvas is the region; alone on its row, a 61pt field on a 780pt
-    canvas (65pt a column) packs into column 1, one column wide. With no
-    prompt in Forms there is no label either: the template is hidden."""
+    """The canvas is the region; a 61pt field at x=67 on a 780pt canvas
+    (65pt a column) sits in column 2, one column wide, where Forms drew it.
+    With no prompt in Forms there is no label either: the template is
+    hidden."""
     module = _point_module()
     html = render_html(module)
     apex = html.split("<h2>APEX preview", 1)[1]
 
     assert html.count('<details class="a-region" open>') == 1
     assert html.count('class="a-item"') == 1
-    assert 'style="grid-column:1/span 1"' in apex
+    assert 'style="grid-column:2/span 1"' in apex
     assert '<span class="lbl">' not in apex and "no caption in Forms: label hidden" in apex
     assert '<div class="a-field">' in apex
 
 
 def test_apex_side_puts_a_start_prompt_left_of_the_field_with_the_prompts_room():
     """"Código" on the Start edge is 6 characters of a 5pt cell: 30pt left of
-    the field, so the pair starts at x=37 (column 1) and the label wants
-    round(30/91*12) = 4 twelfths of the cell -- but the field only got a
-    columnSpan of 1, no room to also carve out a label column, so it floats
-    instead of overflowing (APEX rejects labelColumnSpan >= columnSpan)."""
+    the field, so the pair starts at x=37 (column 2 on a 65pt column) and
+    is 91pt wide -- one column, but a left label needs a column of its own
+    next to the field's, so the cell widens to two: label one, field one.
+    The preview gives the label that share of the cell (6 twelfths)."""
     apex = render_html(_point_module(prompt="Código")).split("<h2>APEX preview", 1)[1]
 
-    assert 'style="grid-column:1/span 1"' in apex
-    assert '<div class="a-field"><span class="lbl">Código</span>' in apex
-    assert '<div class="a-left"' not in apex
+    assert 'style="grid-column:2/span 2"' in apex
+    assert '<div class="a-left" style="--lbl:6.00;--al:right">' in apex
+    assert '<span class="lbl">Código</span>' in apex
 
 
 def test_apex_side_draws_boilerplate_text_as_a_static_region_where_it_was_drawn():

@@ -121,6 +121,7 @@ class Item:
     # the attribute at Forms' default, which is Start (prompt to the left).
     prompt_edge: str = ""
     prompt_offset: int = 0  # PromptAttachmentOffset, same unit as x/y
+    initial_value: str = ""  # InitializeValue: a literal, or a Forms expression ($$DATE$$, :GLOBAL.x)
     tab_page: str = ""  # TabPageName, when the canvas is a Tab canvas
     records_distance: int = 0  # DistanceBetweenRecords, tabular blocks only
     # ItemsDisplay ("Number of Items Displayed"): how many instances of this

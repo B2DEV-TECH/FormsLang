@@ -31,6 +31,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import ailayout
 from .apexlang import _item_type, _label_template
 from .apexlayout import (
     GRID_COLUMNS,
@@ -40,6 +41,7 @@ from .apexlayout import (
     _records_shown,
     build_layout,
     database_column,
+    item_default,
     layout_report,
     tabular_note,
 )
@@ -178,6 +180,7 @@ h2{font-size:19px;margin:36px 0 6px;letter-spacing:-.01em;
 .a-left>.lbl{font-size:12px;color:#1B1F27;text-align:var(--al,right);overflow:hidden;
  text-overflow:ellipsis;white-space:nowrap}
 .a-left>.a-field{min-height:32px;padding:8px 10px 4px}
+.a-field>.val{font-size:12px;color:#1B1F27}
 .a-text{padding:6px 8px;background:transparent;border:1px dashed #D5D9E0;box-shadow:none;
  font-size:13px;color:#1B1F27;white-space:pre-wrap;overflow-wrap:normal;overflow:hidden}
 .a-display{background:#F5F6F7;border-style:dashed}
@@ -193,6 +196,7 @@ h2{font-size:19px;margin:36px 0 6px;letter-spacing:-.01em;
 .a-radio>.lbl{flex:1 0 100%;font-size:11px;color:#5A6270}
 .a-radio span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .a-radio i{width:14px;height:14px;border:1px solid #9AA1AC;border-radius:50%;background:#fff;flex:none}
+.a-radio span.on i{border-color:#0572CE;background:radial-gradient(#0572CE 40%,#fff 46%)}
 .a-btn{position:relative;display:inline-block;background:#fff;border:1px solid #C5CAD3;
  border-radius:2px;padding:5px 12px;font-size:12px;font-weight:600;color:#1B1F27;
  white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
@@ -934,7 +938,12 @@ def _apex_item_html(placed: Placed) -> str:
         control = f'<div class="a-check"><i></i><span class="txt">{label}{mark}</span>{kind_tag}</div>'
     elif kind == "radioGroup":
         entries = [rb.label or rb.name for rb in item.radio_buttons] or item.choices or [label]
-        options = "".join(f"<span><i></i>{_esc(entry)}</span>" for entry in entries)
+        # the choice the Forms initial value selects is drawn selected
+        _, chosen, _ = item_default(item)
+        options = ""
+        for entry in entries:
+            on = ' class="on"' if entry == chosen else ""
+            options += f"<span{on}><i></i>{_esc(entry)}</span>"
         control = f'<div class="a-radio">{lbl}{options}{kind_tag}</div>'
     else:
         shape = {
@@ -945,15 +954,23 @@ def _apex_item_html(placed: Placed) -> str:
             "datePicker": " a-date",
         }.get(kind, "")
         extra = '<i class="cal"></i>' if kind == "datePicker" else ""
-        field = f'<div class="a-field{shape}">{extra}{kind_tag}</div>'
+        # A literal Forms initial value fills the field, as the export's
+        # static default does on the rendered page; a list shows the label
+        # of the choice it selects.
+        _, value, _ = item_default(item)
+        shown = f'<span class="val">{_esc(value)}</span>' if value else ""
+        field = f'<div class="a-field{shape}">{extra}{shown}{kind_tag}</div>'
         if template.endswith("-above"):
             align = f' style="--al:{placed.align}"' if placed.align != "left" else ""
             control = f'<div class="a-above"{align}>{lbl}{field}</div>'
         elif template in {"optional", "required"}:
-            share = f"--lbl:{placed.label_span or 3};--al:{placed.align}"
+            # labelColumnSpan is in grid columns of the cell's columnSpan;
+            # the stylesheet takes the label's share of the cell in twelfths.
+            twelfths = placed.label_span / max(grid.span, 1) * 12
+            share = f"--lbl:{twelfths:.2f};--al:{placed.align}"
             control = f'<div class="a-left" style="{share}">{lbl}{field}</div>'
         else:
-            control = f'<div class="a-field{shape}">{lbl}{extra}{kind_tag}</div>'
+            control = f'<div class="a-field{shape}">{lbl}{extra}{shown}{kind_tag}</div>'
     return f'<div class="a-item" title="{title}">{control}</div>'
 
 
@@ -1163,10 +1180,19 @@ def _overview(module: FormModule, layout: PageLayout) -> str:
     )
 
 
-def render_html(module: FormModule, *, generated_at: str = "") -> str:
-    """Render one self-contained HTML page: Forms UI vs. APEX default mapping."""
+def render_html(
+    module: FormModule, *, generated_at: str = "", ai_plan: dict | None = None
+) -> str:
+    """Render one self-contained HTML page: Forms UI vs. APEX default mapping.
+
+    ``ai_plan`` is the AI layout assistant's cached plan for page 1 (see
+    :func:`formslang.ailayout.cached_plan`): when the last export used the
+    assistant, the preview applies the same plan, so it shows the page the
+    export wrote and not the page the rules alone would have."""
     generated_at = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     layout = build_layout(module, 1)
+    if ai_plan:
+        ailayout.apply_cached(layout, ai_plan)
     body = (
         f'<div class="grid">{_overview(module, layout)}</div>'
         '<div class="warn">This shows the automatic default mapping only -- there is no '

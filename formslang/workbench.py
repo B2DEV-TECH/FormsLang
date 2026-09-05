@@ -28,6 +28,7 @@ from typing import ClassVar
 from urllib.parse import parse_qs, urlsplit
 
 from . import (
+    ailayout,
     apeximport,
     authcrypto,
     authstore,
@@ -301,7 +302,13 @@ class Workbench:
         """Read-only Forms-UI-vs-APEX visual preview for the module on screen."""
         if self.module is None:
             raise ValueError("no module open")
-        return formui.render_html(self.module)
+        # When the last export used the AI layout assistant, show the page
+        # it wrote: the cached plan is replayed when it still matches.
+        ai_plan = None
+        if last_export_config(self.store).get("ai_layout"):
+            page = int(last_export_config(self.store).get("page") or 1)
+            ai_plan = ailayout.cached_plan(self.store, page)
+        return formui.render_html(self.module, ai_plan=ai_plan)
 
     def _load_other_module(self, path: str):
         """Parse a second module for /api/diff, without touching the open session."""
@@ -443,7 +450,9 @@ class Workbench:
             raise ValueError("open a Forms module before exporting APEX")
         self.module = module
         with telemetry.stage(self.store.record_stage, "export"):
-            result = export_apexlang(self.store, module, self.export_dir, config)
+            result = export_apexlang(
+                self.store, module, self.export_dir, config, self.provider
+            )
         return result.to_dict()
 
     def list_exports(self) -> dict:

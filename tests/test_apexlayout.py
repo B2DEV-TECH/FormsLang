@@ -57,9 +57,9 @@ def _grids(node) -> dict[str, Grid]:
 
 def test_items_land_in_the_row_and_column_their_position_maps_to():
     """On a 600-unit canvas one grid column is 50 units: x=0 w=100 is column 1
-    span 2. A second field packs right after it -- column 3, span 3 -- with
-    no grid gap left for the 50 units of whitespace Forms drew between them;
-    a lower item opens a new row."""
+    span 2. A second field at x=150 lands in column 4, span 3 -- the 50
+    units of whitespace Forms drew between them stay a gap column, as on
+    the screen (APEX pads the empty column); a lower item opens a new row."""
     module = _module([
         _item("A", 0, 20, width=100),
         _item("B", 150, 20, width=150),
@@ -70,12 +70,13 @@ def test_items_land_in_the_row_and_column_their_position_maps_to():
 
     assert (grids["P1_A"].new_row, grids["P1_A"].column, grids["P1_A"].span) == (True, 1, 2)
     assert (grids["P1_B"].new_row, grids["P1_B"].new_column) == (False, True)
-    assert (grids["P1_B"].column, grids["P1_B"].span) == (3, 3)
+    assert (grids["P1_B"].column, grids["P1_B"].span) == (4, 3)
     assert (grids["P1_C"].new_row, grids["P1_C"].column, grids["P1_C"].span) == (True, 1, 12)
+    assert not any(p.flags for p in layout.roots[0].body)
 
     text = _page_text(module)
     assert "startNewRow: true\n            column: 1\n            columnSpan: 2" in text
-    assert "startNewRow: false\n            newColumn: true\n            column: 3" in text
+    assert "startNewRow: false\n            newColumn: true\n            column: 4" in text
 
 
 def test_two_adjacent_narrow_controls_pack_into_neighbouring_columns():
@@ -356,8 +357,10 @@ def test_label_template_follows_where_forms_draws_the_caption():
     assert template(prompt="X", required=True) == "required"
     assert template(prompt="X", prompt_edge="Top") == "optional-above"
     assert template(prompt="X", required=True, prompt_edge="Top") == "required-above"
-    # Universal Theme has no label right of or below a field: it floats
-    assert template(prompt="X", prompt_edge="End") == "optional-floating"
+    # Universal Theme has no label right of or below a field: it goes above,
+    # where it reads as a caption (floating inside reads as a placeholder)
+    assert template(prompt="X", prompt_edge="End") == "optional-above"
+    assert template(prompt="X", required=True, prompt_edge="Bottom") == "required-above"
     # a check box's caption is the control: never above or left
     assert template("checkbox", prompt="X", prompt_edge="Top") == "optional-floating"
     assert template("checkbox", label="Ativo") == "optional-floating"
@@ -367,18 +370,18 @@ def test_label_template_follows_where_forms_draws_the_caption():
     # no prompt and no label: Forms shows nothing, so neither does APEX
     assert template() == "hidden"
     # a label left of the field with nowhere to put it (the row was too
-    # crowded to leave it a labelColumnSpan) floats instead of overflowing
-    assert template(prompt="X", label_span=0) == "optional-floating"
+    # crowded to leave it a labelColumnSpan) goes above instead of overflowing
+    assert template(prompt="X", label_span=0) == "optional-above"
+    assert template(prompt="X", required=True, label_span=0) == "required-above"
 
 
 def test_a_prompt_left_of_the_field_claims_its_room_on_the_grid():
     """"Código" is 6 characters of a 5-point cell plus a 5-point attachment
     offset: 35 points of room left of a 100-point field at x=100. The pair
     spans 65..200, 135 points wide -- on a 600-point canvas (50 points a
-    column) that is a span of 3; alone on its row it packs into column 1.
-    The label wants round(35/135*12) = 3 twelfths of the cell -- but
-    _reconcile_label caps it at span - 1 = 2, leaving the field a column of
-    its own (APEX rejects labelColumnSpan >= columnSpan at render time)."""
+    column) that starts in column 2 (round(65/50) + 1) and spans 3, where
+    Forms drew it. labelColumnSpan is in grid columns: the 35 points of
+    room round to one column, leaving the field the other two."""
     module = _module(
         [_item("A", 100, 20, width=100, prompt="Código", prompt_offset=5)],
         coordinate_system="Real", coordinate_unit="Point",
@@ -388,10 +391,11 @@ def test_a_prompt_left_of_the_field_claims_its_room_on_the_grid():
 
     assert (placed.caption, placed.side, placed.align) == ("Código", "left", "right")
     assert placed.bounds() == (65, 20, 135, 14)
-    assert (placed.grid.column, placed.grid.span, placed.label_span) == (1, 3, 2)
+    assert placed.label_room == 35
+    assert (placed.grid.column, placed.grid.span, placed.label_span) == (2, 3, 1)
     text = _page_text(module)
     assert "template: @/optional\n" in text
-    assert "labelColumnSpan: 2" in text and "alignment: right" in text
+    assert "labelColumnSpan: 1" in text and "alignment: right" in text
 
 
 def test_boilerplate_text_before_an_uncaptioned_field_is_its_prompt_the_rest_static():

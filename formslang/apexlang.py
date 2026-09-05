@@ -32,6 +32,8 @@ import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from . import ailayout
+from .ai import Provider
 from .apexlayout import (
     _DATA_TYPES,
     Grid,
@@ -45,7 +47,9 @@ from .apexlayout import (
     column_name,
     database_column,
     forms_caption,
+    forms_expression_default,
     item_box,
+    item_default,
     layout_report,
     slug,
     sql_name,
@@ -97,10 +101,15 @@ class ApexExportConfig:
     workspace: str = ""
     schema: str = ""
     page: int = 1
+    # Ask the configured AI provider to place the controls of the regions
+    # the deterministic rules could not lay out cleanly (see ``ailayout``).
+    # Off by default: the export stays reproducible without a provider.
+    ai_layout: bool = False
 
     @classmethod
     def from_dict(cls, raw: dict | None, module: FormModule) -> ApexExportConfig:
         raw = raw or {}
+        ai_layout = str(raw.get("ai_layout") or "").strip().lower() in {"1", "true", "on", "yes"}
         try:
             app_id = int(raw.get("app_id") or 100)
             page = int(raw.get("page") or 1)
@@ -119,7 +128,7 @@ class ApexExportConfig:
             raise ValueError("application name is required")
         workspace = " ".join(str(raw.get("workspace") or "").split())[:255]
         schema = " ".join(str(raw.get("schema") or "").split())[:128].upper()
-        return cls(app_id, name, alias, workspace, schema, page)
+        return cls(app_id, name, alias, workspace, schema, page, ai_layout)
 
 
 @dataclass(frozen=True)
@@ -272,27 +281,28 @@ def _label_template(item: Item, kind: str, *, side: str | None = None, label_spa
     -- Start, the default edge -- is a label left of the field (``optional``
     or ``required``, with ``labelColumnSpan`` giving it the room the prompt
     took); one on the top edge is a label above. Universal Theme has no
-    label right of or below a field, so those float inside it, as does a
-    check box's caption (the control is the label). No caption at all --
-    nothing on the screen, or a ``Hidden`` prompt display style -- hides the
-    label rather than inventing one. A left label whose row was too crowded
-    to leave it a ``labelColumnSpan`` (:func:`formslang.apexlayout._reconcile_label`
-    zeroes it out rather than emit ``labelColumnSpan >= columnSpan``, which
-    APEX rejects at render time) floats instead of losing its room entirely.
+    label right of or below a field: those go above the field too, where
+    they read as a caption, rather than floating inside the field where
+    they would read as a placeholder. A check box's caption is the control
+    itself (APEX moves the label next to the box whatever the template; the
+    floating one carries the required marker). No caption at all -- nothing
+    on the screen, or a ``Hidden`` prompt display style -- hides the label
+    rather than inventing one. A left label whose row could not give it a
+    single column (:func:`formslang.apexlayout._settle_labels` zeroes
+    ``labelColumnSpan`` rather than emit one APEX rejects at render time)
+    goes above the field as well.
     """
     if side is None:
         side = forms_caption(item)[1]
     if side == "none":
         return "hidden"
-    required = item.required and kind != "displayOnly"
+    required = item.required and kind not in {"displayOnly", "checkbox"}
     base = "required" if required else "optional"
     if kind == "checkbox" or side == "control":
         return f"{base}-floating"
-    if side == "above":
-        return f"{base}-above"
-    if side == "left":
-        return base if label_span else f"{base}-floating"
-    return f"{base}-floating"
+    if side == "left" and label_span:
+        return base
+    return f"{base}-above"
 
 
 def _bool(value: bool) -> str:
@@ -304,7 +314,7 @@ def _grid_lines(grid: Grid) -> str:
     lines = [f"startNewRow: {_bool(grid.new_row)}"]
     if grid.flow:
         if not grid.new_row:
-            lines.append("newColumn: false")
+            lines.append(f"newColumn: {_bool(grid.new_column)}")
     else:
         if not grid.new_row:
             lines.append(f"newColumn: {_bool(grid.new_column)}")
@@ -620,6 +630,10 @@ def _button_chunk(placed: Placed, region: RegionNode) -> str:
             buttonTemplate: @/text
             templateOptions: #DEFAULT#
         }}
+        behavior {{
+            action: definedByDynamicAction
+            requiresConfirmation: false
+        }}
     )
 """
 
@@ -660,8 +674,13 @@ def _item_chunk(
     # Only item has no "Value Required" in Page Designer either), and one
     # such line fails the whole import. The Forms fact is kept in the item's
     # comment instead.
+    # A required check box in APEX must be *checked*; in Forms "required"
+    # only means the item has a value, which a check box always has. The
+    # fact stays in the comment, the item stays optional.
     required = (
-        "\n            valueRequired: true" if item.required and kind != "displayOnly" else ""
+        "\n            valueRequired: true"
+        if item.required and kind not in {"displayOnly", "checkbox"}
+        else ""
     )
     max_length = (
         f"\n            maxLength: {item.max_length}"
@@ -685,7 +704,7 @@ def _item_chunk(
         if item.format_mask and kind in {"numberField", "datePicker"}:
             appearance_lines.append(f"formatMask: {_text(item.format_mask)}")
     width_line = "".join(f"\n            {line}" for line in appearance_lines)
-    # Belt-and-suspenders re-clamp of _reconcile_label's invariant: APEX
+    # Belt-and-suspenders re-clamp of _settle_labels' invariant: APEX
     # rejects labelColumnSpan >= columnSpan at render time only (neither
     # ``apex validate`` nor ``apex import`` catch it), so whatever upstream
     # layout path produced this Placed, never emit a span that violates it.
@@ -734,6 +753,17 @@ def _item_chunk(
         settings = "\n        settings {" + "".join(
             f"\n            {line}" for line in settings_lines
         ) + "\n        }"
+    # A literal InitializeValue is the item's static default (verified on
+    # 26.1: ``default { type: static staticValue }`` fills the field on
+    # render, a display-only item included); a Forms expression is not.
+    default_block = ""
+    default_value, _, default_note = item_default(item)
+    if default_value:
+        default_block = f"""
+        default {{
+            type: static
+            staticValue: {_text(default_value)}
+        }}"""
     help_block = ""
     if _help_text(item):
         help_block = f"""
@@ -762,6 +792,18 @@ def _item_chunk(
     ]
     if item.format_mask and kind not in {"numberField", "datePicker"}:
         notes.append(f"Forms format mask (no native property on a {kind}): {item.format_mask}.")
+    if forms_expression_default(item):
+        notes.append(
+            f"Forms initial value {forms_expression_default(item)} is an expression, not a "
+            "literal: set a computation or a default of another type."
+        )
+    if default_note:
+        notes.append(f"Forms {default_note}.")
+    if item.required and kind == "checkbox":
+        notes.append(
+            "Required in Forms only means the item has a value; a required APEX check box "
+            "must be checked, so it is left optional here."
+        )
     if lov is not None:
         notes.append(_lov_note(lov))
     if placed.note:
@@ -787,7 +829,7 @@ def _item_chunk(
         appearance {{
             template: @/{template}
             templateOptions: #DEFAULT#{width_line}
-        }}{validation}{settings}{lov_block}{help_block}{read_only}
+        }}{validation}{settings}{lov_block}{default_block}{help_block}{read_only}
         comments {{
             comments: {_fence(" ".join(notes))}
         }}
@@ -909,6 +951,7 @@ def _layout_manifest(layout: PageLayout) -> dict:
             for lov in layout.lovs
         ],
         "skipped": layout.skipped,
+        "ai_layout": layout.ai,
         "mapping_report": layout_report(layout),
     }
 
@@ -961,9 +1004,11 @@ def _approved_processes(store: Store, page: int) -> tuple[list[str], list[dict]]
 
 
 def _page(
-    module: FormModule, store: Store, config: ApexExportConfig
+    module: FormModule, store: Store, config: ApexExportConfig, provider: Provider | None = None
 ) -> tuple[str, dict, PageLayout]:
     layout = build_layout(module, config.page)
+    if config.ai_layout:
+        ailayout.assist(layout, provider, store, config.page)
     items = _layout_chunks(layout)
     processes, process_mapping = _approved_processes(store, config.page)
     title = module.title or module.name
@@ -1016,12 +1061,17 @@ def export_apexlang(
     module: FormModule,
     out_dir: Path | str,
     raw_config: dict | None = None,
+    provider: Provider | None = None,
 ) -> ApexExportResult:
     """Write an expanded APEXlang project, import ZIP, and review artifacts.
 
     The deployment choices are remembered on the session (see
     :func:`last_export_config`) and the checksum salt is the session's own,
     so exporting again with the same choices reproduces the same bytes.
+    With ``ai_layout`` on, ``provider`` (the session's, or the environment's
+    when None) is asked about the regions the rules could not lay out
+    cleanly; its plan is cached on the session, so that export is
+    reproducible too (see :mod:`formslang.ailayout`).
     """
     if not _TEMPLATE.is_dir():
         raise RuntimeError(f"APEXlang 26.1 template is missing: {_TEMPLATE}")
@@ -1044,7 +1094,7 @@ def export_apexlang(
             json.dumps({"mmdVersion": MMD_VERSION}, indent=2) + "\n",
         )
 
-        page_text, mapping, layout = _page(module, store, config)
+        page_text, mapping, layout = _page(module, store, config, provider)
         pages = staged / "pages"
         for old in pages.glob("p00001-*.apx"):
             old.unlink()
@@ -1103,6 +1153,7 @@ def export_apexlang(
                     "export": (
                         f"formslang export {store.path.name} --app-id {config.app_id} "
                         f"--alias {config.alias} --page {config.page}"
+                        + (" --ai-layout" if config.ai_layout else "")
                     ),
                     "validate": f"formslang apex validate {zip_path.name}",
                     "import": f"formslang apex import {zip_path.name}",

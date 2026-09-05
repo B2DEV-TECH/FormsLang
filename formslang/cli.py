@@ -453,6 +453,9 @@ def _export_config(args: argparse.Namespace, store: Store) -> dict:
         value = getattr(args, key)
         if value not in (None, ""):
             raw[key] = value
+    # The AI layout assistant is a per-run choice, never a remembered one:
+    # an export with the flag off stays free of any provider.
+    raw["ai_layout"] = bool(getattr(args, "ai_layout", False))
     return raw
 
 
@@ -471,7 +474,10 @@ def cmd_export(args: argparse.Namespace) -> int:
     work = _work_dir(args)
     try:
         module = _session_module(store, work, args.oracle_home)
-        result = export_apexlang(store, module, work / "export", _export_config(args, store))
+        provider = provider_from_env(args.provider) if args.ai_layout else None
+        result = export_apexlang(
+            store, module, work / "export", _export_config(args, store), provider
+        )
     except (OracleToolchainError, ValueError, RuntimeError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
@@ -790,6 +796,17 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--workspace", default="", help="workspace, or leave it to be resolved at import")
     ex.add_argument("--schema", default="", help="parsing schema, or leave it to be resolved at import")
     ex.add_argument("--page", type=int, default=None, help="page number (default: last export, else 1)")
+    ex.add_argument(
+        "--ai-layout",
+        dest="ai_layout",
+        action="store_true",
+        help=(
+            "ask the configured AI provider to place the controls of the regions the "
+            "layout rules could not lay out cleanly; the plan is cached on the session "
+            "(see docs/layout-mapping-matrix.md)"
+        ),
+    )
+    ex.add_argument("--provider", default="", help="override FORMSLANG_AI_PROVIDER for --ai-layout")
     ex.add_argument("--json", action="store_true", help="print the result as JSON")
     ex.set_defaults(func=cmd_export)
 

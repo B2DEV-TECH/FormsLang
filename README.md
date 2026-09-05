@@ -751,9 +751,36 @@ and tab pages; single-record blocks become page items of the native type
 `radioGroup`, `selectList`); multi-record blocks on a table become
 Interactive Grids with their columns in Forms order; and every export
 carries a per-element mapping report — see
-[docs/layout-mapping-matrix.md](docs/layout-mapping-matrix.md). Schema
-binding, LOVs, validations and application navigation still require
-functional review.
+[docs/layout-mapping-matrix.md](docs/layout-mapping-matrix.md). Each
+control lands on the grid column its Forms x maps to, spanning the columns
+its width covers, with the whitespace Forms drew before it kept as an empty
+column and its prompt beside it with the room it had; a literal initial
+value is the item's static default. Schema binding, LOVs, validations and
+application navigation still require functional review.
+
+### The AI layout assistant
+
+Twelve columns cannot always hold a Forms row: eight fields with prompts,
+two labels that need more room than their fields leave. The deterministic
+rules resolve every such row on their own — the control moves right, or
+continues on the next grid row, or the row's labels go above their fields
+— and record the concession on the control in the mapping report
+(`pushed`, `wrapped`, `shrunk`, `label-narrow`, `label-above`).
+
+**Ask the AI provider to lay out the regions the rules could not place
+cleanly**, a checkbox in the export dialog (`--ai-layout` on the command
+line), sends *only those regions* to the provider configured in Settings,
+the way a front-end developer would be handed the screen: the region's
+size, each control's name, Forms kind, APEX type, geometry, caption and
+the placement the rules produced. No column names, no code, no data. The
+answer is a plan on the same 12-column grid, validated before it is used
+— every control exactly once, no overlaps, every label narrower than its
+field — and applied to the one layout model the export and the preview
+share. A rejected, offline or failed answer keeps the rules' placement, and
+the manifest says so under `layout.ai_layout`. The plan is cached on the
+session and replayed while the layout is unchanged, so the export stays
+deterministic; the enterprise egress policy is checked before any request
+leaves the machine.
 
 ### Validate and import
 
@@ -910,7 +937,7 @@ every one accepts a Forms2XML `.xml` in place of the `.fmb`.
 | `preview <module>` | every canvas next to the APEX items it maps to | `-o` |
 | `convert <module\|session>` | headless AI proposals for every code body | `-o`, `--provider`, `--model`, `--limit` |
 | `workbench <module\|session\|folder>` | the review screen on `127.0.0.1:8765` | `-o`, `--port`, `--host` (loopback only), `--no-browser`, `--provider`, `--model` |
-| `export <session\|module>` | APEXlang 26.1 project + import ZIP from the approved work; choices remembered on the session | `-o`, `--app-id`, `--name`, `--alias`, `--workspace`, `--schema`, `--page`, `--json` |
+| `export <session\|module>` | APEXlang 26.1 project + import ZIP from the approved work; choices remembered on the session | `-o`, `--app-id`, `--name`, `--alias`, `--workspace`, `--schema`, `--page`, `--ai-layout` (with `--provider`), `--json` |
 | `apex validate <zip>` | SQLcl `apex validate` against a workspace; changes nothing | `--connect`, `--user`, `--sqlcl`, `--timeout`, `--json` |
 | `apex import <zip>` | SQLcl `apex import` | same |
 | `ai` | which provider is configured; `--check` sends one short request | `--provider`, `--check` |

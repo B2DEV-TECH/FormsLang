@@ -70,7 +70,9 @@ def test_value_required_is_emitted_only_for_editable_item_types():
     assert "valueRequired" not in by_item["SHOWN"]
     assert "required in Forms" in by_item["SHOWN"]
     assert "valueRequired: true" in by_item["TYPED"]
-    assert "valueRequired: true" in by_item["TICKED"]
+    # a required APEX check box must be *checked*; Forms only meant "has a value"
+    assert "valueRequired" not in by_item["TICKED"]
+    assert "left optional here" in by_item["TICKED"]
     assert "valueRequired" not in by_item["FREE"]
     assert "required in Forms" not in by_item["FREE"]
 
