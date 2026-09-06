@@ -1,8 +1,10 @@
 # Quality acceptance for existing features
 
-Version 1.2.1 corrects review integrity, source preservation and header
-usability. It does not add product features or claim that a passing test
-suite proves every Oracle Forms application can be migrated faithfully.
+This page records, per release, what the automated checks proved and what
+they did not. A passing test suite does not prove that every Oracle Forms
+application can be migrated faithfully; each section says where real
+Forms/APEX testing still has to happen. The release steps that produce
+these sections are in [releasing.md](releasing.md).
 
 ## 1.2.1 verification
 
@@ -20,11 +22,11 @@ suite proves every Oracle Forms application can be migrated faithfully.
 
 ## 1.2.2 verification (2026-09-06)
 
-Tested binary source: `6fc9f5c2f114244fa3b6b3742bb78a6b99debd91`.
-The user authorized publication for download and manual testing, with real
-Forms/APEX runtime validation still pending. This is not a claim of
-Forms/APEX equivalence. Subsequent release-documentation commits do not
-change the tested binaries.
+Tested binary source: `6fc9f5c2f114244fa3b6b3742bb78a6b99debd91`. The
+release-documentation commits that followed do not change the tested
+binaries. The release is published for download and manual testing; real
+Forms/APEX runtime validation is still pending, and nothing here claims
+Forms/APEX equivalence.
 
 - [CI run 34010752073](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34010752073):
   949 tests passed in each of eight Windows/Linux and Python 3.10–3.13
@@ -35,16 +37,16 @@ change the tested binaries.
   the saved approval among 59 review units, preserved the source, produced
   repeatable exports and started the installed native window and engine.
   This does not exercise every interaction inside the native webview.
-- The selected `tests/fixtures/showcase/module.fmb` was converted using
-  Oracle Forms 14.1.2. Comparison with the reference XML found record-spacing
-  differences in three blocks; runtime visual acceptance remains pending.
-- Diff now identifies package specification and body separately; three
+- The showcase `tests/fixtures/showcase/module.fmb` was converted with
+  Oracle Forms 14.1.2. Comparison with the reference XML found
+  record-spacing differences in three blocks, tracked in
+  [issue #1](https://github.com/B2DEV-TECH/FormsLang/issues/1); runtime
+  visual acceptance remains pending.
+- Diff identifies package specification and body separately; three
   regression tests cover edits, removal and reordering of same-name units.
-- Pending user validation: import and runtime comparison in a separate APEX
-  application. The proposed target is application 190122 in the local
-  FORMSLANG workspace/schema; application 100 must remain untouched.
-  Automatic review refused the database mutation without explicit target
-  authorization. No import or temporary test user was created.
+- Still pending: import into a separate, disposable APEX application and
+  runtime comparison against the Forms module. Nothing was imported and no
+  test user was created for this release.
 
 Exact tested installer SHA-256 digests:
 

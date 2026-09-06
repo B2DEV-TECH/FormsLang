@@ -33,30 +33,20 @@ same session rebuilds, byte for byte, on a build server.
 > proposal the workbench produces is still a draft for a human to approve;
 > a migration remains something a person owns.
 
-Version 1.2.1 hardens the existing workflow: short executable bodies enter
-review, changed source cannot silently reuse an old approval, uploads do
-not overwrite earlier source revisions, and header actions stay reachable
-when the window narrows. No new product features are added.
+Upgrade notes for each release live in the [changelog](CHANGELOG.md). The
+one that matters most when coming from 1.2.0 or earlier: reopen the
+**original unchanged XML/FMB** with the same output directory to recover
+previously omitted short units. Existing decisions remain; recovered units
+start pending. Opening a `.session.db` alone does not rescan source. Use a
+separate `-o` directory for a changed source revision.
 
-When upgrading, reopen the **original unchanged XML/FMB** with the same
-output directory to recover previously omitted short units. Existing
-decisions remain; recovered units start pending. Opening a `.session.db`
-alone does not rescan source. Use a separate `-o` directory for a changed
-source revision. See [quality acceptance](docs/quality-acceptance.md) for
-what automated checks prove and what still needs real Forms/APEX testing.
-
-Installer maintainers can run the **Installer acceptance** workflow against
-an unpublished candidate. Separate disposable Windows runners test NSIS
-and MSI installation, a saved review, upgrade from the preceding release,
-reproducible export and native desktop startup. The runner-only script is
-`examples/verify/installer_upgrade.ps1`; it refuses local execution.
-
-Version **1.2.2** fixes Diff matching of package specifications and bodies
-with the same name and guards frozen-engine version metadata. It passed
-the NSIS/MSI upgrade checks and 949 tests on each of eight Windows/Linux
-Python environments. Real Forms/APEX runtime validation remains pending
-and will be performed by the user. Evidence and exact tested
-installer hashes are in [quality acceptance](docs/quality-acceptance.md).
+[Quality acceptance](docs/quality-acceptance.md) records, per release, what
+the automated checks proved, the tested installer hashes and what still
+needs real Forms/APEX testing. Since 1.2.2 each release also passes the
+**Installer acceptance** workflow: separate disposable Windows runners
+install the previous release, save a review, upgrade to the candidate and
+verify that the review, the export and the native desktop survived, for
+NSIS and MSI. The steps are in [`docs/releasing.md`](docs/releasing.md).
 
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"
@@ -232,20 +222,20 @@ installation on the machine — see
 [Oracle Forms toolchain](#oracle-forms-toolchain). Without one, the app
 works on already-converted Forms2XML `.xml` files.
 
-Build the installers from source:
+Build the installers from source, with the recipe CI uses:
 
 ```bash
 pip install -e .          # refreshes the version metadata PyInstaller freezes in
 pip install pyinstaller
-python -m PyInstaller --noconfirm --onefile --console \
-  --name formslang-engine --collect-data formslang --paths . \
-  --distpath packaging/dist --workpath packaging/build \
-  --specpath packaging packaging/sidecar_entry.py
-
-cp packaging/dist/formslang-engine.exe \
-   desktop/src-tauri/binaries/formslang-engine-x86_64-pc-windows-msvc.exe
-cd desktop && npm install && npm run tauri build
+python -m PyInstaller --noconfirm packaging/formslang-engine.spec
+cp dist/formslang-engine.exe desktop/src-tauri/binaries/formslang-engine-x86_64-pc-windows-msvc.exe
+cd desktop && npm ci && npm run tauri build
 ```
+
+The spec file freezes the engine together with its distribution metadata
+and refuses to build when that metadata is older than `pyproject.toml`, so
+a stale editable install cannot ship under a new version number. The full
+release procedure is in [`docs/releasing.md`](docs/releasing.md).
 
 PyInstaller and Tauri are build-time tools only; what ships still has zero
 runtime dependencies.

@@ -7,22 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.2] - 2026-09-06
+### Fixed
 
-- Fix structural Diff matching of package specifications and bodies with
-  the same name, so a specification edit or removal cannot be hidden by
+- The Diff report labels added and removed program units with their kind,
+  as modified ones already were, so a package specification and its body
+  removed together no longer appear as two identical names.
+
+### Changed
+
+- The installer acceptance workflow reads the candidate version from the
+  checkout and defaults the baseline to the latest published release. Its
+  build steps moved to a reusable workflow (`build-installers.yml`) so
+  acceptance and release runs freeze the same binaries.
+- The installed-engine check raises on every failed step instead of relying
+  on `assert`, finds the fixture relative to itself, verifies the unit it
+  approved rather than the first in the list, and records only what each
+  phase actually checked.
+- A test requires every version declaration to agree: `pyproject.toml`,
+  the `__init__` fallback, `package.json`, `tauri.conf.json`, `Cargo.toml`
+  and both lock files.
+- The README build recipe uses the same spec file as CI; the release
+  procedure is written down in `docs/releasing.md`.
+
+## [1.2.2] — 2026-09-06
+
+A correctness fix for the structural Diff and an installer upgrade check on
+disposable runners. No new product features.
+
+### Fixed
+
+- Structural Diff matches package specifications and bodies with the same
+  name separately, so a specification edit or removal cannot be hidden by
   an unchanged body.
-- Add disposable Windows installer acceptance for NSIS and MSI: install the
+- The frozen-engine build refuses to run when the installed package
+  metadata disagrees with `pyproject.toml`, instead of silently shipping
+  an old version number.
+
+### Added
+
+- Installer acceptance workflow: on disposable Windows runners, install the
   previous release, save an approval through the installed engine, upgrade
-  to the candidate and verify the retained review and reproducible export.
-- Refuse frozen-engine builds when installed package metadata disagrees
-  with the project version, instead of silently shipping an old version.
-- Verify NSIS/MSI installation and upgrade from 1.2.1 on disposable Windows
-  runners, including preserved approval, export and native desktop startup.
-  All 949 tests pass on eight Windows/Linux Python environments.
-- Published at the user's request for download and manual testing. Real
-  showcase Forms/APEX runtime acceptance remains pending with the user;
-  no production-module coverage or Forms/APEX equivalence is claimed.
+  to the candidate and verify the retained review, the reproducible export
+  and native desktop startup, for NSIS and MSI separately.
+
+### Acceptance notes
+
+- The installer upgrade from 1.2.1 passed for NSIS and MSI. Real Forms/APEX
+  runtime acceptance of the showcase module is still pending; no
+  production-module coverage or Forms/APEX equivalence is claimed. Evidence
+  and the tested installer hashes are in `docs/quality-acceptance.md`.
 
 ## [1.2.1] — 2026-09-05
 
@@ -951,7 +984,17 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
 
 [Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.2...HEAD
 [1.2.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.13...v1.0.0
+[0.1.13]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.12...v0.1.13
+[0.1.12]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.11...v0.1.12
+[0.1.11]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.10...v0.1.11
+[0.1.10]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.9...v0.1.10
+[0.1.9]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.8...v0.1.9
+[0.1.8]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.3...v0.1.4
