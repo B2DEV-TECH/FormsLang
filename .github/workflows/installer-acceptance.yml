@@ -1,53 +1,26 @@
 name: Installer acceptance
+
+# Manual. Builds the installers from the selected ref, then on separate
+# disposable Windows runners installs the previous release, saves a review
+# through it, upgrades to the freshly built candidate and verifies that the
+# review, the export and the native desktop survived. The candidate version
+# comes from the checkout; the baseline defaults to the latest published
+# release, so a candidate that is already published must name its baseline.
 on:
   workflow_dispatch:
     inputs:
       baseline:
-        description: Previous release version (without v)
-        required: true
-        default: '1.2.1'
-      candidate:
-        description: Candidate draft release version (without v)
-        required: true
-        default: '1.2.2'
+        description: Release to upgrade from (version without v). Empty = latest published release.
+        required: false
+        default: ''
+
 permissions:
   contents: read
+
 jobs:
   build:
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Build frozen engine
-        shell: pwsh
-        run: |
-          python -m pip install . pyinstaller
-          if ($LASTEXITCODE -ne 0) { throw 'Python installation failed' }
-          python -m PyInstaller --noconfirm packaging/formslang-engine.spec
-          if ($LASTEXITCODE -ne 0) { throw 'Engine build failed' }
-          New-Item -ItemType Directory -Force desktop/src-tauri/binaries | Out-Null
-          Copy-Item dist/formslang-engine.exe desktop/src-tauri/binaries/formslang-engine-x86_64-pc-windows-msvc.exe
-      - name: Build Windows installers
-        shell: pwsh
-        run: |
-          npm --prefix desktop ci
-          if ($LASTEXITCODE -ne 0) { throw 'Desktop dependencies failed' }
-          $env:CI='true'
-          npm --prefix desktop run tauri -- build
-          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: candidate-installers
-          path: |
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
-            desktop/src-tauri/target/release/bundle/msi/*.msi
-          retention-days: 7
+    uses: ./.github/workflows/build-installers.yml
+
   upgrade:
     needs: build
     runs-on: windows-latest
@@ -58,8 +31,7 @@ jobs:
         kind: [nsis, msi]
     env:
       GH_TOKEN: ${{ github.token }}
-      BASELINE: ${{ inputs.baseline }}
-      CANDIDATE: ${{ inputs.candidate }}
+      CANDIDATE: ${{ needs.build.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -67,12 +39,25 @@ jobs:
           python-version: '3.13'
       - uses: actions/download-artifact@v4
         with:
-          name: candidate-installers
+          name: ${{ needs.build.outputs.artifact }}
           path: installer-assets/built
-      - name: Download exact release installers
+      - name: Resolve the baseline release
+        shell: pwsh
+        env:
+          REQUESTED: ${{ inputs.baseline }}
+        run: |
+          $baseline = $env:REQUESTED
+          if (-not $baseline) {
+            $baseline = (gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name) -replace '^v', ''
+            if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the latest published release' }
+          }
+          if ($baseline -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid baseline version: $baseline" }
+          if ($baseline -eq $env:CANDIDATE) { throw "Baseline $baseline is the candidate itself; pass the release to upgrade from" }
+          "BASELINE=$baseline" >> $env:GITHUB_ENV
+          Write-Output "Upgrade path: $baseline -> $env:CANDIDATE"
+      - name: Download the baseline release installers
         shell: pwsh
         run: |
-          if ($env:BASELINE -notmatch '^\d+\.\d+\.\d+$' -or $env:CANDIDATE -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           gh release download "v$env:BASELINE" --dir installer-assets/baseline --pattern '*.exe' --pattern '*.msi'
           if ($LASTEXITCODE -ne 0) { throw 'Baseline download failed' }
           New-Item -ItemType Directory -Force installer-assets/candidate | Out-Null
