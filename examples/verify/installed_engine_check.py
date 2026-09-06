@@ -1,4 +1,12 @@
-"""Smoke-test an installed engine before/after upgrade using synthetic source only."""
+"""Smoke-test an installed engine before and after an upgrade.
+
+Runs against the synthetic showcase fixture only. ``--phase seed`` drives
+the baseline installation and records an approval; ``--phase verify``
+drives the upgraded installation and checks that the approval survived.
+Every check raises on failure, so the outcome does not depend on whether
+Python runs with ``-O``. Each phase writes ``<work>/<phase>-result.json``
+listing only what that phase actually checked.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +21,31 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SOURCE = REPO_ROOT / "tests" / "fixtures" / "showcase" / "module.xml"
+REVIEWER = "installer QA"
+APPROVED_CODE = "begin null; end;"
+EXPORT = {"alias": "installer-qa", "app_id": 190122}
+
+
+class CheckFailed(AssertionError):
+    """A verification step observed something other than what it expected."""
+
+
+def check(condition: bool, message: str, detail: object = None) -> None:
+    if not condition:
+        raise CheckFailed(message if detail is None else f"{message}: {detail!r}")
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def free_port() -> int:
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        return reservation.getsockname()[1]
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -24,18 +57,21 @@ def main() -> None:
     work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
     engine = args.engine.resolve()
-    version = subprocess.check_output([str(engine), "--version"], text=True, timeout=30)
-    assert version.strip() == f"FormsLang {args.version}", version
-    with socket.socket() as reservation:
-        reservation.bind(("127.0.0.1", 0))
-        port = reservation.getsockname()[1]
-    env = dict(os.environ, FORMSLANG_CONFIG_DIR=str(work / "config"),
-               FORMSLANG_SECRET_BACKEND="memory")
-    source = Path("tests/fixtures/showcase/module.xml").resolve()
-    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    reported = subprocess.check_output([str(engine), "--version"], text=True, timeout=30).strip()
+    check(reported == f"FormsLang {args.version}", "installed engine reports another version", reported)
+
+    seed_result = work / "seed-result.json"
+    seed = json.loads(seed_result.read_text(encoding="utf-8")) if args.phase == "verify" else {}
+    if args.phase == "verify":
+        check("task_id" in seed, "seed phase left no task id to verify", seed_result)
+
+    port = free_port()
+    env = dict(os.environ, FORMSLANG_CONFIG_DIR=str(work / "config"), FORMSLANG_SECRET_BACKEND="memory")
+    source_hash = sha256(SOURCE)
     with (work / f"{args.phase}-engine.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [str(engine), "workbench", str(source), "-o", str(work / "session"),
+            [str(engine), "workbench", str(SOURCE), "-o", str(work / "session"),
              "--provider", "echo", "--port", str(port), "--no-browser"],
             env=env, stdout=log, stderr=log,
         )
@@ -57,33 +93,40 @@ def main() -> None:
                     break
                 except (OSError, urllib.error.URLError):
                     if process.poll() is not None or time.monotonic() >= deadline:
-                        raise RuntimeError("installed engine did not become ready; inspect log") from None
+                        raise RuntimeError("installed engine did not become ready; inspect the engine log") from None
                     time.sleep(0.25)
-            assert state["session"]["title"] == "DEMO_ALL_ELEMENTS"
-            assert state["can_export_apex"]
-            task = state["tasks"][0]
-            task_id = task["id"]
-            code = "begin null; end;"
+            check(state["session"]["title"] == "DEMO_ALL_ELEMENTS", "unexpected session", state["session"])
+            check(state["can_export_apex"], "session cannot export")
+            check(bool(state["tasks"]), "session has no review units")
+
+            result = {"phase": args.phase, "version": args.version, "tasks": state["stats"]["tasks"]}
             if args.phase == "seed":
-                request("/api/decision", {"task_id": task_id, "state": "approved",
-                                         "code": code, "reviewer": "installer QA"})
+                task = state["tasks"][0]
+                request("/api/decision", {"task_id": task["id"], "state": "approved",
+                                         "code": APPROVED_CODE, "reviewer": REVIEWER})
+                saved = next(t for t in request("/api/state")["tasks"] if t["id"] == task["id"])
+                check(saved["state"] == "approved", "approval was not recorded", saved)
+                result.update(task_id=task["id"], approval_recorded=True)
             else:
-                assert task["state"] == "approved", task
-                assert task["final_code"] == code, task
-                assert task["reviewer"] == "installer QA", task
-            result = request("/api/export", {"alias": "installer-qa", "app_id": 190122})
-            zip_path = Path(result["zip"])
-            first = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-            request("/api/export", {"alias": "installer-qa", "app_id": 190122})
-            assert hashlib.sha256(zip_path.read_bytes()).hexdigest() == first
-            assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
-            summary = {"phase": args.phase, "version": args.version,
-                       "tasks": state["stats"]["tasks"], "approval_preserved": True,
-                       "deterministic_export": True, "source_unchanged": True}
-            (work / f"{args.phase}-result.json").write_text(
-                json.dumps(summary, indent=2) + "\n", encoding="utf-8",
-            )
-            print(json.dumps(summary))
+                task = next((t for t in state["tasks"] if t["id"] == seed["task_id"]), None)
+                check(task is not None, "approved unit disappeared after upgrade", seed["task_id"])
+                check(task["state"] == "approved", "approval lost after upgrade", task)
+                check(task["final_code"] == APPROVED_CODE, "approved code changed after upgrade", task)
+                check(task["reviewer"] == REVIEWER, "reviewer changed after upgrade", task)
+                check(state["stats"]["tasks"] == seed["tasks"], "unit count changed after upgrade",
+                      (seed["tasks"], state["stats"]["tasks"]))
+                result.update(task_id=task["id"], approval_preserved=True,
+                              baseline_export_sha256=seed.get("export_sha256"))
+
+            zip_path = Path(request("/api/export", EXPORT)["zip"])
+            first = sha256(zip_path)
+            request("/api/export", EXPORT)
+            check(sha256(zip_path) == first, "second export differs from the first")
+            check(sha256(SOURCE) == source_hash, "source file was modified")
+            result.update(deterministic_export=True, source_unchanged=True, export_sha256=first)
+
+            (work / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(result))
         finally:
             # Only the process tree launched above, including PyInstaller's child.
             subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
