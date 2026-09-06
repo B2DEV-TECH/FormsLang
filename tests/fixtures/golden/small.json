@@ -1,11 +1,11 @@
 {
   "export": {
-    "approved_sql_sha256": "3aed352ea66d527780f453a1b3cdcec7c32ed5239d91822f6e6a686bc1ccb240",
+    "approved_sql_sha256": "487dfc91f51377ec8d03a05d5b252022b730f8fd60c24d8486be6b23423fad0a",
     "files": [
       "approved.sql",
       "session.json"
     ],
-    "session_json_sha256": "5b1a302a090aa113e9754601fa8f1127cf72e429fed243369cad166027bad67f"
+    "session_json_sha256": "6aa6b9ac76e24b6840485d5ac08228576cb37ffab6c1a56c96209d352f26d0d6"
   },
   "graph_summary": {
     "by_kind": {
@@ -198,6 +198,22 @@
         "Which AI provider should this portfolio use?"
       ],
       "provider": "echo"
+    },
+    "f0fb8af21226": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
     }
   },
   "tasks": [
@@ -266,11 +282,29 @@
       "name": "WHEN-NEW-FORM-INSTANCE",
       "owner": "",
       "verdict": "ASSISTED"
+    },
+    {
+      "apex_hint": "Forms function key: becomes an explicit page button",
+      "builtins": [
+        {
+          "apex": "Branch/redirect to another page",
+          "name": "EXIT_FORM",
+          "verdict": "AUTO"
+        }
+      ],
+      "globals_used": [],
+      "id": "f0fb8af21226",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "KEY-EXIT",
+      "owner": "",
+      "verdict": "ASSISTED"
     }
   ],
   "tier": "small",
   "verdict_counts": {
-    "ASSISTED": 2,
+    "ASSISTED": 3,
     "AUTO": 1,
     "DROP": 0,
     "MANUAL": 0,

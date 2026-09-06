@@ -289,6 +289,16 @@ class Store:
 
     def add_tasks(self, tasks: list[ConversionTask]) -> int:
         """Insert tasks, keeping any that already exist (and their history)."""
+        # An id identifies the unit, not its source revision. Never silently
+        # pair new source with an old approval. Check the entire batch before
+        # inserting anything so a refusal leaves the session unchanged.
+        for task in tasks:
+            row = self.db.execute("SELECT source FROM task WHERE id = ?", (task.id,)).fetchone()
+            if row is not None and row["source"] != task.source:
+                raise ValueError(
+                    "source differs from the saved review session; "
+                    "use a separate output directory (-o) for this revision"
+                )
         added = 0
         for i, t in enumerate(tasks):
             cur = self.db.execute(

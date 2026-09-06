@@ -1,11 +1,11 @@
 {
   "export": {
-    "approved_sql_sha256": "68033ce83e821fba0f4b6b086d1c8c1f6f2e42e41b0c320bffef5820a76b52eb",
+    "approved_sql_sha256": "fad6e4a83aeb3936392e329847315cc1281965ab85934606c675ce44a5bad041",
     "files": [
       "approved.sql",
       "session.json"
     ],
-    "session_json_sha256": "6d1e834b99447713529571182cb34a4ec500025f7a375337e378b6aff4713bdd"
+    "session_json_sha256": "ee3c32be52201d3880817bdc154346e7688cdb3fa98f5929b40a1b672eb63137"
   },
   "graph_summary": {
     "by_kind": {
@@ -207,6 +207,22 @@
       "provider": "echo"
     },
     "162cff96425f": {
+      "apex_target": "UNDECIDED",
+      "behavior": "",
+      "behavior_reason": "",
+      "code": "-- No AI provider configured; nothing was converted.\n-- Pick a model in Settings (the gear in the top bar)\n-- for a real proposal, or write the APEX code yourself.\n",
+      "confidence": 0.0,
+      "error": "",
+      "model": "echo",
+      "notes": [
+        "Offline provider: this is a placeholder, not a conversion."
+      ],
+      "open_questions": [
+        "Which AI provider should this portfolio use?"
+      ],
+      "provider": "echo"
+    },
+    "26aff96425f9": {
       "apex_target": "UNDECIDED",
       "behavior": "",
       "behavior_reason": "",
@@ -873,6 +889,18 @@
       "verdict": "ASSISTED"
     },
     {
+      "apex_hint": "Trigger outside the catalog: classify manually",
+      "builtins": [],
+      "globals_used": [],
+      "id": "26aff96425f9",
+      "item_refs": [],
+      "kind": "trigger",
+      "lines": 1,
+      "name": "WHEN-BANANA-EVENT",
+      "owner": "",
+      "verdict": "UNKNOWN"
+    },
+    {
       "apex_hint": "APEX error handling function",
       "builtins": [
         {
@@ -1503,6 +1531,6 @@
     "AUTO": 13,
     "DROP": 1,
     "MANUAL": 8,
-    "UNKNOWN": 1
+    "UNKNOWN": 2
   }
 }

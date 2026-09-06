@@ -27,11 +27,23 @@ proposal on every unit, a human decision on every proposal. What comes out
 is an APEX 26.1 application that SQLcl validates and imports — and that the
 same session rebuilds, byte for byte, on a build server.
 
-> **Status: 1.0, stable.** The CLI, the session file, the export layout and
+> **Status: 1.2.1, stable.** The CLI, the session file, the export layout and
 > the workbench's local HTTP API are promised stable within 1.x — additive
 > changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
 > proposal the workbench produces is still a draft for a human to approve;
 > a migration remains something a person owns.
+
+Version 1.2.1 hardens the existing workflow: short executable bodies enter
+review, changed source cannot silently reuse an old approval, uploads do
+not overwrite earlier source revisions, and header actions stay reachable
+when the window narrows. No new product features are added.
+
+When upgrading, reopen the **original unchanged XML/FMB** with the same
+output directory to recover previously omitted short units. Existing
+decisions remain; recovered units start pending. Opening a `.session.db`
+alone does not rescan source. Use a separate `-o` directory for a changed
+source revision. See [quality acceptance](docs/quality-acceptance.md) for
+what automated checks prove and what still needs real Forms/APEX testing.
 
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"

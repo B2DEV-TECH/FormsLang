@@ -8,7 +8,7 @@ Every fixture is 100% invented -- no client data, no real Form, ever.
 | Tier | `corpus/<tier>/module.xml` | Built by | Proves |
 |---|---|---|---|
 | `tiny` | one form trigger, no blocks | hand-authored | minimum input that still yields exactly one task |
-| `small` | ~10 objects, two triggers (one below `MIN_SOURCE_CHARS` and silently dropped), a validated item, a program unit, LOV/record group | hand-authored | a realistic small module end to end |
+| `small` | ~10 objects, two form triggers (including the short `EXIT_FORM;`), a validated item, a program unit, LOV/record group | hand-authored | a realistic small module end to end, including short behaviour |
 | `medium` | 33 blocks, one per common Forms trigger family + an unrecognized trigger name | `tests/fixtures/generate_corpus.py` | breadth across `rules.py`'s verdict/category catalog |
 | `large` | 60 blocks: a hub that `GO_BLOCK`s to all 59 others, plus a `B_i -> B_i+1` chain | `tests/fixtures/generate_corpus.py` | `depgraph.py`'s `MAX_DEPTH=4` / `MAX_RESULTS=250` are genuinely hit (confirmed: 362 nodes / 480 edges, a walk from the hub returns exactly 250 results at both depth 4 and depth 6) |
 | `pathological` | circular `BLOCK_A <-> BLOCK_B`, a dynamic `GO_BLOCK(v_dynamic_target)` (unresolvable), cp1252-mojibake in a `Prompt` attribute, a 200+ line `ProgramUnit` | hand-authored | the parser/depgraph edge cases a straight-line fixture never touches |
@@ -39,7 +39,7 @@ a fresh, undecided session is already deterministic.
   byte-identical output).
 - `tests/update_golden.py` is the *only* sanctioned way to change a golden
   file. It is manual-only: never imported by a test, never called by CI
-  (no CI configuration exists in this repository), always prints a diff,
+  (CI checks golden files but never rewrites them), always prints a diff,
   and always requires an interactive `y` confirmation unless `--yes` is
   passed explicitly on the command line.
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from formslang import ai, rules
 from formslang.convert import (
     ConversionTask,
@@ -13,6 +15,7 @@ from formslang.convert import (
     propose,
     propose_many,
 )
+from formslang.model import Block, FormModule, Item, ProgramUnit, Trigger
 from formslang.parser import parse_xml
 
 
@@ -30,8 +33,42 @@ def test_every_code_body_becomes_a_task(sample_xml):
 
 
 def test_trivial_bodies_are_not_worth_a_model_call(sample_xml):
-    # "NULL;" and "CLEAR_FORM;" carry no conversion decision.
+    # A standalone NULL is omitted, but clearing the form needs review.
     assert "WHEN-BANANA-SPLIT" not in {t.title for t in _tasks(sample_xml)}
+    assert "KEY-CLRFRM" in {t.title for t in _tasks(sample_xml)}
+
+
+@pytest.mark.parametrize("source", ["EXIT_FORM;", "CLEAR_FORM;", "P;", ":X:=1;", "RETURN;"])
+def test_short_behaviour_is_reviewed_at_every_scope(source):
+    module = FormModule(
+        name="SHORT",
+        triggers=[Trigger("KEY-EXIT", source, "form", "")],
+        blocks=[Block(name="B", triggers=[Trigger("PRE-INSERT", source, "block", "B")],
+                      items=[Item(name="I", triggers=[
+                          Trigger("WHEN-VALIDATE-ITEM", source, "item", "B.I")])])],
+        program_units=[ProgramUnit("P", "Procedure", source)],
+    )
+    tasks = build_tasks(module)
+    assert len(tasks) == 4
+    assert all(task.source == source for task in tasks)
+    assert len({task.id for task in tasks}) == 4
+
+
+@pytest.mark.parametrize("source", ["", " \n\t", "NULL;", " null ; \n"])
+def test_only_empty_or_standalone_null_bodies_are_omitted(source):
+    module = FormModule(name="EMPTY", triggers=[Trigger("ON-ERROR", source, "form", "")])
+    assert build_tasks(module) == []
+
+
+def test_package_specification_and_body_have_distinct_review_identities():
+    spec = ProgramUnit("PKG", "Package Spec", "PACKAGE PKG IS PROCEDURE P; END;")
+    body = ProgramUnit("PKG", "Package Body", "PACKAGE BODY PKG IS PROCEDURE P IS BEGIN NULL; END; END;")
+    module = FormModule(name="PACKAGES", program_units=[spec, body])
+    tasks = build_tasks(module)
+    assert len({task.id for task in tasks}) == 2
+    assert [task.source for task in tasks] == [spec.text, body.text]
+    legacy = build_tasks(FormModule(name="PACKAGES", program_units=[spec]))
+    assert tasks[0].id == legacy[0].id
 
 
 def test_task_carries_the_catalog_verdict(sample_xml):

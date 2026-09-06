@@ -50,6 +50,21 @@ def test_export_builds_the_zip_beside_the_session(session_db, capsys):
     assert deployment["app"]["id"] == 200
 
 
+@pytest.mark.parametrize("command", ["convert", "workbench", "export"])
+def test_changed_source_is_a_readable_cli_refusal(command, session_db, sample_xml, capsys):
+    sample_xml.write_text(
+        sample_xml.read_text(encoding="utf-8").replace("CLEAR_FORM;", "EXIT_FORM;"),
+        encoding="utf-8",
+    )
+    assert cli.main([command, str(sample_xml), "-o", str(session_db.parent)]) == 2
+    assert "source differs" in capsys.readouterr().err
+    saved = Store(session_db)
+    try:
+        assert saved.stats()[APPROVED] == 1
+    finally:
+        saved.close()
+
+
 def test_a_second_run_with_no_flags_reproduces_the_same_bytes(session_db):
     """The CI promise: the session carries the choices, and the same session
     yields the same ZIP -- so a rebuilt artifact can be diffed, cached and

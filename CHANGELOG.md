@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-09-05
+
+Reliability fixes for the existing conversion and review workflow. No new
+product features or runtime dependencies.
+
+### Fixed
+
+- Short executable bodies such as `EXIT_FORM;`, `CLEAR_FORM;`, assignments
+  and procedure calls now enter the review queue at every scope. The old
+  twelve-character cutoff silently omitted them. Only empty bodies and
+  standalone `NULL;` statements are omitted.
+- Package specifications and bodies with the same name now have separate
+  review identities. Previously the body could disappear behind the
+  specification when the session was saved. Reopening unchanged source
+  recovers the missing unit without replacing the earlier review.
+- Reopening source with a changed body refuses to reuse that unit's saved
+  review. The entire incoming task batch is checked before insertion;
+  existing source and approval history remain intact. Use a separate output
+  directory (`-o`) for a changed revision.
+- Uploads with the same filename are isolated by content digest, preventing
+  an invalid replacement from overwriting the current session's source.
+  Malformed XML is reported as an input error rather than a server failure.
+- The workbench header wraps its actions instead of clipping the export
+  button when the window cannot fit them on one line.
+- Desktop package lock metadata now matches the shipped version.
+- The frozen-engine build resolves the source package independently of the
+  current directory and includes distribution metadata for version reporting.
+
+### Upgrade notes
+
+- Reopen the original unchanged XML/FMB in the existing output directory
+  to add previously omitted short units. Existing approvals are preserved;
+  the recovered units require their own review. Opening only the session
+  database does not rescan the original source.
+- Regression snapshots now include the recovered short bodies. These are
+  synthetic fixtures, not evidence of production-module or Forms/APEX
+  runtime equivalence; see `docs/quality-acceptance.md` for the remaining
+  acceptance boundaries.
+
 ## [1.2.0] — 2026-09-05
 
 The fidelity release: a Forms screen lands on the APEX grid where Forms

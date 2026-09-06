@@ -30,9 +30,9 @@ from .analysis import analyze_task
 from .model import FormModule
 from .plsql import analyze, fingerprint
 
-# Bodies below this size are noise ("NULL;", "COMMIT_FORM;") -- they cost a
-# model call and produce nothing a reviewer needs.
-MIN_SOURCE_CHARS = 12
+# Length does not imply irrelevance: EXIT_FORM; and CLEAR_FORM; change behaviour.
+# Only an empty body or a standalone NULL statement is omitted. Keep unfamiliar
+# syntax for human review rather than guessing whether it has an effect.
 
 
 SYSTEM_PROMPT = """\
@@ -210,13 +210,14 @@ def build_tasks(mod: FormModule) -> list[ConversionTask]:
     """
     tasks: list[ConversionTask] = []
 
-    def add(kind: str, name: str, owner: str, text: str, verdict: str, hint: str) -> None:
-        if not text or len(text.strip()) < MIN_SOURCE_CHARS:
+    def add(kind: str, name: str, owner: str, text: str, verdict: str, hint: str,
+            identity_name: str = "") -> None:
+        if not text or not text.strip() or re.fullmatch(r"\s*null\s*;\s*", text, re.IGNORECASE):
             return
         an = analyze(text)
         tasks.append(
             ConversionTask(
-                id=_task_id(mod.name, kind, owner, name),
+                id=_task_id(mod.name, kind, owner, identity_name or name),
                 module=mod.name,
                 kind=kind,
                 name=name,
@@ -245,7 +246,12 @@ def build_tasks(mod: FormModule) -> list[ConversionTask]:
             for t in it.triggers:
                 verdict, hint = rules.classify_trigger(t.name)
                 add("trigger", t.name, f"{b.name}.{it.name}", t.text, verdict, hint)
+    seen_units: set[str] = set()
     for p in mod.program_units:
+        # Forms package specifications and bodies share a name. Retain the
+        # first unit's legacy id and give the other kind its own identity.
+        identity_name = f"{p.name}:{p.kind}" if p.name.upper() in seen_units else p.name
+        seen_units.add(p.name.upper())
         add(
             "program_unit",
             p.name,
@@ -253,6 +259,7 @@ def build_tasks(mod: FormModule) -> list[ConversionTask]:
             p.text,
             rules.UNKNOWN,
             f"{p.kind} -- normally moves to a database package",
+            identity_name=identity_name,
         )
 
     return tasks

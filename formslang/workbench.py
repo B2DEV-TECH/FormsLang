@@ -15,6 +15,7 @@ the real content type forces a CORS preflight this server never answers).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -26,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
 from urllib.parse import parse_qs, urlsplit
+from xml.etree.ElementTree import ParseError
 
 from . import (
     ailayout,
@@ -408,10 +410,14 @@ class Workbench:
                     )
                     module = parse_xml(xml, convert_log=log)
             store = Store(self.out_dir / f"{module.name}.session.db")
-            for name, duration_ms, item_count, ok, error_kind in timings:
-                store.record_stage(name, duration_ms, item_count, ok, error_kind)
-            store.init_session(module.name, str(target))
-            added = store.add_tasks(build_tasks(module))
+            try:
+                added = store.add_tasks(build_tasks(module))
+                for name, duration_ms, item_count, ok, error_kind in timings:
+                    store.record_stage(name, duration_ms, item_count, ok, error_kind)
+                store.init_session(module.name, str(target))
+            except Exception:
+                store.close()
+                raise
 
         old = self.store
         self.store = store
@@ -437,6 +443,10 @@ class Workbench:
         if not content:
             raise ValueError("the selected module is empty")
         uploads = self.out_dir / "uploads"
+        uploads.mkdir(parents=True, exist_ok=True)
+        # Keep the original basename (Forms2XML uses it), but isolate content
+        # revisions so a failed upload cannot overwrite a session's source.
+        uploads = uploads / hashlib.sha256(content).hexdigest()
         uploads.mkdir(parents=True, exist_ok=True)
         target = uploads / clean
         with target.open("wb") as handle:
@@ -1216,7 +1226,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 name = parse_qs(query).get("name", [""])[0]
                 self._json(wb.upload_module(name, self._read_upload()))
-            except (ValueError, OracleToolchainError) as e:
+            except (ValueError, OracleToolchainError, ParseError) as e:
                 self._json({"error": str(e)}, 400)
             except Exception as e:  # noqa: BLE001 - never leak a traceback
                 self._json({"error": f"{type(e).__name__}: {e}"}, 500)
@@ -1491,7 +1501,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 503)
         except authstore.AuthStoreError as e:
             self._json({"error": str(e)}, 400)
-        except (ValueError, projects.AdoptionError, OracleToolchainError) as e:
+        except (ValueError, projects.AdoptionError, OracleToolchainError, ParseError) as e:
             # A bad path or a missing Oracle install is the caller's problem
             # to fix, and the message is the whole point of the answer.
             self._json({"error": str(e)}, 400)

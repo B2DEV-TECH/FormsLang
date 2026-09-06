@@ -279,8 +279,12 @@ def _open_session(args: argparse.Namespace) -> tuple[Store, int]:
 
     mod = _load_module(target, out_dir, args.oracle_home)
     store = Store(out_dir / f"{mod.name}.session.db")
-    store.init_session(mod.name, str(target))
-    added = store.add_tasks(build_tasks(mod))
+    try:
+        added = store.add_tasks(build_tasks(mod))
+        store.init_session(mod.name, str(target))
+    except Exception:
+        store.close()
+        raise
     return store, added
 
 
@@ -347,7 +351,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
     """Headless conversion: propose for everything still unconverted."""
     try:
         store, added = _open_session(args)
-    except OracleToolchainError as e:
+    except (OracleToolchainError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
@@ -392,7 +396,7 @@ def cmd_workbench(args: argparse.Namespace) -> int:
     """Open the review UI for a module or an existing session."""
     try:
         store, added = _open_session(args)
-    except OracleToolchainError as e:
+    except (OracleToolchainError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
@@ -467,7 +471,7 @@ def cmd_export(args: argparse.Namespace) -> int:
     """
     try:
         store, _ = _open_session(args)
-    except OracleToolchainError as e:
+    except (OracleToolchainError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 

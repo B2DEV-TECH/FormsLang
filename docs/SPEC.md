@@ -10,6 +10,16 @@ by a test in `tests/`.
 
 ## 1. North star
 
+### Review integrity (1.2.1)
+
+Executable source is never omitted because it is short. Only empty bodies
+and standalone `NULL;` statements are omitted from the conversion queue.
+An existing task id with different source is refused before any incoming
+tasks are inserted; approval history is not transferred to changed code.
+Reopen unchanged source to discover newly supported tasks; use a separate
+output directory for a changed revision. Upload revisions never overwrite
+an earlier upload with the same basename.
+
 A senior Oracle developer opens a `.fmb`, reviews every trigger and program
 unit against an AI-drafted APEX proposal (or writes the replacement by
 hand), and leaves with an APEX 26.1 import ZIP — without the tool ever being

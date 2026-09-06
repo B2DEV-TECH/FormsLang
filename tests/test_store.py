@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -42,6 +43,40 @@ def test_adding_the_same_tasks_twice_does_not_duplicate(store, sample_xml):
     added = store.add_tasks(build_tasks(parse_xml(sample_xml)))
     assert added == 0
     assert store.stats()["tasks"] == before
+
+
+def test_changed_source_cannot_reuse_an_approval_or_partially_insert(store):
+    task = store.get_task(store.task_ids()[0])
+    store.set_decision(task.id, APPROVED, code="approved replacement;", reviewer="reviewer")
+    before = store.stats()
+    history = store.history(task.id)
+    new_task = replace(task, id="new-unit", name="NEW")
+    changed = replace(task, source="EXIT_FORM;")
+    with pytest.raises(ValueError, match="source differs"):
+        store.add_tasks([new_task, changed])
+    assert store.stats() == before
+    assert store.get_task("new-unit") is None
+    assert store.get_task(task.id).source == task.source
+    assert store.history(task.id) == history
+
+
+def test_legacy_session_recovers_short_units_without_losing_decisions(tmp_path, sample_xml):
+    tasks = build_tasks(parse_xml(sample_xml))
+    legacy = [task for task in tasks if len(task.source.strip()) >= 12]
+    saved = Store(tmp_path / "legacy.session.db")
+    try:
+        saved.init_session("DEMO_ORDER", str(sample_xml))
+        saved.add_tasks(legacy)
+        saved.set_decision(legacy[0].id, APPROVED, code="reviewed;", reviewer="reviewer")
+        history = saved.history(legacy[0].id)
+        assert saved.add_tasks(tasks) == len(tasks) - len(legacy)
+        recovered = next(task for task in tasks if task.name == "KEY-CLRFRM")
+        assert saved.get_task(recovered.id).source == "CLEAR_FORM;"
+        assert saved.latest_decision(recovered.id) is None
+        assert saved.history(legacy[0].id) == history
+        assert saved.add_tasks(tasks) == 0
+    finally:
+        saved.close()
 
 
 def test_empty_verdict_from_an_old_session_reads_as_unknown(store):

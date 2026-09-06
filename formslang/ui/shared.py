@@ -58,10 +58,14 @@ STYLE_BLOCK = r"""<style>
 
   /* ── top bar ─────────────────────────────────────────── */
   header {
-    display: flex; align-items: center; gap: 14px;
-    height: 54px; padding: 0 16px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    min-height: 54px; flex-shrink: 0; padding: 8px 16px; border-bottom: 1px solid var(--line);
     background: linear-gradient(180deg, #10151D, #0C1016);
   }
+  header > .btn, header > .brand, header > .chip, header > .counts {
+    flex-shrink: 0; white-space: nowrap;
+  }
+  header #btn-module { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
   .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -0.01em; user-select: none; }
   .brand svg { width: 24px; height: 24px; display: block; filter: drop-shadow(0 0 10px rgba(245,166,64,.25)); }
   .brand .mark { color: var(--ink); font-size: 15px; }

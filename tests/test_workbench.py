@@ -490,7 +490,9 @@ def test_a_browser_selected_xml_is_staged_and_opened(server, sample_xml):
 
     assert status == 200
     assert body["title"] == "DEMO_ORDER"
-    assert (wb.out_dir / "uploads" / "SELECTED.xml").exists()
+    source = Path(wb.state()["session"]["source_path"])
+    assert source.is_relative_to(wb.out_dir / "uploads")
+    assert source.read_bytes() == sample_xml.read_bytes()
     assert wb.state()["session"]["source_path"].endswith("SELECTED.xml")
 
 
@@ -499,6 +501,36 @@ def test_an_unsafe_or_unsupported_upload_name_is_refused(server):
     status, body = _upload(base, "notes.txt", b"not a form")
     assert status == 400
     assert ".fmb" in body["error"]
+
+
+def test_failed_upload_cannot_overwrite_the_current_source(server, sample_xml):
+    base, wb = server
+    content = sample_xml.read_bytes()
+    status, _ = _upload(base, "SELECTED.xml", content)
+    assert status == 200
+    source = Path(wb.state()["session"]["source_path"])
+    status, _ = _upload(base, "SELECTED.xml", b"not XML")
+    assert status == 400
+    assert source.read_bytes() == content
+    assert wb.state()["session"]["source_path"] == str(source)
+
+
+def test_changed_upload_keeps_the_active_review_and_approval(server, sample_xml):
+    base, wb = server
+    original = sample_xml.read_bytes()
+    assert _upload(base, "SELECTED.xml", original)[0] == 200
+    store = wb.store
+    task_id = store.task_ids()[0]
+    store.set_decision(task_id, APPROVED, code="reviewed;", reviewer="reviewer")
+    history = store.history(task_id)
+    changed = original.replace(b"CLEAR_FORM;", b"EXIT_FORM;")
+    assert changed != original
+    status, body = _upload(base, "SELECTED.xml", changed)
+    assert status == 400
+    assert "source differs" in body["error"]
+    assert wb.store is store
+    assert store.history(task_id) == history
+    assert Path(store.session()["source_path"]).read_bytes() == original
 
 
 # -- picking the model ---------------------------------------------------

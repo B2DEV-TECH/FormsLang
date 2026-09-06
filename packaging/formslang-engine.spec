@@ -1,13 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_data_files
+from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 datas = []
 datas += collect_data_files('formslang')
+datas += copy_metadata('formslang')
 
 
 a = Analysis(
     ['sidecar_entry.py'],
-    pathex=['.'],
+    pathex=[str(Path(SPECPATH).parent)],
     binaries=[],
     datas=datas,
     hiddenimports=[],
