@@ -123,14 +123,21 @@ def diff_code(a_text: str, b_text: str) -> tuple[bool, list[Hunk]]:
 # -- generic collection / property diff -----------------------------------
 
 
-def _key_by_name(a_list: list, b_list: list):
-    def key(entity):
-        if isinstance(entity, ProgramUnit):
-            return f"{entity.name} ({entity.kind})"
-        return entity.name
+def _label(entity) -> str:
+    """Identity of an entity within its collection, as shown in the report.
 
-    a_map = {key(x): x for x in a_list}
-    b_map = {key(x): x for x in b_list}
+    Names are unique at every level except program units, where Forms lets
+    a package specification and its body share one name; there the kind is
+    part of the identity so neither can hide behind the other.
+    """
+    if isinstance(entity, ProgramUnit):
+        return f"{entity.name} ({entity.kind})"
+    return entity.name
+
+
+def _key_by_name(a_list: list, b_list: list):
+    a_map = {_label(x): x for x in a_list}
+    b_map = {_label(x): x for x in b_list}
     added = [b_map[k] for k in b_map if k not in a_map]
     removed = [a_map[k] for k in a_map if k not in b_map]
     common = [k for k in a_map if k in b_map]
@@ -362,10 +369,10 @@ def _entity_change_block(ec: EntityChange) -> str:
 def _render_collection(coll: CollectionChange) -> str:
     parts = []
     if coll.added:
-        chips = "".join(f'<span class="tag yes">{_esc(x.name)}</span> ' for x in coll.added)
+        chips = "".join(f'<span class="tag yes">{_esc(_label(x))}</span> ' for x in coll.added)
         parts.append(f'<div class="chg-lbl">Added ({len(coll.added)})</div><div class="chg-group">{chips}</div>')
     if coll.removed:
-        chips = "".join(f'<span class="tag no">{_esc(x.name)}</span> ' for x in coll.removed)
+        chips = "".join(f'<span class="tag no">{_esc(_label(x))}</span> ' for x in coll.removed)
         parts.append(f'<div class="chg-lbl">Removed ({len(coll.removed)})</div><div class="chg-group">{chips}</div>')
     if coll.modified:
         parts.append(f'<div class="chg-lbl">Modified ({len(coll.modified)})</div>')

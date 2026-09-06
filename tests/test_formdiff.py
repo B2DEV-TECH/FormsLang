@@ -212,6 +212,15 @@ def test_render_html_shows_added_removed_modified_and_hunks():
     assert "+ COMMIT;" in html
 
 
+def test_render_html_labels_removed_package_units_with_their_kind():
+    spec = ProgramUnit("PKG", "Package Spec", "PACKAGE PKG IS END;")
+    body = ProgramUnit("PKG", "Package Body", "PACKAGE BODY PKG IS END;")
+    diff = compare_modules(FormModule(name="A", program_units=[spec, body]), FormModule(name="A"))
+    html = render_html(diff, generated_at="2026-01-01 00:00 UTC")
+    assert "PKG (Package Spec)" in html
+    assert "PKG (Package Body)" in html
+
+
 def test_write_report_names_file_after_both_modules(tmp_path):
     a = FormModule(name="ORDER_V1")
     b = FormModule(name="ORDER_V2", lovs=[Lov(name="NEW_LOV")])
