@@ -15,8 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the candidate and verify the retained review and reproducible export.
 - Refuse frozen-engine builds when installed package metadata disagrees
   with the project version, instead of silently shipping an old version.
-- 1.2.2 remains a candidate until installer and authorized showcase runtime
-  acceptance have completed. No production-module coverage is claimed.
+- Verify NSIS/MSI installation and upgrade from 1.2.1 on disposable Windows
+  runners, including preserved approval, export and native desktop startup.
+  All 949 tests pass on eight Windows/Linux Python environments.
+- 1.2.2 remains a candidate pending authorized showcase runtime acceptance.
+  No production-module coverage or Forms/APEX equivalence is claimed.
 
 ## [1.2.1] — 2026-09-05
 

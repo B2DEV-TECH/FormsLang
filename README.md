@@ -51,6 +51,11 @@ and MSI installation, a saved review, upgrade from the preceding release,
 reproducible export and native desktop startup. The runner-only script is
 `examples/verify/installer_upgrade.ps1`; it refuses local execution.
 
+The **1.2.2 candidate** passed these NSIS/MSI upgrade checks and 949 tests
+on each of eight Windows/Linux Python environments. It remains unpublished
+pending authorized Forms/APEX runtime acceptance. Evidence and exact tested
+installer hashes are in [quality acceptance](docs/quality-acceptance.md).
+
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"
        alt="The FormsLang workbench reviewing a WHEN-VALIDATE-ITEM trigger: the four lines of Forms code on the left, the APEX page validation proposed to replace them on the right at confidence 0.82, and underneath what changed, split into facts, inferences and assumptions">

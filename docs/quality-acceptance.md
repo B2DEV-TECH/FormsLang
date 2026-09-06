@@ -18,6 +18,40 @@ suite proves every Oracle Forms application can be migrated faithfully.
 - These checks do not certify a clean-machine installer upgrade or real
   Forms/APEX runtime equivalence. Those remain distinct acceptance tasks.
 
+## 1.2.2 candidate verification (2026-09-06)
+
+Candidate code: `6fc9f5c2f114244fa3b6b3742bb78a6b99debd91`.
+This is not a published release or a claim of Forms/APEX equivalence.
+
+- [CI run 34010752073](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34010752073):
+  949 tests passed in each of eight Windows/Linux and Python 3.10–3.13
+  combinations; Ruff and deterministic showcase export also passed.
+- [Installer acceptance 34010753174](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34010753174):
+  clean installation of 1.2.1 followed by upgrade to 1.2.2 passed separately
+  for NSIS and MSI on disposable hosted Windows runners. Both retained
+  the saved approval among 59 review units, preserved the source, produced
+  repeatable exports and started the installed native window and engine.
+  This does not exercise every interaction inside the native webview.
+- The selected `tests/fixtures/showcase/module.fmb` was converted using
+  Oracle Forms 14.1.2. Comparison with the reference XML found record-spacing
+  differences in three blocks; runtime visual acceptance remains pending.
+- Diff now identifies package specification and body separately; three
+  regression tests cover edits, removal and reordering of same-name units.
+- Pending gate: authorized import and runtime comparison in a separate APEX
+  application. The proposed target is application 190122 in the local
+  FORMSLANG workspace/schema; application 100 must remain untouched.
+  Automatic review refused the database mutation without explicit target
+  authorization. No import or temporary test user was created.
+
+Exact tested installer SHA-256 digests:
+
+```text
+FormsLang_1.2.2_x64-setup.exe
+340CEC67C51FF9BBCC59704B4AA403B48671581AF5920BC589DD7AB841748D16
+FormsLang_1.2.2_x64_en-US.msi
+8E1F44C4057E9315041E1C4692DF4E125745AF9A6E0327F3AD41254F6069ED6E
+```
+
 ## Acceptance layers
 
 | Layer | Required evidence | Boundary |
