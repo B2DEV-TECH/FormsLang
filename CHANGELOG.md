@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fix structural Diff matching of package specifications and bodies with
+  the same name, so a specification edit or removal cannot be hidden by
+  an unchanged body.
 - Add disposable Windows installer acceptance for NSIS and MSI: install the
   previous release, save an approval through the installed engine, upgrade
   to the candidate and verify the retained review and reproducible export.

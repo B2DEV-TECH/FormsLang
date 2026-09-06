@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from formslang.formdiff import compare_modules, diff_code, render_html, write_report
 from formslang.model import Block, FormModule, Item, Lov, ProgramUnit, Relation, Trigger
 
@@ -147,6 +149,36 @@ def test_program_unit_body_change_is_hunked():
     diff = compare_modules(a, b)
     assert len(diff.program_units.modified) == 1
     assert diff.program_units.modified[0].hunks
+
+
+def test_package_spec_change_is_not_hidden_by_the_same_named_body():
+    spec = ProgramUnit("PKG", "Package Spec", "PACKAGE PKG IS PROCEDURE P; END;")
+    body = ProgramUnit("PKG", "Package Body", "PACKAGE BODY PKG IS END;")
+    before = FormModule(name="A", program_units=[spec, body])
+    after = FormModule(name="A", program_units=[replace(spec, text=spec.text.replace(" P;", " Q;")), body])
+    diff = compare_modules(before, after)
+    assert diff.program_units.unchanged == 1
+    assert len(diff.program_units.modified) == 1
+    assert diff.program_units.modified[0].name == "PKG (Package Spec)"
+    assert diff.program_units.modified[0].code_changed
+
+
+def test_package_spec_and_body_can_reorder_without_becoming_a_change():
+    spec = ProgramUnit("PKG", "Package Spec", "PACKAGE PKG IS END;")
+    body = ProgramUnit("PKG", "Package Body", "PACKAGE BODY PKG IS END;")
+    diff = compare_modules(FormModule(name="A", program_units=[spec, body]),
+                           FormModule(name="A", program_units=[body, spec]))
+    assert not diff.has_changes
+    assert diff.program_units.unchanged == 2
+
+
+def test_removing_a_package_spec_keeps_its_body_in_the_diff():
+    spec = ProgramUnit("PKG", "Package Spec", "PACKAGE PKG IS END;")
+    body = ProgramUnit("PKG", "Package Body", "PACKAGE BODY PKG IS END;")
+    diff = compare_modules(FormModule(name="A", program_units=[spec, body]),
+                           FormModule(name="A", program_units=[body]))
+    assert diff.program_units.removed == [spec]
+    assert diff.program_units.unchanged == 1
 
 
 # -- rendering ---------------------------------------------------------------

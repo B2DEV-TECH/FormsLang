@@ -1,7 +1,7 @@
 """Structural diff between two versions of the same Forms module.
 
-Entities are matched by name only, at every level (blocks, items, triggers,
-program units, LOVs, record groups, relations) -- a rename shows up as one
+Entities are matched by name (program units also include their kind, so a
+package specification and body remain distinct) -- a rename shows up as one
 entity removed and a different one added, never as a match. That is a
 deliberate v1 limitation, not an oversight: rename detection needs a
 similarity heuristic (e.g. comparing renamed items' surviving properties or
@@ -37,7 +37,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-from .model import FormModule
+from .model import FormModule, ProgramUnit
 
 # -- result types ------------------------------------------------------------
 
@@ -124,8 +124,13 @@ def diff_code(a_text: str, b_text: str) -> tuple[bool, list[Hunk]]:
 
 
 def _key_by_name(a_list: list, b_list: list):
-    a_map = {x.name: x for x in a_list}
-    b_map = {x.name: x for x in b_list}
+    def key(entity):
+        if isinstance(entity, ProgramUnit):
+            return f"{entity.name} ({entity.kind})"
+        return entity.name
+
+    a_map = {key(x): x for x in a_list}
+    b_map = {key(x): x for x in b_list}
     added = [b_map[k] for k in b_map if k not in a_map]
     removed = [a_map[k] for k in a_map if k not in b_map]
     common = [k for k in a_map if k in b_map]
