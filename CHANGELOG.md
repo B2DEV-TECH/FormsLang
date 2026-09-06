@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Add disposable Windows installer acceptance for NSIS and MSI: install the
+  previous release, save an approval through the installed engine, upgrade
+  to the candidate and verify the retained review and reproducible export.
+- Refuse frozen-engine builds when installed package metadata disagrees
+  with the project version, instead of silently shipping an old version.
+- 1.2.2 remains a candidate until installer and authorized showcase runtime
+  acceptance have completed. No production-module coverage is claimed.
+
 ## [1.2.1] — 2026-09-05
 
 Reliability fixes for the existing conversion and review workflow. No new

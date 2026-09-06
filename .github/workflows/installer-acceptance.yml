@@ -1,0 +1,49 @@
+name: Installer acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: Previous release version (without v)
+        required: true
+        default: '1.2.1'
+      candidate:
+        description: Candidate draft release version (without v)
+        required: true
+        default: '1.2.2'
+permissions:
+  contents: read
+jobs:
+  upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [nsis, msi]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASELINE: ${{ inputs.baseline }}
+      CANDIDATE: ${{ inputs.candidate }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Download exact release installers
+        shell: pwsh
+        run: |
+          if ($env:BASELINE -notmatch '^\d+\.\d+\.\d+$' -or $env:CANDIDATE -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          gh release download "v$env:BASELINE" --dir installer-assets/baseline --pattern '*.exe' --pattern '*.msi'
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline download failed' }
+          gh release download "v$env:CANDIDATE" --dir installer-assets/candidate --pattern '*.exe' --pattern '*.msi'
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+      - name: Install, save review, upgrade, verify
+        shell: pwsh
+        run: ./examples/verify/installer_upgrade.ps1 -Kind '${{ matrix.kind }}' -BaselineVersion $env:BASELINE -CandidateVersion $env:CANDIDATE
+      - name: Preserve acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.kind }}-evidence
+          path: ${{ runner.temp }}/formslang-installer-${{ matrix.kind }}/
+          retention-days: 7

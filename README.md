@@ -45,6 +45,12 @@ alone does not rescan source. Use a separate `-o` directory for a changed
 source revision. See [quality acceptance](docs/quality-acceptance.md) for
 what automated checks prove and what still needs real Forms/APEX testing.
 
+Installer maintainers can run the **Installer acceptance** workflow against
+an unpublished candidate. Separate disposable Windows runners test NSIS
+and MSI installation, a saved review, upgrade from the preceding release,
+reproducible export and native desktop startup. The runner-only script is
+`examples/verify/installer_upgrade.ps1`; it refuses local execution.
+
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"
        alt="The FormsLang workbench reviewing a WHEN-VALIDATE-ITEM trigger: the four lines of Forms code on the left, the APEX page validation proposed to replace them on the right at confidence 0.82, and underneath what changed, split into facts, inferences and assumptions">
