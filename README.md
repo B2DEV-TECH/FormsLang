@@ -27,7 +27,7 @@ proposal on every unit, a human decision on every proposal. What comes out
 is an APEX 26.1 application that SQLcl validates and imports — and that the
 same session rebuilds, byte for byte, on a build server.
 
-> **Status: 1.2.1, stable.** The CLI, the session file, the export layout and
+> **Status: 1.2.2, stable.** The CLI, the session file, the export layout and
 > the workbench's local HTTP API are promised stable within 1.x — additive
 > changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
 > proposal the workbench produces is still a draft for a human to approve;
@@ -51,9 +51,11 @@ and MSI installation, a saved review, upgrade from the preceding release,
 reproducible export and native desktop startup. The runner-only script is
 `examples/verify/installer_upgrade.ps1`; it refuses local execution.
 
-The **1.2.2 candidate** passed these NSIS/MSI upgrade checks and 949 tests
-on each of eight Windows/Linux Python environments. It remains unpublished
-pending authorized Forms/APEX runtime acceptance. Evidence and exact tested
+Version **1.2.2** fixes Diff matching of package specifications and bodies
+with the same name and guards frozen-engine version metadata. It passed
+the NSIS/MSI upgrade checks and 949 tests on each of eight Windows/Linux
+Python environments. Real Forms/APEX runtime validation remains pending
+and will be performed by the user. Evidence and exact tested
 installer hashes are in [quality acceptance](docs/quality-acceptance.md).
 
 <p align="center">

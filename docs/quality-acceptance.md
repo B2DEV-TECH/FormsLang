@@ -18,10 +18,13 @@ suite proves every Oracle Forms application can be migrated faithfully.
 - These checks do not certify a clean-machine installer upgrade or real
   Forms/APEX runtime equivalence. Those remain distinct acceptance tasks.
 
-## 1.2.2 candidate verification (2026-09-06)
+## 1.2.2 verification (2026-09-06)
 
-Candidate code: `6fc9f5c2f114244fa3b6b3742bb78a6b99debd91`.
-This is not a published release or a claim of Forms/APEX equivalence.
+Tested binary source: `6fc9f5c2f114244fa3b6b3742bb78a6b99debd91`.
+The user authorized publication for download and manual testing, with real
+Forms/APEX runtime validation still pending. This is not a claim of
+Forms/APEX equivalence. Subsequent release-documentation commits do not
+change the tested binaries.
 
 - [CI run 34010752073](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34010752073):
   949 tests passed in each of eight Windows/Linux and Python 3.10–3.13
@@ -37,7 +40,7 @@ This is not a published release or a claim of Forms/APEX equivalence.
   differences in three blocks; runtime visual acceptance remains pending.
 - Diff now identifies package specification and body separately; three
   regression tests cover edits, removal and reordering of same-name units.
-- Pending gate: authorized import and runtime comparison in a separate APEX
+- Pending user validation: import and runtime comparison in a separate APEX
   application. The proposed target is application 190122 in the local
   FORMSLANG workspace/schema; application 100 must remain untouched.
   Automatic review refused the database mutation without explicit target

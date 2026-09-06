@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-06
+
 - Fix structural Diff matching of package specifications and bodies with
   the same name, so a specification edit or removal cannot be hidden by
   an unchanged body.
@@ -18,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verify NSIS/MSI installation and upgrade from 1.2.1 on disposable Windows
   runners, including preserved approval, export and native desktop startup.
   All 949 tests pass on eight Windows/Linux Python environments.
-- 1.2.2 remains a candidate pending authorized showcase runtime acceptance.
-  No production-module coverage or Forms/APEX equivalence is claimed.
+- Published at the user's request for download and manual testing. Real
+  showcase Forms/APEX runtime acceptance remains pending with the user;
+  no production-module coverage or Forms/APEX equivalence is claimed.
 
 ## [1.2.1] — 2026-09-05
 
@@ -946,7 +949,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.1...v1.2.2
 [1.1.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.0.0...v1.1.0
 [0.1.6]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/B2DEV-TECH/FormsLang/compare/v0.1.4...v0.1.5
