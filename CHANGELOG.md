@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `formslang apex validate` runs without a database. With no target
+  configured -- or with the new `--offline` flag, which ignores one that
+  is -- SQLcl compiles the exported package against the APEXlang grammar
+  bundled in its own `apexlang-compiler.jar`: no connection, no workspace,
+  no credentials. A narrower check than a connected validate, and still
+  Oracle's verdict rather than FormsLang's. `apex import` is unchanged and
+  still requires a workspace.
+- CI validates the showcase export on every push, and proves the gate can
+  fail: a copy of the ZIP with one region type replaced by an invalid one
+  must be rejected by the same command.
+
 ### Fixed
 
 - The Diff report labels added and removed program units with their kind,

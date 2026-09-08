@@ -68,19 +68,32 @@ against one ZIP. Nothing here invents a command SQLcl does not document.
 | password | *(none, by design)* | `FORMSLANG_APEX_PASSWORD` | the connection saved from the workbench (OS credential store), then a hidden prompt if a person is at the terminal |
 | SQLcl binary | `--sqlcl` | `FORMSLANG_SQLCL_PATH` | Settings, then `sql` on `PATH` |
 | ceiling | `--timeout` seconds (default 120) | | |
+| no database at all | `--offline` (`validate` only) | | automatic when `validate` finds no target anywhere |
 
 **The password is never a command-line argument.** It travels to SQLcl on
 stdin inside SQLcl's own `connect` line, is scrubbed from captured output,
 and a runner that has neither the variable nor a terminal fails at once
 with exit 2 instead of hanging on a prompt nobody will answer.
 
+**`validate` needs no database.** `apex validate` compiles the package
+against the APEXlang grammar bundled in SQLcl's own
+`apexlang-compiler.jar`, so with no target configured -- or with
+`--offline`, which ignores one that is -- there is no `connect` line, no
+workspace and no credential to leak. It is a narrower check than a
+connected validate (grammar and the package's own cross-references; not
+the target's tables, plugins or authentication schemes), and it is still
+Oracle's verdict rather than FormsLang's, which makes it the gate a
+pipeline can always afford. `import` has no `--offline`: importing needs a
+workspace. Passing `--offline` together with `--connect`/`--user` is
+refused (exit 2) rather than silently ignoring the target you named.
+
 ### Exit codes
 
 | Code | Meaning | Typical cause |
 |---|---|---|
-| `0` | done | SQLcl succeeded; for `validate`, the package compiles against that workspace |
+| `0` | done | SQLcl succeeded; for `validate`, the package compiles -- against that workspace, or offline against SQLcl's own APEXlang compiler |
 | `1` | SQLcl failed | connection refused, `ORA-01017`, or -- the one the exit code alone would hide -- SQLcl exited 0 but printed `APEXlang Compile Errors` and imported nothing |
-| `2` | could not run | no SQLcl, no target, no password, no such ZIP |
+| `2` | could not run | no SQLcl, no such ZIP, `--offline` together with a target, or (for anything that connects) no target and no password |
 
 `export` exits `0` or `2` (no session module, invalid alias, Oracle
 toolchain missing when the XML is not cached).
@@ -112,6 +125,9 @@ shape:
 ```yaml
 - run: formslang export forms/ORDERS.session.db --json | tee export.json
 
+# No secrets, no database: SQLcl's own APEXlang compiler decides.
+- run: formslang apex validate forms/export/orders.apex.zip --offline
+
 - run: formslang apex validate forms/export/orders.apex.zip
   env:
     FORMSLANG_APEX_CONNECT:  ${{ secrets.APEX_CONNECT }}   # host:port/service
@@ -124,9 +140,18 @@ shape:
 ```
 
 Runner prerequisites: Python 3.10+, SQLcl (which needs a Java 17+
-runtime; Oracle's public `sqlcl-latest.zip` needs no account), and a route
-to the database. No Oracle Forms, as long as the Forms2XML `.xml` is
-committed beside the `.fmb`.
+runtime; Oracle's public `sqlcl-latest.zip` needs no account), and -- only
+for the connected validate and the import -- a route to the database. No
+Oracle Forms, as long as the Forms2XML `.xml` is committed beside the
+`.fmb`.
+
+A pipeline with no database in reach still gets an Oracle verdict from the
+offline step alone. FormsLang's own CI does exactly that on every push
+(`.github/workflows/ci.yml`, job *apex validate (SQLcl, no database)*):
+export the showcase module, validate it, then break one region type in a
+copy of the ZIP and require the same command to fail. The negative control
+is not decoration -- without it the job stays green even if the gate
+quietly stops checking anything.
 
 The same example carries a second job for pull requests: `formslang diff`
 between the base and head revisions of the module's XML, published as the

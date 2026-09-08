@@ -20,6 +20,13 @@ COMPILE_ERRORS = (
 )
 
 
+def _has_connect_line(script: str) -> bool:
+    """Whether the SQLcl script opens a session at all. Checked line by
+    line: ``tmp_path`` puts the test name into the ZIP path the script
+    names, and test names contain the word ``connect``."""
+    return any(line.startswith("connect") for line in script.splitlines())
+
+
 @pytest.fixture()
 def zip_path(tmp_path):
     path = tmp_path / "demo.apex.zip"
@@ -150,10 +157,12 @@ def test_no_password_and_no_terminal_is_refused_before_sqlcl_runs(zip_path, sqlc
 
 
 def test_a_missing_target_is_refused_with_every_way_to_set_it(zip_path, sqlcl, monkeypatch, capsys):
+    """``import`` needs a workspace; ``validate`` has an offline route and
+    takes it instead (see the offline tests below)."""
     for name in (apeximport.ENV_APEX_CONNECT, apeximport.ENV_APEX_USER, apeximport.ENV_APEX_PASSWORD):
         monkeypatch.delenv(name, raising=False)
 
-    assert cli.main(["apex", "validate", str(zip_path), "--sqlcl", "fake-sql"]) == 2
+    assert cli.main(["apex", "import", str(zip_path), "--sqlcl", "fake-sql"]) == 2
     assert sqlcl.calls == []
     err = capsys.readouterr().err
     assert "--connect" in err
@@ -166,3 +175,74 @@ def test_a_missing_zip_is_refused(tmp_path, sqlcl, ci_env, capsys):
     assert exit_code == 2
     assert "no such export" in capsys.readouterr().err
     assert sqlcl.calls == []
+
+
+@pytest.fixture()
+def no_target(monkeypatch):
+    """A machine with nothing configured: no environment, no Settings."""
+    for name in (
+        apeximport.ENV_APEX_CONNECT,
+        apeximport.ENV_APEX_USER,
+        apeximport.ENV_APEX_PASSWORD,
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(apeximport, "connection_defaults", lambda: ("", ""))
+
+
+def test_validate_without_a_target_runs_offline_instead_of_refusing(
+    zip_path, sqlcl, no_target, capsys
+):
+    """A2: the gate anyone can run. SQLcl compiles the package against its own
+    APEXlang compiler, so no database and no credentials are involved."""
+    sqlcl.reply.update(stdout="Validation successful.\n")
+
+    assert cli.main(["apex", "validate", str(zip_path), "--sqlcl", "fake-sql"]) == 0
+
+    (call,) = sqlcl.calls
+    assert not _has_connect_line(call["input"])
+    assert f"apex validate -input {zip_path}" in call["input"]
+    out = capsys.readouterr().out
+    assert "Target   : offline" in out
+    assert "Result   : OK" in out
+
+
+def test_offline_ignores_a_configured_target_when_asked(zip_path, sqlcl, ci_env):
+    """The CI case: a workspace is configured, but this run must not need it."""
+    assert cli.main(["apex", "validate", str(zip_path), "--sqlcl", "fake-sql", "--offline"]) == 0
+    assert not _has_connect_line(sqlcl.calls[0]["input"])
+    assert "s3cr3t!" not in sqlcl.calls[0]["input"]
+
+
+def test_offline_and_an_explicit_target_together_are_refused(zip_path, sqlcl, ci_env, capsys):
+    """Silently dropping a target the caller typed would report a weaker
+    verdict than the one they asked for."""
+    exit_code = cli.main(
+        ["apex", "validate", str(zip_path), "--sqlcl", "fake-sql", "--offline",
+         "--connect", "h:1521/S"]
+    )
+    assert exit_code == 2
+    assert sqlcl.calls == []
+    assert "--offline" in capsys.readouterr().err
+
+
+def test_offline_validation_reports_compile_errors(zip_path, sqlcl, no_target, capsys):
+    """The negative control, through the CLI: a package that does not compile
+    fails the command even though SQLcl exits 0."""
+    sqlcl.reply.update(code=0, stdout=COMPILE_ERRORS)
+    assert cli.main(["apex", "validate", str(zip_path), "--sqlcl", "fake-sql"]) == 1
+    out = capsys.readouterr().out
+    assert "PLUGIN_NOT_FOUND" in out
+    assert "nothing was imported" in out
+
+
+def test_offline_json_says_so(zip_path, sqlcl, no_target, capsys):
+    assert cli.main(["apex", "validate", str(zip_path), "--sqlcl", "fake-sql", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["offline"] is True
+    assert data["target"] == "offline"
+
+
+def test_import_has_no_offline_flag(zip_path, sqlcl, ci_env):
+    """Importing needs a workspace; there is nothing to offer offline."""
+    with pytest.raises(SystemExit):
+        cli.main(["apex", "import", str(zip_path), "--sqlcl", "fake-sql", "--offline"])

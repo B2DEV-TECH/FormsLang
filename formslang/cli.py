@@ -9,16 +9,17 @@
     formslang convert <file.fmb>     -> AI proposals for every code body, headless
     formslang workbench <file.fmb>   -> the review UI, in the browser
     formslang export <session.db>    -> APEXlang 26.1 project + import ZIP from approved work
-    formslang apex validate <zip>    -> check the ZIP against a workspace through SQLcl
+    formslang apex validate <zip>    -> check the ZIP through SQLcl, workspace optional
     formslang apex import <zip>      -> import it, through SQLcl
     formslang ai                     -> which provider is configured, and does it answer
     formslang auth ...               -> multi-user mode: the first Owner, break-glass recovery
 
 ``export`` and ``apex`` are the CI pair (docs/ci-cd.md): a pipeline rebuilds
-the application from a committed session, validates it against a real APEX
-and imports it -- with the same bytes the workbench would have produced,
-and with the database password read from the environment, the credential
-store or a prompt, never from the command line.
+the application from a committed session, validates it -- against SQLcl's own
+APEXlang compiler when it has no database, against a real APEX when it does --
+and imports it, with the same bytes the workbench would have produced, and
+with the database password read from the environment, the credential store or
+a prompt, never from the command line.
 
 Assessment runs in parallel because each module is an independent Java
 process: the bottleneck is process I/O, not Python CPU.
@@ -528,27 +529,49 @@ def _cmd_apex(args: argparse.Namespace, validate_only: bool) -> int:
     Exit 0 when SQLcl succeeded, 1 when it failed -- including the case
     where SQLcl exits 0 but prints ``APEXlang Compile Errors`` and imports
     nothing -- and 2 when the command could not be run at all.
+
+    ``validate`` runs against SQLcl's bundled APEXlang compiler when there is
+    no target to run against -- no database, no credentials (apeximport.py).
+    ``import`` needs a workspace and still refuses without one.
     """
     zip_path = Path(args.zip)
-    connect_string, username = apeximport.connection_defaults()
-    connect_string = args.connect or connect_string
-    username = args.user or username
-    if not connect_string or not username:
+    offline = validate_only and bool(getattr(args, "offline", False))
+    if offline and (args.connect or args.user):
         print(
-            "ERROR: a connection string and a username are required: --connect/--user, "
-            f"{apeximport.ENV_APEX_CONNECT}/{apeximport.ENV_APEX_USER}, or the workbench Settings",
+            "ERROR: --offline checks the package against SQLcl's own APEXlang "
+            "compiler; it takes no --connect/--user. Drop one or the other.",
             file=sys.stderr,
         )
         return 2
-    password = _apex_password(username, connect_string)
-    if not password:
-        print(
-            f"ERROR: no password for {username}@{connect_string}: set "
-            f"{apeximport.ENV_APEX_PASSWORD}, save the connection from the workbench, "
-            "or run from a terminal to be prompted",
-            file=sys.stderr,
-        )
-        return 2
+
+    connect_string = username = password = ""
+    if not offline:
+        connect_string, username = apeximport.connection_defaults()
+        connect_string = args.connect or connect_string
+        username = args.user or username
+        if not connect_string or not username:
+            if not validate_only:
+                print(
+                    "ERROR: a connection string and a username are required: --connect/--user, "
+                    f"{apeximport.ENV_APEX_CONNECT}/{apeximport.ENV_APEX_USER}, "
+                    "or the workbench Settings",
+                    file=sys.stderr,
+                )
+                return 2
+            # Nothing to connect to, and validation does not need one.
+            offline = True
+            connect_string = username = ""
+
+    if not offline:
+        password = _apex_password(username, connect_string)
+        if not password:
+            print(
+                f"ERROR: no password for {username}@{connect_string}: set "
+                f"{apeximport.ENV_APEX_PASSWORD}, save the connection from the workbench, "
+                "run from a terminal to be prompted, or use --offline",
+                file=sys.stderr,
+            )
+            return 2
 
     try:
         result = apeximport.run_import(
@@ -565,13 +588,15 @@ def _cmd_apex(args: argparse.Namespace, validate_only: bool) -> int:
         return 2
 
     verb = "validate" if validate_only else "import"
+    target = "offline" if offline else f"{username}@{connect_string}"
     if args.json:
         print(
             json.dumps(
                 {
                     "command": verb,
                     "zip": str(zip_path),
-                    "target": f"{username}@{connect_string}",
+                    "target": target,
+                    "offline": offline,
                     "ok": result.ok,
                     "exit_code": result.exit_code,
                     "stdout": result.stdout,
@@ -583,7 +608,10 @@ def _cmd_apex(args: argparse.Namespace, validate_only: bool) -> int:
         return 0 if result.ok else 1
 
     print(f"{verb.capitalize():<9}: {zip_path.name}")
-    print(f"Target   : {username}@{connect_string}")
+    if offline:
+        print("Target   : offline (SQLcl's bundled APEXlang compiler; no database)")
+    else:
+        print(f"Target   : {target}")
     output = (result.stdout + result.stderr).strip()
     if output:
         print(output)
@@ -833,8 +861,22 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--timeout", type=int, default=apeximport.TIMEOUT_SECONDS, help="seconds to allow SQLcl (default: %(default)s)")
         sp.add_argument("--json", action="store_true", help="print the result as JSON")
 
-    av = ap_sub.add_parser("validate", help="check the ZIP against the target workspace; changes nothing")
+    av = ap_sub.add_parser(
+        "validate",
+        help="check the ZIP; changes nothing -- runs offline when there is no target",
+        description=(
+            "Checks the package against the target workspace when one is configured. "
+            "With no target -- or with --offline -- SQLcl compiles it against its own "
+            "bundled APEXlang compiler instead: no database, no credentials. That sees "
+            "grammar and intra-package references, not the workspace."
+        ),
+    )
     add_apex_args(av)
+    av.add_argument(
+        "--offline",
+        action="store_true",
+        help="ignore any configured target and check against SQLcl's bundled compiler only",
+    )
     av.set_defaults(func=cmd_apex_validate)
 
     ai_ = ap_sub.add_parser("import", help="import the ZIP into the target workspace")

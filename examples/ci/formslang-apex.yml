@@ -11,7 +11,9 @@
 #
 # Secrets to define: APEX_CONNECT (host:port/service), APEX_USER,
 # APEX_PASSWORD. The password only ever reaches SQLcl on stdin -- never a
-# command-line argument, never a log line (docs/ci-cd.md).
+# command-line argument, never a log line (docs/ci-cd.md). The offline
+# validate step needs none of them: it is SQLcl's own APEXlang compiler,
+# so it runs in a fork with no secrets and with no database in reach.
 
 name: FormsLang → APEX
 
@@ -59,6 +61,14 @@ jobs:
       # deterministic: an unchanged session yields an identical ZIP.
       - name: Build the APEX application from the reviewed session
         run: formslang export "$MODULE_SESSION" --alias "$APP_ALIAS" --json | tee export.json
+
+      # Oracle's own verdict with no database in reach: SQLcl compiles the
+      # package against the APEXlang grammar in its own
+      # apexlang-compiler.jar. Runs before the connected validate on
+      # purpose -- a package that does not compile at all is worth failing
+      # on even in a fork with no secrets.
+      - name: Validate offline (no workspace, no credentials)
+        run: formslang apex validate "$(dirname "$MODULE_SESSION")/export/$APP_ALIAS.apex.zip" --offline
 
       - name: Validate against the target workspace (changes nothing)
         env:

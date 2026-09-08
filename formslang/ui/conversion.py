@@ -307,11 +307,14 @@ async function runImport(name, form, validateOnly, button, resultBox) {
     resultBox.className = "import-result " + (r.ok ? "ok" : "bad");
     // SQLcl exits 0 even when it prints "APEXlang Compile Errors" and imports
     // nothing, so a failure with exit 0 is labelled by what actually happened.
-    const header = r.ok ? "OK"
+    const verdict = r.ok ? "OK"
       : r.exit_code === 0 ? "Failed (SQLcl reported errors; nothing was imported)"
       : `Failed (exit ${r.exit_code})`;
+    // Never let a bare "OK" imply a workspace checked it: an offline run
+    // proves the package compiles, not that this database would take it.
+    const header = verdict + (r.offline ? " — offline (SQLcl's APEXlang compiler; no database)" : "");
     resultBox.textContent = header + "\n" + (r.stdout || "") + (r.stderr || "");
-    if (r.ok) toast(validateOnly ? "Validation passed." : "Imported into APEX.");
+    if (r.ok) toast(validateOnly ? (r.offline ? "Validation passed (offline)." : "Validation passed.") : "Imported into APEX.");
     return !!r.ok;
   } catch (e) { toast(e.message, true); return false; }
   finally { button.disabled = false; button.textContent = original; }
@@ -359,8 +362,11 @@ function showImportForm(name, defaults) {
     ${note}
     <div class="export-form">${importFieldsHtml(defaults)}</div>
     <button class="import-secondary">Validate only, don't change anything</button>
+    <div class="import-note">Leave the three fields empty and Validate still works: SQLcl compiles the package
+      against its own APEXlang grammar — no database, no workspace, no password. Narrower than validating against
+      your workspace, and still Oracle's verdict rather than FormsLang's.</div>
     <div class="import-note cli"><span>Same from a terminal or CI (password via FORMSLANG_APEX_PASSWORD, never an argument):</span>
-      <code>formslang apex validate ${esc(name)}</code> · <code>formslang apex import ${esc(name)}</code></div>
+      <code>formslang apex validate ${esc(name)} --offline</code> · <code>formslang apex validate ${esc(name)}</code> · <code>formslang apex import ${esc(name)}</code></div>
     <div class="import-result" hidden></div>`;
   $("modal-foot").style.display = "flex";
   $("modal-input").style.display = "none";

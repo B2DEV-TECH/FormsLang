@@ -9,6 +9,13 @@ import pytest
 from formslang import apeximport
 
 
+def _has_connect_line(script: str) -> bool:
+    """Whether the SQLcl script actually opens a session -- checked line by
+    line, because ``tmp_path`` routinely puts the test's own name (and so the
+    word ``connect``) inside the ZIP path the script names."""
+    return any(line.startswith("connect") for line in script.splitlines())
+
+
 def test_account_key_folds_the_unsafe_characters_a_connect_string_carries():
     key = apeximport.account_key("FORMSLANG", "localhost:1521/FREEPDB1")
     assert key == "FORMSLANG_localhost:1521_FREEPDB1"
@@ -178,3 +185,68 @@ def test_run_import_scrubs_the_password_out_of_captured_output(monkeypatch, tmp_
     assert "s3cr3t!" not in result.stdout
     assert "s3cr3t!" not in result.stderr
     assert "***" in result.stdout
+
+
+def test_validate_with_no_connection_omits_the_connect_line(monkeypatch, tmp_path):
+    """The free Oracle gate: SQLcl compiles APEXlang against its own bundled
+    compiler, so validation needs no database, no credentials, no workspace."""
+    zip_path = tmp_path / "demo.apex.zip"
+    zip_path.write_bytes(b"x")
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+
+    captured = {}
+
+    def fake_run(argv, *, input, capture_output, text, timeout, check):
+        captured["argv"] = argv
+        captured["input"] = input
+        return subprocess.CompletedProcess(argv, 0, stdout="Validation successful.", stderr="")
+
+    monkeypatch.setattr(apeximport.subprocess, "run", fake_run)
+
+    result = apeximport.run_import(zip_path, validate_only=True)
+
+    assert result.ok is True
+    assert captured["argv"] == ["sql", "-S", "-thin", "/nolog"]
+    assert not _has_connect_line(captured["input"])
+    assert f"apex validate -input {zip_path}" in captured["input"]
+
+
+def test_import_still_demands_a_target_when_nothing_is_configured(monkeypatch, tmp_path):
+    """Offline is a property of validation alone -- an import needs a workspace."""
+    zip_path = tmp_path / "demo.apex.zip"
+    zip_path.write_bytes(b"x")
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+    with pytest.raises(ValueError, match="connection string"):
+        apeximport.run_import(zip_path, validate_only=False)
+
+
+def test_a_half_configured_validate_is_refused_rather_than_run_offline(monkeypatch, tmp_path):
+    """A named target means the caller wants that workspace checked; silently
+    dropping it for the weaker offline check would report the wrong verdict."""
+    zip_path = tmp_path / "demo.apex.zip"
+    zip_path.write_bytes(b"x")
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+    with pytest.raises(ValueError, match="username"):
+        apeximport.run_import(zip_path, connect_string="h:1521/S", validate_only=True)
+    with pytest.raises(ValueError, match="password is required"):
+        apeximport.run_import(
+            zip_path, connect_string="h:1521/S", username="U", validate_only=True
+        )
+
+
+def test_offline_validation_still_fails_on_compile_errors(monkeypatch, tmp_path):
+    """The negative control: no connection does not mean no verdict."""
+    zip_path = tmp_path / "demo.apex.zip"
+    zip_path.write_bytes(b"x")
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+
+    def fake_run(argv, *, input, capture_output, text, timeout, check):
+        return subprocess.CompletedProcess(
+            argv, 0, stdout="APEXlang Compile Errors:\nType: PLUGIN_NOT_FOUND\n", stderr="",
+        )
+
+    monkeypatch.setattr(apeximport.subprocess, "run", fake_run)
+
+    result = apeximport.run_import(zip_path, validate_only=True)
+    assert result.ok is False
+    assert result.exit_code == 0

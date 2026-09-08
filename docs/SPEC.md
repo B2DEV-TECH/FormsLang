@@ -203,7 +203,14 @@ saw without a server, a browser or a second code path.
    password from the environment, the OS credential store or a hidden
    prompt, and never from a command-line argument. Exit 1 when SQLcl
    prints `APEXlang Compile Errors` with exit 0, because that is a failed
-   import. Full contract in [ci-cd.md](ci-cd.md).
+   import.
+   - **`validate` runs with no database.** With no target -- or with
+     `--offline` -- SQLcl compiles the package against the APEXlang
+     grammar in its own `apexlang-compiler.jar`: narrower than a connected
+     validate, still Oracle's verdict, and free enough to be the gate on
+     every push. `import` always needs a workspace.
+
+   Full contract in [ci-cd.md](ci-cd.md).
 
 ## 5. Settings (in-app configuration)
 

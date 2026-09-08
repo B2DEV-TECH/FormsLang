@@ -72,3 +72,78 @@ jobs:
           python -m formslang export "$RUNNER_TEMP/smoke/DEMO_ALL_ELEMENTS.session.db" --json
           cmp "$RUNNER_TEMP/first.zip" "$RUNNER_TEMP/smoke/export/showcase.apex.zip"
           sha256sum "$RUNNER_TEMP/first.zip"
+
+  # The one Oracle verdict that costs nothing: `apex validate` compiles the
+  # exported package against the APEXlang grammar bundled in SQLcl's own
+  # apexlang-compiler.jar, so every push gets a real Oracle check with no
+  # database, no workspace and no credentials anywhere near the runner.
+  # The negative control is half the gate -- a check that cannot fail is not
+  # a check, so a deliberately broken region type must turn this job red.
+  validate:
+    name: apex validate (SQLcl, no database)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # SQLcl is a Java program and ships no runtime of its own.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install SQLcl
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/sqlcl.zip" \
+            https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip
+          unzip -q "$RUNNER_TEMP/sqlcl.zip" -d "$RUNNER_TEMP"
+          chmod +x "$RUNNER_TEMP/sqlcl/bin/sql"
+          "$RUNNER_TEMP/sqlcl/bin/sql" -v
+          echo "FORMSLANG_SQLCL_PATH=$RUNNER_TEMP/sqlcl/bin/sql" >> "$GITHUB_ENV"
+
+      - name: Install formslang
+        run: python -m pip install -e .
+
+      - name: Export the showcase module
+        run: |
+          python -m formslang export tests/fixtures/showcase/module.xml \
+            -o "$RUNNER_TEMP/gate" --alias showcase --app-id 19078
+
+      - name: The export must validate
+        run: |
+          python -m formslang apex validate \
+            "$RUNNER_TEMP/gate/export/showcase.apex.zip" --offline
+
+      - name: A broken package must fail the same gate
+        run: |
+          python - "$RUNNER_TEMP/gate/export/showcase.apex.zip" "$RUNNER_TEMP/broken.apex.zip" <<'PY'
+          import sys
+          import zipfile
+
+          src, dst = sys.argv[1], sys.argv[2]
+          old, new = b"type: interactiveGrid", b"type: notARealRegionType"
+
+          with zipfile.ZipFile(src) as zin:
+              entries = [(info, zin.read(info.filename)) for info in zin.infolist()]
+
+          hits = 0
+          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+              for info, data in entries:
+                  if old in data:
+                      data = data.replace(old, new)
+                      hits += 1
+                  zout.writestr(info, data)
+
+          if not hits:
+              sys.exit(f"nothing to break: no {old.decode()!r} left in the export")
+          print(f"patched {hits} entries")
+          PY
+          if python -m formslang apex validate "$RUNNER_TEMP/broken.apex.zip" --offline; then
+            echo "::error::an invalid region type passed validation -- the gate checks nothing"
+            exit 1
+          fi

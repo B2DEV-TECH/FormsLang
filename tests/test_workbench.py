@@ -723,7 +723,7 @@ def test_import_runs_sqlcl_and_reports_the_result(server, monkeypatch):
         },
     )
     assert status == 200
-    assert data == {"ok": True, "exit_code": 0, "stdout": "done", "stderr": ""}
+    assert data == {"ok": True, "offline": False, "exit_code": 0, "stdout": "done", "stderr": ""}
     assert seen["zip_path"] == wb.export_dir / "app.apex.zip"
     assert seen["connect_string"] == "host:1521/FREEPDB1"
     assert seen["password"] == "s3cr3t!"
@@ -734,6 +734,46 @@ def test_import_runs_sqlcl_and_reports_the_result(server, monkeypatch):
     assert secrets.get_secret(apeximport.SERVICE, account) == ""
     _status, listing = _get(base, "/api/exports")
     assert json.loads(listing)["import"]["connect_string"] == ""
+
+
+def test_validate_with_an_empty_form_runs_offline_and_says_so(server, monkeypatch):
+    """The Validate button with nothing filled in is the free Oracle check.
+
+    SQLcl compiles the package against its own APEXlang grammar, so the
+    call must go through with no connection at all -- and the answer has to
+    carry ``offline`` so the dialog cannot report a bare "OK" that reads
+    like a workspace accepted the application.
+    """
+    base, wb = server
+    wb.export_dir.mkdir(parents=True, exist_ok=True)
+    (wb.export_dir / "app.apex.zip").write_bytes(b"PK")
+
+    seen = {}
+
+    def fake_run_import(zip_path, *, connect_string, username, password, validate_only=False):
+        seen.update(connect_string=connect_string, username=username, password=password)
+        return apeximport.ImportResult(ok=True, exit_code=0, stdout="Validation successful.", stderr="")
+
+    monkeypatch.setattr(apeximport, "run_import", fake_run_import)
+
+    status, data = _post(
+        base, "/api/exports/import", {"name": "app.apex.zip", "validate_only": True}
+    )
+    assert status == 200
+    assert data["ok"] is True and data["offline"] is True
+    assert seen == {"connect_string": "", "username": "", "password": ""}
+
+
+def test_an_import_with_an_empty_form_is_still_refused(server, monkeypatch):
+    """Importing needs a workspace; only validation can go offline."""
+    monkeypatch.setattr(apeximport, "sqlcl_binary", lambda: "sql")
+    base, wb = server
+    wb.export_dir.mkdir(parents=True, exist_ok=True)
+    (wb.export_dir / "app.apex.zip").write_bytes(b"PK")
+
+    status, data = _post(base, "/api/exports/import", {"name": "app.apex.zip"})
+    assert status == 400
+    assert "connection string is required" in data["error"]
 
 
 def test_import_remember_saves_the_password_and_reuses_it_next_time(server, monkeypatch):

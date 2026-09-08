@@ -531,25 +531,43 @@ class Workbench:
             except SecureStorageUnavailable:
                 password = ""
 
+        validate_only = bool(body.get("validate_only"))
+        # Validate with nothing filled in is not a mistake to reject: SQLcl
+        # compiles the package against its own APEXlang grammar with no
+        # database at all (apeximport.py). The caller is told which of the
+        # two checks it got, so "OK" never overstates what was proven.
+        offline = validate_only and not (connect_string or username or password)
+
         with telemetry.stage(self.store.record_stage, "apex_import"):
             result = apeximport.run_import(
                 target,
                 connect_string=connect_string,
                 username=username,
                 password=password,
-                validate_only=bool(body.get("validate_only")),
+                validate_only=validate_only,
             )
 
-        if remember:
-            secrets.set_secret(apeximport.SERVICE, account, password, comment="FormsLang APEX import")
-            cfg = load_config()
-            cfg["apex_connect_string"] = connect_string
-            cfg["apex_username"] = username
-            save_config(cfg)
-        else:
-            secrets.delete_secret(apeximport.SERVICE, account)
+        # An offline validate (no target at all -- apeximport.py) has no
+        # connection to remember or forget, and no account key worth naming.
+        if connect_string and username:
+            if remember:
+                secrets.set_secret(
+                    apeximport.SERVICE, account, password, comment="FormsLang APEX import"
+                )
+                cfg = load_config()
+                cfg["apex_connect_string"] = connect_string
+                cfg["apex_username"] = username
+                save_config(cfg)
+            else:
+                secrets.delete_secret(apeximport.SERVICE, account)
 
-        return {"ok": result.ok, "exit_code": result.exit_code, "stdout": result.stdout, "stderr": result.stderr}
+        return {
+            "ok": result.ok,
+            "offline": offline,
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
 
     def reveal_export(self, name: str) -> dict:
         """Open the OS file manager with one exported ZIP selected.

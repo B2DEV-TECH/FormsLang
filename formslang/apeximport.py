@@ -1,5 +1,12 @@
 """Direct APEX import/validate via SQLcl -- credentials never touch disk or argv.
 
+``apex validate`` is the one Oracle check that needs no database: SQLcl
+compiles the APEXlang package against the grammar bundled in its own
+``apexlang-compiler.jar``. :func:`run_import` therefore omits the ``connect``
+line when validation is asked for with no connection configured, so the free
+gate is reachable from the CLI and from CI. ``apex import`` always needs a
+workspace and still demands the full target.
+
 FormsLang's export always produces a self-contained ``<alias>.apex.zip`` that
 the user can hand to SQLcl themselves (``apex import -input``, see the
 manifest ``apexlang.py`` already writes). This module is the opt-in shortcut
@@ -112,9 +119,9 @@ def _token(name: str, value: str) -> str:
 def run_import(
     zip_path: Path,
     *,
-    connect_string: str,
-    username: str,
-    password: str,
+    connect_string: str = "",
+    username: str = "",
+    password: str = "",
     validate_only: bool = False,
     sqlcl: str = "",
     timeout: int = TIMEOUT_SECONDS,
@@ -140,6 +147,16 @@ def run_import(
     ``sqlcl`` names the binary explicitly (a CI runner that just unpacked
     SQLcl has no Settings to read); ``timeout`` is the ceiling in seconds
     for one run, which a large import on a slow database may need raised.
+
+    **Offline validation.** When ``validate_only`` is asked for and no part
+    of a connection is supplied, the ``connect`` line is omitted and SQLcl
+    is driven exactly the same way otherwise. ``apex validate`` then
+    compiles the package against the APEXlang grammar bundled in SQLcl's own
+    ``apexlang-compiler.jar`` -- no database, no credentials, no workspace.
+    That is a narrower check than a connected validate (it sees grammar and
+    intra-package references, not the target workspace), and it is still a
+    real Oracle verdict, so it is the gate CI can always afford.
+    ``apex import`` never runs this way: importing needs a workspace.
     """
     binary = sqlcl or sqlcl_binary()
     if not binary:
@@ -147,11 +164,16 @@ def run_import(
             "SQLcl was not found. Install it, or set its path in Settings "
             f"(or the {ENV_SQLCL_PATH} environment variable)."
         )
-    connect_string = _token("connection string", connect_string)
-    username = _token("username", username)
     password = str(password or "")
-    if not password:
-        raise ValueError("a password is required")
+    offline = validate_only and not (connect_string or username or password)
+    if offline:
+        connect_line = ""
+    else:
+        connect_string = _token("connection string", connect_string)
+        username = _token("username", username)
+        if not password:
+            raise ValueError("a password is required")
+        connect_line = f"connect {username}/{password}@{connect_string}\n"
     if not zip_path.is_file():
         raise ValueError(f"no such export: {zip_path.name}")
 
@@ -159,7 +181,7 @@ def run_import(
     script = (
         "whenever sqlerror exit failure\n"
         "whenever oserror exit failure\n"
-        f"connect {username}/{password}@{connect_string}\n"
+        f"{connect_line}"
         f"apex {verb} -input {zip_path}\n"
         "exit success\n"
     )
