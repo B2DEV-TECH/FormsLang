@@ -149,9 +149,12 @@ A pipeline with no database in reach still gets an Oracle verdict from the
 offline step alone. FormsLang's own CI does exactly that on every push
 (`.github/workflows/ci.yml`, job *apex validate (SQLcl, no database)*):
 export the showcase module, validate it, then break one region type in a
-copy of the ZIP and require the same command to fail. The negative control
-is not decoration -- without it the job stays green even if the gate
-quietly stops checking anything.
+copy of the ZIP and require the same command to fail. It then exports the
+same module a second time with its `WHEN-VALIDATE` rules approved, so the
+page validations are compiled by Oracle too, and patches one of them to
+point at a page item that does not exist -- which must fail with
+`REFERENCE_NOT_FOUND`. The negative controls are not decoration -- without
+them the job stays green even if the gate quietly stops checking anything.
 
 The same example carries a second job for pull requests: `formslang diff`
 between the base and head revisions of the module's XML, published as the

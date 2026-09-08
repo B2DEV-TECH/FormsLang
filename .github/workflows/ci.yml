@@ -147,3 +147,97 @@ jobs:
             echo "::error::an invalid region type passed validation -- the gate checks nothing"
             exit 1
           fi
+
+      # The export above has nothing approved, so it carries no validation.
+      # Approve the module's WHEN-VALIDATE triggers and export again: the
+      # component this project writes by hand is the one Oracle should be
+      # checking on every push.
+      - name: Export the same module with its rules approved
+        run: |
+          python - "$RUNNER_TEMP/rules" <<'PY'
+          import sys
+          from pathlib import Path
+
+          from formslang.apexlang import export_apexlang
+          from formslang.convert import Proposal, build_tasks
+          from formslang.parser import parse_xml
+          from formslang.store import APPROVED, Store
+
+          out = Path(sys.argv[1])
+          out.mkdir(parents=True, exist_ok=True)
+          xml = Path("tests/fixtures/showcase/module.xml")
+
+          module = parse_xml(xml)
+          store = Store(out / "showcase.session.db")
+          store.init_session(module.name, str(xml))
+          tasks = build_tasks(module)
+          store.add_tasks(tasks)
+
+          rules = {"WHEN-VALIDATE-ITEM", "WHEN-VALIDATE-RECORD"}
+          approved = 0
+          for task in tasks:
+              if task.kind != "trigger" or task.name.upper() not in rules:
+                  continue
+              item = (task.owner.split(".")[-1] or "X").upper()
+              code = (
+                  "begin\n"
+                  f"  if :P0_{item} is null then\n"
+                  "    raise_application_error(-20001, 'value is required');\n"
+                  "  end if;\n"
+                  "end;"
+              )
+              store.save_proposal(task.id, Proposal(code=code, apex_target="Page validation"))
+              store.set_decision(task.id, APPROVED, code=code, reviewer="ci")
+              approved += 1
+
+          if not approved:
+              sys.exit("the showcase has no WHEN-VALIDATE trigger left to approve")
+
+          result = export_apexlang(store, module, out, {"alias": "showcase", "app_id": 19078})
+          pages = sorted((result.project / "pages").glob("*.apx"))
+          text = "".join(p.read_text(encoding="utf-8") for p in pages)
+          emitted = text.count("\n    validation forms-")
+          if emitted != approved:
+              sys.exit(f"approved {approved} rules but the package has {emitted} validations")
+          if "associatedItem: @" not in text:
+              sys.exit("no validation points at a page item -- the reference is never tested")
+          print(f"{approved} approved rules -> {emitted} page validations")
+          PY
+
+      - name: The package with rules must validate
+        run: |
+          python -m formslang apex validate \
+            "$RUNNER_TEMP/rules/showcase.apex.zip" --offline
+
+      # The item a validation points at is resolved by the compiler, so a
+      # page item that was never emitted is a broken package -- which is why
+      # the exporter only points at items it can see in the emitted layout.
+      - name: A validation pointing at a missing item must fail
+        run: |
+          python - "$RUNNER_TEMP/rules/showcase.apex.zip" "$RUNNER_TEMP/dangling.apex.zip" <<'PY'
+          import re
+          import sys
+          import zipfile
+
+          src, dst = sys.argv[1], sys.argv[2]
+          old = re.compile(rb"associatedItem: @[A-Za-z0-9_$#]+")
+          new = b"associatedItem: @NO_SUCH_PAGE_ITEM"
+
+          with zipfile.ZipFile(src) as zin:
+              entries = [(info, zin.read(info.filename)) for info in zin.infolist()]
+
+          hits = 0
+          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+              for info, data in entries:
+                  data, n = old.subn(new, data, count=1)
+                  hits += n
+                  zout.writestr(info, data)
+
+          if not hits:
+              sys.exit("nothing to break: no associatedItem left in the export")
+          print(f"patched {hits} entries")
+          PY
+          if python -m formslang apex validate "$RUNNER_TEMP/dangling.apex.zip" --offline; then
+            echo "::error::a validation on a missing page item passed -- references are not checked"
+            exit 1
+          fi

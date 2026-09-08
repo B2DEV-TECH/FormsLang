@@ -160,7 +160,7 @@ EXPORT_JS = r"""function exportApex() {
   openModal("Export Oracle APEX 26.1");
   $("modal-path").textContent = "APEXlang project + import ZIP";
   $("modal-hint").textContent =
-    "Only approved conversions enter the app. Generated processes start disabled until their execution point and condition are confirmed in Page Designer.";
+    "Only approved conversions enter the app. An approved WHEN-VALIDATE rule ships as an enabled page validation; everything else starts as a disabled page process until its execution point and condition are confirmed in Page Designer.";
   $("modal-body").innerHTML = `
     <div class="export-form">
       <label class="wide">Application name<input name="name" value="${esc(state.session.title)}"></label>

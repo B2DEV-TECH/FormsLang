@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An approved Forms validation exports as an APEX validation. A
+  `WHEN-VALIDATE-ITEM` or `WHEN-VALIDATE-RECORD` the reviewer approved
+  becomes a page validation of type PL/SQL Error -- it passes when the
+  approved code runs without raising, exactly as the Forms trigger did --
+  and it ships enabled, so the rule is enforced after the import instead of
+  arriving as an inert process. An item rule points at the page item the
+  Forms item became; a record rule, or an item that became an Interactive
+  Grid column, shows its error in the notification (a validation pointing at
+  an item the page does not declare fails the import with
+  `REFERENCE_NOT_FOUND`). The error message is left an obvious placeholder:
+  the code was reviewed, the wording shown to users was not.
 - `formslang apex validate` runs without a database. With no target
   configured -- or with the new `--offline` flag, which ignores one that
   is -- SQLcl compiles the exported package against the APEXlang grammar
@@ -18,7 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still requires a workspace.
 - CI validates the showcase export on every push, and proves the gate can
   fail: a copy of the ZIP with one region type replaced by an invalid one
-  must be rejected by the same command.
+  must be rejected by the same command. The same job exports the module a
+  second time with its rules approved, so the validations are compiled by
+  Oracle too, and patches one of them to point at a page item that does not
+  exist -- which must fail.
 
 ### Fixed
 

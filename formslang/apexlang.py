@@ -956,24 +956,147 @@ def _layout_manifest(layout: PageLayout) -> dict:
     }
 
 
-def _approved_processes(store: Store, page: int) -> tuple[list[str], list[dict]]:
-    chunks: list[str] = []
-    manifest: list[dict] = []
-    sequence = 10
-    for view in store.all_views():
-        if view.state != APPROVED:
-            continue
-        task = view.task
-        code = re.sub(r":P0_([A-Za-z0-9_$#]+)", rf":P{page}_\1", view.code)
-        process_id = slug(f"forms-{task['id']}", fallback=f"forms-{sequence}")
-        proposal = view.proposal or {}
-        note = (
-            f"FormsLang approved conversion. Source: {task['kind']} {task['title']}. "
-            f"Suggested target: {proposal.get('apex_target') or task.get('apex_hint') or 'review required'}. "
-            "Generated as a disabled-by-default page process candidate; verify its execution point and condition in Page Designer."
+#: The two Forms triggers the rule engine already calls validations (both
+#: AUTO in rules.py). Every other approved conversion stays a page process;
+#: these become the APEX component the rule engine promised.
+_VALIDATION_TRIGGERS = {
+    "WHEN-VALIDATE-ITEM": "item",
+    "WHEN-VALIDATE-RECORD": "record",
+}
+
+#: A page item declaration inside an emitted layout chunk -- four spaces,
+#: the indentation _item_chunk and _hidden_chunk write.
+_PAGE_ITEM_DECL = re.compile(r"^    pageItem ([A-Za-z0-9_$#]+) \(", re.MULTILINE)
+
+
+def _emitted_page_items(chunks: list[str]) -> set[str]:
+    """Which page items this page actually declares.
+
+    A validation may only point at an item that exists. A Forms item that
+    became an Interactive Grid column, or that no region took, never gets a
+    ``pageItem`` of its own, and ``associatedItem: @P1_X`` for one fails the
+    import with COMPONENT_NOT_FOUND. Reading the emitted chunks back is the
+    one source that cannot drift from what :func:`_layout_chunks` decided.
+    """
+    return {m.group(1) for chunk in chunks for m in _PAGE_ITEM_DECL.finditer(chunk)}
+
+
+def _validation_kind(task: dict) -> str:
+    """``"item"``, ``"record"``, or ``""`` when the unit is not a validation."""
+    if task.get("kind") != "trigger":
+        return ""
+    return _VALIDATION_TRIGGERS.get(str(task.get("name") or "").upper(), "")
+
+
+def _validation_chunk(
+    task: dict,
+    code: str,
+    page: int,
+    sequence: int,
+    kind: str,
+    component_id: str,
+    names: dict[str, str],
+    emitted: set[str],
+    target: str,
+) -> tuple[str, dict]:
+    """An approved WHEN-VALIDATE trigger as a real APEX page validation.
+
+    The type is ``plsqlError`` -- "passes if the code runs without raising an
+    error" -- because that is what the Forms trigger did and what the
+    approved code still is: a PL/SQL block that raises, or calls
+    ``apex_error.add_error``, when the value is wrong. ``functionBody``
+    would demand a RETURN on every path, which a converted trigger body does
+    not have; it would import cleanly and then fail at runtime, which is
+    worse than not converting it at all.
+
+    Unlike a process, this component is born enabled. An approved rule that
+    imports switched off enforces nothing, and a reviewer already said the
+    code is right. What nobody reviewed is the wording the user sees, so the
+    error message is left an obvious placeholder.
+    """
+    owner = str(task.get("owner") or "")
+    mapped = names.get(owner.upper(), "") if kind == "item" and "." in owner else ""
+    apex_item = mapped if mapped in emitted else ""
+    notes = [
+        "FormsLang approved conversion.",
+        f"Source: {task['kind']} {task['title']}.",
+        f"Suggested target: {target}.",
+        (
+            "Page validation of type PL/SQL Error: it passes when the approved code runs "
+            "without raising, which is how the Forms trigger rejected a value."
+        ),
+        (
+            "Enabled, because a reviewer approved the rule; the error message is a "
+            "placeholder -- replace it with the wording your users should see."
+        ),
+    ]
+    if kind == "record":
+        notes.append(
+            f"Forms validated the whole record of block {owner or 'unknown'}, not one "
+            "field, so the error shows in the notification."
         )
-        chunks.append(f"""
-    process {process_id} (
+    elif not apex_item:
+        if "." not in owner:
+            why = f"The trigger belongs to {owner or 'the form'}, not to one item"
+        elif not mapped:
+            why = f"Forms item {owner} has no page item on this page"
+        else:
+            why = (
+                f"Forms item {owner} is not a page item here: {mapped} became an "
+                "Interactive Grid column, or no region took it"
+            )
+        notes.append(why + ", so the error shows in the notification, not next to a field.")
+    location = "inlineWithFieldAndInNotification" if apex_item else "inlineInNotification"
+    associated = f"\n            associatedItem: @{apex_item}" if apex_item else ""
+    message = (
+        f"Forms validation {task['title']} failed. Replace this text with the message "
+        "your users should see."
+    )
+    chunk = f"""
+    validation {component_id} (
+        name: {_text('Forms: ' + task['title'])}
+        validation {{
+            type: plsqlError
+            plsqlCodeRaisingError:
+                {_fence(code, 'plsql')}
+        }}
+        error {{
+            errorMessage: {_text(message)}
+            displayLocation: {location}{associated}
+        }}
+        execution {{
+            sequence: {sequence}
+        }}
+        comments {{
+            comments: {_fence(' '.join(notes))}
+        }}
+    )
+"""
+    entry = {
+        "task_id": task["id"],
+        "source": f"{task['kind']} {task['title']}",
+        "component": f"page {page} validation {component_id}",
+        "kind": "validation",
+        "enabled": True,
+        "reason": "approved rule, enforced on submit; the error message is a placeholder",
+        "associated_item": apex_item,
+    }
+    return chunk, entry
+
+
+def _process_chunk(
+    task: dict, code: str, page: int, sequence: int, component_id: str, target: str
+) -> tuple[str, dict]:
+    """An approved conversion with no APEX component of its own, parked as a
+    disabled page process for a human to place."""
+    note = (
+        f"FormsLang approved conversion. Source: {task['kind']} {task['title']}. "
+        f"Suggested target: {target}. "
+        "Generated as a disabled-by-default page process candidate; verify its execution "
+        "point and condition in Page Designer."
+    )
+    chunk = f"""
+    process {component_id} (
         name: {_text('Forms: ' + task['title'])}
         type: executeCode
         source {{
@@ -991,16 +1114,62 @@ def _approved_processes(store: Store, page: int) -> tuple[list[str], list[dict]]
             comments: {_fence(note)}
         }}
     )
-""")
-        manifest.append({
-            "task_id": task["id"],
-            "source": f"{task['kind']} {task['title']}",
-            "component": f"page {page} process {process_id}",
-            "enabled": False,
-            "reason": "execution point and condition require human confirmation",
-        })
-        sequence += 10
-    return chunks, manifest
+"""
+    entry = {
+        "task_id": task["id"],
+        "source": f"{task['kind']} {task['title']}",
+        "component": f"page {page} process {component_id}",
+        "kind": "process",
+        "enabled": False,
+        "reason": "execution point and condition require human confirmation",
+    }
+    return chunk, entry
+
+
+def _approved_components(
+    store: Store, page: int, names: dict[str, str], emitted: set[str]
+) -> tuple[list[str], list[dict]]:
+    """Every approved conversion, as the component it belongs in.
+
+    Validations are emitted before processes -- the order Page Designer
+    lists them in -- and each family numbers its own execution sequence from
+    10, so enabling or removing one never renumbers the other. Two exports
+    of one session give the same text: the views come back in task order and
+    nothing here reads a clock.
+    """
+    validations: list[str] = []
+    processes: list[str] = []
+    validation_manifest: list[dict] = []
+    process_manifest: list[dict] = []
+    validation_sequence = process_sequence = 10
+    for view in store.all_views():
+        if view.state != APPROVED:
+            continue
+        task = view.task
+        code = re.sub(r":P0_([A-Za-z0-9_$#]+)", rf":P{page}_\1", view.code)
+        proposal = view.proposal or {}
+        target = proposal.get("apex_target") or task.get("apex_hint") or "review required"
+        kind = _validation_kind(task)
+        if kind:
+            component_id = slug(
+                f"forms-{task['id']}", fallback=f"forms-validation-{validation_sequence}"
+            )
+            chunk, entry = _validation_chunk(
+                task, code, page, validation_sequence, kind, component_id,
+                names, emitted, target,
+            )
+            validations.append(chunk)
+            validation_manifest.append(entry)
+            validation_sequence += 10
+        else:
+            component_id = slug(
+                f"forms-{task['id']}", fallback=f"forms-process-{process_sequence}"
+            )
+            chunk, entry = _process_chunk(task, code, page, process_sequence, component_id, target)
+            processes.append(chunk)
+            process_manifest.append(entry)
+            process_sequence += 10
+    return validations + processes, validation_manifest + process_manifest
 
 
 def _page(
@@ -1010,7 +1179,9 @@ def _page(
     if config.ai_layout:
         ailayout.assist(layout, provider, store, config.page)
     items = _layout_chunks(layout)
-    processes, process_mapping = _approved_processes(store, config.page)
+    components, component_mapping = _approved_components(
+        store, config.page, layout.names, _emitted_page_items(items)
+    )
     title = module.title or module.name
     body = f"""page {config.page} (
     name: {_text(title)}
@@ -1027,13 +1198,13 @@ def _page(
         pageAccessProtection: argumentsMustHaveChecksum
         formAutoComplete: false
     }}
-{''.join(items)}{''.join(processes)}
+{''.join(items)}{''.join(components)}
 )
 """
     mapping = {
         "items": layout.names,
         "layout": _layout_manifest(layout),
-        "approved_components": process_mapping,
+        "approved_components": component_mapping,
     }
     return body, mapping, layout
 

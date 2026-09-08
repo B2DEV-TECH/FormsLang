@@ -16,7 +16,7 @@ from formslang.apexlang import (
     last_export_config,
 )
 from formslang.convert import Proposal, build_tasks
-from formslang.model import Block, FormModule, Item
+from formslang.model import Block, Canvas, FormModule, Item, Trigger
 from formslang.parser import parse_xml
 from formslang.store import APPROVED, REJECTED, Store
 
@@ -158,8 +158,126 @@ def test_review_artifacts_stay_outside_the_import_project(approved_session, tmp_
     assert not (result.project / "session.json").exists()
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["format"] == "APEXlang 26.1"
+    assert manifest["approved_components"][0]["kind"] == "process"
     assert manifest["approved_components"][0]["enabled"] is False
     assert manifest["import"]["database_required"] is True
+
+
+def _approved_validations(module, tmp_path, source="memory"):
+    """Approve every WHEN-VALIDATE unit of ``module`` and export it.
+
+    Returns the page text and the manifest's ``approved_components``, which
+    is what the two families of validation rules are asserted against.
+    """
+    store = Store(tmp_path / "rules.session.db")
+    store.init_session(module.name, str(source))
+    tasks = build_tasks(module)
+    store.add_tasks(tasks)
+    for task in tasks:
+        if task.name.upper() not in {"WHEN-VALIDATE-ITEM", "WHEN-VALIDATE-RECORD"}:
+            continue
+        code = f"begin\n  if :P0_{task.name.split('-')[-1]} is null then\n    null;\n  end if;\nend;"
+        store.save_proposal(task.id, Proposal(code=code, apex_target="Page validation"))
+        store.set_decision(task.id, APPROVED, code=code, reviewer="ana")
+    try:
+        result = export_apexlang(store, module, tmp_path / "export", {"alias": "rules"})
+    finally:
+        store.close()
+    page = (result.project / "pages" / f"p00001-{result.project.name}.apx")
+    if not page.exists():  # the page file is named after the module, not the alias
+        page = next(p for p in (result.project / "pages").glob("p00001-*.apx"))
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    return page.read_text(encoding="utf-8"), manifest["approved_components"]
+
+
+def _component(text: str, header: str) -> str:
+    """One component of the page, from its header line to its closing paren."""
+    start = text.index(header)
+    return text[start : text.index("\n    )\n", start)]
+
+
+def test_an_approved_item_rule_becomes_a_page_validation_on_that_item(tmp_path, sample_xml):
+    """A WHEN-VALIDATE-ITEM is AUTO in the rule engine: the export must ship
+    the APEX component the engine promised, enabled, pointing at the page
+    item the Forms item became -- not an inert process."""
+    module = parse_xml(sample_xml)
+    text, components = _approved_validations(module, tmp_path, sample_xml)
+    chunk = _component(text, "\n    validation forms-")
+
+    assert "type: plsqlError" in chunk  # the Forms trigger raised; so does this
+    assert "plsqlCodeRaisingError:" in chunk
+    assert ":P1_ITEM" in chunk  # :P0_ was re-pointed at this page
+    assert "displayLocation: inlineWithFieldAndInNotification" in chunk
+    assert "associatedItem: @P1_CUSTOMER" in chunk
+    # An approved rule that imports switched off enforces nothing.
+    assert "serverSideCondition" not in chunk
+    assert "placeholder" in chunk  # the message text is not something anyone reviewed
+
+    entry = next(c for c in components if c["kind"] == "validation")
+    assert entry["source"] == "trigger ORDERS.CUSTOMER.WHEN-VALIDATE-ITEM"
+    assert entry["enabled"] is True
+    assert entry["associated_item"] == "P1_CUSTOMER"
+
+
+def test_a_record_rule_has_no_field_to_point_at(tmp_path):
+    """WHEN-VALIDATE-RECORD guards the whole row, so its error belongs in the
+    notification: an ``associatedItem`` would name a field the rule is not
+    about."""
+    module = FormModule(
+        name="M",
+        canvases=[Canvas(name="CV", width=600, height=200)],
+        blocks=[
+            Block(
+                name="B",
+                triggers=[Trigger(name="WHEN-VALIDATE-RECORD", scope="block", owner="B",
+                                  text="IF :B.A IS NULL THEN\n  MESSAGE('no');\nEND IF;")],
+                items=[Item(name="A", item_type="Text Item", canvas="CV", x=10, y=10,
+                            width=100, height=14)],
+            )
+        ],
+    )
+    text, components = _approved_validations(module, tmp_path)
+    chunk = _component(text, "\n    validation forms-")
+
+    assert "displayLocation: inlineInNotification" in chunk
+    assert "associatedItem" not in chunk
+    assert "the whole record of block B" in chunk
+    assert next(c for c in components if c["kind"] == "validation")["associated_item"] == ""
+
+
+def test_a_rule_on_a_grid_column_falls_back_to_the_notification(tmp_path):
+    """A tabular block's items become Interactive Grid columns, not page
+    items. Pointing a validation at one fails the import with a dangling
+    reference (REFERENCE_NOT_FOUND, observed against SQLcl 26.2), so the rule
+    keeps its code and loses only the field it cannot name."""
+    module = FormModule(
+        name="M",
+        canvases=[Canvas(name="CV", width=600, height=200)],
+        blocks=[
+            Block(
+                name="B",
+                query_data_source_name="T",
+                records_displayed=5,
+                items=[
+                    Item(name="A", item_type="Text Item", column_name="A", canvas="CV",
+                         x=10, y=10, width=100, height=14,
+                         triggers=[Trigger(name="WHEN-VALIDATE-ITEM", scope="item", owner="B.A",
+                                           text="IF :B.A IS NULL THEN\n  MESSAGE('no');\nEND IF;")]),
+                    Item(name="C", item_type="Text Item", column_name="C", canvas="CV",
+                         x=120, y=10, width=100, height=14),
+                ],
+            )
+        ],
+    )
+    text, components = _approved_validations(module, tmp_path)
+    chunk = _component(text, "\n    validation forms-")
+
+    assert "column A" in text  # the item really is a grid column here
+    assert "pageItem P1_A" not in text
+    assert "displayLocation: inlineInNotification" in chunk
+    assert "associatedItem" not in chunk
+    assert "Interactive Grid column" in chunk
+    assert next(c for c in components if c["kind"] == "validation")["associated_item"] == ""
 
 
 @pytest.mark.parametrize(

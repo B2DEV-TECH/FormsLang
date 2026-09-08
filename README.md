@@ -757,9 +757,12 @@ after every export.
 </p>
 
 The ZIP is deliberately separate from the audit artifacts. Only approved
-proposals are included, and they are emitted as disabled page-process
-candidates until their execution point and condition are confirmed in Page
-Designer. Regions and page items are native components on the page's
+proposals are included. An approved `WHEN-VALIDATE-ITEM` or
+`WHEN-VALIDATE-RECORD` is emitted as a real APEX page validation of type
+PL/SQL Error — enabled, pointing at the page item the Forms item became,
+with a placeholder error message to reword — and everything else is
+emitted as a disabled page-process candidate until its execution point and
+condition are confirmed in Page Designer. Regions and page items are native components on the page's
 12-column grid: canvases, frames and tab pages become regions, sub-regions
 and tab pages; single-record blocks become page items of the native type
 (`textarea`, `displayOnly`, `datePicker`, `numberField`, `checkbox`,

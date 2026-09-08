@@ -41,8 +41,9 @@ Five pillars, in priority order:
    proposal, editable right pane, approve / needs-work / reject with a full
    audit trail per unit.
 4. **Export an APEX 26.1 import ZIP.** Only approved code enters the
-   application; generated processes ship disabled until confirmed in Page
-   Designer.
+   application. An approved Forms validation ships as an APEX page
+   validation, enabled; anything whose execution point is still a judgement
+   call ships as a page process, disabled until confirmed in Page Designer.
 5. **Beautiful, usable, simple.** One screen, one dark theme, keyboard
    driven. Features come after these five work end to end.
 
@@ -197,6 +198,17 @@ saw without a server, a browser or a second code path.
      the dialog next time and read by `formslang export` when a flag is
      omitted -- the dialog shows the exact command line that reproduces
      what it is about to build.
+   - **A rule exports as a rule.** An approved `WHEN-VALIDATE-ITEM` or
+     `WHEN-VALIDATE-RECORD` becomes an APEX page validation of type
+     PL/SQL Error -- it passes when the approved code runs without raising,
+     which is how the Forms trigger rejected a value -- and it is enabled,
+     because a reviewer already approved it. An item rule points at the
+     page item the Forms item became; a record rule, and an item rule whose
+     item became an Interactive Grid column, show their error in the
+     notification. The error message is a placeholder: the wording users
+     see is the one thing nobody reviewed. Everything else approved stays a
+     disabled page process. The manifest names the component each unit
+     became (`approved_components`).
 7. **Validate and import.** `formslang apex validate|import <zip>` -- and
    the same buttons in the workbench -- drive the user's own SQLcl. The
    target comes from flags, `FORMSLANG_APEX_*` variables or Settings; the
