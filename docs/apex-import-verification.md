@@ -153,6 +153,34 @@ To do the same by hand, run the two PL/SQL blocks the script contains in
 SQLcl, log in with a browser as that user, save the page from the browser,
 and remove the user afterwards.
 
+### The submit
+
+A GET proves the page renders; it does not show a rule firing. The second
+half of the step does that, with the same temporary user and the same login:
+
+```
+python examples/verify/apex_submit_check.py out/render \
+    --app 190122 --page 1 --item P1_VL_PRECO --good 19.90
+```
+
+It fetches the page, posts it back to `wwv_flow.accept` the way the browser
+does — `p_json` carrying every page item — and prints, per case, the messages
+APEX rendered inline beside each field and in the notification region. It
+submits twice: once with the item under test empty, where the rule must
+reject, and once with `--good` in it, where that same rule must be gone. The
+second submit is the control; without it a page that rejects everything looks
+like a page whose rules work.
+
+Two gotchas are already paid for, and both answer with a protection violation
+rather than anything that names the cause:
+
+- `pPageItemsProtected` is one base64 string **split into `.,`-separated
+  chunks that continue each other** (`P1_TOKEN_SESS` + `AO`). Decode the
+  chunks separately and you get truncated names.
+- A protected item must be submitted **with its own checksum**, the `value` of
+  its companion `<input data-for="ITEM">`, as `ck` beside `n` and `v`.
+  Without it APEX answers *Page protection violation*.
+
 ## 5. Read the actual HTML
 
 Check the saved `render<app>_p<page>.html` for:

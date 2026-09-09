@@ -57,6 +57,99 @@ FormsLang_1.2.2_x64_en-US.msi
 8E1F44C4057E9315041E1C4692DF4E125745AF9A6E0327F3AD41254F6069ED6E
 ```
 
+## Import verification on `main` (2026-09-08)
+
+The first execution of [APEX verification](apex-import-verification.md) on any
+machine. Engine at commit `e8fe949`; `9327d87` on top changes documentation
+only. Target: Oracle AI Database 26ai Free 23.26.3.0.0, APEX 26.1.0, SQLcl
+26.2.2.0, ORDS on `localhost:8080`, local workspace `FORMSLANG`, disposable
+application 190122. No customer artefact was involved. The import and
+dictionary steps used the workspace's single existing account; the render and
+submit steps each created one temporary end user and removed it in a
+`finally`.
+
+Source: `tests/fixtures/showcase/module.xml`, its six `WHEN-VALIDATE-ITEM` and
+`WHEN-VALIDATE-RECORD` units approved with a `raise_application_error` body,
+exported through `export_apexlang`. Package SHA-256
+`a9241052afc885f8e074673af8557ddc915e11ab5c0540e5eb789cd59b17de8b`.
+
+Steps 1 to 5 passed and step 6 has not been run. The authenticated render and
+the browser submit were completed later the same day, against the same
+application, and are recorded below.
+
+- **Import (step 2).** `formslang apex import` reported `Importing application
+  ID: 190122 into workspace: FORMSLANG`, `Import successful.` and `Result: OK`,
+  with no `APEXlang Compile Errors`.
+- **Dictionary (step 3).** Application 190122 holds 3 pages, 42 items, 32
+  regions, 4 processes and **6 validations**. All six are of type `PL/SQL
+  Error`, sequenced 10 to 60, with no condition and no button restriction —
+  that is, enabled and evaluated on every submit. The four item-level rules
+  carry the expected `associated_item` (`P1_VL_PRECO`, `P1_FK_CATEGORIA`,
+  `P1_CD_BARRA`, `P1_FK_FORNECEDOR`) and display
+  `INLINE_WITH_FIELD_AND_NOTIFICATION`; the two record-level rules carry no
+  item and display `INLINE_IN_NOTIFICATION`. The stored code shows the page
+  prefix rewritten from `:P0_` to `:P1_`.
+- **Label span (step 3).** The `grid_label_column_span >=
+  nvl(grid_column_span, 12)` query returned no rows.
+- **Rule execution (step 5, in the database).** In a session opened with
+  `apex_session.create_session(190122, 1, 'FORMSLANG')`, the code as stored in
+  `apex_application_page_val` for `P1_VL_PRECO` was executed twice through
+  `apex_exec.execute_plsql`. With the item empty it raised `ORA-20001:
+  VL_PRECO e obrigatorio (regra vinda do Forms).`; with the item set to
+  `19.90` it completed silently. The rule that came from the Forms trigger
+  rejects and accepts, in APEX, the same values it rejected and accepted in
+  Forms.
+- **Render (step 4).** ORDS answered both `f?p=190122:1` and
+  `/ords/r/formslang/formslang-a4/` with HTTP 200 and served the application's
+  own login page (`flow: 190122`, no `ORA-` and no `ERR-`); the authentication
+  scheme is `Oracle APEX Accounts`.
+  `examples/verify/apex_render_check.py` then created a temporary end user in
+  the workspace, logged in through `wwv_flow.accept` the way the browser does,
+  fetched page 1 with the session cookie and removed the user again. The page
+  came back **HTTP 200, 88,885 bytes** (`render190122_p1.html`): nine
+  `t-Region`s, three Interactive Grids with their headings in Forms order, 37
+  form fields, 3 Date Pickers, 15 Number Fields and two textareas, with **no**
+  error banner, no `LABEL_COLUMN_SPAN` error, no `ORA-`, no absolute
+  positioning and no layout script of FormsLang's own.
+- **Browser submit (step 4, continued).**
+  `examples/verify/apex_submit_check.py` posted that page back to
+  `wwv_flow.accept` on the same session, the way the browser's own submit does
+  — `p_json` carrying every page item, each protected item with its own
+  checksum. With `P1_VL_PRECO` empty, APEX's page-processing engine ran the
+  exported validations and **rejected the submit**: the four item-level rules
+  rendered **inline beside their fields** — `<div id="P1_VL_PRECO_error">`
+  inside the item's `t-Form-error`, with `aria-invalid="true"`,
+  `aria-describedby` and `apex-page-item-error` on the input — and again in
+  the notification region; the two record-level rules rendered in the
+  notification only. That is `inlineWithFieldAndInNotification` and
+  `inlineInNotification` behaving on screen as they were exported.
+  Submitting the same page with `P1_VL_PRECO = 19.90` removed that rule's
+  message from both places and left the other five — the negative control.
+  The same run against `P1_CD_BARRA` with a valid EAN-13 (`7891234567895`)
+  behaved identically. Saved as `submit190122_p1_empty.html` and
+  `submit190122_p1_valid.html`.
+- **What the user reads is the validation's own message.** The text on screen
+  is the validation's `errorMessage`, which FormsLang emits as a placeholder
+  (`Forms validation <unit> failed. Replace this text with the message your
+  users should see.`, `formslang/apexlang.py`), **not** the message inside the
+  rule's `raise_application_error`. A converted application therefore shows
+  placeholder text to end users until each validation's message is reworded.
+  Observed, not inferred.
+
+What this does not prove:
+
+- Anything about save behaviour. Nothing was written to a table: the page has
+  no bound form region, so there is no fetch and no DML to exercise.
+- Anything about a rule outside the six approved for this exercise, or about a
+  module other than the synthetic showcase.
+- Anything about tab order or layout fidelity against the Forms runtime. The
+  page renders cleanly; it was not compared field by field with Forms.
+
+Application 190122 remains installed in workspace `FORMSLANG`. It is
+disposable and may be deleted; step 6 is the only step still open. The
+temporary end user both scripts create is removed in a `finally`, so no test
+account survives a run — including a failed one.
+
 ## Acceptance layers
 
 | Layer | Required evidence | Boundary |
@@ -66,6 +159,7 @@ FormsLang_1.2.2_x64_en-US.msi
 | Failure recovery | Cancellation, failed providers, saved progress and crashed-job reconciliation | Existing store, workbench and AI tests; not a power-loss certification |
 | Desktop usability | Reachable header actions at 1100, 1280 and 1380 px; review, reload, Doc, Preview and export | Browser checks plus packaged-engine smoke; native installer acceptance is separate |
 | Reproducible export | Same session and configuration produce byte-identical ZIPs | Does not prove imported pages render or behave correctly |
+| Import, render and rule execution | Package imports into a disposable application with no compile errors; the APEX dictionary matches what was exported; the page renders with no error banner; a real browser submit runs the exported validations, shows the item-level ones inline beside their fields, and a valid value clears the message | Done once, 2026-09-08, for six validations on one page; no DML was exercised, and no rule outside those six |
 | Real migration | Approved private corpus, Forms runtime reference, APEX render and functional comparison | Pending; synthetic showcase is not a production corpus |
 
 ## Upgrade and recovery
