@@ -163,11 +163,13 @@ def test_review_artifacts_stay_outside_the_import_project(approved_session, tmp_
     assert manifest["import"]["database_required"] is True
 
 
-def _approved_validations(module, tmp_path, source="memory"):
+def _approved_validations(module, tmp_path, source="memory", code=None):
     """Approve every WHEN-VALIDATE unit of ``module`` and export it.
 
     Returns the page text and the manifest's ``approved_components``, which
     is what the two families of validation rules are asserted against.
+    ``code`` replaces the canned approved body when a test needs the review
+    to say something of its own.
     """
     store = Store(tmp_path / "rules.session.db")
     store.init_session(module.name, str(source))
@@ -176,9 +178,11 @@ def _approved_validations(module, tmp_path, source="memory"):
     for task in tasks:
         if task.name.upper() not in {"WHEN-VALIDATE-ITEM", "WHEN-VALIDATE-RECORD"}:
             continue
-        code = f"begin\n  if :P0_{task.name.split('-')[-1]} is null then\n    null;\n  end if;\nend;"
-        store.save_proposal(task.id, Proposal(code=code, apex_target="Page validation"))
-        store.set_decision(task.id, APPROVED, code=code, reviewer="ana")
+        approved = code or (
+            f"begin\n  if :P0_{task.name.split('-')[-1]} is null then\n    null;\n  end if;\nend;"
+        )
+        store.save_proposal(task.id, Proposal(code=approved, apex_target="Page validation"))
+        store.set_decision(task.id, APPROVED, code=approved, reviewer="ana")
     try:
         result = export_apexlang(store, module, tmp_path / "export", {"alias": "rules"})
     finally:
@@ -211,12 +215,14 @@ def test_an_approved_item_rule_becomes_a_page_validation_on_that_item(tmp_path, 
     assert "associatedItem: @P1_CUSTOMER" in chunk
     # An approved rule that imports switched off enforces nothing.
     assert "serverSideCondition" not in chunk
-    assert "placeholder" in chunk  # the message text is not something anyone reviewed
+    # The Forms trigger said MESSAGE('required'); that is what the user reads.
+    assert 'errorMessage: "required"' in chunk
 
     entry = next(c for c in components if c["kind"] == "validation")
     assert entry["source"] == "trigger ORDERS.CUSTOMER.WHEN-VALIDATE-ITEM"
     assert entry["enabled"] is True
     assert entry["associated_item"] == "P1_CUSTOMER"
+    assert entry["message_source"] == "Forms trigger"
 
 
 def test_a_record_rule_has_no_field_to_point_at(tmp_path):
@@ -278,6 +284,95 @@ def test_a_rule_on_a_grid_column_falls_back_to_the_notification(tmp_path):
     assert "associatedItem" not in chunk
     assert "Interactive Grid column" in chunk
     assert next(c for c in components if c["kind"] == "validation")["associated_item"] == ""
+
+
+def _one_rule(trigger_text: str) -> FormModule:
+    """A single-item block whose only rule is the trigger under test."""
+    return FormModule(
+        name="M",
+        canvases=[Canvas(name="CV", width=600, height=200)],
+        blocks=[
+            Block(
+                name="B",
+                items=[
+                    Item(name="A", item_type="Text Item", canvas="CV", x=10, y=10,
+                         width=100, height=14,
+                         triggers=[Trigger(name="WHEN-VALIDATE-ITEM", scope="item",
+                                           owner="B.A", text=trigger_text)]),
+                ],
+            )
+        ],
+    )
+
+
+def test_the_message_the_approved_code_raises_is_the_one_the_user_reads(tmp_path):
+    """APEX prints the validation's own errorMessage and never the error the
+    code raises, so the sentence has to be moved up into the message. The
+    reviewer's code speaks last, so it speaks first: its wording wins over
+    whatever the Forms trigger used to say."""
+    module = _one_rule("IF :B.A IS NULL THEN\n  MESSAGE('the old wording');\nEND IF;")
+    code = (
+        "begin\n  if :P0_A is null then\n"
+        "    raise_application_error(-20001, 'Informe o cliente.');\n  end if;\nend;"
+    )
+    text, components = _approved_validations(module, tmp_path, code=code)
+    chunk = _component(text, "\n    validation forms-")
+
+    assert 'errorMessage: "Informe o cliente."' in chunk
+    assert "the old wording" not in chunk
+    assert "the approved code already showed" in chunk
+    assert next(c for c in components if c["kind"] == "validation")[
+        "message_source"] == "approved code"
+
+
+def test_a_silent_rule_keeps_the_wording_the_form_already_had(tmp_path):
+    """When the approved code only raises, the Forms trigger is the fallback:
+    that sentence is the one the users have been reading for years, and it
+    beats a placeholder nobody wrote."""
+    module = _one_rule("IF :B.A IS NULL THEN\n  MESSAGE('Cliente e obrigatorio.');\nEND IF;")
+    text, components = _approved_validations(module, tmp_path)
+    chunk = _component(text, "\n    validation forms-")
+
+    assert 'errorMessage: "Cliente e obrigatorio."' in chunk
+    assert "the Forms trigger already showed" in chunk
+    entry = next(c for c in components if c["kind"] == "validation")
+    assert entry["message_source"] == "Forms trigger"
+    assert "message read from the Forms trigger" in entry["reason"]
+
+
+def test_two_messages_in_one_trigger_are_not_worth_guessing_between(tmp_path):
+    """A trigger that says two different things gives no way to tell which
+    sentence belongs to the rejection. Guessing would put the wrong sentence
+    in front of a user, so the placeholder stays and both candidates go in
+    the comments for the reviewer to choose from."""
+    module = _one_rule(
+        "IF :B.A IS NULL THEN\n  MESSAGE('Informe o cliente.');\n"
+        "ELSIF :B.A = 'X' THEN\n  MESSAGE('Cliente X nao e aceito.');\nEND IF;"
+    )
+    text, components = _approved_validations(module, tmp_path)
+    chunk = _component(text, "\n    validation forms-")
+
+    assert "Replace this text with the message" in chunk
+    assert '"Informe o cliente."' in chunk  # both candidates, quoted in the comments
+    assert '"Cliente X nao e aceito."' in chunk
+    assert "more than one message" in chunk
+    assert next(c for c in components if c["kind"] == "validation")[
+        "message_source"] == "placeholder"
+
+
+def test_a_message_built_at_run_time_is_not_a_sentence_to_copy(tmp_path):
+    """``MESSAGE('bad: ' || :B.A)`` has no sentence in the source -- half of
+    it only exists once the form runs. The export says what it could not read
+    instead of shipping half a message."""
+    module = _one_rule("IF :B.A IS NULL THEN\n  MESSAGE('Codigo invalido: ' || :B.A);\nEND IF;")
+    text, components = _approved_validations(module, tmp_path)
+    chunk = _component(text, "\n    validation forms-")
+
+    assert "Replace this text with the message" in chunk
+    assert "builds its message at run time" in chunk
+    assert "Codigo invalido: " in chunk  # the expression, so the reviewer sees the intent
+    assert next(c for c in components if c["kind"] == "validation")[
+        "message_source"] == "placeholder"
 
 
 @pytest.mark.parametrize(

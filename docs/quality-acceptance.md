@@ -134,7 +134,8 @@ application, and are recorded below.
   users should see.`, `formslang/apexlang.py`), **not** the message inside the
   rule's `raise_application_error`. A converted application therefore shows
   placeholder text to end users until each validation's message is reworded.
-  Observed, not inferred.
+  Observed, not inferred. This finding became card **A7**; the section below
+  records the same page after it was addressed.
 
 What this does not prove:
 
@@ -150,6 +151,50 @@ disposable and may be deleted; step 6 is the only step still open. The
 temporary end user both scripts create is removed in a `finally`, so no test
 account survives a run — including a failed one.
 
+## Message provenance on screen (2026-09-09)
+
+The same disposable application **190122**, re-imported after the change that
+fills a validation's `errorMessage` from the sentence the rule already has.
+Package SHA-256 `6f1be7de144fed81c1be0ca90d83dc2dda7a4b6657e963145218ab359b3b3b22`
+(34,313 bytes), built from `tests/fixtures/showcase/module.xml` with the same
+six units approved — but this time two of them (`FK_CATEGORIA`,
+`BK_ITENS.WHEN-VALIDATE-RECORD`) approved as code that raises **without saying
+anything** (`raise value_error;`), so both message sources are exercised in one
+package. `apex validate --offline` returned `Validation successful.`;
+`apex import` reported `Importing application ID: 190122 into workspace:
+FORMSLANG` and `Import successful.`, with no `APEXlang Compile Errors`.
+
+- **Dictionary (step 3).** All six rows of `apex_application_page_val` carry a
+  real sentence in `validation_failure_text` — the placeholder appears nowhere.
+  Four came from the approved code (for example `P1_VL_PRECO`: *Valor unitario
+  e obrigatorio (regra vinda do Forms).*), two from the `MESSAGE()` of the
+  Forms trigger the silent rule came from (`P1_FK_CATEGORIA`: *Categoria
+  inexistente. Use a lista (F9).*; `BK_ITENS`: *Valor unitario nao pode ser
+  negativo.*). Display locations are unchanged:
+  `INLINE_WITH_FIELD_AND_NOTIFICATION` for the four item rules,
+  `INLINE_IN_NOTIFICATION` for the two record rules.
+- **Browser submit (step 4).** `examples/verify/apex_submit_check.py` against
+  `--app 190122 --page 1 --item P1_VL_PRECO --good 19.90`, same temporary end
+  user, same login. With the item empty the page came back 92,616 bytes and
+  each item rule rendered **its own sentence** inline beside its field —
+  `P1_VL_PRECO` *Valor unitario e obrigatorio (regra vinda do Forms).*,
+  `P1_FK_CATEGORIA` *Categoria inexistente. Use a lista (F9).*, `P1_CD_BARRA`
+  *Codigo de barras invalido: informe um EAN-13.*, `P1_FK_FORNECEDOR` *Informe
+  o fornecedor antes de gravar.* — with both record-level sentences in the
+  notification region. Resubmitting with `19.90` removed the `P1_VL_PRECO`
+  message and its `<div id="P1_VL_PRECO_error">` entirely and left the others:
+  the same negative control as 2026-09-08.
+- **The placeholder is gone, and the `ORA-` never was there.** Neither saved
+  response contains `Replace this text with the message`, and neither contains
+  any `ORA-` at all — including the `ORA-20001` the approved code raises. That
+  is the point of the change: APEX prints the validation's own message and
+  never the error the code raised, so the sentence had to be carried into that
+  field. Saved as `submit190122_p1_empty.html` and `submit190122_p1_valid.html`.
+
+What this adds to the 2026-09-08 record is the wording only. It does not
+enlarge anything else: still six rules, still one synthetic module, still no
+DML, still no comparison against the Forms runtime.
+
 ## Acceptance layers
 
 | Layer | Required evidence | Boundary |
@@ -159,7 +204,7 @@ account survives a run — including a failed one.
 | Failure recovery | Cancellation, failed providers, saved progress and crashed-job reconciliation | Existing store, workbench and AI tests; not a power-loss certification |
 | Desktop usability | Reachable header actions at 1100, 1280 and 1380 px; review, reload, Doc, Preview and export | Browser checks plus packaged-engine smoke; native installer acceptance is separate |
 | Reproducible export | Same session and configuration produce byte-identical ZIPs | Does not prove imported pages render or behave correctly |
-| Import, render and rule execution | Package imports into a disposable application with no compile errors; the APEX dictionary matches what was exported; the page renders with no error banner; a real browser submit runs the exported validations, shows the item-level ones inline beside their fields, and a valid value clears the message | Done once, 2026-09-08, for six validations on one page; no DML was exercised, and no rule outside those six |
+| Import, render and rule execution | Package imports into a disposable application with no compile errors; the APEX dictionary matches what was exported; the page renders with no error banner; a real browser submit runs the exported validations, shows the item-level ones inline beside their fields with the sentence the rule already had, and a valid value clears the message | Done 2026-09-08 (firing and placement) and 2026-09-09 (the wording each rule shows), for six validations on one page; no DML was exercised, and no rule outside those six |
 | Real migration | Approved private corpus, Forms runtime reference, APEX render and functional comparison | Pending; synthetic showcase is not a production corpus |
 
 ## Upgrade and recovery

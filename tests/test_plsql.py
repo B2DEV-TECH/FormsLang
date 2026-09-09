@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from formslang.plsql import analyze, strip_noise
+from formslang.plsql import (
+    APEX_MESSAGES,
+    FORMS_MESSAGES,
+    analyze,
+    spoken_messages,
+    strip_noise,
+)
 
 
 def test_commented_out_call_is_not_a_dependency():
@@ -69,3 +75,58 @@ def test_merge_accumulates_two_analyses():
     a.merge(analyze("BEGIN HOST('y'); COMMIT_FORM; END;"))
     assert a.builtins["HOST"] == 2
     assert a.builtins["COMMIT_FORM"] == 1
+
+
+def test_a_message_is_read_out_of_the_forms_trigger():
+    spoken = spoken_messages("BEGIN MESSAGE('Informe o cliente.'); END;", FORMS_MESSAGES)
+    assert [(m.builtin, m.text) for m in spoken] == [("MESSAGE", "Informe o cliente.")]
+
+
+def test_a_raise_carries_its_message_in_the_second_argument():
+    spoken = spoken_messages(
+        "BEGIN raise_application_error(-20001, 'Preco invalido.'); END;", APEX_MESSAGES
+    )
+    assert [m.text for m in spoken] == ["Preco invalido."]
+
+
+def test_named_notation_finds_the_message_wherever_it_sits():
+    spoken = spoken_messages(
+        "BEGIN apex_error.add_error(p_display_location => 'INLINE', "
+        "p_message => 'Sem estoque.'); END;",
+        APEX_MESSAGES,
+    )
+    assert [m.text for m in spoken] == ["Sem estoque."]
+
+
+def test_a_doubled_quote_is_an_apostrophe_the_user_should_see():
+    """``_literal_value`` reads object names, where a surviving quote means two
+    literals were concatenated. In prose it means an apostrophe, so the message
+    reader has to be stricter and keep it."""
+    spoken = spoken_messages("BEGIN MESSAGE('Nao pode''ser'); END;", FORMS_MESSAGES)
+    assert [m.text for m in spoken] == ["Nao pode'ser"]
+
+
+def test_a_message_built_at_run_time_comes_back_unread():
+    """Half a sentence is not a sentence: the caller is handed the expression
+    it could not read rather than a guess at what it will say."""
+    spoken = spoken_messages("BEGIN MESSAGE('bad: ' || :B.A); END;", FORMS_MESSAGES)
+    assert spoken[0].text == "" and spoken[0].expression == "'bad: ' || :B.A"
+
+
+def test_a_message_call_inside_a_comment_or_a_string_is_not_a_message():
+    code = (
+        "BEGIN\n  -- MESSAGE('commented out');\n"
+        "  v := 'text with MESSAGE(''quoted'') inside';\n"
+        "  MESSAGE('the real one');\nEND;"
+    )
+    assert [m.text for m in spoken_messages(code, FORMS_MESSAGES)] == ["the real one"]
+
+
+def test_a_package_of_your_own_named_message_is_not_the_builtin():
+    assert spoken_messages("BEGIN PKG.MESSAGE('x'); END;", FORMS_MESSAGES) == []
+
+
+def test_each_side_of_a_conversion_reads_only_its_own_calls():
+    code = "BEGIN MESSAGE('forms'); raise_application_error(-20001, 'apex'); END;"
+    assert [m.text for m in spoken_messages(code, FORMS_MESSAGES)] == ["forms"]
+    assert [m.text for m in spoken_messages(code, APEX_MESSAGES)] == ["apex"]

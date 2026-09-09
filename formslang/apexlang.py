@@ -56,6 +56,7 @@ from .apexlayout import (
     tabular_note,
 )
 from .model import Block, FormModule, Item
+from .plsql import APEX_MESSAGES, FORMS_MESSAGES, SpokenMessage, spoken_messages
 from .store import APPROVED, Store
 
 MMD_VERSION = "26.1.0+3102"
@@ -988,6 +989,81 @@ def _validation_kind(task: dict) -> str:
     return _VALIDATION_TRIGGERS.get(str(task.get("name") or "").upper(), "")
 
 
+#: Longer than this and :func:`_text` would cut the sentence in half. Half a
+#: sentence in front of a user is worse than an honest placeholder.
+_MESSAGE_LIMIT = 255
+
+
+@dataclass(frozen=True)
+class _ErrorMessage:
+    """The wording a validation shows, and where it was read from."""
+
+    text: str
+    #: The source it came from, or "" when ``text`` is the placeholder.
+    origin: str
+    #: What to tell the reviewer, in the component comments.
+    notes: tuple[str, ...] = ()
+
+
+def _undecided(origin: str, spoken: list[SpokenMessage], readable: list[str]) -> str:
+    """Why a source that did speak still did not get to set the message."""
+    if len(readable) > 1:
+        candidates = "; ".join(f'"{text}"' for text in readable)
+        return (
+            f"The {origin} shows more than one message and nothing here can tell which "
+            f"one belongs to this rule: {candidates}. Pick one."
+        )
+    if readable:
+        return (
+            f"The {origin} message is longer than {_MESSAGE_LIMIT} characters, which is "
+            "all an APEX error message holds. Shorten it and paste it here."
+        )
+    built = "; ".join(message.expression for message in spoken if message.expression)
+    return (
+        f"The {origin} builds its message at run time ({built}), so there is no sentence "
+        "in the source to copy."
+    )
+
+
+def _error_message(task: dict, code: str) -> _ErrorMessage:
+    """The sentence the end user should read when this rule rejects a value.
+
+    APEX prints the validation's own ``errorMessage``. The error the code
+    raises inside ``plsqlCodeRaisingError`` never reaches the page, so the
+    wording has to be lifted out of the code and put in the message -- or the
+    user reads a placeholder while the real sentence sits three lines below
+    it, which is what this converter shipped before.
+
+    Sources are read best first: what the approved code says wins, because
+    that is the code that will run; the Forms trigger is the fallback,
+    because that is the sentence the form has been showing all along. The
+    first source that says exactly one readable thing decides. A source that
+    says two different things, or builds its sentence at run time, does not
+    get to guess: it is reported in the notes and the search moves on.
+    """
+    sources = (
+        ("approved code", code, APEX_MESSAGES),
+        ("Forms trigger", str(task.get("source") or ""), FORMS_MESSAGES),
+    )
+    notes: list[str] = []
+    for origin, body, builtins in sources:
+        spoken = spoken_messages(body, builtins)
+        if not spoken:
+            continue
+        readable: list[str] = []
+        for message in spoken:
+            if message.text and message.text not in readable:
+                readable.append(message.text)
+        if len(readable) == 1 and len(readable[0]) <= _MESSAGE_LIMIT:
+            return _ErrorMessage(readable[0], origin, tuple(notes))
+        notes.append(_undecided(origin, spoken, readable))
+    placeholder = (
+        f"Forms validation {task['title']} failed. Replace this text with the message "
+        "your users should see."
+    )
+    return _ErrorMessage(placeholder, "", tuple(notes))
+
+
 def _validation_chunk(
     task: dict,
     code: str,
@@ -1011,12 +1087,14 @@ def _validation_chunk(
 
     Unlike a process, this component is born enabled. An approved rule that
     imports switched off enforces nothing, and a reviewer already said the
-    code is right. What nobody reviewed is the wording the user sees, so the
-    error message is left an obvious placeholder.
+    code is right. The wording comes from :func:`_error_message`, which reads
+    it out of the approved code or, failing that, out of the Forms trigger;
+    only when neither says one readable thing does the placeholder survive.
     """
     owner = str(task.get("owner") or "")
     mapped = names.get(owner.upper(), "") if kind == "item" and "." in owner else ""
     apex_item = mapped if mapped in emitted else ""
+    chosen = _error_message(task, code)
     notes = [
         "FormsLang approved conversion.",
         f"Source: {task['kind']} {task['title']}.",
@@ -1025,11 +1103,19 @@ def _validation_chunk(
             "Page validation of type PL/SQL Error: it passes when the approved code runs "
             "without raising, which is how the Forms trigger rejected a value."
         ),
-        (
+    ]
+    if chosen.origin:
+        notes.append(
+            "Enabled, because a reviewer approved the rule. The error message is the "
+            f"one the {chosen.origin} already showed: APEX prints this text and never "
+            "the error the code raises, so read it once before you ship it."
+        )
+    else:
+        notes.append(
             "Enabled, because a reviewer approved the rule; the error message is a "
             "placeholder -- replace it with the wording your users should see."
-        ),
-    ]
+        )
+    notes.extend(chosen.notes)
     if kind == "record":
         notes.append(
             f"Forms validated the whole record of block {owner or 'unknown'}, not one "
@@ -1048,10 +1134,6 @@ def _validation_chunk(
         notes.append(why + ", so the error shows in the notification, not next to a field.")
     location = "inlineWithFieldAndInNotification" if apex_item else "inlineInNotification"
     associated = f"\n            associatedItem: @{apex_item}" if apex_item else ""
-    message = (
-        f"Forms validation {task['title']} failed. Replace this text with the message "
-        "your users should see."
-    )
     chunk = f"""
     validation {component_id} (
         name: {_text('Forms: ' + task['title'])}
@@ -1061,7 +1143,7 @@ def _validation_chunk(
                 {_fence(code, 'plsql')}
         }}
         error {{
-            errorMessage: {_text(message)}
+            errorMessage: {_text(chosen.text)}
             displayLocation: {location}{associated}
         }}
         execution {{
@@ -1078,8 +1160,13 @@ def _validation_chunk(
         "component": f"page {page} validation {component_id}",
         "kind": "validation",
         "enabled": True,
-        "reason": "approved rule, enforced on submit; the error message is a placeholder",
+        "reason": (
+            f"approved rule, enforced on submit; message read from the {chosen.origin}"
+            if chosen.origin
+            else "approved rule, enforced on submit; the error message is a placeholder"
+        ),
         "associated_item": apex_item,
+        "message_source": chosen.origin or "placeholder",
     }
     return chunk, entry
 

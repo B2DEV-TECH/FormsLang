@@ -39,6 +39,9 @@ _BARE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_$#]*)\s*;")
 # Screen references: :BLOCK.ITEM, :GLOBAL.X, :SYSTEM.X, :PARAMETER.X, :ITEM
 _BIND = re.compile(r":([A-Za-z_][A-Za-z0-9_$#]*(?:\.[A-Za-z_][A-Za-z0-9_$#]*)?)")
 
+# Named notation in an argument list: "p_message => 'text'".
+_NAMED_ARG = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_$#]*)\s*=>\s*", re.DOTALL)
+
 _SQL_VERBS = {
     "select": re.compile(r"\bselect\b", re.IGNORECASE),
     "insert": re.compile(r"\binsert\s+into\b", re.IGNORECASE),
@@ -145,6 +148,22 @@ LITERAL_TARGETS: dict[str, tuple[str, int]] = {
 }
 
 
+# Calls that put a sentence in front of a user: which argument carries it
+# (1-based) and the name it answers to in named notation. Forms said it with
+# MESSAGE; PL/SQL that rejects a value says it by raising. Reading them is
+# what lets a converted rule keep the wording the form already had instead
+# of inventing one.
+MESSAGE_TARGETS: dict[str, tuple[int, tuple[str, ...]]] = {
+    "MESSAGE": (1, ("message_string",)),
+    "RAISE_APPLICATION_ERROR": (2, ("message",)),
+    "APEX_ERROR.ADD_ERROR": (1, ("p_message",)),
+}
+
+#: The message calls of each side of a conversion, for :func:`spoken_messages`.
+FORMS_MESSAGES = ("MESSAGE",)
+APEX_MESSAGES = ("RAISE_APPLICATION_ERROR", "APEX_ERROR.ADD_ERROR")
+
+
 @dataclass(frozen=True)
 class LiteralRef:
     """A literal argument that names something outside this code body."""
@@ -155,6 +174,18 @@ class LiteralRef:
 
     def to_dict(self) -> dict:
         return {"builtin": self.builtin, "kind": self.kind, "value": self.value}
+
+
+@dataclass(frozen=True)
+class SpokenMessage:
+    """A sentence a code body puts in front of a user."""
+
+    builtin: str
+    #: What it says, or "" when the argument is computed rather than written.
+    text: str
+    #: The argument as written. Kept only when ``text`` is empty, so that a
+    #: caller can show what it could not read.
+    expression: str = ""
 
 
 @dataclass
@@ -312,6 +343,73 @@ def literal_refs(code: str) -> list[LiteralRef]:
             continue
         seen.add(key)
         out.append(LiteralRef(builtin=name, kind=kind, value=value))
+    return out
+
+
+def _message_argument(args: list[str], index: int, names: tuple[str, ...]) -> str | None:
+    """The argument carrying the message: by name when the call used names,
+    by position otherwise. ``None`` when the call has no such argument."""
+    positional: list[str] = []
+    for arg in args:
+        named = _NAMED_ARG.match(arg)
+        if named is None:
+            positional.append(arg)
+        elif named.group(1).lower() in names:
+            return arg[named.end():]
+    if len(positional) < index:
+        return None
+    return positional[index - 1]
+
+
+def _message_literal(argument: str) -> str:
+    """The sentence an argument writes out, or "" when it is computed.
+
+    Stricter than :func:`_literal_value`, which reads object names: there,
+    a quote left inside means two literals were concatenated. In prose a
+    doubled quote is an apostrophe the user is meant to see, so the whole
+    argument has to be one literal and nothing else.
+    """
+    text = argument.strip()
+    if _STRING.fullmatch(text) is None:
+        return ""
+    return text[1:-1].replace("''", "'").strip()
+
+
+def spoken_messages(code: str, builtins: tuple[str, ...]) -> list[SpokenMessage]:
+    """Every sentence *code* puts in front of a user, in source order.
+
+    Two passes over the same offsets: calls are found in code with both
+    comments and literals blanked, so a call named inside a comment or
+    inside another string is not one, and the arguments are then read from
+    code with the literals still there.
+
+    A message built at runtime (``'invalid: ' || :ITEM``) comes back with an
+    empty ``text`` and the expression beside it. Half a sentence is not a
+    sentence, and the caller is told what it could not read rather than
+    shown a guess.
+    """
+    wanted = {name.upper() for name in builtins}
+    positions = strip_noise(code)      # where the calls really are
+    readable = strip_comments(code)    # same offsets, literals intact
+    out: list[SpokenMessage] = []
+    for m in _CALL.finditer(positions):
+        name = m.group(1).upper()
+        target = MESSAGE_TARGETS.get(name)
+        if target is None or name not in wanted:
+            continue
+        index, names = target
+        args = _split_args(readable, m.end() - 1)
+        argument = _message_argument(args, index, names) if args else None
+        if argument is None:
+            continue
+        text = _message_literal(argument)
+        out.append(
+            SpokenMessage(
+                builtin=name,
+                text=text,
+                expression="" if text else _WHITESPACE.sub(" ", argument.strip())[:120],
+            )
+        )
     return out
 
 

@@ -18,8 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Forms item became; a record rule, or an item that became an Interactive
   Grid column, shows its error in the notification (a validation pointing at
   an item the page does not declare fails the import with
-  `REFERENCE_NOT_FOUND`). The error message is left an obvious placeholder:
-  the code was reviewed, the wording shown to users was not.
+  `REFERENCE_NOT_FOUND`).
+- An exported validation carries the wording the rule already had. APEX
+  prints the validation's own error message and never the error the code
+  raises, so the sentence is read out of the approved code
+  (`raise_application_error`, `apex_error.add_error`) or, when that code
+  raises without saying anything, out of the `MESSAGE()` of the Forms
+  trigger it came from. The manifest records which of the two it was. A
+  rule whose message is built at run time (`'invalid: ' || :ITEM`), or
+  whose source says two different things, keeps the placeholder and gets
+  the reason in its component comments: half a sentence in front of a user
+  is worse than an honest placeholder.
 - `formslang apex validate` runs without a database. With no target
   configured -- or with the new `--offline` flag, which ignores one that
   is -- SQLcl compiles the exported package against the APEXlang grammar

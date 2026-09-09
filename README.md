@@ -767,7 +767,7 @@ The ZIP is deliberately separate from the audit artifacts. Only approved
 proposals are included. An approved `WHEN-VALIDATE-ITEM` or
 `WHEN-VALIDATE-RECORD` is emitted as a real APEX page validation of type
 PL/SQL Error — enabled, pointing at the page item the Forms item became,
-with a placeholder error message to reword — and everything else is
+carrying the wording it already had — and everything else is
 emitted as a disabled page-process candidate until its execution point and
 condition are confirmed in Page Designer. Regions and page items are native components on the page's
 12-column grid: canvases, frames and tab pages become regions, sub-regions
@@ -790,8 +790,12 @@ display locations they were exported with, and one of them raised its
 item-level rules appeared inline beside their fields and in the notification
 region, and a valid value cleared the message of the rule it belonged to —
 see [docs/quality-acceptance.md](docs/quality-acceptance.md). What an end user
-reads is the validation's own error message, which ships as a placeholder to
-reword; nothing about saving a row was exercised.
+reads is the validation's own error message, never the error the code raises,
+so that message is filled from the approved code's own
+`raise_application_error` or, failing that, from the `MESSAGE()` of the Forms
+trigger — and only a rule whose wording is built at run time, or that says two
+different things, still ships a placeholder to reword. Nothing about saving a
+row was exercised.
 
 ### The AI layout assistant
 

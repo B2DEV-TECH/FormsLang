@@ -174,15 +174,24 @@ jobs:
           store.add_tasks(tasks)
 
           rules = {"WHEN-VALIDATE-ITEM", "WHEN-VALIDATE-RECORD"}
+          # Two rules are approved as code that raises without saying anything.
+          # A real review produces both kinds, and the message the user reads
+          # has to come from the Forms trigger when the code is silent.
+          silent = {"FK_CATEGORIA", "BK_ITENS"}
           approved = 0
           for task in tasks:
               if task.kind != "trigger" or task.name.upper() not in rules:
                   continue
               item = (task.owner.split(".")[-1] or "X").upper()
+              raises = (
+                  "raise value_error;"
+                  if item in silent
+                  else "raise_application_error(-20001, 'value is required');"
+              )
               code = (
                   "begin\n"
                   f"  if :P0_{item} is null then\n"
-                  "    raise_application_error(-20001, 'value is required');\n"
+                  f"    {raises}\n"
                   "  end if;\n"
                   "end;"
               )
@@ -201,6 +210,13 @@ jobs:
               sys.exit(f"approved {approved} rules but the package has {emitted} validations")
           if "associatedItem: @" not in text:
               sys.exit("no validation points at a page item -- the reference is never tested")
+          # APEX prints the validation's errorMessage and never the error the
+          # code raises, so a package that ships the placeholder ships a rule
+          # whose message nobody can read.
+          if "Replace this text with the message" in text:
+              sys.exit("a validation still carries the placeholder error message")
+          if 'errorMessage: "Categoria inexistente. Use a lista (F9)."' not in text:
+              sys.exit("the silent rule did not inherit the wording of its Forms trigger")
           print(f"{approved} approved rules -> {emitted} page validations")
           PY
 
