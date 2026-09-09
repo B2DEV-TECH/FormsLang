@@ -97,7 +97,7 @@ developer community. See [AUTHORS.md](AUTHORS.md).
 | **Document a module** — one self-contained HTML reference: blocks, items, triggers, program units, LOVs, record groups, relations, with the properties Forms actually stored | **Doc** | `formslang doc ORDERS.fmb -o out` |
 | **Diff two revisions** — structurally: what moved, property by property and hunk by hunk, everything else reported unchanged because it was | **Diff** | `formslang diff v1.fmb v2.fmb -o out` |
 | **See the screens** — every canvas next to the APEX page items its fields become, with the exact mapping the export will use | **Preview** | `formslang preview ORDERS.fmb -o out` |
-| **Build the APEX application** — an APEXlang 26.1 project and import ZIP, deterministic, from the approved work only | **Export APEX 26.1** | `formslang export ORDERS.session.db` |
+| **Build the APEX package** — an APEXlang 26.1 project and import ZIP, deterministic, from the approved work only: a reviewed starting point, not a finished application | **Export APEX 26.1** | `formslang export ORDERS.session.db` |
 | **Prove it and ship it** — SQLcl `apex validate` / `apex import` against your workspace, password never on a command line | **Exports → Validate / Import** | `formslang apex validate <zip>` · `formslang apex import <zip>` |
 | **Version all of it** — the `.fmb`, its Forms2XML text, the review session and the APEXlang tree in git; structural diffs on pull requests; identical bytes on every rebuild | — | [`docs/ci-cd.md`](docs/ci-cd.md) · [`examples/ci/formslang-apex.yml`](examples/ci/formslang-apex.yml) |
 
@@ -591,6 +591,13 @@ to a log line.
 | `DEVELOPER` | Convert and review — the working role for most reviewers. |
 | `VIEWER` | Read-only. |
 
+**What the matrix enforces today.** The roles are checked in code where a
+project is created, adopted or exported. The workbench's other routes trust
+the signed-in session without a per-route role check, and the engine refuses
+any non-loopback bind — so this is access control inside one machine's
+browser, not a server product. The remaining phases are specified in
+[docs/auth-multitenancy-design.md](docs/auth-multitenancy-design.md).
+
 Owner and Admin accounts must enroll an authenticator app (TOTP — Google
 Authenticator, Microsoft Authenticator, 1Password or similar) the first
 time they log in; that session can reach nothing but the enrollment screen
@@ -774,7 +781,17 @@ control lands on the grid column its Forms x maps to, spanning the columns
 its width covers, with the whitespace Forms drew before it kept as an empty
 column and its prompt beside it with the room it had; a literal initial
 value is the item's static default. Schema binding, LOVs, validations and
-application navigation still require functional review.
+application navigation still require functional review. One such package
+has been imported into a real APEX 26.1 workspace and recorded: the six
+validations are in `apex_application_page_val` with the associated items and
+display locations they were exported with, and one of them raised its
+`ORA-20001` for an empty item and passed for a valid one inside an
+`apex_session`. A real browser submit of that page ran all six: the four
+item-level rules appeared inline beside their fields and in the notification
+region, and a valid value cleared the message of the rule it belonged to —
+see [docs/quality-acceptance.md](docs/quality-acceptance.md). What an end user
+reads is the validation's own error message, which ships as a placeholder to
+reword; nothing about saving a row was exercised.
 
 ### The AI layout assistant
 
@@ -1089,9 +1106,13 @@ CI runs the suite on Linux and Windows across Python 3.10–3.13, runs
       mapping report and the before/after of the showcase
       ([`docs/layout-mapping-matrix.md`](docs/layout-mapping-matrix.md))
 - [x] Windows desktop app (bundled engine, MSI / NSIS installers)
-- [x] Secure multi-user workspaces: RBAC, MFA/TOTP, per-organization
+- [x] Optional sign-in with organization-scoped identity: email/password,
+      four roles, mandatory TOTP MFA for Owner and Admin, per-organization
       isolation — switched on from Settings or `FORMSLANG_AUTH`, the first
-      Owner created from the host CLI alone, never over HTTP
+      Owner created from the host CLI alone, never over HTTP. The role
+      matrix is enforced in code where a project is created, adopted or
+      exported; team/server mode is designed and not built, and the engine
+      binds to `127.0.0.1` only — see *Later*
 - [x] Sensitive-data scan on every unit and an enterprise mode that blocks
       cloud egress outright, classified by effective host
 - [x] `formdoc` / `formdiff` / `formui`: documentation, structural diff and
@@ -1147,6 +1168,13 @@ and the workbench's local HTTP API only gain things; anything that would
 break one of them is a 2.0. The changelog records every visible change, and
 [releases](https://github.com/B2DEV-TECH/FormsLang/releases) carry the
 installers.
+
+What that stability covers, and what it does not: FormsLang is a working
+single-developer desktop tool with a tested build and release pipeline. It
+has not been exercised against a production Forms estate — every figure in
+this README comes from synthetic fixtures — and it is not a server product.
+[docs/quality-acceptance.md](docs/quality-acceptance.md) states, per layer,
+what was verified and where the boundary of each claim is.
 
 ## Legal
 
