@@ -50,6 +50,14 @@ TIMEOUT_SECONDS = 120
 
 _UNSAFE_ACCOUNT_CHARS = re.compile(r"[^A-Za-z0-9_.:-]")
 
+#: SQLcl reaches one database through either ``host:port/service`` or the
+#: JDBC URL for it, and Settings saves whichever was typed. They name the
+#: same target, so a password saved under one has to be found under the
+#: other: the prefix -- and the ``//`` of the URL form -- comes off before
+#: the account name is built. Folding towards the plain form keeps every
+#: password already in the store findable.
+_JDBC_PREFIX = re.compile(r"^jdbc:oracle:[A-Za-z]+:@(?://)?", re.IGNORECASE)
+
 #: ``apex import``/``apex validate`` print this header (followed by File /
 #: Line / Column / Type / Error lines) when the APEXlang package does not
 #: compile -- and SQLcl still exits 0, so the exit code alone is not the
@@ -103,8 +111,12 @@ def account_key(username: str, connect_string: str) -> str:
     neither of which that validator allows, so unsafe characters are folded to
     ``_`` -- this only has to be stable and collision-free enough to find the
     same saved password again next time, not human-typeable.
+
+    A JDBC URL and the plain target inside it are the same database, so both
+    produce the same account name (see :data:`_JDBC_PREFIX`).
     """
-    return _UNSAFE_ACCOUNT_CHARS.sub("_", f"{username}@{connect_string}")
+    target = _JDBC_PREFIX.sub("", str(connect_string or "").strip())
+    return _UNSAFE_ACCOUNT_CHARS.sub("_", f"{username}@{target}")
 
 
 def _token(name: str, value: str) -> str:

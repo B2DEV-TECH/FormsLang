@@ -21,6 +21,24 @@ def test_account_key_folds_the_unsafe_characters_a_connect_string_carries():
     assert key == "FORMSLANG_localhost:1521_FREEPDB1"
 
 
+def test_the_jdbc_url_and_the_target_inside_it_are_one_saved_password():
+    """Settings may hold either form; the store holds one password."""
+    plain = apeximport.account_key("FORMSLANG", "localhost:1521/FREEPDB1")
+    for url in (
+        "jdbc:oracle:thin:@localhost:1521/FREEPDB1",
+        "jdbc:oracle:thin:@//localhost:1521/FREEPDB1",
+        "JDBC:ORACLE:OCI:@localhost:1521/FREEPDB1",
+        "  jdbc:oracle:thin:@localhost:1521/FREEPDB1  ",
+    ):
+        assert apeximport.account_key("FORMSLANG", url) == plain
+
+
+def test_a_host_that_merely_looks_like_a_prefix_is_still_the_host():
+    """Only the real JDBC prefix comes off -- nothing that resembles one."""
+    key = apeximport.account_key("U", "jdbcserver:1521/S")
+    assert key == "U_jdbcserver:1521_S"
+
+
 def test_sqlcl_binary_prefers_the_environment_override(monkeypatch):
     monkeypatch.setenv(apeximport.ENV_SQLCL_PATH, "C:/tools/sql.exe")
     assert apeximport.sqlcl_binary() == "C:/tools/sql.exe"

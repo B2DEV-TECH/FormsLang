@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A saved APEX password is found whether the connection is written as
+  `host:port/service` or as the JDBC URL for it. The account name in the
+  credential store is derived from the connection, so the two spellings of
+  one database used to hide each other's password and the workbench asked
+  for it again.
 - The Diff report labels added and removed program units with their kind,
   as modified ones already were, so a package specification and its body
   removed together no longer appear as two identical names.
