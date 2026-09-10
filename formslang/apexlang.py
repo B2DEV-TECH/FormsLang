@@ -42,6 +42,7 @@ from .apexlayout import (
     RegionNode,
     StaticLov,
     apex_item_type,
+    bind_candidates,
     build_layout,
     button_id,
     column_name,
@@ -140,6 +141,9 @@ class ApexExportResult:
     json_path: Path
     manifest_path: Path
     approved: int
+    #: One entry per block that could be a bound form, bound or not, with
+    #: the reason. Same list as the manifest's ``data_binding``.
+    bindings: tuple[dict, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -149,6 +153,7 @@ class ApexExportResult:
             "json": str(self.json_path),
             "manifest": str(self.manifest_path),
             "approved": self.approved,
+            "data_binding": [dict(entry) for entry in self.bindings],
             "format": "APEXlang 26.1",
         }
 
@@ -257,12 +262,17 @@ def _template_options(options: list[str]) -> str:
     return f"[{lines}\n            ]"
 
 
-def _table_ref(block: Block) -> tuple[str, str]:
-    """(owner, table) from a block's query data source name: ``OWNER.TABLE``
-    keeps its owner; quotes are dropped; anything else is the table as written."""
-    raw = block.query_data_source_name.strip().replace('"', "")
+def _split_table(raw: str) -> tuple[str, str]:
+    """(owner, table) from a query data source name: ``OWNER.TABLE`` keeps its
+    owner; quotes are dropped; anything else is the table as written."""
+    raw = (raw or "").strip().replace('"', "")
     owner, _, table = raw.rpartition(".")
     return sql_name(owner), sql_name(table)
+
+
+def _table_ref(block: Block) -> tuple[str, str]:
+    """(owner, table) for the table a block reads."""
+    return _split_table(block.query_data_source_name)
 
 
 def _help_text(item: Item) -> str:
@@ -353,15 +363,132 @@ def _static_html(node: RegionNode) -> str:
     return f"<p><strong>{body}</strong></p>" if node.text_bold else f"<p>{body}</p>"
 
 
-def _region_chunk(node: RegionNode, parent: RegionNode | None, layout: PageLayout) -> str:
+# ---------------------------------------------------------------------------
+# Confirmed data binding
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Binding:
+    """A region APEX will fetch a row into and write back from.
+
+    A binding exists only where a person left a row in the session's
+    ``block_key`` table naming the column that identifies one record, and
+    only when that column is one the block actually places on the page:
+    APEX fetches by the value of the key's own item, so a key with no item
+    fetches nothing. Everything else here is derived -- the table from the
+    block, the region from the layout, the item and button names from the
+    same functions that emit them.
+    """
+
+    block: str
+    owner: str  # schema qualifying the table, "" when the .fmb leaves it out
+    table: str
+    region: str
+    key_column: str
+    key_item: str  # the APEX page item carrying the key
+    columns: tuple[str, ...]  # the block's columns that have an item on this page
+    create_button: str
+    save_button: str
+    confirmed_by: str
+    confirmed_at: str
+
+    @property
+    def qualified(self) -> str:
+        return f"{self.owner}.{self.table}" if self.owner else self.table
+
+
+def confirmed_bindings(store: Store, layout: PageLayout) -> tuple[dict[str, Binding], list[dict]]:
+    """The page's bound regions, and the story of every block that could be one.
+
+    The second half of the pair is the point of the function. A block that
+    *could* be bound and is not appears in the export manifest with the
+    reason it was declined, so a reviewer learns a form was one confirmation
+    away instead of having to work out why the page is still a set of
+    unbound fields.
+    """
+    confirmed = store.block_keys()
+    bindings: dict[str, Binding] = {}
+    manifest: list[dict] = []
+    for candidate in bind_candidates(layout):
+        row = confirmed.get(candidate.block) or {}
+        key = sql_name(row.get("key_column", ""))
+        owner, table = _split_table(candidate.table)
+        entry = {
+            "block": candidate.block,
+            "table": f"{owner}.{table}" if owner else table,
+            "region": candidate.region,
+            "forms_hint": candidate.suggestion,
+            "confirmed_key": key,
+            "confirmed_by": row.get("confirmed_by", ""),
+            "confirmed_at": row.get("confirmed_at", ""),
+            "bound": False,
+            "reason": "",
+        }
+        if not key:
+            entry["reason"] = (
+                "no confirmed key: the region stays unbound until a reviewer names the "
+                "column that identifies one row"
+            )
+        elif key not in candidate.columns:
+            entry["reason"] = (
+                f"the confirmed key {key} is not one of the columns this block places on "
+                "the page, and APEX fetches the row by the value of the key's own item"
+            )
+        else:
+            entry["bound"] = True
+            bindings[candidate.region] = Binding(
+                block=candidate.block,
+                owner=owner,
+                table=table,
+                region=candidate.region,
+                key_column=key,
+                key_item=candidate.columns[key],
+                columns=tuple(sorted(candidate.columns)),
+                create_button=slug(f"{candidate.region}-create"),
+                save_button=slug(f"{candidate.region}-save"),
+                confirmed_by=row.get("confirmed_by", ""),
+                confirmed_at=row.get("confirmed_at", ""),
+            )
+        manifest.append(entry)
+    return bindings, manifest
+
+
+def _region_chunk(
+    node: RegionNode,
+    parent: RegionNode | None,
+    layout: PageLayout,
+    binding: Binding | None = None,
+) -> str:
     title = f"\n        title: {_text(node.title)}" if node.title else ""
     placement = ""
     if parent is not None:
         placement = f"\n            parentRegion: @{parent.id}"
     grid = _grid_lines(node.grid) if node.grid is not None else ""
+    # Bound and boilerplate are mutually exclusive by construction: both live
+    # in the ``source`` group, and a region that shows text is never offered
+    # as a candidate (see apexlayout.bind_candidates). The table source goes
+    # where the Interactive Grid puts its own -- right after the type, the one
+    # shape ``apex import`` has already accepted on 26.1.
+    kind = "staticContent"
+    table_source = ""
     source = ""
-    if node.text:
-        source = f"\n        source {{\n            htmlCode: {_fence(_static_html(node))}\n        }}"
+    if binding is not None:
+        kind = "form"
+        owner_line = f"\n            tableOwner: {binding.owner}" if binding.owner else ""
+        table_source = (
+            "\n        source {"
+            "\n            location: localDatabase"
+            "\n            type: tableView"
+            f"{owner_line}"
+            f"\n            tableName: {binding.table}"
+            "\n        }"
+        )
+    elif node.text:
+        source = (
+            f"\n        source {{\n            htmlCode: {_fence(_static_html(node))}"
+            f"\n        }}"
+        )
     blocks: dict[str, str] = {}
     for placed in node.body + node.hidden:
         blocks.setdefault(
@@ -371,17 +498,28 @@ def _region_chunk(node: RegionNode, parent: RegionNode | None, layout: PageLayou
     if node.note:
         notes.append(node.note)
     if blocks:
-        notes.append(
+        listing = (
             "Blocks here: "
             + "; ".join(f"{name} (source: {source})" for name, source in blocks.items())
-            + ". Data binding requires schema review."
+            + "."
+        )
+        if binding is None:
+            listing += " Data binding requires schema review."
+        notes.append(listing)
+    if binding is not None:
+        notes.append(
+            f"Bound to {binding.qualified} on {binding.key_column}, confirmed by "
+            f"{binding.confirmed_by or 'an unnamed reviewer'} on {binding.confirmed_at}. "
+            "APEX fetches the row by that key and writes it back on submit; everything "
+            "else the Forms block did on query and on commit is still behaviour to "
+            "confirm."
         )
     for name, records in node.tabular.items():
         notes.append(tabular_note(node, name, records))
     return f"""
     region {node.id} (
         name: {_text(node.name)}{title}
-        type: staticContent
+        type: {kind}{table_source}
         layout {{
             sequence: {node.sequence}{placement}
             slot: {node.slot}{grid}
@@ -616,6 +754,214 @@ def _lov_note(lov: StaticLov) -> str:
     )
 
 
+def _form_source(placed: Placed, binding: Binding | None, *, read_only: bool) -> str:
+    """The ``source`` group that hands a page item to a form region.
+
+    Assigning an item to a form region changes which properties apply: APEX
+    then requires ``column`` and ``dataType`` (they are what it fetches and
+    writes) and forbids the source ``type`` that an unbound item would carry.
+    ``queryOnly`` is the safety valve. An item the user cannot type into
+    submits nothing, and a column in the DML with nothing behind it is
+    written as NULL -- so a read-only item is fetched and never written,
+    which is what Forms did with it anyway.
+    """
+    if binding is None:
+        return ""
+    column = sql_name(database_column(placed.item))
+    if not column or column not in binding.columns:
+        return ""
+    data_type = _DATA_TYPES.get((placed.item.data_type or "").lower(), "varchar2")
+    is_key = column == binding.key_column
+    lines = [
+        f"formRegion: @{binding.region}",
+        f"column: {column}",
+        f"dataType: {data_type}",
+    ]
+    if read_only and not is_key:
+        lines.append("queryOnly: true")
+    if is_key:
+        lines.append("primaryKey: true")
+    body = "".join(f"\n            {line}" for line in lines)
+    return f"\n        source {{{body}\n        }}"
+
+
+def _form_button_chunks(node: RegionNode, binding: Binding, sequence: int) -> list[str]:
+    """The buttons that submit a bound region: one to create, one to save.
+
+    Forms commits from the menu or the SMARTBAR, neither of which survives
+    the migration, so there is no button in the .fmb to carry over: without
+    one the region would fetch a row and offer no way to save it. There are
+    two because APEX takes the DML operation from the button's Database
+    Action, not from whether the form found a row -- one button alone always
+    updates, and creating a record is then impossible. Each shows when the
+    other cannot apply: the key is empty on a new record and filled on one
+    that was fetched. The labels are deliberately plain -- they are the first
+    thing a reviewer will want to change, and changing them breaks nothing.
+    """
+    create_note = (
+        "FormsLang added this button: the Forms module commits from the menu or the "
+        "SMARTBAR, which has no APEX counterpart, so a bound region needs buttons of "
+        f"its own to submit. This one inserts into {binding.qualified} and shows while "
+        f"{binding.key_item} is empty, which is the page opened for a new record. APEX "
+        "reads the operation from Database Action, so the insert has to have its own "
+        "button. Label and placement are yours to change."
+    )
+    save_note = (
+        "FormsLang added this button: it updates the row of "
+        f"{binding.qualified} that the page fetched, and shows while {binding.key_item} "
+        "has a value. Label and placement are yours to change."
+    )
+    return [
+        f"""
+    button {binding.create_button} (
+        buttonName: CREATE
+        label: Create
+        layout {{
+            sequence: {sequence}
+            region: @{node.id}
+            slot: regionBody
+        }}
+        appearance {{
+            buttonTemplate: @/text
+            hot: true
+            templateOptions: #DEFAULT#
+        }}
+        behavior {{
+            action: submitPage
+            databaseAction: insert
+            requiresConfirmation: false
+        }}
+        serverSideCondition {{
+            type: itemIsNull
+            item: {binding.key_item}
+        }}
+        comments {{
+            comments: {_fence(create_note)}
+        }}
+    )
+""",
+        f"""
+    button {binding.save_button} (
+        buttonName: SAVE
+        label: Save
+        layout {{
+            sequence: {sequence + 10}
+            region: @{node.id}
+            slot: regionBody
+        }}
+        appearance {{
+            buttonTemplate: @/text
+            hot: true
+            templateOptions: #DEFAULT#
+        }}
+        behavior {{
+            action: submitPage
+            databaseAction: update
+            requiresConfirmation: false
+        }}
+        serverSideCondition {{
+            type: itemIsNotNull
+            item: {binding.key_item}
+        }}
+        comments {{
+            comments: {_fence(save_note)}
+        }}
+    )
+""",
+    ]
+
+
+def _form_process_chunks(binding: Binding, page: int) -> list[str]:
+    """Fetch, save and branch for one bound region.
+
+    The save process sits at sequence 1000 on purpose. Approved conversions
+    number from 10, so anything a reviewer enables -- a PRE-INSERT trigger
+    that stamps a sequence into the key, for instance -- has already run by
+    the time the row is written. The branch is not optional: a button that
+    submits with no branch to follow makes APEX raise ERR-1777 at run time,
+    which is a run-time failure ``apex validate`` cannot see. It has to be a
+    redirect (``pageOrUrl``) and not a Show Only branch (``page``): the pages
+    FormsLang writes reload on submit only for success, and APEX refuses a Show
+    Only branch there -- silently, as a debug message, with the DML skipped and
+    no error on screen. ``apex validate`` accepts both spellings.
+    """
+    fetch_note = (
+        f"FormsLang generated this from Forms block {binding.block}. It fetches one row "
+        f"of {binding.qualified} by {binding.key_column}, taking the value from "
+        f"{binding.key_item}: with that item empty the page opens as an empty form, "
+        "which is how APEX creates a row."
+    )
+    save_note = (
+        f"FormsLang generated this from Forms block {binding.block}. It writes the "
+        f"region back to {binding.qualified}, keyed by {binding.key_column}, and runs "
+        "for either of the region's buttons -- the button pressed is what tells APEX "
+        "whether to insert or update. Sequence 1000 keeps it behind every "
+        "approved conversion, so a trigger conversion that fills a column -- a sequence "
+        "into the key, a timestamp -- still runs first once you enable it."
+    )
+    branch_note = (
+        "FormsLang generated this: a button that submits needs somewhere to go, and "
+        "with no branch APEX raises ERR-1777 at run time. It redirects back to this "
+        "page so the saved row is re-fetched. The redirect is deliberate -- a Show "
+        "Only branch is refused at run time on a page whose Reload on Submit is Only "
+        "for Success, and the submit then saves nothing without showing an error."
+    )
+    return [
+        f"""
+    process {binding.region}-form-init (
+        name: {_text('Fetch ' + binding.qualified)}
+        type: formInitialization
+        formRegion: @{binding.region}
+        execution {{
+            sequence: 10
+            point: beforeHeader
+        }}
+        comments {{
+            comments: {_fence(fetch_note)}
+        }}
+    )
+""",
+        f"""
+    process {binding.region}-form-dml (
+        name: {_text('Save ' + binding.qualified)}
+        type: formAutoRowProcessing
+        formRegion: @{binding.region}
+        target {{
+            targetType: regionSource
+        }}
+        execution {{
+            sequence: 1000
+            point: processing
+        }}
+        serverSideCondition {{
+            type: requestIsContainedInValue
+            value: CREATE,SAVE
+        }}
+        comments {{
+            comments: {_fence(save_note)}
+        }}
+    )
+""",
+        f"""
+    branch {binding.region}-form-branch (
+        execution {{
+            sequence: 10
+            point: afterProcessing
+        }}
+        behavior {{
+            type: pageOrUrl
+            target: {{
+                page: {page}
+            }}
+        }}
+        comments {{
+            comments: {_fence(branch_note)}
+        }}
+    )
+""",
+    ]
+
+
 def _button_chunk(placed: Placed, region: RegionNode) -> str:
     item = placed.item
     return f"""
@@ -639,7 +985,9 @@ def _button_chunk(placed: Placed, region: RegionNode) -> str:
 """
 
 
-def _hidden_chunk(placed: Placed, region: RegionNode | None) -> str:
+def _hidden_chunk(
+    placed: Placed, region: RegionNode | None, binding: Binding | None = None
+) -> str:
     item, block = placed.item, placed.block
     where = f"\n            region: @{region.id}\n            slot: regionBody" if region else (
         "\n            slot: body"
@@ -652,12 +1000,13 @@ def _hidden_chunk(placed: Placed, region: RegionNode | None) -> str:
         + ("; primary key" if item.primary_key else "")
         + "."
     )
+    source = _form_source(placed, binding, read_only=False)
     return f"""
     pageItem {placed.apex_name} (
         type: hidden
         layout {{
             sequence: {placed.sequence}{where}
-        }}
+        }}{source}
         comments {{
             comments: {_fence(note)}
         }}
@@ -666,7 +1015,11 @@ def _hidden_chunk(placed: Placed, region: RegionNode | None) -> str:
 
 
 def _item_chunk(
-    placed: Placed, region: RegionNode, layout: PageLayout, lov: StaticLov | None
+    placed: Placed,
+    region: RegionNode,
+    layout: PageLayout,
+    lov: StaticLov | None,
+    binding: Binding | None = None,
 ) -> str:
     item, block = placed.item, placed.block
     kind = _item_type(item)
@@ -807,6 +1160,9 @@ def _item_chunk(
         )
     if lov is not None:
         notes.append(_lov_note(lov))
+    source = _form_source(
+        placed, binding, read_only=kind == "displayOnly" or not item.enabled
+    )
     if placed.note:
         notes.append(placed.note[0].upper() + placed.note[1:] + ".")
     elif template == "hidden" and not placed.caption:
@@ -830,7 +1186,7 @@ def _item_chunk(
         appearance {{
             template: @/{template}
             templateOptions: #DEFAULT#{width_line}
-        }}{validation}{settings}{lov_block}{default_block}{help_block}{read_only}
+        }}{validation}{settings}{lov_block}{default_block}{help_block}{read_only}{source}
         comments {{
             comments: {_fence(" ".join(notes))}
         }}
@@ -838,34 +1194,48 @@ def _item_chunk(
 """
 
 
-def _layout_chunks(layout: PageLayout) -> list[str]:
+def _layout_chunks(
+    layout: PageLayout, bindings: dict[str, Binding] | None = None
+) -> list[str]:
     """The page's regions, items and buttons, in the order APEXlang wants
     them: every region first (parents before children), then what each one
-    holds, then the hidden items that have no region of their own."""
+    holds, then the hidden items that have no region of their own.
+
+    ``bindings`` maps a region id to the table a reviewer confirmed for it.
+    With none -- the default, and every export before a confirmation exists
+    -- the output is what it has always been, byte for byte.
+    """
     chunks: list[str] = []
+    bindings = bindings or {}
     lov_of = {lov.source.upper(): lov for lov in layout.lovs}
 
     def regions(node: RegionNode, parent: RegionNode | None) -> None:
         if node.kind == "grid":
             chunks.append(_grid_chunk(node, parent, layout, lov_of))
         else:
-            chunks.append(_region_chunk(node, parent, layout))
+            chunks.append(_region_chunk(node, parent, layout, bindings.get(node.id)))
         for sub in node.subs:
             regions(sub, node)
 
     def contents(node: RegionNode) -> None:
+        binding = bindings.get(node.id)
         for placed in node.body:
             if "button" in placed.item.item_type.lower():
                 chunks.append(_button_chunk(placed, node))
             else:
                 key = f"{placed.block.name}.{placed.item.name}".upper()
-                chunks.append(_item_chunk(placed, node, layout, lov_of.get(key)))
+                chunks.append(_item_chunk(placed, node, layout, lov_of.get(key), binding))
         for placed in node.hidden:
             # A grid's database items became hidden columns of the grid;
             # only its control items stay hidden page items.
             if node.kind == "grid" and database_column(placed.item):
                 continue
-            chunks.append(_hidden_chunk(placed, node))
+            chunks.append(_hidden_chunk(placed, node, binding))
+        if binding is not None:
+            # After the region's own contents, so the button lands under the
+            # last field rather than between two of them.
+            last = max((p.sequence for p in node.body), default=0)
+            chunks.extend(_form_button_chunks(node, binding, last + 10))
         for sub in node.subs:
             contents(sub)
 
@@ -1265,10 +1635,13 @@ def _page(
     layout = build_layout(module, config.page)
     if config.ai_layout:
         ailayout.assist(layout, provider, store, config.page)
-    items = _layout_chunks(layout)
+    bindings, binding_manifest = confirmed_bindings(store, layout)
+    items = _layout_chunks(layout, bindings)
     components, component_mapping = _approved_components(
         store, config.page, layout.names, _emitted_page_items(items)
     )
+    for binding in bindings.values():
+        components.extend(_form_process_chunks(binding, config.page))
     title = module.title or module.name
     body = f"""page {config.page} (
     name: {_text(title)}
@@ -1292,6 +1665,7 @@ def _page(
         "items": layout.names,
         "layout": _layout_manifest(layout),
         "approved_components": component_mapping,
+        "data_binding": binding_manifest,
     }
     return body, mapping, layout
 
@@ -1427,5 +1801,11 @@ def export_apexlang(
     _write_zip(zip_path, project)
 
     return ApexExportResult(
-        project, zip_path, sql_path, json_path, manifest_path, store.stats()[APPROVED]
+        project,
+        zip_path,
+        sql_path,
+        json_path,
+        manifest_path,
+        store.stats()[APPROVED],
+        tuple(mapping.get("data_binding") or ()),
     )

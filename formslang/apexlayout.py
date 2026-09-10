@@ -1731,3 +1731,78 @@ def layout_report(layout: PageLayout) -> dict:
         "hidden": hidden,
         "skipped": list(layout.skipped),
     }
+
+
+@dataclass(frozen=True)
+class BindCandidate:
+    """A block APEX could show as a bound form, once someone confirms its key.
+
+    Being a candidate is a statement about *shape* only -- one record, one
+    table, one region holding all of it -- and never about data. ``suggestion``
+    is what the .fmb hints at (``PrimaryKey="true"`` on exactly one item) and
+    is exactly that: a hint to put in front of a reviewer. Forms uses that flag
+    for its own locking and it can disagree with the table's real key, so
+    nothing here may act on it. See ``formslang.apexlang.confirmed_bindings``
+    for the gate that does decide.
+    """
+
+    block: str
+    table: str
+    region: str  # the region id holding every one of the block's database items
+    suggestion: str  # column the .fmb hints at, upper case; "" when it hints at none
+    columns: dict[str, str]  # column name -> APEX page item name, both upper case
+
+
+def bind_candidates(layout: PageLayout) -> list[BindCandidate]:
+    """The single-record blocks a confirmed key could bind, in block order.
+
+    A block qualifies only when every database item it placed lives in one
+    static region, and that region holds no other block's items. APEX can
+    assign items to a form region across several display regions, but a form
+    spread over regions is a claim about layout as well as data, and this is
+    the first place FormsLang asserts data at all -- so the narrow case is the
+    only one offered.
+    """
+    homes: dict[str, set[str]] = {}  # block -> region ids holding its database items
+    nodes: dict[str, RegionNode] = {}
+    blocks: dict[str, Block] = {}
+    for node in layout.regions():
+        for placed in node.body + node.hidden:
+            if not database_column(placed.item):
+                continue
+            homes.setdefault(placed.block.name, set()).add(node.id)
+            blocks[placed.block.name] = placed.block
+            nodes[node.id] = node
+    for placed in layout.hidden:  # a database item with no region at all
+        if database_column(placed.item):
+            homes.setdefault(placed.block.name, set()).add("")
+
+    found: list[BindCandidate] = []
+    for name in sorted(homes):
+        block = blocks.get(name)
+        if block is None or not _table_bound(block) or block.records_displayed > 1:
+            continue
+        if len(homes[name]) != 1:
+            continue
+        region = next(iter(homes[name]))
+        node = nodes.get(region)
+        if node is None or node.kind != "static":
+            continue
+        if node.text:  # a region that is also boilerplate HTML has no room for a source
+            continue
+        placed_here = [p for p in node.body + node.hidden if database_column(p.item)]
+        if any(p.block.name != name for p in placed_here):
+            continue
+        hinted = [sql_name(database_column(i)) for i in block.items if i.primary_key]
+        found.append(
+            BindCandidate(
+                block=name,
+                table=block.query_data_source_name,
+                region=region,
+                suggestion=hinted[0] if len(hinted) == 1 else "",
+                columns={
+                    sql_name(database_column(p.item)): p.apex_name for p in placed_here
+                },
+            )
+        )
+    return found

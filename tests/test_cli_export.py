@@ -129,3 +129,105 @@ def test_a_session_without_a_module_is_refused_with_a_hint(tmp_path, capsys):
 def test_an_unsafe_alias_is_refused(session_db, capsys):
     assert cli.main(["export", str(session_db), "--alias", "../escape"]) == 2
     assert "alias" in capsys.readouterr().err
+
+
+def test_confirming_a_key_by_flag_binds_the_block_and_says_so(session_db, capsys):
+    """``--key`` is the whole gate between a page of unbound fields and a
+    form APEX fetches and saves, so the export has to report which side of
+    it every block landed on -- and stamp who said so."""
+    exit_code = cli.main(
+        [
+            "export",
+            str(session_db),
+            "--alias",
+            "demo",
+            "--app-id",
+            "200",
+            "--key",
+            "ORDERS=ORDER_ID",
+            "--key-by",
+            "ana",
+        ]
+    )
+    assert exit_code == 0
+
+    out = capsys.readouterr().out
+    assert "Bound    : ORDERS -> ORDERS on ORDER_ID (form region cv-main)" in out
+
+    page = (session_db.parent / "export" / "demo" / "pages" / "p00001-demo-order.apx").read_text(
+        encoding="utf-8"
+    )
+    assert "type: form" in page
+    assert "type: formAutoRowProcessing" in page
+    assert "confirmed by ana" in page
+
+    store = Store(session_db)
+    try:
+        assert store.block_keys()["ORDERS"]["key_column"] == "ORDER_ID"
+        assert store.block_keys()["ORDERS"]["confirmed_by"] == "ana"
+    finally:
+        store.close()
+
+
+def test_an_unbound_block_is_reported_with_the_line_that_would_bind_it(session_db, capsys):
+    assert cli.main(["export", str(session_db), "--alias", "demo", "--app-id", "200"]) == 0
+    out = capsys.readouterr().out
+    assert "Unbound  : ORDERS" in out
+    assert "--key ORDERS=<column>" in out
+
+
+def test_forgetting_a_key_takes_the_form_back_out(session_db, capsys):
+    assert (
+        cli.main(
+            [
+                "export",
+                str(session_db),
+                "--alias",
+                "demo",
+                "--app-id",
+                "200",
+                "--key",
+                "ORDERS=ORDER_ID",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert (
+        cli.main(
+            [
+                "export",
+                str(session_db),
+                "--alias",
+                "demo",
+                "--app-id",
+                "200",
+                "--forget-key",
+                "ORDERS",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "Unbound  : ORDERS" in out
+    page = (session_db.parent / "export" / "demo" / "pages" / "p00001-demo-order.apx").read_text(
+        encoding="utf-8"
+    )
+    assert "type: staticContent" in page
+    assert "formAutoRowProcessing" not in page
+
+
+@pytest.mark.parametrize(
+    "pair, message",
+    [
+        ("ORDERS", "--key takes BLOCK=COLUMN"),
+        ("NO_SUCH_BLOCK=ID", "a block this module has not got"),
+    ],
+)
+def test_a_key_that_cannot_be_meant_is_refused_rather_than_ignored(
+    pair, message, session_db, capsys
+):
+    """A typo here would quietly leave the page unbound and the reviewer
+    convinced they had confirmed something."""
+    assert cli.main(["export", str(session_db), "--alias", "demo", "--key", pair]) == 2
+    assert message in capsys.readouterr().err

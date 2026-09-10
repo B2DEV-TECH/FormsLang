@@ -47,6 +47,21 @@ CREATE TABLE IF NOT EXISTS session_setting (
     value  TEXT NOT NULL DEFAULT ''
 );
 
+-- Which column identifies one row of a block's base table, as confirmed by a
+-- person. Nothing writes here on its own: the Forms ``PrimaryKey`` flag and a
+-- schema read can suggest a column, but only a row in this table lets the
+-- exporter bind a block to its table. A block with no row keeps the unbound
+-- region it has always had. The asymmetry is deliberate -- a wrong key raises
+-- no error, it silently fetches and saves the wrong row, so the answer has to
+-- carry a name and a date.
+CREATE TABLE IF NOT EXISTS block_key (
+    block        TEXT PRIMARY KEY,
+    table_name   TEXT NOT NULL DEFAULT '',
+    key_column   TEXT NOT NULL,
+    confirmed_by TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS task (
     id          TEXT PRIMARY KEY,
     module      TEXT NOT NULL,
@@ -284,6 +299,46 @@ class Store:
             (key, value),
         )
         self.db.commit()
+
+    # -- confirmed primary keys ------------------------------------------
+
+    def confirm_block_key(
+        self, block: str, table_name: str, key_column: str, by: str = ""
+    ) -> None:
+        """Record that a person vouched for ``key_column`` identifying a row.
+
+        Confirming again replaces the previous answer and its timestamp: the
+        row says who is on the hook now, not everyone who ever was.
+        """
+        block = str(block or "").strip().upper()
+        key_column = str(key_column or "").strip().upper()
+        if not block or not key_column:
+            raise ValueError("a block and a key column are both required")
+        self.db.execute(
+            "INSERT OR REPLACE INTO block_key "
+            "(block, table_name, key_column, confirmed_by, confirmed_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                block,
+                str(table_name or "").strip().upper(),
+                key_column,
+                str(by or "").strip()[:128],
+                _now(),
+            ),
+        )
+        self.db.commit()
+
+    def forget_block_key(self, block: str) -> None:
+        """Withdraw a confirmation; the block goes back to an unbound region."""
+        self.db.execute(
+            "DELETE FROM block_key WHERE block = ?", (str(block or "").strip().upper(),)
+        )
+        self.db.commit()
+
+    def block_keys(self) -> dict[str, dict]:
+        """Every confirmed key, by block name, in block order."""
+        rows = self.db.execute("SELECT * FROM block_key ORDER BY block").fetchall()
+        return {row["block"]: dict(row) for row in rows}
 
     # -- tasks -----------------------------------------------------------
 

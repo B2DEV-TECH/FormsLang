@@ -464,6 +464,31 @@ def _export_config(args: argparse.Namespace, store: Store) -> dict:
     return raw
 
 
+def _apply_key_flags(args: argparse.Namespace, store, module) -> None:
+    """Record (or withdraw) the primary keys a reviewer confirmed by flag.
+
+    This is the whole gate between a page of unbound fields and a form APEX
+    fetches and saves, so it is deliberately explicit: a block name that is
+    not in the module is an error rather than a silently ignored line, and
+    the answer is stamped with a name and a date. ``--forget-key`` runs
+    first, so withdrawing and re-confirming in one command means what it
+    reads like.
+    """
+    tables = {block.name.upper(): block.query_data_source_name for block in module.blocks}
+    for name in getattr(args, "forget_key", None) or []:
+        store.forget_block_key(name)
+    by = (getattr(args, "key_by", "") or "").strip() or getpass.getuser()
+    for pair in getattr(args, "key", None) or []:
+        block, sep, column = pair.partition("=")
+        block, column = block.strip().upper(), column.strip()
+        if not sep or not block or not column:
+            raise ValueError(f"--key takes BLOCK=COLUMN, not {pair!r}")
+        if block not in tables:
+            known = ", ".join(sorted(tables)) or "none"
+            raise ValueError(f"--key names a block this module has not got: {block} (has: {known})")
+        store.confirm_block_key(block, tables[block], column, by)
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     """Build the APEXlang project and import ZIP from a session's approved work.
 
@@ -479,6 +504,7 @@ def cmd_export(args: argparse.Namespace) -> int:
     work = _work_dir(args)
     try:
         module = _session_module(store, work, args.oracle_home)
+        _apply_key_flags(args, store, module)
         provider = provider_from_env(args.provider) if args.ai_layout else None
         result = export_apexlang(
             store, module, work / "export", _export_config(args, store), provider
@@ -498,6 +524,16 @@ def cmd_export(args: argparse.Namespace) -> int:
     print(f"ZIP      : {result.zip_path}")
     print(f"Review   : {result.manifest_path.parent}")
     print(f"Approved : {result.approved} component(s)")
+    for entry in result.bindings:
+        if entry["bound"]:
+            print(
+                f"Bound    : {entry['block']} -> {entry['table']} "
+                f"on {entry['confirmed_key']} (form region {entry['region']})"
+            )
+        else:
+            hint = f", .fmb hints at {entry['forms_hint']}" if entry["forms_hint"] else ""
+            print(f"Unbound  : {entry['block']} -- {entry['reason']}{hint}")
+            print(f"           confirm with: --key {entry['block']}=<column>")
     print(f"Next     : formslang apex validate \"{result.zip_path}\"")
     return 0
 
@@ -837,6 +873,30 @@ def build_parser() -> argparse.ArgumentParser:
             "layout rules could not lay out cleanly; the plan is cached on the session "
             "(see docs/layout-mapping-matrix.md)"
         ),
+    )
+    ex.add_argument(
+        "--key",
+        action="append",
+        metavar="BLOCK=COLUMN",
+        help=(
+            "confirm that COLUMN identifies one row of BLOCK's table, which binds the "
+            "block's region to it: APEX then fetches the row and saves it back. "
+            "Repeatable, remembered on the session. Without it a block keeps the "
+            "unbound region it has always had"
+        ),
+    )
+    ex.add_argument(
+        "--forget-key",
+        dest="forget_key",
+        action="append",
+        metavar="BLOCK",
+        help="withdraw a confirmed key; the block goes back to an unbound region",
+    )
+    ex.add_argument(
+        "--key-by",
+        dest="key_by",
+        default="",
+        help="who is confirming, recorded with --key (default: the OS user)",
     )
     ex.add_argument("--provider", default="", help="override FORMSLANG_AI_PROVIDER for --ai-layout")
     ex.add_argument("--json", action="store_true", help="print the result as JSON")
