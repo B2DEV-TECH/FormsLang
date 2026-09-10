@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A block whose key a reviewer confirmed exports as a form APEX fetches
+  and saves. `formslang apex export --key BLOCK=COLUMN` records that the
+  column identifies one row of the block's base table; the block's region
+  then becomes a form region over that table, its items bind to their
+  columns, and the page gets a `formInitialization` process before the
+  header and a `formAutoRowProcessing` process at sequence 1000 -- behind
+  every approved conversion, so a trigger the reviewer enabled has already
+  filled its column before the row is written. `--forget-key` withdraws the
+  confirmation and the region goes back to exactly what it was. Nothing
+  binds on its own: the Forms `PrimaryKey` flag is offered as a hint and
+  never acted on, because a wrong key raises no error -- it silently
+  fetches and saves the wrong row -- so the answer is stored with a name
+  and a date. A block with no confirmation is unchanged, byte for byte,
+  and the export now reports both halves: `Bound` with the column and who
+  confirmed it, `Unbound` with the reason and the flag that would bind it.
+  Only a single-record block whose database items all sit in one region of
+  their own qualifies for now.
+- A bound region gets a Create button and a Save button, not one Save.
+  APEX takes insert-or-update from the pressed button's Database Action and
+  not from whether the form found a row, so a single button always updates
+  and the page could never create a record. Create shows when the key item
+  is null, Save when it is not, and one write process runs for either. The
+  submit branch is a redirect back to the page: a Show Only branch is
+  refused at run time on a page whose Reload on Submit is Only for Success,
+  and the submit then saves nothing without showing an error. Both facts
+  were found with the page open in a browser -- `apex validate` and
+  `apex import` accept either spelling.
 - An approved Forms validation exports as an APEX validation. A
   `WHEN-VALIDATE-ITEM` or `WHEN-VALIDATE-RECORD` the reviewer approved
   becomes a page validation of type PL/SQL Error -- it passes when the

@@ -81,7 +81,7 @@ developer community. See [AUTHORS.md](AUTHORS.md).
 - [The workbench](#the-workbench) — review, project view, Doc / Diff / Preview
 - [Authentication and multi-user workspaces](#authentication-and-multi-user-workspaces)
 - [AI-assisted conversion](#ai-assisted-conversion) — providers, privacy, enterprise mode
-- [Exporting for APEX 26.1](#exporting-for-apex-261) — the dialog, the CLI twin, validate and import
+- [Exporting for APEX 26.1](#exporting-for-apex-261) — the dialog, the CLI twin, binding a block to its table, validate and import
 - [Versioning Forms and APEXlang in git](#versioning-forms-and-apexlang-in-git)
 - [CI/CD](#cicd)
 - [CLI reference](#cli-reference) · [Environment variables](#environment-variables)
@@ -821,6 +821,42 @@ session and replayed while the layout is unchanged, so the export stays
 deterministic; the enterprise egress policy is checked before any request
 leaves the machine.
 
+### A confirmed key makes the region a form
+
+By default an exported region is a faithful picture of the block: every
+item is on the page, in its place, with its type and its rules — and
+nothing is bound to a table. **`--key BLOCK=COLUMN` says that `COLUMN`
+identifies one row of that block's base table**, and the region becomes a
+form APEX can work with: it fetches the row before the page renders and
+writes it back on submit, through a Create button and a Save button (APEX
+takes insert-or-update from the button that was pressed, not from whether
+the form found a row).
+
+Nothing binds without that confirmation. Forms marks a `PrimaryKey` item
+for its own locking and that flag can disagree with the table's real key,
+so it is offered as a hint next to the block and never acted on: a wrong
+key raises no error, it silently fetches and saves the wrong row. The
+answer is stored on the session with the name behind it (`--key-by`,
+defaulting to the OS user), and `--forget-key BLOCK` withdraws it, putting
+the region back byte for byte as it was.
+
+Every export says which side of the line each block landed on:
+
+```
+Bound    : ORDERS -> ORDERS on ORDER_ID (form region cv-main)
+Unbound  : ITEMS -- no confirmed key: the region stays unbound until a reviewer names the column that identifies one row
+           confirm with: --key ITEMS=<column>
+```
+
+Two limits worth knowing before you plan around it. Only a single-record
+block whose database items all sit in one region of their own is offered —
+a block spread over several regions is a claim about layout as well as
+data, and this is the first place FormsLang asserts data at all. And the
+write process runs at sequence 1000, behind every approved conversion, so
+a trigger the reviewer enabled has already filled its column before the
+row is written; a column the page does not show and no trigger fills is
+still yours to supply.
+
 ### Validate and import
 
 From the Exports panel, **Validate** and **Import** run your own SQLcl
@@ -900,8 +936,10 @@ read the HTML, remove the user — is in
 > export ships a per-element mapping report with explicit denominators.
 > [docs/layout-mapping-matrix.md](docs/layout-mapping-matrix.md) has the
 > mapping matrix and the before/after of the showcase page at the same
-> viewport. Schema binding, LOVs, validations and navigation remain the
-> functional review described above.
+> viewport. Since then the exported page also carries the rules the
+> reviewer approved and, for a block whose key someone confirmed, binds
+> its region to the base table so APEX fetches and saves the row. LOVs
+> and navigation remain the functional review described above.
 
 ## Versioning Forms and APEXlang in git
 
@@ -976,7 +1014,7 @@ every one accepts a Forms2XML `.xml` in place of the `.fmb`.
 | `preview <module>` | every canvas next to the APEX items it maps to | `-o` |
 | `convert <module\|session>` | headless AI proposals for every code body | `-o`, `--provider`, `--model`, `--limit` |
 | `workbench <module\|session\|folder>` | the review screen on `127.0.0.1:8765` | `-o`, `--port`, `--host` (loopback only), `--no-browser`, `--provider`, `--model` |
-| `export <session\|module>` | APEXlang 26.1 project + import ZIP from the approved work; choices remembered on the session | `-o`, `--app-id`, `--name`, `--alias`, `--workspace`, `--schema`, `--page`, `--ai-layout` (with `--provider`), `--json` |
+| `export <session\|module>` | APEXlang 26.1 project + import ZIP from the approved work; choices remembered on the session | `-o`, `--app-id`, `--name`, `--alias`, `--workspace`, `--schema`, `--page`, `--key BLOCK=COLUMN`, `--forget-key`, `--key-by`, `--ai-layout` (with `--provider`), `--json` |
 | `apex validate <zip>` | SQLcl `apex validate` against a workspace; changes nothing | `--connect`, `--user`, `--sqlcl`, `--timeout`, `--json` |
 | `apex import <zip>` | SQLcl `apex import` | same |
 | `ai` | which provider is configured; `--check` sends one short request | `--provider`, `--check` |
@@ -1126,6 +1164,11 @@ CI runs the suite on Linux and Windows across Python 3.10–3.13, runs
 - [x] Continuous integration (GitHub Actions: pytest + ruff, Python
       3.10–3.13, Linux + Windows, deterministic-export check) and the
       example pipeline in [`examples/ci/`](examples/ci/)
+- [x] A block whose key a reviewer confirmed (`--key BLOCK=COLUMN`) exports
+      as a form APEX fetches and saves — form region over the base table,
+      bound items, Create and Save buttons — proved at run time on a live
+      APEX 26.1. Single-record blocks whose items sit in one region, for
+      now; without a confirmation the region is unchanged
 
 ### Next phase: continuous delivery with SQLcl
 
