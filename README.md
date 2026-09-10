@@ -19,6 +19,13 @@ unit, documents and diffs Forms modules, exports an APEXlang application
 that imports into APEX, and hands the whole thing to a pipeline.
 Apache-2.0 licensed — see [LICENSE](LICENSE).
 
+**Modernization Blueprint** adds application-wide knowledge, shared dependencies,
+business-rule candidates, evidence-backed architecture recommendations and human
+review to the same Workbench. Run `formslang blueprint ./application -o out`, then
+open `out/blueprint.session.db` in the Workbench's **Blueprint** view. Static analysis
+requires no AI provider. Read the [Blueprint guide](docs/modernization-blueprint.md)
+for schemas, formulas, local metadata, review and known limitations.
+
 FormsLang reads your `.fmb` modules, classifies every trigger and built-in
 against a Forms→APEX catalog, and tells you what the migration actually
 costs — measured from your own code, not estimated from a spreadsheet. Then

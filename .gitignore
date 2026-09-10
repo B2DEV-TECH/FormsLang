@@ -24,6 +24,7 @@ out/
 *_olb.xml
 assessment.html
 assessment.json
+modernization/
 
 # Conversion sessions hold the original code bodies verbatim. Never commit.
 *.session.db

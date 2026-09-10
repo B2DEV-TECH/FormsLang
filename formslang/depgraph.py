@@ -405,7 +405,7 @@ def _unresolved_targets(code_analysis) -> list[str]:
 
 
 def build(module: FormModule, *, task_ids: dict[str, str] | None = None,
-          risks: dict[str, str] | None = None) -> DepGraph:
+          risks: dict[str, str] | None = None, include_code: bool = True) -> DepGraph:
     """Build the graph for one parsed module.
 
     ``task_ids`` maps ``(kind, owner, name)`` -- as
@@ -507,6 +507,9 @@ def build(module: FormModule, *, task_ids: dict[str, str] | None = None,
         mid = node_id(MENU, module.menu_module)
         graph.add_node(Node(mid, MENU, module.menu_module, external=True))
         graph.add_edge(root.id, mid, USES, evidence="menu module")
+
+    if not include_code:
+        return graph
 
     known_units = {p.name.upper() for p in module.program_units}
     # Registered before any code is read: a trigger routinely calls a program

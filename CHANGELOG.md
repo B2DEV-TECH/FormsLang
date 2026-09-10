@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Modernization Blueprint: deterministic application knowledge, shared
+  dependencies, business-rule candidates, API reuse ranking, optional enterprise
+  naming patterns and supplied database/PL/SQL metadata. `formslang blueprint`
+  writes reproducible JSON, standalone HTML, Markdown and Mermaid artifacts.
+- Blueprint in the existing Workbench: filtered dependency exploration,
+  source evidence, architecture review with stale-decision detection, separately
+  evidenced modernization coverage and optional anonymized AI explanation.
+  Existing conversion approvals, risk/readiness formulas and APEX exports remain
+  separate. See [the Blueprint guide](docs/modernization-blueprint.md).
+
 - A block whose key a reviewer confirmed exports as a form APEX fetches
   and saves. `formslang apex export --key BLOCK=COLUMN` records that the
   column identifies one row of the block's base table; the block's region

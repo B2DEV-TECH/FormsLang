@@ -47,6 +47,27 @@ CREATE TABLE IF NOT EXISTS session_setting (
     value  TEXT NOT NULL DEFAULT ''
 );
 
+-- Architectural review is separate from conversion approval and runtime tests.
+CREATE TABLE IF NOT EXISTS blueprint_snapshot (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS blueprint_review (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity TEXT NOT NULL,
+    revision TEXT NOT NULL,
+    action TEXT NOT NULL,
+    recommendation TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL DEFAULT '',
+    comment TEXT NOT NULL,
+    reviewer TEXT NOT NULL,
+    coverage TEXT NOT NULL DEFAULT 'REQUIRES_REVIEW',
+    coverage_evidence TEXT NOT NULL DEFAULT '',
+    finding_snapshot TEXT NOT NULL DEFAULT '{}',
+    decided_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS blueprint_review_entity ON blueprint_review(entity, id);
+
 -- Which column identifies one row of a block's base table, as confirmed by a
 -- person. Nothing writes here on its own: the Forms ``PrimaryKey`` flag and a
 -- schema read can suggest a column, but only a row in this table lets the
@@ -190,6 +211,7 @@ JOB_RUNNING, JOB_COMPLETED, JOB_CANCELLED, JOB_CRASHED = (
 # CREATE TABLE IF NOT EXISTS above; new columns do not, so they are applied
 # here against whatever the file already has.
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("blueprint_review", "finding_snapshot", "TEXT NOT NULL DEFAULT '{}'"),
     # Snapshot of what the reviewer was looking at when they decided. Kept on
     # the decision row on purpose: if the rules change next month, the record
     # still says what the risk read at the moment of approval.
@@ -271,6 +293,101 @@ class Store:
 
     def close(self) -> None:
         self.db.close()
+
+    def save_blueprint(self, payload: dict) -> None:
+        from .blueprint import VERSION
+
+        if payload.get("schema_version") != VERSION:
+            raise ValueError("unsupported Blueprint schema")
+        self.db.execute("INSERT OR REPLACE INTO blueprint_snapshot VALUES (1, ?)",
+                        (json.dumps(payload, ensure_ascii=False, sort_keys=True),))
+        self.db.commit()
+
+    def blueprint(self) -> dict | None:
+        from .blueprint import ENGINE_VERSION as BLUEPRINT_ENGINE_VERSION
+        from .blueprint import VERSION, session_progress, summarize
+
+        row = self.db.execute("SELECT payload FROM blueprint_snapshot WHERE id=1").fetchone()
+        if not row:
+            return None
+        payload = json.loads(row["payload"])
+        if payload.get("schema_version") != VERSION:
+            raise ValueError("unsupported Blueprint schema; regenerate with this version")
+        engine_stale = payload.get("engine_version") != BLUEPRINT_ENGINE_VERSION
+        history = self.db.execute("SELECT * FROM blueprint_review ORDER BY id DESC").fetchall()
+        by_entity: dict[str, list] = {}
+        for review in history:
+            entry = dict(review)
+            try:
+                entry["finding_snapshot"] = json.loads(entry["finding_snapshot"] or "{}")
+            except json.JSONDecodeError:
+                entry["finding_snapshot"] = {"unavailable": True}
+            by_entity.setdefault(review["entity"], []).append(entry)
+        for finding in payload["findings"]:
+            decisions = by_entity.get(finding["entity"], [])
+            finding["review_history"] = decisions
+            latest = decisions[0] if decisions else None
+            finding["review_state"] = "PENDING"
+            if latest:
+                stale = engine_stale or latest["revision"] != finding["revision"]
+                finding["review_state"] = "STALE" if stale else latest["action"]
+                if not stale and latest["action"] in {"APPROVE", "MODIFY"}:
+                    finding["human_decision"] = {"recommendation": latest["recommendation"],
+                                                 "target": latest["target"]}
+                    finding["coverage"] = {"status": latest["coverage"],
+                                            "target": latest["target"],
+                                            "evidence": latest["coverage_evidence"],
+                                            "reviewer": latest["reviewer"]}
+        states = {f["entity"]: f["review_state"] for f in payload["findings"]}
+        for entity in payload["entities"]:
+            entity["review_state"] = states.get(entity["id"], states.get(entity["attributes"].get("source_entity"), "PENDING"))
+        payload["stale_engine"] = engine_stale
+        if not engine_stale and self.task_ids():
+            session_progress(payload, self)
+        return summarize(payload)
+
+    def review_blueprint(self, *, entity: str, revision: str, action: str,
+                         reviewer: str, comment: str, recommendation: str = "",
+                         target: str = "", coverage: str = "REQUIRES_REVIEW",
+                         coverage_evidence: str = "") -> None:
+        from .blueprint import COVERAGE, DECISIONS, REVIEW_ACTIONS
+
+        if action not in REVIEW_ACTIONS or coverage not in COVERAGE:
+            raise ValueError("unknown Blueprint review action or coverage status")
+        if not reviewer.strip() or not comment.strip():
+            raise ValueError("reviewer and review rationale are required")
+        payload = self.blueprint()
+        finding = next((f for f in (payload or {}).get("findings", []) if f["entity"] == entity), None)
+        if finding is None:
+            raise ValueError("unknown Blueprint finding")
+        if payload["stale_engine"] or revision != finding["revision"]:
+            raise ValueError("Blueprint changed; regenerate/reload before reviewing")
+        if action == "MODIFY" and (recommendation not in DECISIONS or not target.strip()):
+            raise ValueError("a modified recommendation and target are required")
+        if action != "MODIFY":
+            recommendation = finding["recommendation"]
+            target = finding["suggested_target"]
+        if coverage not in {"REQUIRES_REVIEW", "UNKNOWN", "UNSUPPORTED"} and (
+            action not in {"APPROVE", "MODIFY"} or not coverage_evidence.strip()
+        ):
+            raise ValueError("completed coverage requires a human decision and implementation evidence")
+        if action in {"REJECT", "DEFER"}:
+            coverage, coverage_evidence = "REQUIRES_REVIEW", ""
+        evidence_ids = set(finding["evidence"])
+        entity_ids = {entity, *finding["dependencies"]}
+        snapshot = {
+            "engine_version": payload["engine_version"],
+            "source_revision": payload["source_revision"],
+            "finding": {k: v for k, v in finding.items() if k not in {"review_history", "human_decision", "review_state"}},
+            "evidence": [p for p in payload["evidence"] if p["id"] in evidence_ids],
+            "entities": [n for n in payload["entities"] if n["id"] in entity_ids],
+        }
+        self.db.execute(
+            "INSERT INTO blueprint_review (entity,revision,action,recommendation,target,comment,"
+            "reviewer,coverage,coverage_evidence,finding_snapshot,decided_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (entity, revision, action, recommendation, target, comment, reviewer,
+             coverage, coverage_evidence, json.dumps(snapshot, ensure_ascii=False, sort_keys=True), _now()))
+        self.db.commit()
 
     # -- session ---------------------------------------------------------
 
