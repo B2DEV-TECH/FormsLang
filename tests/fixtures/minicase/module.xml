@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MINI_PRODUTO - fixture de demonstracao, 100% sintetica (nenhum dado de
+  cliente), seguindo a convencao do corpus dourado em
+  tests/fixtures/README.md ("hand-authored, illustrative, committable").
+
+  Objetivo, e a diferenca pro showcase: este modulo NAO tenta cobrir todo
+  branch do parser/layout. Ele existe pra ser SEGUIDO POR UM HUMANO do
+  inicio ao fim - parse, review, export, validate, import, render - em
+  menos de cinco minutos, sem que ninguem precise segurar 5 blocos e 78
+  itens na cabeca enquanto acompanha o argumento. O showcase e a bancada
+  de teste; este e a demo. Ver tests/fixtures/minicase/README.md.
+
+  Cobre exatamente os seis elementos que o caso de modernizacao exige
+  (docs/assessment/modernization-gap-analysis.md secao 1):
+    1. consultar registros existentes ......... BK_PRODUTO.PRE-QUERY
+    2. criar / alterar um registro ............ BK_PRODUTO.PRE-INSERT
+    3. validacao de campo obrigatorio ......... Required="true" em
+                                                PK_ID, DS_NOME, VL_PRECO
+    4. uma regra de negocio de verdade ........ BK_PRODUTO.WHEN-VALIDATE-RECORD
+                                                (peso liquido <= peso bruto)
+    5. caminho de falha com erro legivel ...... CD_BARRA.WHEN-VALIDATE-ITEM
+                                                (EAN-13)
+    6. evidencia ligando regra a substituicao . tabela decision + approved.sql
+                                                + apexlang-manifest.json
+
+  Sao 6 triggers com corpo, entao 6 unidades de revisao (convert.py
+  build_tasks conta trigger com corpo + program unit; item sem trigger nao
+  conta). O criterio de aceitacao do card A5 e "menos de 12".
+
+  Convencoes de Forms2XML usadas aqui - identicas as do showcase, ja
+  confirmadas contra o forms.xsd oficial e contra o Convert do Forms
+  Builder 14c real (ver tests/fixtures/showcase/README.md):
+    - Coordinate em Points, texto ja em UTF-8 correto.
+    - Newline em TriggerText usa a dupla-escapada "&amp;#10;"
+      (decode_forms_text() desfaz numa segunda passada). NAO usar
+      "&amp;#9;" (tab): o Convert nao decodifica, sobra "&#9;" literal no
+      corpo compilado e quebra o parser PL/SQL no "&". Indentacao e
+      espaco literal.
+    - "<" e ">" dentro do texto usam a escapada SIMPLES "&lt;" / "&gt;" -
+      entidade XML padrao, resolvida na mesma passada por qualquer parser
+      (Forms Builder incluso). A dupla "&amp;lt;" ficaria literal e
+      quebraria o PL/SQL.
+    - Nenhum atributo inventado: todos existem no forms.xsd do Forms 14c e
+      todos ja aparecem no showcase, que roda de verdade no Builder.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="MINI_PRODUTO"
+              Title="Cadastro de Produto"
+              Comment="Fixture minima de demonstracao do pipeline Forms -> assess -> APEX. Um bloco, oito itens, seis triggers. Ver tests/fixtures/minicase/README.md."
+              FirstNavigationBlockName="BK_PRODUTO"
+              MenuModule="DEFAULT&amp;SMARTBAR">
+
+    <Coordinate CoordinateSystem="Real" RealUnit="Point"
+                CharacterCellWidth="5" CharacterCellHeight="10"/>
+
+    <!-- =====================================================================
+         TRIGGER DE ESCOPO FORM. Um so, de proposito: o form abre ja
+         consultado, que e como o usuario de Forms espera. GO_BLOCK +
+         EXECUTE_QUERY sao builtins de navegacao/consulta - no APEX a
+         pagina ja carrega com os dados, entao rules.py classifica isso
+         como conversao assistida, nao como codigo a preservar.
+         ===================================================================== -->
+    <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="BEGIN&amp;#10;  GO_BLOCK('BK_PRODUTO');&amp;#10;  EXECUTE_QUERY;&amp;#10;END;"/>
+
+    <!-- =====================================================================
+         BLOCO UNICO, base table, single-record (RecordsDisplayCount=1).
+         E o bloco que o card A3 tornara ligado (region type: form +
+         autoRowFetch / formAutoRowProcessing); hoje o export ainda o emite
+         como staticContent nao-ligado, e o comentario da regiao diz isso.
+         PK_ID carrega PrimaryKey="true" justamente pra quando o A3 for
+         destravado a chave vir da fixture, e nao de adivinhacao.
+         ===================================================================== -->
+    <Block Name="BK_PRODUTO" DatabaseBlock="true"
+           QueryDataSourceName="TAB_MINI_PRODUTO" QueryDataSourceType="Table"
+           RecordsDisplayCount="1" OrderByClause="DS_NOME"
+           NavigationStyle="Same Record">
+
+      <!-- ELEMENTO 1 - consultar registros existentes.
+           WHERE dinamico por SET_BLOCK_PROPERTY(DEFAULT_WHERE): o idioma
+           legado classico de filtro, e o que no APEX vira condicao da
+           regiao ou clausula do autoRowFetch. -->
+      <Trigger Name="PRE-QUERY" TriggerText="BEGIN&amp;#10;  SET_BLOCK_PROPERTY('BK_PRODUTO', DEFAULT_WHERE, 'FL_ATIVO = ''Y''');&amp;#10;END;"/>
+
+      <!-- ELEMENTO 2 - criar um registro.
+           PK pela sequence e data de cadastro no momento da insercao: o
+           par que o APEX resolve com um process de formAutoRowProcessing
+           mais um default no item. Depende do A3 pra ter contrapartida. -->
+      <Trigger Name="PRE-INSERT" TriggerText="BEGIN&amp;#10;  IF :BK_PRODUTO.PK_ID IS NULL THEN&amp;#10;    :BK_PRODUTO.PK_ID := TAB_MINI_PRODUTO_SEQ.NEXTVAL;&amp;#10;  END IF;&amp;#10;  :BK_PRODUTO.DT_CADASTRO := SYSDATE;&amp;#10;END;"/>
+
+      <!-- ELEMENTO 4 - a regra de negocio de verdade.
+           Peso liquido nao pode passar do peso bruto. Duas coisas fazem
+           dela a regra certa pra demo: e obvia pra qualquer plateia sem
+           explicacao de dominio, e cruza DOIS itens - por isso e
+           WHEN-VALIDATE-RECORD e vira uma APEX validation de nivel
+           registro (displayLocation inlineInNotification), nao de item.
+           A frase do MESSAGE e o que o A7 carrega pro errorMessage da
+           validation exportada quando o codigo aprovado nao diz nada. -->
+      <Trigger Name="WHEN-VALIDATE-RECORD" TriggerText="BEGIN&amp;#10;  IF :BK_PRODUTO.VL_PESO_LIQ IS NOT NULL AND :BK_PRODUTO.VL_PESO_BRUTO IS NOT NULL&amp;#10;     AND :BK_PRODUTO.VL_PESO_LIQ &gt; :BK_PRODUTO.VL_PESO_BRUTO THEN&amp;#10;    MESSAGE('Peso liquido nao pode ser maior que o peso bruto.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;END;"/>
+
+      <!-- Linha A: identificacao. PK_ID e gerado no PRE-INSERT, entao o
+           usuario nunca digita - UpdateAllowed="false". -->
+      <Item Name="PK_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="PK_ID" DatabaseItem="true" Required="true" PrimaryKey="true"
+            UpdateAllowed="false"
+            Prompt="Codigo" MaximumLength="10" CanvasName="CV_MAIN"
+            Tooltip="Gerado pela sequence TAB_MINI_PRODUTO_SEQ no PRE-INSERT"
+            XPosition="100" YPosition="35" Width="80" Height="17"/>
+
+      <!-- ELEMENTO 3 - campo obrigatorio. Required="true" sozinho, sem
+           trigger nenhum: o parser le a propriedade e o export emite
+           validation { valueRequired: true } + template: @/required. E o
+           unico dos seis elementos que nao custa uma unidade de revisao,
+           porque nao ha codigo pra revisar. -->
+      <Item Name="DS_NOME" ItemType="Text Item" DataType="Char"
+            ColumnName="DS_NOME" DatabaseItem="true" Required="true"
+            Prompt="Nome" MaximumLength="100" CanvasName="CV_MAIN"
+            Hint="Nome comercial do produto"
+            XPosition="300" YPosition="35" Width="220" Height="17"/>
+
+      <!-- Linha B: codigo de barras e preco. -->
+
+      <!-- ELEMENTO 5 - o caminho de falha com erro legivel.
+           EAN-13 escrito INLINE (o showcase chama PKG_PRODUTO.F_VALIDA_EAN13
+           no banco; aqui nao). Duas razoes deliberadas: a APEX validation
+           exportada sai autocontida, entao importa e roda sem instalar
+           package nenhum; e na gravacao da demo o revisor le a regra de
+           verdade na tela em vez de uma chamada opaca. O custo e que este
+           trigger e o corpo mais longo do modulo - de proposito: e o unico
+           que vale a pena ler linha a linha. -->
+      <Item Name="CD_BARRA" ItemType="Text Item" DataType="Char"
+            ColumnName="CD_BARRA" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Codigo de barras" MaximumLength="13"
+            Hint="EAN-13: treze digitos, o ultimo e o verificador"
+            XPosition="100" YPosition="65" Width="140" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="DECLARE&amp;#10;  v_cd   VARCHAR2(13) := :BK_PRODUTO.CD_BARRA;&amp;#10;  v_soma NUMBER := 0;&amp;#10;  v_dv   NUMBER;&amp;#10;BEGIN&amp;#10;  IF v_cd IS NOT NULL THEN&amp;#10;    IF LENGTH(v_cd) &lt;&gt; 13 OR LTRIM(v_cd, '0123456789') IS NOT NULL THEN&amp;#10;      MESSAGE('Codigo de barras invalido: informe um EAN-13.');&amp;#10;      RAISE FORM_TRIGGER_FAILURE;&amp;#10;    END IF;&amp;#10;    FOR i IN 1 .. 12 LOOP&amp;#10;      v_soma := v_soma + TO_NUMBER(SUBSTR(v_cd, i, 1)) *&amp;#10;                CASE WHEN MOD(i, 2) = 0 THEN 3 ELSE 1 END;&amp;#10;    END LOOP;&amp;#10;    v_dv := MOD(10 - MOD(v_soma, 10), 10);&amp;#10;    IF v_dv &lt;&gt; TO_NUMBER(SUBSTR(v_cd, 13, 1)) THEN&amp;#10;      MESSAGE('Codigo de barras invalido: informe um EAN-13.');&amp;#10;      RAISE FORM_TRIGGER_FAILURE;&amp;#10;    END IF;&amp;#10;  END IF;&amp;#10;END;"/>
+      </Item>
+
+      <!-- Regra de item curta, o contraponto do EAN-13: cabe numa linha de
+           leitura e mesmo assim e uma regra de negocio. Vira uma APEX
+           validation de item (displayLocation
+           inlineWithFieldAndInNotification, associatedItem @P1_VL_PRECO) -
+           o par item/registro na mesma pagina e o que torna visivel, na
+           gravacao, que o FormsLang escolhe o local de exibicao pelo
+           escopo do trigger de origem. -->
+      <Item Name="VL_PRECO" ItemType="Text Item" DataType="Number"
+            ColumnName="VL_PRECO" DatabaseItem="true" Required="true" CanvasName="CV_MAIN"
+            Prompt="Preco (R$)"
+            FormatMask="FM999G990D00" Justification="Right"
+            XPosition="300" YPosition="65" Width="100" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  IF :BK_PRODUTO.VL_PRECO IS NOT NULL AND :BK_PRODUTO.VL_PRECO &lt;= 0 THEN&amp;#10;    MESSAGE('Preco deve ser maior que zero.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;END;"/>
+      </Item>
+
+      <!-- Linha C: o par de pesos que a regra de registro cruza. Nenhum
+           dos dois tem trigger proprio - a regra que os relaciona mora no
+           WHEN-VALIDATE-RECORD do bloco, e e isso que faz dela uma
+           validation de registro no APEX. -->
+      <Item Name="VL_PESO_LIQ" ItemType="Text Item" DataType="Number"
+            ColumnName="VL_PESO_LIQ" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Peso liquido (kg)"
+            FormatMask="FM999G990D000" Justification="Right"
+            XPosition="100" YPosition="95" Width="100" Height="17"/>
+      <Item Name="VL_PESO_BRUTO" ItemType="Text Item" DataType="Number"
+            ColumnName="VL_PESO_BRUTO" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Peso bruto (kg)"
+            FormatMask="FM999G990D000" Justification="Right"
+            XPosition="300" YPosition="95" Width="100" Height="17"/>
+
+      <!-- Linha D: o flag que o PRE-QUERY filtra, e a data que o
+           PRE-INSERT carimba. Fecham o ciclo consultar/criar sem custar
+           unidade de revisao nenhuma. -->
+      <Item Name="FL_ATIVO" ItemType="Check Box" DataType="Char"
+            ColumnName="FL_ATIVO" DatabaseItem="true" CanvasName="CV_MAIN"
+            Prompt="Ativo" MaximumLength="1"
+            CheckedValue="Y" UncheckedValue="N" InitializeValue="Y"
+            XPosition="100" YPosition="125" Width="60" Height="17"/>
+      <Item Name="DT_CADASTRO" ItemType="Text Item" DataType="Date"
+            ColumnName="DT_CADASTRO" DatabaseItem="true" CanvasName="CV_MAIN"
+            UpdateAllowed="false"
+            Prompt="Cadastrado em" FormatMask="DD/MM/YYYY"
+            Tooltip="Carimbado pelo PRE-INSERT"
+            XPosition="300" YPosition="125" Width="100" Height="17"/>
+
+    </Block>
+
+    <!-- Canvas e Window minimos: um so de cada. O layout engine posiciona
+         os itens pela geometria acima (duas colunas, quatro linhas), e a
+         pagina APEX sai com as quatro linhas na mesma ordem. -->
+    <Canvas Name="CV_MAIN" CanvasType="Content" WindowName="WIN_MAIN"
+            Width="600" Height="200"/>
+    <Window Name="WIN_MAIN" Title="Cadastro de Produto"
+            Width="600" Height="200"/>
+
+  </FormModule>
+</Module>

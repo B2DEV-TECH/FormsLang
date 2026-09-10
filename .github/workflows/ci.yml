@@ -257,3 +257,60 @@ jobs:
             echo "::error::a validation on a missing page item passed -- references are not checked"
             exit 1
           fi
+
+      # The demo fixture, beside the showcase. The showcase proves breadth;
+      # the minicase is the module a viewer is actually walked through, so the
+      # package it produces has to be green on every push too. Its shape --
+      # six review units, the six required elements, message provenance -- is
+      # guarded by tests/test_minicase_fixture.py, which needs no SQLcl. What
+      # only SQLcl can answer is whether Oracle's own compiler accepts it.
+      - name: Export the minicase with its rules approved
+        run: |
+          python - "$RUNNER_TEMP/minicase" <<'PY'
+          import sys
+          from pathlib import Path
+
+          from formslang.apexlang import export_apexlang
+          from formslang.convert import Proposal, build_tasks
+          from formslang.parser import parse_xml
+          from formslang.rules import AUTO
+          from formslang.store import APPROVED, Store
+
+          out = Path(sys.argv[1])
+          out.mkdir(parents=True, exist_ok=True)
+          xml = Path("tests/fixtures/minicase/module.xml")
+
+          module = parse_xml(xml)
+          store = Store(out / "minicase.session.db")
+          store.init_session(module.name, str(xml))
+          tasks = build_tasks(module)
+          store.add_tasks(tasks)
+
+          # One rule is approved as code that raises without saying anything,
+          # so its message can only come from the Forms trigger it replaces.
+          silent = "BK_PRODUTO.VL_PRECO.WHEN-VALIDATE-ITEM"
+          approved = 0
+          for task in tasks:
+              if task.verdict != AUTO:
+                  continue
+              key = f"{task.owner}.{task.name}"
+              code = (
+                  "begin\n  raise value_error;\nend;"
+                  if key == silent
+                  else "begin\n  raise_application_error(-20001, 'aprovado pelo CI');\nend;"
+              )
+              store.save_proposal(task.id, Proposal(code=code, apex_target="Page validation"))
+              store.set_decision(task.id, APPROVED, code=code, reviewer="ci")
+              approved += 1
+
+          if approved != 3:
+              sys.exit(f"the minicase should offer three AUTO rules, found {approved}")
+
+          result = export_apexlang(store, module, out, {"alias": "minicase", "app_id": 19200})
+          print(f"{approved} approved rules -> {result.zip_path.name}")
+          PY
+
+      - name: The minicase package must validate
+        run: |
+          python -m formslang apex validate \
+            "$RUNNER_TEMP/minicase/minicase.apex.zip" --offline
