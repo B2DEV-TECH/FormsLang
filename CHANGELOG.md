@@ -42,6 +42,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second time with its rules approved, so the validations are compiled by
   Oracle too, and patches one of them to point at a page item that does not
   exist -- which must fail.
+- A demo-sized fixture, `tests/fixtures/minicase/`. The showcase is a
+  coverage bench -- 5 blocks, 78 items, 55 triggers, 59 review units -- and
+  is the wrong module to walk anyone through. `MINI_PRODUTO` is one block,
+  8 items, 6 triggers and six review units, and still covers every element
+  the smallest complete case has to show: a restricted query, an insert
+  that assigns the key, required items, a rule spanning two fields, and a
+  failure a user can understand. Two of its rules carry their own sentence
+  and one raises silently, so a single module exercises both origins an
+  exported error message can have. It round-trips through Oracle Forms
+  14.1.2 with no structural differences. CI guards its shape on every OS
+  and puts its package through `apex validate --offline` beside the
+  showcase's.
 
 ### Fixed
 
