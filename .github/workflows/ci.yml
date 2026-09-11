@@ -47,6 +47,33 @@ jobs:
       - name: Run ruff
         run: python -m ruff check .
 
+  browser:
+    name: workbench browser acceptance (Edge)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install formslang
+        run: python -m pip install -e .
+      - name: Exercise Blueprint and conversion with an isolated offline fixture
+        run: python examples/verify/workbench_browser_check.py --output "${{ runner.temp }}/browser-check"
+      - name: Keep screenshots and browser check results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbench-browser-evidence
+          path: |
+            ${{ runner.temp }}/browser-check/**/result.json
+            ${{ runner.temp }}/browser-check/**/*.png
+          if-no-files-found: warn
+          retention-days: 14
+
   # The promise docs/ci-cd.md is built on: the same session exports the
   # same bytes. Export the showcase module from its XML, then again from
   # the session that first run created, and require identical ZIPs.

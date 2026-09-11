@@ -34,7 +34,7 @@ proposal on every unit, a human decision on every proposal. What comes out
 is an APEX 26.1 application that SQLcl validates and imports — and that the
 same session rebuilds, byte for byte, on a build server.
 
-> **Status: 1.3.1, stable.** The CLI, the session file, the export layout and
+> **Status: 1.3.2, stable.** The CLI, the session file, the export layout and
 > the workbench's local HTTP API are promised stable within 1.x — additive
 > changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
 > proposal the workbench produces is still a draft for a human to approve;
@@ -57,15 +57,14 @@ NSIS and MSI. The steps are in [`docs/releasing.md`](docs/releasing.md).
 
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"
-       alt="The FormsLang workbench reviewing a WHEN-VALIDATE-ITEM trigger: the four lines of Forms code on the left, the APEX page validation proposed to replace them on the right at confidence 0.82, and underneath what changed, split into facts, inferences and assumptions">
+       alt="FormsLang conversion review: readable source and editable proposal panes, focused view tabs and human decision controls">
 </p>
 
 <p align="center">
-  <sub>The workbench mid-review: unit 4 of 59, a <code>WHEN-VALIDATE-ITEM</code> on
-  <code>BK_PRODUTO.VL_PRECO</code>. Left, the four lines that run today; right, the page
-  validation proposed to replace them; underneath, <em>what changed</em> — facts first,
-  then inferences, then the two assumptions the model made and flagged as unverified.
-  The verdict is still open. The bar at the bottom is waiting for a name.</sub>
+  <sub>The conversion workspace in 1.3.2: compare source and proposal, focus on
+  either code pane, or inspect evidence and tests. This real browser capture uses
+  the synthetic showcase and a hand-authored test draft; it is not model output
+  or evidence of a working migration.</sub>
 </p>
 
 ## Creator
@@ -85,6 +84,7 @@ developer community. See [AUTHORS.md](AUTHORS.md).
 - [Why this exists](#why-this-exists) · [What makes the numbers defensible](#what-makes-the-numbers-defensible) · [The verdict taxonomy](#the-verdict-taxonomy)
 - [Two ways to run it](#two-ways-to-run-it) — desktop app, CLI, the Oracle Forms toolchain
 - [Assess a portfolio](#assess-a-portfolio)
+- [Modernization Blueprint](#modernization-blueprint) — understand, inspect and decide, plan
 - [The workbench](#the-workbench) — review, project view, Doc / Diff / Preview
 - [Authentication and multi-user workspaces](#authentication-and-multi-user-workspaces)
 - [AI-assisted conversion](#ai-assisted-conversion) — providers, privacy, enterprise mode
@@ -100,6 +100,7 @@ developer community. See [AUTHORS.md](AUTHORS.md).
 | Job | In the workbench | From a terminal or CI |
 |---|---|---|
 | **Size a migration** — every trigger, built-in and program unit priced against the catalog, copy-paste charged once | the project view | `formslang assess <folder> -o out` |
+| **Understand an application** — shared dependencies, rule candidates, source evidence and reviewed modernization choices | **Blueprint** | `formslang blueprint <file-or-folder> -o out` |
 | **Convert a module** — AI proposal per unit, or write the APEX replacement yourself; approve, reject, send back, with a name on every decision | the review screen | `formslang convert` (headless drafts) + `formslang workbench` |
 | **Document a module** — one self-contained HTML reference: blocks, items, triggers, program units, LOVs, record groups, relations, with the properties Forms actually stored | **Doc** | `formslang doc ORDERS.fmb -o out` |
 | **Diff two revisions** — structurally: what moved, property by property and hunk by hunk, everything else reported unchanged because it was | **Diff** | `formslang diff v1.fmb v2.fmb -o out` |
@@ -313,6 +314,66 @@ next to the `.fmb`, so FormsLang copies each module into a temporary
 directory, converts it there, and moves only the result into your output
 folder.
 
+## Modernization Blueprint
+
+Open **Blueprint** to follow a connected reading path through the legacy
+application. Analysis runs locally; the counts and links come from the source.
+
+1. **Understand:** see the Forms structure, follow observed dependency arrows and
+   start with integrations, transaction logic and candidate validation rules.
+2. **Inspect & decide:** filter components, read the original PL/SQL and evidence,
+   navigate between callers and dependencies, and record your architecture decision.
+3. **Modernization plan:** compare suggested destinations, review outstanding work
+   and export a readable report or machine-readable JSON.
+
+<p align="center">
+  <img src="assets/screenshots/blueprint-overview.png" width="1000"
+       alt="Modernization Blueprint: application counts, observed dependency connections, a review starting point and the optional AI architecture companion">
+</p>
+
+**Explain this application** starts an optional background AI briefing using the
+provider selected in Settings. Elapsed time stays visible. Close and reopen the
+panel, or reload the browser, to reconnect while the Workbench process stays open.
+One request runs at a time. **Discard request** discards its result; the provider
+may still finish in the background. No automatic provider fallback occurs.
+
+The Blueprint briefing sends anonymized structural context: types, classifications
+and observed relationships. Source code, component names, paths and review comments
+are excluded. Responses link back to local components and remain proposals.
+They cannot approve decisions or change official risk, readiness or coverage.
+The **Save AI briefing** action downloads the explanation separately from the
+deterministic report. Local providers remain supported.
+
+<p align="center">
+  <img src="assets/screenshots/blueprint-inspect.png" width="1000"
+       alt="Blueprint component inspection: selected validation candidate, proposed destination and evidence from the original Forms source">
+</p>
+
+<details>
+  <summary>Inspect the original source behind a finding</summary>
+  <img src="assets/screenshots/blueprint-source-evidence.png" width="1000"
+       alt="Blueprint evidence with decoded PL/SQL, source excerpts and a link to the containing unit's dependencies">
+</details>
+
+Architecture review and implementation coverage answer different questions.
+Accepting a recommendation records an approach; claiming an implementation also
+requires an evidence reference. Neither verifies runtime parity. Unsaved review
+fields survive component navigation and modal close/reopen in the same browser tab,
+with an explicit discard action and a warning before leaving with unsaved edits.
+Save decisions before reloading: these drafts are held only in tab memory.
+
+These are real browser captures of the repository's synthetic showcase fixture.
+The clearly labeled offline test provider exercises the UI without calling a model.
+Arrows show source references, not runtime execution order.
+
+```bash
+formslang blueprint ./application -o out --title Purchasing
+formslang workbench out/blueprint.session.db
+```
+
+The [Blueprint guide](docs/modernization-blueprint.md) documents evidence levels,
+classification rules, formulas, metadata input, privacy and analysis limits.
+
 ## The workbench
 
 Assessment tells you the size of the job. The workbench does the job — one
@@ -346,8 +407,16 @@ session or generated artifact is written beside your source.
 The screen shows the original Forms code on the left — syntax-highlighted,
 with its verdict, confidence, the open questions the model raised and the
 built-ins it had to deal with — and the proposed APEX code on the right,
-editable. Approve, reject, or send back for work. That screen is the one in
-the screenshot at the top of this page. Everything has a key:
+editable. **Compare**, **Forms source**, **APEX proposal** and **Evidence & tests**
+give the code and its supporting findings room to read. Decision controls stay
+available; a unit drawer makes navigation usable on narrow screens.
+
+Proposal edits and review notes are retained per unit while you navigate, filter
+or receive conversion updates. An unsaved indicator and explicit discard action
+make that state visible. Save before reloading or closing the app: drafts are
+held in tab memory, with a browser warning before leaving. A late save response
+does not move you back to a unit you already left, and polling cannot overwrite
+your edits. Approve, reject, or send back for work. Everything has a key:
 
 | Key | Action |
 |---|---|
@@ -382,8 +451,8 @@ it instead of going quiet.
 ### What the screen tells you before you decide
 
 Every unit is measured the moment the module opens — offline, with no
-provider configured and nothing sent anywhere. Beside the code comparison,
-in expandable sections that stay shut until you want them:
+provider configured and nothing sent anywhere. In **Evidence & tests**,
+expandable sections expose the supporting findings:
 
 - **Migration risk** — LOW / MEDIUM / HIGH / CRITICAL, with every point of
   the score traced back to a construct actually found in the body. A
@@ -1132,10 +1201,27 @@ element type the exporter maps, with its own README.
 CI runs the suite on Linux and Windows across Python 3.10–3.13, runs
 `ruff`, and exports the showcase module twice to require identical bytes.
 
+For browser acceptance and fresh screenshots, install Node 22+ and Edge/Chromium:
+
+```bash
+python examples/verify/workbench_browser_check.py --output out/browser-check
+```
+
+The check creates an isolated profile, settings and session from the synthetic
+showcase, with a labeled offline response provider. It checks Blueprint navigation,
+background request recovery, review drafts, downloadable briefings, conversion
+editing and narrow layouts; each run writes screenshots and `result.json`.
+Node/Chromium are verification tools, not application dependencies. No live model
+or Oracle database is exercised by this check. CI runs it on Edge and retains
+screenshots and results as the `workbench-browser-evidence` artifact.
+
 ## Roadmap
 
 ### Available
 
+- [x] Modernization Blueprint: shared application dependencies, source evidence,
+      architectural review, implementation coverage and optional background AI
+      explanations in the existing Workbench
 - [x] Oracle toolchain bridge and XML parser; Forms homes found under
       `C:\Oracle` with nothing configured
 - [x] Forms→APEX classification catalog

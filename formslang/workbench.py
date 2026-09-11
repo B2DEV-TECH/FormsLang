@@ -22,7 +22,10 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
+import uuid
 import webbrowser
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -128,6 +131,9 @@ class Workbench:
         self.auth_store = auth_store
         self.auth_data_dir = Path(auth_data_dir) if auth_data_dir is not None else None
         self._lock = threading.RLock()
+        self._blueprint_cache = None
+        self._blueprint_ai_jobs = OrderedDict()
+        self._blueprint_ai_active = None
         # An upgrade must not leave a key sitting in plaintext: move it
         # into the OS credential store the first time we come up.
         migrate_plaintext_key()
@@ -148,16 +154,32 @@ class Workbench:
     # -- analysis ---------------------------------------------------------
 
     def blueprint_payload(self):
-        payload = self.store.blueprint()
+        payload = self._cached_blueprint()
         if payload is None:
             raise ValueError("Generate a Blueprint from the open module or an application directory first")
         return payload
 
-    def blueprint_state(self):
-        payload = self.store.blueprint()
+    def _cached_blueprint(self):
+        # total_changes catches writes on this connection, data_version catches
+        # another connection's commits. Keep only the current session snapshot;
+        # review/readiness updates must invalidate it just like regeneration.
+        with self._lock:
+            db = self.store.db
+            key = (self.store, db.total_changes, db.execute("PRAGMA data_version").fetchone()[0])
+            if self._blueprint_cache is None or self._blueprint_cache[0] != key:
+                self._blueprint_cache = (key, self.store.blueprint())
+            return self._blueprint_cache[1]
+
+    def blueprint_context_id(self, auth=None):
+        actor = (auth[1]["active_org_id"], auth[1]["user_id"]) if auth else ("local",)
+        return blueprint.digest([str(self.store.path.resolve()), actor])
+
+    def blueprint_state(self, auth=None):
+        payload = self._cached_blueprint()
         if payload is None:
-            return {"available": False}
+            return {"available": False, "context_id": self.blueprint_context_id(auth)}
         return {"available": True, "guide": blueprint_view.overview(payload),
+            "context_id": self.blueprint_context_id(auth),
             "ai_provider": {"type": self.provider.type_id, "label": self.provider.describe()},
             **{key: payload[key] for key in (
             "application", "summary", "readiness", "architecture", "failures", "limitations",
@@ -170,7 +192,7 @@ class Workbench:
                         "dependencies": sorted({e["type"] for e in payload["edges"]}),
                         "domains": sorted({d["potential_domain"] for d in payload["enterprise_context"].get("detections", [])})}}
 
-    def build_blueprint(self, path="", enterprise=False):
+    def build_blueprint(self, path="", enterprise=False, auth=None):
         with self._lock:
             if self.job["running"]:
                 raise ValueError("wait for the conversion job to finish")
@@ -189,7 +211,106 @@ class Workbench:
                 payload = blueprint.build([module], title=module.name, enterprise=enterprise)
                 blueprint.session_progress(payload, self.store)
                 self.store.save_blueprint(payload)
-            return self.blueprint_state()
+            return self.blueprint_state(auth)
+
+    def _blueprint_ai_context(self, payload, auth=None):
+        return (self.blueprint_context_id(auth), payload["source_revision"],
+                payload["engine_version"], self.provider.type_id,
+                self.provider.model, self.provider.base_url)
+
+    @staticmethod
+    def _blueprint_ai_public(job):
+        elapsed = (job.get("finished") or time.monotonic()) - job["started"]
+        state = {k: job[k] for k in ("status", "job_id", "scope", "entity", "source_revision", "provider")}
+        state["elapsed_seconds"] = max(0, int(elapsed))
+        for key in ("result", "error"):
+            if key in job:
+                state[key] = job[key]
+        return state
+
+    def blueprint_ai_state(self, *, scope="application", entity="", job_id="", auth=None):
+        with self._lock:
+            payload = self._cached_blueprint()
+            if payload is None:
+                return {"status": "stale" if job_id else "idle"}
+            context = self._blueprint_ai_context(payload, auth)
+            jobs = ([self._blueprint_ai_jobs.get(job_id)] if job_id else
+                    reversed(list(self._blueprint_ai_jobs.values())))
+            for job in jobs:
+                if job and job["context"] == context and (job_id or (job["scope"] == scope and job["entity"] == entity)):
+                    return self._blueprint_ai_public(job)
+            return {"status": "stale" if job_id else "idle"}
+
+    def start_blueprint_ai(self, body, auth=None, *, background=True):
+        with self._lock:
+            payload = self.blueprint_payload()
+            revision = str(body.get("source_revision") or "")
+            if (background or revision) and revision != payload["source_revision"]:
+                raise ValueError("The Blueprint changed. Reload it before requesting an AI explanation.")
+            if payload.get("stale_engine"):
+                raise ValueError("Regenerate the Blueprint before requesting an AI explanation with this analysis version.")
+            scope = "application" if body.get("scope") == "application" else "entity"
+            entity = "" if scope == "application" else str(body.get("entity") or "")
+            if scope == "entity" and not any(f["entity"] == entity for f in payload["findings"]):
+                raise ValueError("unknown Blueprint finding")
+            blueprint_ai.validate_provider(self.provider, application=scope == "application")
+            existing = self.blueprint_ai_state(scope=scope, entity=entity, auth=auth)
+            if existing["status"] == "running" or (existing["status"] == "completed" and not body.get("refresh")):
+                return existing
+            if self._blueprint_ai_active is not None:
+                raise ValueError("An AI explanation is still running. Wait for it to finish before starting another.")
+            if self.job["running"]:
+                raise ValueError("Wait for the conversion job to finish before requesting an AI explanation.")
+            job_id = uuid.uuid4().hex
+            job = {"job_id": job_id, "status": "running", "scope": scope, "entity": entity,
+                   "context": self._blueprint_ai_context(payload, auth),
+                   "source_revision": payload["source_revision"], "started": time.monotonic(),
+                   "provider": {"type": self.provider.type_id, "label": self.provider.describe()}}
+            self._blueprint_ai_jobs[job_id] = job
+            # Bounded, memory-only proposals. A restart intentionally forgets
+            # them; no source or provider credentials are added to SQLite.
+            while len(self._blueprint_ai_jobs) > 8:
+                self._blueprint_ai_jobs.popitem(last=False)
+            self._blueprint_ai_active = job_id
+            provider = self.provider
+            if background:
+                threading.Thread(target=self._run_blueprint_ai, args=(job, payload, provider), daemon=True).start()
+            return self._blueprint_ai_public(job) if background else (job, payload, provider)
+
+    def _run_blueprint_ai(self, job, payload, provider):
+        try:
+            if job["scope"] == "application":
+                result = blueprint_ai.application_review(payload, provider)
+            else:
+                result = blueprint_ai.review(payload, job["entity"], provider)
+            with self._lock:
+                if job["status"] != "cancelled":
+                    job.update(status="completed", result=result)
+        except (ValueError, PolicyViolation) as exc:
+            with self._lock:
+                if job["status"] != "cancelled":
+                    job.update(status="failed", error=str(exc))
+        except Exception:  # noqa: BLE001 - provider internals/credentials never reach the browser
+            with self._lock:
+                if job["status"] != "cancelled":
+                    job.update(status="failed", error="AI provider failed. Check Settings and retry; no findings were changed.")
+        finally:
+            with self._lock:
+                job["finished"] = time.monotonic()
+                self._blueprint_ai_active = None
+
+    def cancel_blueprint_ai(self, job_id, auth=None):
+        with self._lock:
+            state = self.blueprint_ai_state(job_id=job_id, auth=auth)
+            if not job_id or state["status"] in {"idle", "stale"}:
+                raise ValueError("This AI request is no longer available in the current Blueprint.")
+            job = self._blueprint_ai_jobs[job_id]
+            job["status"] = "cancelled"
+            job.pop("result", None)
+            job.pop("error", None)
+            # Discard is not process termination. Retain the active guard until
+            # the provider settles, so cancel/retry cannot multiply requests.
+            return self._blueprint_ai_public(job)
 
     def authorize_blueprint(self, auth, action):
         if self.auth_store is None:
@@ -329,20 +450,31 @@ class Workbench:
 
     # -- read ------------------------------------------------------------
 
-    def state(self) -> dict:
-        return {
-            "session": self.store.session(),
-            # The file a terminal or CI job would pass to `formslang export`
-            # to rebuild exactly what the Export button builds.
-            "session_path": str(self.store.path),
-            "stats": self.store.stats(),
-            "provider": self.provider.describe(),
-            "provider_id": self.provider.type_id,
-            "model": self.provider.model,
-            "browse_root": str(self.browse_root),
-            "can_export_apex": self.module is not None,
-            "tasks": [v.to_dict() for v in self.store.all_views()],
-        }
+    def state(self, auth=None) -> dict:
+        with self._lock:
+            return {
+                "session": self.store.session(),
+                "context_id": self.blueprint_context_id(auth),
+                # The file a terminal or CI job would pass to `formslang export`
+                # to rebuild exactly what the Export button builds.
+                "session_path": str(self.store.path),
+                "stats": self.store.stats(),
+                "provider": self.provider.describe(),
+                "provider_id": self.provider.type_id,
+                "model": self.provider.model,
+                "browse_root": str(self.browse_root),
+                "can_export_apex": self.module is not None,
+                "tasks": [v.to_dict() for v in self.store.all_views()],
+            }
+
+    def require_conversion_context(self, body, auth=None):
+        """Called under the session lock before a request writes or starts work.
+
+        Optional for API compatibility; the Workbench UI always sends its
+        captured context. Matching task IDs do not identify a session.
+        """
+        if body.get("context_id") and body["context_id"] != self.blueprint_context_id(auth):
+            raise ValueError("The open session changed. Reload it before converting or saving a review decision.")
 
     def _module_from_session(self):
         """Recover structure for an existing session without reconverting it."""
@@ -854,6 +986,8 @@ class Workbench:
         with self._lock:
             if self.job["running"]:
                 return False
+            if self._blueprint_ai_active is not None:
+                raise ValueError("An AI explanation is still running. Wait for it to finish before converting.")
             run_id = self.store.start_job_run(len(task_ids))
             self.job = {
                 "running": True, "done": 0, "failed": 0, "total": len(task_ids),
@@ -1088,7 +1222,10 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         if length > MAX_BODY:
             raise ValueError("request body too large")
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        body = json.loads(self.rfile.read(length).decode("utf-8"))
+        if not isinstance(body, dict):
+            raise ValueError("request body must be a JSON object")  # noqa: TRY004 - HTTP 400 input validation
+        return body
 
     def _read_upload(self) -> bytes:
         length = int(self.headers.get("Content-Length") or 0)
@@ -1260,14 +1397,20 @@ class Handler(BaseHTTPRequestHandler):
                     for p in rows
                 ]})
             elif path == "/api/state":
-                self._json(wb.state())
+                self._json(wb.state(auth))
             elif path.startswith("/api/blueprint"):
                 with wb._lock:
                     wb.authorize_blueprint(auth, rbac.VIEW_PROJECT)
+                    q = parse_qs(query)
+                    if q.get("context_id") and q["context_id"][0] != wb.blueprint_context_id(auth):
+                        raise ValueError("The open session changed. Reopen the Blueprint to inspect its current source.")
                     if path == "/api/blueprint":
-                        self._json(wb.blueprint_state())
+                        self._json(wb.blueprint_state(auth))
+                    elif path == "/api/blueprint/ai":
+                        scope = q.get("scope", ["entity" if q.get("entity") else "application"])[0]
+                        self._json(wb.blueprint_ai_state(scope=scope, entity=q.get("entity", [""])[0],
+                                                       job_id=q.get("job_id", [""])[0], auth=auth))
                     elif path == "/api/blueprint/explore":
-                        q = parse_qs(query)
                         allowed = {"node", "module", "entity_type", "dependency_type", "decision", "review", "domain", "risk_level", "query", "offset", "limit"}
                         self._json(blueprint.explore(wb.blueprint_payload(), **{k: v[0] for k, v in q.items() if k in allowed}))
                     elif path == "/api/blueprint/report":
@@ -1296,14 +1439,19 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/analysis":
                 self._json(wb.analysis_state())
             elif path == "/api/deps":
-                q = parse_qs(query)
-                self._json(wb.deps_state(
-                    task_id=q.get("task", [""])[0],
-                    node=q.get("node", [""])[0],
-                    depth=int(q.get("depth", ["2"])[0] or 2),
-                ))
+                with wb._lock:
+                    q = parse_qs(query)
+                    wb.require_conversion_context({"context_id": q.get("context_id", [""])[0]}, auth)
+                    self._json(wb.deps_state(
+                        task_id=q.get("task", [""])[0],
+                        node=q.get("node", [""])[0],
+                        depth=int(q.get("depth", ["2"])[0] or 2),
+                    ))
             elif path == "/api/tests":
-                self._json(wb.tests_state(parse_qs(query).get("task", [""])[0]))
+                with wb._lock:
+                    q = parse_qs(query)
+                    wb.require_conversion_context({"context_id": q.get("context_id", [""])[0]}, auth)
+                    self._json(wb.tests_state(q.get("task", [""])[0]))
             elif path == "/api/dashboard":
                 self._json(wb.dashboard_state())
             elif path == "/api/doc":
@@ -1401,8 +1549,10 @@ class Handler(BaseHTTPRequestHandler):
                     if path.endswith("/export"):
                         action = rbac.EXPORT_PROJECT
                     wb.authorize_blueprint(auth, action)
+                    if body.get("context_id") and body["context_id"] != wb.blueprint_context_id(auth):
+                        raise ValueError("The open session changed. Reopen the Blueprint before applying this action.")
                     if path == "/api/blueprint/build":
-                        self._json(wb.build_blueprint(str(body.get("path") or ""), bool(body.get("enterprise"))))
+                        self._json(wb.build_blueprint(str(body.get("path") or ""), bool(body.get("enterprise")), auth))
                     elif path == "/api/blueprint/review":
                         allowed = {"entity", "revision", "action", "reviewer", "comment", "recommendation", "target", "coverage", "coverage_evidence"}
                         review = {key: str(value) for key, value in body.items() if key in allowed}
@@ -1417,16 +1567,31 @@ class Handler(BaseHTTPRequestHandler):
                         root = blueprint_io.write(wb.blueprint_payload(), wb.store.path.parent)
                         self._json({"path": str(root)})
                     elif path == "/api/blueprint/ai":
-                        payload, provider = wb.blueprint_payload(), wb.provider
+                        started = wb.start_blueprint_ai(body, auth, background=body.get("background") is True)
+                    elif path == "/api/blueprint/ai/cancel":
+                        self._json(wb.cancel_blueprint_ai(str(body.get("job_id") or ""), auth))
                     else:
                         self._json({"error": "not found"}, 404)
                 # Long provider calls must not hold the session mutex. The
                 # immutable snapshot above cannot apply decisions to a new session.
                 if path == "/api/blueprint/ai":
-                    if body.get("scope") == "application":
-                        self._json(blueprint_ai.application_review(payload, provider))
+                    if isinstance(started, dict):
+                        if body.get("background") is not True and started["status"] == "completed":
+                            self._json(started["result"])
+                        else:
+                            self._json(started, 202 if started["status"] == "running" else 200)
                     else:
-                        self._json(blueprint_ai.review(payload, str(body.get("entity") or ""), provider))
+                        job, payload, provider = started
+                        wb._run_blueprint_ai(job, payload, provider)
+                        # Old synchronous callers also cannot receive a result
+                        # from a session/provider context that has since changed.
+                        with wb._lock:
+                            wb.authorize_blueprint(auth, rbac.VIEW_PROJECT)
+                            state = wb.blueprint_ai_state(job_id=job["job_id"], auth=auth)
+                        if state["status"] == "completed":
+                            self._json(state["result"])
+                        else:
+                            self._json({"error": state.get("error", "The Blueprint context changed; reopen the explanation in its original session.")}, 400)
 
             elif self.path == "/api/auth/login":
                 email = str(body.get("email") or "")
@@ -1591,62 +1756,70 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({k: adopted[k] for k in ("id", "name", "storage_mode", "adopted_at")})
 
             elif self.path == "/api/propose":
-                if body.get("all"):
-                    ids = [t.id for t in wb.store.pending_tasks()]
-                else:
-                    ids = [body["task_id"]] if body.get("task_id") else []
-                if not ids:
-                    self._json({"error": "nothing to convert"}, 400)
-                    return
-                if not wb.start_job(ids):
-                    self._json({"error": "a conversion is already running"}, 409)
-                    return
-                self._json({"started": len(ids)})
+                with wb._lock:
+                    wb.require_conversion_context(body, auth)
+                    if body.get("all"):
+                        ids = [t.id for t in wb.store.pending_tasks()]
+                    else:
+                        ids = [body["task_id"]] if body.get("task_id") else []
+                    if not ids:
+                        self._json({"error": "nothing to convert"}, 400)
+                        return
+                    if not wb.start_job(ids):
+                        self._json({"error": "a conversion is already running"}, 409)
+                        return
+                    self._json({"started": len(ids)})
 
             elif self.path == "/api/job/cancel":
                 self._json(wb.cancel_job())
 
             elif self.path == "/api/decision":
-                task_id = body.get("task_id") or ""
-                state = body.get("state") or ""
-                if state not in STATES:
-                    self._json({"error": f"unknown state {state!r}"}, 400)
-                    return
-                if wb.store.get_task(task_id) is None:
-                    self._json({"error": "unknown task"}, 404)
-                    return
-                wb.store.set_decision(
-                    task_id,
-                    state,
-                    code=body.get("code", ""),
-                    comment=body.get("comment", ""),
-                    reviewer=body.get("reviewer", ""),
-                )
-                self._json({"ok": True, "stats": wb.store.stats()})
+                with wb._lock:
+                    wb.require_conversion_context(body, auth)
+                    task_id = body.get("task_id") or ""
+                    state = body.get("state") or ""
+                    if state not in STATES:
+                        self._json({"error": f"unknown state {state!r}"}, 400)
+                        return
+                    if wb.store.get_task(task_id) is None:
+                        self._json({"error": "unknown task"}, 404)
+                        return
+                    wb.store.set_decision(
+                        task_id,
+                        state,
+                        code=body.get("code", ""),
+                        comment=body.get("comment", ""),
+                        reviewer=body.get("reviewer", ""),
+                    )
+                    self._json({"ok": True, "stats": wb.store.stats()})
 
             elif self.path == "/api/test-decision":
-                out = wb.decide_test_case(
-                    case_id=str(body.get("case_id") or ""),
-                    state=str(body.get("state") or ""),
-                    reviewer=str(body.get("reviewer") or ""),
-                    comment=str(body.get("comment") or ""),
-                )
-                if not out.get("ok"):
-                    self._json(out, 400 if out.get("error") == "unknown state" else 404)
-                    return
-                self._json(out)
+                with wb._lock:
+                    wb.require_conversion_context(body, auth)
+                    out = wb.decide_test_case(
+                        case_id=str(body.get("case_id") or ""),
+                        state=str(body.get("state") or ""),
+                        reviewer=str(body.get("reviewer") or ""),
+                        comment=str(body.get("comment") or ""),
+                    )
+                    if not out.get("ok"):
+                        self._json(out, 400 if out.get("error") == "unknown state" else 404)
+                        return
+                    self._json(out)
 
             elif self.path == "/api/test-run":
-                out = wb.record_test_run(
-                    case_id=str(body.get("case_id") or ""),
-                    run_state=str(body.get("run_state") or ""),
-                    run_by=str(body.get("run_by") or ""),
-                    run_notes=str(body.get("run_notes") or ""),
-                )
-                if not out.get("ok"):
-                    self._json(out, 400 if out.get("error") == "unknown run state" else 404)
-                    return
-                self._json(out)
+                with wb._lock:
+                    wb.require_conversion_context(body, auth)
+                    out = wb.record_test_run(
+                        case_id=str(body.get("case_id") or ""),
+                        run_state=str(body.get("run_state") or ""),
+                        run_by=str(body.get("run_by") or ""),
+                        run_notes=str(body.get("run_notes") or ""),
+                    )
+                    if not out.get("ok"):
+                        self._json(out, 400 if out.get("error") == "unknown run state" else 404)
+                        return
+                    self._json(out)
 
             elif self.path == "/api/open":
                 self._json(wb.open_module(body.get("path") or ""))
