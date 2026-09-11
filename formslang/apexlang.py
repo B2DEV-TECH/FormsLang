@@ -22,6 +22,7 @@ and then kept (:func:`checksum_salt`).
 
 from __future__ import annotations
 
+import getpass
 import html
 import json
 import re
@@ -29,6 +30,7 @@ import secrets
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -396,6 +398,70 @@ class Binding:
     @property
     def qualified(self) -> str:
         return f"{self.owner}.{self.table}" if self.owner else self.table
+
+
+def apply_block_keys(
+    store: Store,
+    module: FormModule,
+    confirm: dict[str, str],
+    forget: Iterable[str] = (),
+    by: str = "",
+) -> None:
+    """Record (or withdraw) the primary keys a reviewer confirmed.
+
+    The one door between a page of unbound fields and a form APEX fetches
+    and saves, shared by ``formslang export --key`` and the workbench's
+    export dialog. It is deliberately explicit: a block name the module has
+    not got is an error rather than a silently ignored line, and the answer
+    is stamped with a name and a date, because a wrong key raises nothing at
+    run time -- it fetches and saves the wrong row. Withdrawal runs first, so
+    forgetting and re-confirming in one call means what it reads like.
+    """
+    tables = {block.name.upper(): block.query_data_source_name for block in module.blocks}
+    for name in forget:
+        store.forget_block_key(name)
+    who = (by or "").strip() or getpass.getuser()
+    for raw_block, raw_column in confirm.items():
+        block = str(raw_block or "").strip().upper()
+        column = str(raw_column or "").strip()
+        if not block or not column:
+            raise ValueError("a block and a key column are both required")
+        if block not in tables:
+            known = ", ".join(sorted(tables)) or "none"
+            raise ValueError(
+                f"--key names a block this module has not got: {block} (has: {known})"
+            )
+        store.confirm_block_key(block, tables[block], column, who)
+
+
+def binding_options(store: Store, module: FormModule, page: int = 1) -> list[dict]:
+    """Every block a confirmed key could bind, with the columns on offer.
+
+    :func:`confirmed_bindings` says what happened to an export; this says
+    what *could* happen to the next one, and is the only thing that carries
+    the block's columns. The dialog offers them as a list rather than a text
+    box because a column the block does not place on the page is refused by
+    ``confirmed_bindings`` without ever saying so on screen -- it becomes an
+    unbound region with the reason buried in the manifest.
+    """
+    confirmed = store.block_keys()
+    options: list[dict] = []
+    for candidate in bind_candidates(build_layout(module, page)):
+        row = confirmed.get(candidate.block) or {}
+        owner, table = _split_table(candidate.table)
+        options.append(
+            {
+                "block": candidate.block,
+                "table": f"{owner}.{table}" if owner else table,
+                "region": candidate.region,
+                "forms_hint": candidate.suggestion,
+                "columns": sorted(candidate.columns),
+                "confirmed_key": sql_name(row.get("key_column", "")),
+                "confirmed_by": row.get("confirmed_by", ""),
+                "confirmed_at": row.get("confirmed_at", ""),
+            }
+        )
+    return options
 
 
 def confirmed_bindings(store: Store, layout: PageLayout) -> tuple[dict[str, Binding], list[dict]]:

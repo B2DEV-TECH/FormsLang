@@ -517,6 +517,22 @@ STYLE_BLOCK = r"""<style>
   .import-note.warn { border-color: var(--red); color: var(--red); }
   .import-note.cli { border-style: dashed; }
   .import-note.cli code { color: var(--ink); user-select: all; overflow-wrap: anywhere; }
+  .bind-section { margin: 0 18px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; }
+  .bind-section[hidden] { display: none; }
+  .bind-head { color: var(--ink-dim); font: 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .bind-lead { color: var(--ink-dim); font: 11px var(--mono); line-height: 1.5; margin: 6px 0 4px; }
+  .bind-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start;
+    padding: 10px 0 2px; border-top: 1px solid var(--line); color: var(--ink); font: 11px var(--mono);
+  }
+  .bind-row label { display: grid; gap: 6px; color: var(--ink-dim); font: 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .bind-row select {
+    background: var(--ground); border: 1px solid var(--line); color: var(--ink);
+    padding: 8px 10px; border-radius: 6px; font: 12px var(--mono); text-transform: none; transition: border-color .14s;
+  }
+  .bind-row select:focus { outline: none; border-color: var(--gold-deep); }
+  .bind-note { color: var(--ink-dim); font: 10px var(--mono); line-height: 1.5; margin-top: 4px; }
+  .bind-empty { color: var(--ink-dim); font: 11px var(--mono); line-height: 1.5; }
   .import-secondary { margin: 0 18px 12px; background: none; border: none; color: var(--ink-dim); font: 11px var(--mono); text-decoration: underline; cursor: pointer; padding: 0; }
   .import-result { margin: 0 18px 18px; padding: 10px 12px; border-radius: 6px; font: 11px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
   .import-result.ok { border: 1px solid var(--green); color: var(--green); }
@@ -567,6 +583,7 @@ STYLE_BLOCK = r"""<style>
     .modal { padding: 10px; } .sheet { max-height: calc(100vh - 20px); }
     .picker-hero, .picker-files, .export-form { grid-template-columns: 1fr; }
     .picker-info { display: none; } .export-form label.wide { grid-column: auto; }
+    .bind-row { grid-template-columns: 1fr; }
     .steps { grid-template-columns: 1fr; }
     .ready { grid-template-columns: 1fr; }
   }

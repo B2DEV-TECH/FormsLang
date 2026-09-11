@@ -38,7 +38,7 @@ from pathlib import Path
 
 from . import __version__, apeximport, authstore, config, formdiff, formdoc, formui, rules
 from .ai import PROVIDERS, check_provider, provider_from_env
-from .apexlang import export_apexlang, last_export_config
+from .apexlang import apply_block_keys, export_apexlang, last_export_config
 from .assess import (
     HOURS_PER_POINT_DEFAULT,
     TIERS,
@@ -501,26 +501,25 @@ def _export_config(args: argparse.Namespace, store: Store) -> dict:
 def _apply_key_flags(args: argparse.Namespace, store, module) -> None:
     """Record (or withdraw) the primary keys a reviewer confirmed by flag.
 
-    This is the whole gate between a page of unbound fields and a form APEX
-    fetches and saves, so it is deliberately explicit: a block name that is
-    not in the module is an error rather than a silently ignored line, and
-    the answer is stamped with a name and a date. ``--forget-key`` runs
-    first, so withdrawing and re-confirming in one command means what it
-    reads like.
+    Only the flag spelling lives here. The gate itself is
+    :func:`formslang.apexlang.apply_block_keys`, shared with the workbench's
+    export dialog, so a key confirmed by a terminal and a key confirmed by a
+    click are checked and stamped by the same code.
     """
-    tables = {block.name.upper(): block.query_data_source_name for block in module.blocks}
-    for name in getattr(args, "forget_key", None) or []:
-        store.forget_block_key(name)
-    by = (getattr(args, "key_by", "") or "").strip() or getpass.getuser()
+    confirm: dict[str, str] = {}
     for pair in getattr(args, "key", None) or []:
         block, sep, column = pair.partition("=")
         block, column = block.strip().upper(), column.strip()
         if not sep or not block or not column:
             raise ValueError(f"--key takes BLOCK=COLUMN, not {pair!r}")
-        if block not in tables:
-            known = ", ".join(sorted(tables)) or "none"
-            raise ValueError(f"--key names a block this module has not got: {block} (has: {known})")
-        store.confirm_block_key(block, tables[block], column, by)
+        confirm[block] = column
+    apply_block_keys(
+        store,
+        module,
+        confirm,
+        getattr(args, "forget_key", None) or [],
+        (getattr(args, "key_by", "") or "").strip(),
+    )
 
 
 def cmd_export(args: argparse.Namespace) -> int:

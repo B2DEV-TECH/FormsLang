@@ -67,7 +67,12 @@ from .ai import (
     setting,
 )
 from .analysis import analyze_task, summarize
-from .apexlang import export_apexlang, last_export_config
+from .apexlang import (
+    apply_block_keys,
+    binding_options,
+    export_apexlang,
+    last_export_config,
+)
 from .config import (
     SecureStorageUnavailable,
     config_path,
@@ -519,17 +524,49 @@ class Workbench:
             handle.write(content)
         return self.open_module(str(target))
 
-    def export(self, config: dict | None = None) -> dict:
-        """Export review artifacts plus an APEXlang 26.1 import ZIP."""
+    def export(self, config: dict | None = None, by: str = "") -> dict:
+        """Export review artifacts plus an APEXlang 26.1 import ZIP.
+
+        ``config["keys"]`` carries the export dialog's block -> key column
+        choices, an empty column meaning "withdraw this confirmation". They
+        are applied before the export and then dropped from the config: the
+        answers belong to the session's ``block_key`` table, and the
+        remembered export config must not become a second, staler copy of
+        who confirmed what.
+        """
         module = self.module or self._module_from_session()
         if module is None:
             raise ValueError("open a Forms module before exporting APEX")
         self.module = module
+        config = dict(config or {})
+        keys = config.pop("keys", None) or {}
+        confirm = {b: c for b, c in keys.items() if str(c or "").strip()}
+        forget = [b for b, c in keys.items() if not str(c or "").strip()]
+        if confirm or forget:
+            apply_block_keys(self.store, module, confirm, forget, by)
         with telemetry.stage(self.store.record_stage, "export"):
             result = export_apexlang(
                 self.store, module, self.export_dir, config, self.provider
             )
         return result.to_dict()
+
+    def binding_state(self) -> dict:
+        """The blocks a confirmed key could turn into a form, for the dialog.
+
+        The dialog needs this *before* an export exists: which blocks
+        qualify, which columns each one places on the page, and what a
+        reviewer already confirmed. Nothing here decides anything -- the
+        decision is the reviewer picking a column.
+        """
+        module = self.module or self._module_from_session()
+        if module is None:
+            return {"candidates": []}
+        self.module = module
+        try:
+            page = int(last_export_config(self.store).get("page") or 1)
+        except (TypeError, ValueError):
+            page = 1
+        return {"candidates": binding_options(self.store, module, page)}
 
     def list_exports(self) -> dict:
         """Every APEXlang ZIP built so far, newest first."""
@@ -1136,6 +1173,23 @@ class Handler(BaseHTTPRequestHandler):
     def _cleared_cookie_header(self) -> str:
         return f"{self.AUTH_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0"
 
+    def _actor(self) -> str:
+        """Who is making a decision this request records, or "".
+
+        Empty is the honest answer when the workbench runs without accounts:
+        the caller is whoever is at the machine, and the gate falls back to
+        the OS user exactly as the CLI does. Never invent a name for a
+        record somebody is meant to be answerable for.
+        """
+        wb = self.workbench
+        if wb.auth_store is None:
+            return ""
+        resolved = self._resolve_auth()
+        if resolved is None:
+            return ""
+        user = wb.auth_store.get_user(resolved[1]["user_id"])
+        return (user["email"] if user else "") or ""
+
     def _whoami_payload(self) -> dict:
         resolved = self._resolve_auth()
         if resolved is None:
@@ -1237,6 +1291,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(wb.browse(where))
             elif path == "/api/exports":
                 self._json(wb.list_exports())
+            elif path == "/api/bindings":
+                self._json(wb.binding_state())
             elif path == "/api/analysis":
                 self._json(wb.analysis_state())
             elif path == "/api/deps":
@@ -1609,7 +1665,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(wb.open_terminal(str(body.get("provider") or "")))
 
             elif self.path == "/api/export":
-                self._json({"ok": True, **wb.export(body), "stats": wb.store.stats()})
+                self._json(
+                    {
+                        "ok": True,
+                        **wb.export(body, by=self._actor()),
+                        "stats": wb.store.stats(),
+                    }
+                )
 
             elif self.path == "/api/exports/open":
                 self._json(wb.reveal_export(str(body.get("name") or "")))

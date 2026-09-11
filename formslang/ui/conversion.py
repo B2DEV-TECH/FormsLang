@@ -172,6 +172,11 @@ EXPORT_JS = r"""function exportApex() {
       <label class="wide checkbox"><input type="checkbox" name="ai_layout"> Ask the AI provider to lay out the regions the rules could not place cleanly (uses the model in Settings; the plan is cached on this session)</label>
       <label class="wide checkbox"><input type="checkbox" name="import_now"> Import into APEX right after building (runs SQLcl for you, locally)</label>
     </div>
+    <div class="bind-section" hidden>
+      <div class="bind-head">Data binding</div>
+      <div class="bind-lead">A block only becomes a form APEX fetches and saves once you name the column that identifies one row. The answer is saved with your name and today's date. A wrong key raises no error &mdash; it fetches and saves the wrong row.</div>
+      <div class="bind-rows"></div>
+    </div>
     <div class="import-note cli"><span>Same build from a terminal or CI:</span> <code data-cli></code></div>
     <div class="import-note warn" hidden></div>
     <div class="export-form import-fields" hidden>${importFieldsHtml({})}</div>
@@ -197,11 +202,22 @@ EXPORT_JS = r"""function exportApex() {
   const value = (name) => form.querySelector(`[name="${name}"]`).value.trim();
   const aiLayout = form.querySelector('[name="ai_layout"]');
   const cliLine = body.querySelector("[data-cli]");
+  const bindSection = body.querySelector(".bind-section");
+  const bindRows = bindSection.querySelector(".bind-rows");
+  // What was confirmed before this dialog opened, so the CLI line knows the
+  // difference between "never bound" and "just withdrawn" -- only the second
+  // one is a --forget-key.
+  let bindConfirmed = {};
+  const bindKeys = () => {
+    const keys = {};
+    bindRows.querySelectorAll("select[data-block]").forEach((s) => { keys[s.dataset.block] = s.value; });
+    return keys;
+  };
   const showCli = () => {
     cliLine.textContent = exportCommand(state.session_path, {
       app_id: value("app_id"), alias: value("alias"), page: value("page"),
       workspace: value("workspace"), schema: value("schema"),
-      ai_layout: aiLayout.checked,
+      ai_layout: aiLayout.checked, keys: bindKeys(), confirmed: bindConfirmed,
     });
   };
   form.oninput = showCli;
@@ -210,6 +226,19 @@ EXPORT_JS = r"""function exportApex() {
   // The saved connection, whether SQLcl is reachable and the previous
   // export's choices arrive after the dialog is already up, so a slow lookup
   // never delays opening it. A field the user already changed is left alone.
+  // Which blocks a confirmed key could turn into a form. Fetched beside the
+  // lookup below rather than before the dialog opens, for the same reason:
+  // parsing the module must never be what the reviewer waits on.
+  api("/api/bindings").then((data) => {
+    const list = data.candidates || [];
+    bindConfirmed = {};
+    list.forEach((c) => { if (c.confirmed_key) bindConfirmed[c.block] = c.confirmed_key; });
+    bindRows.innerHTML = bindSectionHtml(list);
+    bindRows.querySelectorAll("select[data-block]").forEach((s) => { s.onchange = showCli; });
+    bindSection.hidden = false;
+    showCli();
+  }).catch(() => {});
+
   api("/api/exports").then((data) => {
     const d = data.import || {};
     importFields.innerHTML = importFieldsHtml(d);
@@ -235,12 +264,23 @@ EXPORT_JS = r"""function exportApex() {
         name: value("name"), alias: value("alias"), app_id: value("app_id"),
         workspace: value("workspace"), schema: value("schema"), page: value("page"),
         ai_layout: aiLayout.checked ? "1" : "",
+        keys: bindKeys(),
       });
       zipName = r.zip.split(/[\/]/).pop();
       toast(`APEXlang ZIP ready: ${r.zip}`);
     } catch (e) { toast(e.message, true); go.disabled = false; labelGo(); return; }
     if (!importNow.checked) {
       go.disabled = false; labelGo();
+      // A page that binds is the whole point of confirming a key, so say
+      // what happened to each block instead of closing over it.
+      const summary = bindResultHtml(r.data_binding);
+      if (summary) {
+        resultBox.hidden = false;
+        resultBox.innerHTML = summary;
+        go.textContent = "Show exports";
+        go.onclick = () => { closeModal(); showExports(zipName); };
+        return;
+      }
       closeModal();
       showExports(zipName);
       return;
@@ -273,7 +313,52 @@ function exportCommand(sessionPath, c) {
   if (c.workspace) parts.push("--workspace", c.workspace);
   if (c.schema) parts.push("--schema", c.schema);
   if (c.ai_layout) parts.push("--ai-layout");
+  for (const block of Object.keys(c.keys || {}).sort()) {
+    const column = c.keys[block];
+    if (column) parts.push("--key", `${block}=${column}`);
+    else if ((c.confirmed || {})[block]) parts.push("--forget-key", block);
+  }
   return parts.join(" ");
+}
+
+/* One row per block a confirmed key could bind.
+
+   The column is picked from a list and never typed. A column the block does
+   not place on the page is refused by the exporter without ever saying so on
+   screen -- the region just stays unbound, with the reason buried in the
+   manifest -- so a text box here would turn a typo into a silently unbound
+   page. The .fmb's own PrimaryKey flag is shown and deliberately never
+   pre-selected: Forms keeps that flag for its own locking and it can
+   disagree with the table's real key, and a wrong key raises nothing at run
+   time. It fetches and saves the wrong row. */
+function bindSectionHtml(list) {
+  if (!list.length) {
+    return `<div class="bind-empty">No block qualifies yet &mdash; binding needs a single-record block on a table whose fields all sit in one region of their own.</div>`;
+  }
+  return list.map((c) => {
+    const options = [`<option value="">&mdash; leave unbound &mdash;</option>`].concat(
+      (c.columns || []).map((col) =>
+        `<option value="${esc(col)}"${col === c.confirmed_key ? " selected" : ""}>${esc(col)}</option>`)
+    ).join("");
+    const hint = c.forms_hint
+      ? `the .fmb hints at ${esc(c.forms_hint)}`
+      : "the .fmb hints at nothing";
+    const who = c.confirmed_key && c.confirmed_by
+      ? ` &middot; confirmed by ${esc(c.confirmed_by)}${c.confirmed_at ? " &middot; " + esc(String(c.confirmed_at).slice(0, 10)) : ""}`
+      : "";
+    return `<div class="bind-row">
+      <div><b>${esc(c.block)}</b> &rarr; ${esc(c.table)}<div class="bind-note">${hint}${who}</div></div>
+      <label>key column<select data-block="${esc(c.block)}">${options}</select></label>
+    </div>`;
+  }).join("");
+}
+
+/* What the export just did with each block, in the exporter's own words. */
+function bindResultHtml(entries) {
+  if (!entries || !entries.length) return "";
+  return entries.map((e) => e.bound
+    ? `<div>Bound: ${esc(e.block)} &rarr; ${esc(e.table)} on ${esc(e.confirmed_key)}</div>`
+    : `<div class="bind-note">Unbound: ${esc(e.block)} &mdash; ${esc(e.reason)}</div>`).join("");
 }
 
 /* Connection fields shared by the export dialog and the per-ZIP import
