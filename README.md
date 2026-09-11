@@ -34,7 +34,7 @@ proposal on every unit, a human decision on every proposal. What comes out
 is an APEX 26.1 application that SQLcl validates and imports — and that the
 same session rebuilds, byte for byte, on a build server.
 
-> **Status: 1.3.0, stable.** The CLI, the session file, the export layout and
+> **Status: 1.3.1, stable.** The CLI, the session file, the export layout and
 > the workbench's local HTTP API are promised stable within 1.x — additive
 > changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
 > proposal the workbench produces is still a draft for a human to approve;
