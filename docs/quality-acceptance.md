@@ -6,6 +6,50 @@ application can be migrated faithfully; each section says where real
 Forms/APEX testing still has to happen. The release steps that produce
 these sections are in [releasing.md](releasing.md).
 
+## 1.3.1 verification (2026-09-10, America/Sao_Paulo)
+
+Published [FormsLang 1.3.1](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.3.1).
+Binary source: annotated tag `v1.3.1`, commit
+`00e71d9ec95175a01d023eb484822c14c4387468`.
+[PR #3](https://github.com/B2DEV-TECH/FormsLang/pull/3) merged the guided Blueprint
+and block-key confirmation UI as `b10d2eede057f3aaf275bbc40496e430d02520e7`;
+the merge and release tag have identical trees.
+
+- [CI 34547978567](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34547978567):
+  1,044 tests passed in each of eight Windows/Linux and Python 3.10-3.13
+  combinations. Ruff, deterministic showcase export and offline SQLcl APEX
+  validation, including negative controls, passed.
+- Local integrated suite: 1,042 passed, two symlink tests skipped under the local
+  account's permissions. Ruff passed.
+- [Installer acceptance 34548002690](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34548002690):
+  both NSIS and MSI upgraded 1.3.0 to 1.3.1 on disposable Windows runners.
+  Existing approvals survived, source remained unchanged and exports remained
+  repeatable. The frozen candidate also built the Blueprint reading guide,
+  exposed decoded PL/SQL context and saved/retrieved a DEFER architecture review.
+  Native desktop/engine startup checks passed.
+- Headless Edge on the integrated source: guided navigation, rule filtering,
+  progressive review, saved DEFER decision and application AI briefing/link
+  rendering passed without JavaScript exceptions. Blueprint fit 720px and 390px
+  viewports. AI rendering used a synthetic provider response for repeatability.
+- A separate real Claude CLI request on the anonymized synthetic showcase graph
+  returned four valid, component-linked proposal sections. Findings remained
+  unchanged. This is one integration smoke test, not an evaluation establishing
+  general model accuracy or the validity of every architecture suggestion.
+
+Arrows describe static references, not runtime sequence. AI only receives the
+bounded anonymized structural graph and cannot establish business semantics.
+Briefings remain proposals and are saved separately from deterministic reports.
+Real Oracle application/runtime validation remains outside these checks.
+
+Exact CI artifact and published asset SHA-256 digests:
+
+```text
+FormsLang_1.3.1_x64-setup.exe
+6DEBF53AA6DE2AC57E7A687E4AD5AD0969E6FDF11458963F9FCB95519FB03B39
+FormsLang_1.3.1_x64_en-US.msi
+4DC2E3BB2B79C4B28CBA4B49A3F8D539AEFA3C47833872DA777EBE60D31F7BD8
+```
+
 ## 1.3.0 verification (2026-09-10, America/Sao_Paulo)
 
 Published [FormsLang 1.3.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.3.0).
