@@ -77,17 +77,17 @@ def _collect(paths: list[str], recursive: bool) -> list[Path]:
         p = Path(raw)
         if p.is_dir():
             it = p.rglob("*") if recursive else p.glob("*")
-            found.extend(f for f in it if f.suffix.lower() in SCAN_EXT)
+            found.extend(f for f in it if f.is_file() and f.suffix.lower() in SCAN_EXT)
         elif p.suffix.lower() in SCAN_EXT:
             found.append(p)
 
     found = sorted(dict.fromkeys(found))
     modules = [f for f in found if f.suffix.lower() in MODULE_EXT]
-    already = {expected_xml_name(m).lower() for m in modules}
+    already = {(m.parent, expected_xml_name(m).lower()) for m in modules}
     return modules + [
         f
         for f in found
-        if f.suffix.lower() == ".xml" and f.name.lower() not in already
+        if f.suffix.lower() == ".xml" and (f.parent, f.name.lower()) not in already
     ]
 
 
@@ -100,6 +100,40 @@ def _prepare(
     assert tc is not None
     xml, log = convert_module(module, xml_dir, tc, overwrite=overwrite)
     return module, xml, log
+
+
+def cmd_blueprint(args: argparse.Namespace) -> int:
+    from . import blueprint_io
+
+    source, out = Path(args.path), Path(args.out)
+    try:
+        if source.suffix.lower() == ".db":
+            if not source.is_file():
+                raise ValueError("session file does not exist")
+            store = Store(source)
+            try:
+                payload = store.blueprint()
+            finally:
+                store.close()
+            if payload is None:
+                raise ValueError("session has no Blueprint; generate it from the Forms source first")
+        else:
+            payload = blueprint_io.load(source, out, title=args.title,
+                oracle_home=args.oracle_home, enterprise=args.enterprise_context,
+                metadata_path=args.metadata, recursive=not args.no_recursive)
+            session = blueprint_io.save_session(payload, out, source)
+            store = Store(session)
+            try:
+                payload = store.blueprint()
+            finally:
+                store.close()
+        root = blueprint_io.write(payload, out)
+        print(f"Blueprint: {root / 'blueprint.html'}")
+        print(f"Sources analyzed: {len(payload['application']['sources'])}; failures: {len(payload['failures'])}")
+        return 1 if payload["failures"] else 0
+    except (OSError, ValueError, OracleToolchainError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
 
 def cmd_assess(args: argparse.Namespace) -> int:
@@ -778,6 +812,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--version", action="version", version=f"FormsLang {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    bp = sub.add_parser("blueprint", help="evidence-first application modernization blueprint")
+    bp.add_argument("path", help="Forms .fmb/.xml, application directory or Blueprint session.db")
+    bp.add_argument("-o", "--out", default="formslang-out", help="output directory")
+    bp.add_argument("--title", default="", help="application name")
+    bp.add_argument("--oracle-home", default=None)
+    bp.add_argument("--no-recursive", action="store_true")
+    bp.add_argument("--enterprise-context", action="store_true", help="conservative optional ERP naming-pattern detection")
+    bp.add_argument("--metadata", help="local JSON objects inventory, with optional PL/SQL bodies")
+    bp.set_defaults(func=cmd_blueprint)
 
     a = sub.add_parser("assess", help="assess a portfolio of modules")
     a.add_argument("paths", nargs="+", help=".fmb/.mmb/.xml files or directories")

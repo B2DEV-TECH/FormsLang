@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-10
+
 ### Added
+
+- Modernization Blueprint: deterministic application knowledge, shared
+  dependencies, business-rule candidates, API reuse ranking, optional enterprise
+  naming patterns and supplied database/PL/SQL metadata. `formslang blueprint`
+  writes reproducible JSON, standalone HTML, Markdown and Mermaid artifacts.
+- Blueprint in the existing Workbench: filtered dependency exploration,
+  source evidence, architecture review with stale-decision detection, separately
+  evidenced modernization coverage and optional anonymized AI explanation.
+  Existing conversion approvals, risk/readiness formulas and APEX exports remain
+  separate. See [the Blueprint guide](docs/modernization-blueprint.md).
 
 - A block whose key a reviewer confirmed exports as a form APEX fetches
   and saves. `formslang apex export --key BLOCK=COLUMN` records that the
@@ -108,6 +120,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and both lock files.
 - The README build recipe uses the same spec file as CI; the release
   procedure is written down in `docs/releasing.md`.
+
+### Blueprint analysis boundaries
+
+- Business rules are conservative static candidates, not verified business
+  semantics. Dynamic SQL, unresolved symbols, callee behavior and external callers
+  can remain unknown. API ranking measures observed reuse, not API suitability.
+- Architecture recommendations require human review. Modernization coverage is
+  evidence-backed review tracking, not verified functional parity. No live Oracle
+  application or database validation was performed for the Blueprint feature.
 
 ## [1.2.2] — 2026-09-06
 
@@ -1062,7 +1083,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.1.0...v1.2.0

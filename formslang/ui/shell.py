@@ -18,6 +18,7 @@ HEADER_HTML = r"""<header>
   <button class="btn" id="btn-settings" title="Settings — model, API key, CLI">&#9881;</button>
   <button class="btn" id="btn-propose-all">Convert unconverted</button>
   <button class="btn" id="btn-dash" title="Project view — what this session says, counted">Project</button>
+  <button class="btn" id="btn-blueprint" title="Application knowledge, dependencies and modernization review">Blueprint</button>
   <button class="btn" id="btn-doc" title="HTML technical documentation for this module">Doc</button>
   <button class="btn" id="btn-preview" title="Read-only preview: Forms UI vs. the APEX default mapping">Preview</button>
   <button class="btn" id="btn-diff" title="Compare this module against another version">Diff</button>
@@ -95,6 +96,7 @@ DATA_REFRESH_JS = r"""async function refresh(keep = true) {
 """
 
 WIRING_JS = r"""$("btn-module").onclick = () => browse("");
+$("btn-blueprint").onclick = () => showBlueprint();
 $("welcome-open").onclick = () => browse("");
 $("provider").onclick = openSettings;
 $("btn-settings").onclick = openSettings;

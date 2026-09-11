@@ -87,6 +87,47 @@ def _upload(base, name, payload):
         return e.code, json.loads(e.read())
 
 
+def test_blueprint_build_explore_review_export_and_missing_source(server):
+    base, wb = server
+    status, initial = _get(base, "/api/blueprint")
+    assert status == 200 and not json.loads(initial)["available"]
+    status, built = _post(base, "/api/blueprint/build", {})
+    assert status == 200 and built["available"]
+    assert built["summary"]["entities"]["FORM"] == 1
+    payload = wb.store.blueprint()
+    f = payload["findings"][0]
+    status, explored = _get(base, "/api/blueprint/explore?node=" + f["entity"])
+    assert status == 200 and json.loads(explored)["selected"]["evidence"]
+    status, reviewed = _post(base, "/api/blueprint/review", {
+        "entity": f["entity"], "revision": f["revision"], "action": "DEFER",
+        "reviewer": "architect", "comment": "Await callee owner review",
+    })
+    assert status == 200 and reviewed["ok"]
+    assert wb.store.blueprint()["findings"][0]["review_state"] == "DEFER"
+    status, artifact = _post(base, "/api/blueprint/export", {})
+    assert status == 200
+    assert (Path(artifact["path"]) / "blueprint.json").is_file()
+    status, html = _get(base, "/api/blueprint/report")
+    assert status == 200 and b"Modernization Blueprint" in html
+    wb.module = None  # Persisted architecture remains available without XML.
+    assert wb.blueprint_state()["available"]
+    assert _get(base, "/api/blueprint", host="evil.example")[0] == 403
+
+
+def test_blueprint_bad_revision_is_rejected_and_ai_does_not_review(server):
+    base, wb = server
+    assert _post(base, "/api/blueprint/build", {})[0] == 200
+    payload = wb.store.blueprint()
+    f = payload["findings"][0]
+    assert _post(base, "/api/blueprint/review", {
+        "entity": f["entity"], "revision": "old", "action": "APPROVE",
+        "reviewer": "human", "comment": "reviewed",
+    })[0] == 400
+    status, result = _post(base, "/api/blueprint/ai", {"entity": f["entity"]})
+    assert status == 200 and result["status"] == "PROPOSAL"
+    assert wb.store.blueprint() == payload
+
+
 def _wait_for_job(wb, timeout=10.0):
     deadline = threading.Event()
     threading.Timer(timeout, deadline.set).start()
@@ -345,6 +386,11 @@ def test_the_ui_script_only_reaches_for_elements_that_exist():
 
     markup = re.sub(r"<script>.*?</script>", "", INDEX_HTML, flags=re.DOTALL)
     declared = set(re.findall(r'id="([^"]+)"', markup))
+    # Blueprint renders its bounded explorer/review panel into the shared modal.
+    # Include its actual template declarations, rather than exempting an ID prefix.
+    from formslang.ui.blueprint import BLUEPRINT_JS
+
+    declared |= set(re.findall(r'id="([^"]+)"', BLUEPRINT_JS))
     used = set(re.findall(r"getElementById\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
     used |= set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
     assert used, "the review screen has no script left in it"

@@ -16,6 +16,7 @@ order -- HTML head, then body, then script, top to bottom.
 
 from __future__ import annotations
 
+from .blueprint import BLUEPRINT_JS
 from .conversion import EXPORT_JS, JOB_PROGRESS_JS, PROPOSE_AND_POLL_JS
 from .formdoc import FORMDOC_JS
 from .projects import DASHBOARD_JS, PICKER_JS
@@ -72,5 +73,6 @@ INDEX_HTML = (
     + SETTINGS_JS
     + EXPORT_JS
     + DASHBOARD_JS
+    + BLUEPRINT_JS
     + WIRING_JS
 )

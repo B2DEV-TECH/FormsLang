@@ -332,10 +332,11 @@ environment variables in a terminal before launch.
 - **Embedded terminal** (xterm.js + PTY inside the app) — v2. The native
   terminal launch covers CLI sign-in today with a fraction of the attack
   surface.
-- **Cross-module portfolio dashboard.** The workbench now has a project
-  view, but a session holds one form: "the forms with the highest dependency
-  complexity" is answered inside a module, not across a portfolio. The CLI
-  already batch-assesses portfolios; joining the two is v2.
+- **Cross-module conversion execution.** Modernization Blueprint now joins
+  application structure, dependencies and architecture review across modules
+  in the existing Workbench ([guide](modernization-blueprint.md)). Conversion
+  approval/APEX export remain per-module; no portfolio architecture approval
+  automatically approves conversion code or runtime parity.
 - **Executing the generated test cases.** FormsLang writes specifications a
   person or a framework can run. It does not run them, and does not pretend
   to.

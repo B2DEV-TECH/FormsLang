@@ -107,6 +107,43 @@ def _login_normal(base, auth_store, user, *, org_id=None):
     return auth_store.complete_mfa_login(pending, code).session_token
 
 
+def test_blueprint_denies_unregistered_session_and_viewer_mutations(server):
+    base, wb, auth_store = server
+    owner = auth_store.bootstrap_owner("blueprint-owner@example.com", PASSWORD)
+    viewer_id = auth_store.create_user("blueprint-viewer@example.com", PASSWORD)
+    auth_store.create_membership(owner["organization_id"], viewer_id, VIEWER)
+    _status, _body, token = _login(base, "blueprint-viewer@example.com", PASSWORD)
+    _, who = _get(base, "/api/auth/whoami", cookie=token)
+    assert _get(base, "/api/blueprint")[0] == 401
+    assert _get(base, "/api/blueprint", cookie=token)[0] == 404
+    auth_store.register_external_project(owner["organization_id"], "Blueprint", wb.store.path,
+                                         created_by=owner["user_id"])
+    assert _get(base, "/api/blueprint", cookie=token)[0] == 200
+    for route in ("build", "review", "export", "ai"):
+        assert _post(base, "/api/blueprint/" + route, {}, cookie=token,
+                     csrf=who["csrf_token"])[0] == 403
+    assert _get(base, "/api/blueprint/json", cookie=token)[0] == 403
+
+
+def test_blueprint_checks_project_membership_and_csrf_each_request(server):
+    base, wb, auth_store = server
+    owner = auth_store.bootstrap_owner("bp-owner@example.com", PASSWORD)
+    dev_id = auth_store.create_user("bp-dev@example.com", PASSWORD)
+    auth_store.create_membership(owner["organization_id"], dev_id, DEVELOPER)
+    auth_store.register_external_project(owner["organization_id"], "Blueprint", wb.store.path,
+                                         created_by=owner["user_id"])
+    _status, _body, token = _login(base, "bp-dev@example.com", PASSWORD)
+    _, who = _get(base, "/api/auth/whoami", cookie=token)
+    assert _post(base, "/api/blueprint/build", {}, cookie=token)[0] == 403
+    assert _post(base, "/api/blueprint/build", {}, cookie=token, csrf=who["csrf_token"])[0] == 200
+    finding = wb.store.blueprint()["findings"][0]
+    assert _post(base, "/api/blueprint/review", {
+        "entity": finding["entity"], "revision": finding["revision"], "action": "APPROVE",
+        "reviewer": "forged-user", "comment": "human reviewed",
+    }, cookie=token, csrf=who["csrf_token"])[0] == 200
+    assert wb.store.blueprint()["findings"][0]["review_history"][0]["reviewer"] == dev_id
+
+
 def _fresh_session_file(tmp_path, name):
     path = tmp_path / name
     s = Store(path)

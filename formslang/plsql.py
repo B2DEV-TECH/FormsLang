@@ -27,6 +27,43 @@ from dataclasses import dataclass, field
 
 from . import rules
 
+
+def evidence(source: str) -> dict:
+    """Conservative, offset-bearing syntax evidence; legacy scores are unchanged."""
+    from .plsql_evidence import extract
+
+    return extract(source, _NOT_A_CALL, _NOT_A_TABLE, LITERAL_TARGETS)
+
+
+def analyze_evidence(source: str, lexical: dict | None = None) -> CodeAnalysis:
+    """Located events with the existing CodeAnalysis/risk/catalog contracts.
+
+    Legacy assessment/export callers keep ``analyze`` unchanged. Blueprint
+    versions this evidence mode separately; its counts must not reintroduce
+    strings/comments or declaration names as dependencies through risk analysis.
+    """
+    lexical = lexical if lexical is not None else evidence(source)
+    clean = ["\n" if char == "\n" else " " for char in source]
+    for token in lexical["tokens"]:
+        if token.kind in {"word", "symbol"}:
+            clean[token.start:token.end] = source[token.start:token.end]
+    result = analyze("".join(clean))
+    result.lines = source.count("\n") + 1 if source else 0
+    result.builtins.clear()
+    result.unknown_calls.clear()
+    result.tables.clear()
+    result.literals.clear()
+    for event in lexical["events"]:
+        kind, name = event["kind"], event["name"]
+        if kind == "CALL":
+            target = result.builtins if _is_forms_builtin(name) else result.unknown_calls
+            target[name] += 1
+        elif kind in {"READS", "WRITES"}:
+            result.tables[name] += 1
+        elif kind == "LITERAL_TARGET":
+            result.literals.append(LiteralRef(event["builtin"], event["target_kind"], name))
+    return result
+
 # Line comment, block comment and string literal.
 _LINE_COMMENT = re.compile(r"--[^\n]*")
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)

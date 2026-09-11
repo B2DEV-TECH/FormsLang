@@ -35,6 +35,9 @@ from . import (
     authcrypto,
     authstore,
     authui,
+    blueprint,
+    blueprint_ai,
+    blueprint_io,
     dashboard,
     depgraph,
     formdiff,
@@ -118,7 +121,7 @@ class Workbench:
         # what it was before this existed.
         self.auth_store = auth_store
         self.auth_data_dir = Path(auth_data_dir) if auth_data_dir is not None else None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # An upgrade must not leave a key sitting in plaintext: move it
         # into the OS credential store the first time we come up.
         migrate_plaintext_key()
@@ -137,6 +140,62 @@ class Workbench:
         self.refresh_tests()
 
     # -- analysis ---------------------------------------------------------
+
+    def blueprint_payload(self):
+        payload = self.store.blueprint()
+        if payload is None:
+            raise ValueError("Generate a Blueprint from the open module or an application directory first")
+        return payload
+
+    def blueprint_state(self):
+        payload = self.store.blueprint()
+        if payload is None:
+            return {"available": False}
+        return {"available": True, **{key: payload[key] for key in (
+            "application", "summary", "readiness", "architecture", "failures", "limitations",
+            "source_revision", "stale_engine", "catalog_coverage")},
+            "api_candidates": payload["api_candidates"][:30],
+            "api_candidate_total": len(payload["api_candidates"]),
+            "enterprise_context": payload["enterprise_context"],
+            "options": {"modules": sorted({n["module"] for n in payload["entities"] if n["module"]}),
+                        "types": sorted(payload["summary"]["entities"]),
+                        "dependencies": sorted({e["type"] for e in payload["edges"]}),
+                        "domains": sorted({d["potential_domain"] for d in payload["enterprise_context"].get("detections", [])})}}
+
+    def build_blueprint(self, path="", enterprise=False):
+        with self._lock:
+            if self.job["running"]:
+                raise ValueError("wait for the conversion job to finish")
+            if path:
+                if self.auth_store is not None:
+                    raise ValueError("In auth mode generate a portfolio with the CLI and register its session as a project")
+                source = Path(path).expanduser().resolve()
+                out = self.out_dir / "blueprints" / blueprint.digest(str(source))[:16]
+                payload = blueprint_io.load(source, out, enterprise=enterprise, oracle_home=self.oracle_home)
+                session_path = blueprint_io.save_session(payload, out, source)
+                self.open_module(str(session_path))
+            else:
+                module = self._module_from_session()
+                if module is None:
+                    raise ValueError("Source XML is not available; generate from the source directory using the CLI or local directory picker")
+                payload = blueprint.build([module], title=module.name, enterprise=enterprise)
+                blueprint.session_progress(payload, self.store)
+                self.store.save_blueprint(payload)
+            return self.blueprint_state()
+
+    def authorize_blueprint(self, auth, action):
+        if self.auth_store is None:
+            return
+        if auth is None:
+            raise PermissionError("authentication required")
+        _, session, _ = auth
+        for project in self.auth_store.list_projects_for_org(session["active_org_id"]):
+            path = projects.resolve_project_path(project, data_dir=self.auth_data_dir)
+            if path.resolve() == self.store.path.resolve():
+                projects.authorize_project_access(self.auth_store, session["user_id"],
+                    session["active_org_id"], project["id"], action)
+                return
+        raise authstore.ProjectNotFound("current session")
 
     def refresh_analysis(self, force: bool = False) -> dict:
         """Compute the deterministic analysis for whatever is missing or stale.
@@ -375,6 +434,10 @@ class Workbench:
         }
 
     def open_module(self, path: str) -> dict:
+        with self._lock:
+            return self._open_module_locked(path)
+
+    def _open_module_locked(self, path: str) -> dict:
         """Parse a module and make its session the one on screen."""
         with self._lock:
             if self.job["running"]:
@@ -1141,6 +1204,23 @@ class Handler(BaseHTTPRequestHandler):
                 ]})
             elif path == "/api/state":
                 self._json(wb.state())
+            elif path.startswith("/api/blueprint"):
+                with wb._lock:
+                    wb.authorize_blueprint(auth, rbac.VIEW_PROJECT)
+                    if path == "/api/blueprint":
+                        self._json(wb.blueprint_state())
+                    elif path == "/api/blueprint/explore":
+                        q = parse_qs(query)
+                        allowed = {"node", "module", "entity_type", "dependency_type", "decision", "review", "domain", "risk_level", "query", "offset", "limit"}
+                        self._json(blueprint.explore(wb.blueprint_payload(), **{k: v[0] for k, v in q.items() if k in allowed}))
+                    elif path == "/api/blueprint/report":
+                        wb.authorize_blueprint(auth, rbac.EXPORT_PROJECT)
+                        self._send(200, blueprint_io.render_html(wb.blueprint_payload()).encode("utf-8"), "text/html; charset=utf-8")
+                    elif path == "/api/blueprint/json":
+                        wb.authorize_blueprint(auth, rbac.EXPORT_PROJECT)
+                        self._json(wb.blueprint_payload())
+                    else:
+                        self._json({"error": "not found"}, 404)
             elif path == "/api/job":
                 self._json(wb.job_state())
             elif path == "/api/telemetry":
@@ -1256,7 +1336,37 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            if self.path == "/api/auth/login":
+            if path.startswith("/api/blueprint/"):
+                with wb._lock:
+                    action = rbac.APPROVE_AI_PROPOSAL if path.endswith("/review") else rbac.RUN_CONVERSION
+                    if path.endswith("/export"):
+                        action = rbac.EXPORT_PROJECT
+                    wb.authorize_blueprint(auth, action)
+                    if path == "/api/blueprint/build":
+                        self._json(wb.build_blueprint(str(body.get("path") or ""), bool(body.get("enterprise"))))
+                    elif path == "/api/blueprint/review":
+                        allowed = {"entity", "revision", "action", "reviewer", "comment", "recommendation", "target", "coverage", "coverage_evidence"}
+                        review = {key: str(value) for key, value in body.items() if key in allowed}
+                        if auth:
+                            review["reviewer"] = auth[1]["user_id"]
+                        required = {"entity", "revision", "action", "reviewer", "comment"}
+                        if not required.issubset(review):
+                            raise ValueError("entity, revision, action, reviewer and comment are required")
+                        wb.store.review_blueprint(**review)
+                        self._json({"ok": True})
+                    elif path == "/api/blueprint/export":
+                        root = blueprint_io.write(wb.blueprint_payload(), wb.store.path.parent)
+                        self._json({"path": str(root)})
+                    elif path == "/api/blueprint/ai":
+                        payload, provider = wb.blueprint_payload(), wb.provider
+                    else:
+                        self._json({"error": "not found"}, 404)
+                # Long provider calls must not hold the session mutex. The
+                # immutable snapshot above cannot apply decisions to a new session.
+                if path == "/api/blueprint/ai":
+                    self._json(blueprint_ai.review(payload, str(body.get("entity") or ""), provider))
+
+            elif self.path == "/api/auth/login":
                 email = str(body.get("email") or "")
                 password = str(body.get("password") or "")
                 org_id = body.get("org_id") or None

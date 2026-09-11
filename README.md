@@ -19,6 +19,13 @@ unit, documents and diffs Forms modules, exports an APEXlang application
 that imports into APEX, and hands the whole thing to a pipeline.
 Apache-2.0 licensed — see [LICENSE](LICENSE).
 
+**Modernization Blueprint** adds application-wide knowledge, shared dependencies,
+business-rule candidates, evidence-backed architecture recommendations and human
+review to the same Workbench. Run `formslang blueprint ./application -o out`, then
+open `out/blueprint.session.db` in the Workbench's **Blueprint** view. Static analysis
+requires no AI provider. Read the [Blueprint guide](docs/modernization-blueprint.md)
+for schemas, formulas, local metadata, review and known limitations.
+
 FormsLang reads your `.fmb` modules, classifies every trigger and built-in
 against a Forms→APEX catalog, and tells you what the migration actually
 costs — measured from your own code, not estimated from a spreadsheet. Then
@@ -27,7 +34,7 @@ proposal on every unit, a human decision on every proposal. What comes out
 is an APEX 26.1 application that SQLcl validates and imports — and that the
 same session rebuilds, byte for byte, on a build server.
 
-> **Status: 1.2.2, stable.** The CLI, the session file, the export layout and
+> **Status: 1.3.0, stable.** The CLI, the session file, the export layout and
 > the workbench's local HTTP API are promised stable within 1.x — additive
 > changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
 > proposal the workbench produces is still a draft for a human to approve;
