@@ -118,6 +118,25 @@ def main() -> None:
                 result.update(task_id=task["id"], approval_preserved=True,
                               baseline_export_sha256=seed.get("export_sha256"))
 
+                # Exercise the new modules inside the frozen candidate, not only
+                # the editable Python checkout. Baseline versions need not have
+                # the guided projection, so this belongs to the verify phase.
+                blueprint = request("/api/blueprint/build", {})
+                check(blueprint["guide"]["code_total"] > 0, "Blueprint has no code reading guide")
+                check(bool(blueprint["guide"]["paths"]), "Blueprint has no observed paths")
+                entity = blueprint["guide"]["start_here"][0]["id"]
+                detail = request("/api/blueprint/explore?node=" + entity)["selected"]
+                check(bool(detail["source_context"]["text"]), "Blueprint lost decoded source context")
+                finding = detail["finding"]
+                request("/api/blueprint/review", {
+                    "entity": finding["entity"], "revision": finding["revision"],
+                    "action": "DEFER", "reviewer": REVIEWER,
+                    "comment": "Installer acceptance: investigate after upgrade",
+                })
+                saved = request("/api/blueprint/explore?node=" + entity)["selected"]["finding"]
+                check(saved["review_state"] == "DEFER", "Blueprint review was not retained")
+                result.update(blueprint_guide=True, blueprint_source_context=True, blueprint_review=True)
+
             zip_path = Path(request("/api/export", EXPORT)["zip"])
             first = sha256(zip_path)
             request("/api/export", EXPORT)

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-10
+
+### Changed
+
+- Blueprint is now a guided reading workflow: Understand, Inspect & decide,
+  and Modernization plan. Source-linked connection diagrams, a prioritized code
+  reading queue and plain-language recommendations replace the initial metric
+  dump. Review fields and implementation coverage appear when needed.
+- The standalone Blueprint report leads with observed connections, decisions
+  to investigate and proposed target architecture. Component inspection includes
+  decoded source context when available, with explicit truncation limits.
+
+### Added
+
+- Application-level AI architecture briefings, requested explicitly through the
+  configured provider. Anonymous graph context is mapped back to local component
+  links; malformed or unknown references are rejected. Briefings remain proposals
+  and can be saved separately as HTML. No AI-generated scores or approvals.
+- Confirm or withdraw a block's key in the APEX export dialog, using the columns
+  actually placed on the page. CLI and Workbench now share the same validation
+  gate and record reviewer identity; the export explains the resulting bindings.
+
 ## [1.3.0] - 2026-09-10
 
 ### Added
@@ -1083,7 +1105,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.0...v1.2.1

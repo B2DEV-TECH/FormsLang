@@ -389,3 +389,68 @@ def test_output_directory_symlink_cannot_escape(tmp_path):
     with pytest.raises(ValueError, match="escapes"):
         blueprint_io.write(bp.build([form()]), out)
     assert not list(foreign.iterdir())
+
+
+def test_reading_guide_paths_are_real_and_source_context_is_available():
+    from formslang import blueprint_view
+
+    payload = bp.build([form(code="BEGIN IF :ORDERS.AMOUNT < 0 THEN RAISE FORM_TRIGGER_FAILURE; END IF; XX_PKG.SAVE; END;")])
+    guide = blueprint_view.overview(payload)
+    edges = {(e['source'], e['target'], e['type'], e['level']) for e in payload['edges']}
+    assert guide['code_total'] == 1 and guide['code_pending'] == 1
+    for path in guide['paths']:
+        assert (path['source']['id'], path['target']['id'], path['relationship'], path['level']) in edges
+        assert path['evidence']
+    rule = next(n for n in payload['entities'] if n['type'] == 'BUSINESS_RULE')
+    detail = bp.explore(payload, node=rule['id'])['selected']
+    assert 'IF :ORDERS.AMOUNT < 0' in detail['source_context']['text']
+    assert detail['source_context']['basis'] == 'decoded_body'
+    report = blueprint_io.render_html(payload)
+    assert report.index('Understand the application') < report.index('Find an entity')
+
+
+def test_application_ai_uses_anonymous_graph_and_resolves_valid_links_locally():
+    class Capturing(EchoProvider):
+        type_id = 'test'
+
+        def complete(self, messages, **kwargs):
+            sent = json.loads(messages[-1].content)
+            assert 'ORDERS' not in messages[-1].content
+            assert 'XX_CREDIT' not in messages[-1].content
+            assert 'source_text' not in messages[-1].content
+            alias = sent['component_sample'][0]['alias']
+            return json.dumps({'sections': [{'title': 'Investigate this dependency',
+                                            'text': f'Inspect {alias} before deciding.', 'components': [alias]}]})
+
+    payload = bp.build([form()])
+    before = copy.deepcopy(payload)
+    result = blueprint_ai.application_review(payload, Capturing())
+    assert result['status'] == 'PROPOSAL' and not result['changes_applied']
+    assert result['source_revision'] == payload['source_revision']
+    assert result['sections'][0]['components'][0]['id'] in {n['id'] for n in payload['entities']}
+    assert 'COMPONENT_' not in result['sections'][0]['text']
+    assert payload == before
+
+
+@pytest.mark.parametrize('response', ['not json', '{"sections": []}', '{"sections":[{"title":"x","text":"x","components":["COMPONENT_999999"]}]}'])
+def test_application_ai_refuses_malformed_or_invented_component_links(response):
+    class Invalid(EchoProvider):
+        type_id = 'test'
+
+        def complete(self, messages, **kwargs):
+            return response
+
+    with pytest.raises(ValueError, match='valid, source-linked'):
+        blueprint_ai.application_review(bp.build([form()]), Invalid())
+
+
+def test_application_ai_echo_and_enterprise_cloud_are_not_silent_fallbacks(monkeypatch):
+    from formslang.ai import OpenAIProvider
+    from formslang.policy import PolicyViolation
+
+    payload = bp.build([form()])
+    with pytest.raises(ValueError, match='Choose an AI provider'):
+        blueprint_ai.application_review(payload, EchoProvider())
+    monkeypatch.setenv('FORMSLANG_ENTERPRISE_MODE', '1')
+    with pytest.raises(PolicyViolation):
+        blueprint_ai.application_review(payload, OpenAIProvider())
