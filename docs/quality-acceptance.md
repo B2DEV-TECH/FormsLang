@@ -6,6 +6,48 @@ application can be migrated faithfully; each section says where real
 Forms/APEX testing still has to happen. The release steps that produce
 these sections are in [releasing.md](releasing.md).
 
+## 1.3.0 verification (2026-09-10, America/Sao_Paulo)
+
+Published [FormsLang 1.3.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.3.0).
+The annotated tag points to `88c3ae7315c21342a5f2966012dec152aa6f9465`.
+[PR #2](https://github.com/B2DEV-TECH/FormsLang/pull/2) merged it as
+`daad53a3898a7e8c14c82778acad5d7b969d98ae`; the tag and merge have identical
+trees. This documentation record does not change the tested binaries.
+
+- [CI 34544274520](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34544274520):
+  1,031 tests passed in each of eight Windows/Linux and Python 3.10-3.13
+  combinations. Ruff, deterministic showcase export and the offline SQLcl
+  APEX validation job passed, including its negative controls.
+- Local Windows/Python 3.13: 1,029 tests passed and two symlink tests were
+  skipped under the local account's permissions. Ruff passed.
+- [Installer acceptance 34544756403](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34544756403):
+  the same tag built both installers, then separate disposable Windows runners
+  installed 1.2.2, saved a review and upgraded to 1.3.0. NSIS and MSI checks
+  passed for review retention, repeatable export and native desktop/engine
+  startup. The release assets are those exact CI artifacts; published SHA-256
+  digests match the downloaded artifacts.
+- Blueprint's five-module synthetic corpus and headless Edge checks exercised
+  dependency filtering, source evidence and persisted DEFER review. This was
+  source-mode browser validation, not exhaustive native-webview testing.
+
+Blueprint limits: rule candidates use conservative lexical heuristics, not
+control-flow or business-semantics proof. Dynamic SQL, unavailable package
+bodies, external callers and symbol resolution can remain unknown. API ranking
+measures observed reuse, not suitability or safety. Coverage records human
+decisions and supplied implementation evidence; it does not verify runtime
+functional parity. No live Oracle application/database validation was performed
+for the new Blueprint capability. Earlier APEX runtime checks below concern
+their explicitly identified revisions and fixtures.
+
+Exact tested and published installer SHA-256 digests:
+
+```text
+FormsLang_1.3.0_x64-setup.exe
+FE1C2C71BBCFB6AC5DA6D0CEEC278C977D29FBEE998D03A1F609A59287F0DCBC
+FormsLang_1.3.0_x64_en-US.msi
+2DD4A2B54F25B2FF0E58BB0DFC731AB5256C90B233A583640751D2EF93F74CEE
+```
+
 ## 1.2.1 verification
 
 - Windows, Python 3.13: 945 tests passed; one symlink test skipped because
