@@ -41,12 +41,27 @@ const finished = {status:'completed',job_id:'job-a',result:{sections:[]}};
 def run_js(tmp_path, script):
     path = tmp_path / "blueprint-behavior.cjs"
     path.write_text(
-        DOM + BLUEPRINT_JS + "\n(async()=>{\ncontext();\n" + script
-        + "\n})().catch(e=>{console.error(e);process.exitCode=1;});\n",
+        "process.stdout.write('FORMSLANG_UI_STARTED\\n');\n"
+        + DOM + BLUEPRINT_JS + "\n(async()=>{\ncontext();\n" + script
+        + "\n})().then(()=>{process.stdout.write('FORMSLANG_UI_COMPLETE\\n');})"
+        + ".catch(e=>{console.error(e);process.exitCode=1;});\n",
         encoding="utf-8",
     )
-    result = subprocess.run([NODE, str(path)], capture_output=True, text=True, timeout=15, check=False)
+    # This bounds a hung process, not Node startup performance on a busy runner.
+    try:
+        result = subprocess.run([NODE, str(path)], capture_output=True, text=True, timeout=60, check=False)
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(
+            f"Node UI test exceeded 60s; startup/completion markers locate the stall.\n"
+            f"stdout: {exc.stdout!r}\nstderr: {exc.stderr!r}",
+            pytrace=False,
+        )
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "FORMSLANG_UI_STARTED" in result.stdout.splitlines(), result.stdout + result.stderr
+    # An unresolved Promise alone does not keep Node alive; exit 0 is insufficient.
+    assert "FORMSLANG_UI_COMPLETE" in result.stdout.splitlines(), (
+        "Node exited without completing the async assertions.\n" + result.stdout + result.stderr
+    )
 
 
 def test_initial_ai_status_cannot_overwrite_newer_start(tmp_path):

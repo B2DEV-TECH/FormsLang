@@ -61,7 +61,8 @@ function unit(id) { return {id, title:id, module:'M', kind:'trigger', state:'pen
 def run_js(tmp_path, script, *, validation=False):
     path = tmp_path / "review-behavior.cjs"
     path.write_text(
-        DOM
+        "process.stdout.write('FORMSLANG_UI_STARTED\\n');\n"
+        + DOM
         + SCRIPT_CORE.removeprefix("<script>")
         + SYNTAX_HIGHLIGHT_JS
         + LIST_AND_DETAIL_JS
@@ -74,11 +75,25 @@ def run_js(tmp_path, script, *, validation=False):
         + "\n(async () => {\n"
         + "state = {tasks:[unit('a'),unit('b')],stats:{tasks:2},session:{title:'M'},session_path:'/local/session.db',context_id:'session-a'}; selected='a';\n"
         + script
-        + "\n})().catch(e => { console.error(e); process.exitCode=1; });\n",
+        + "\n})().then(() => { process.stdout.write('FORMSLANG_UI_COMPLETE\\n'); })"
+        + ".catch(e => { console.error(e); process.exitCode=1; });\n",
         encoding="utf-8",
     )
-    result = subprocess.run([NODE, str(path)], text=True, capture_output=True, timeout=15, check=False)
+    # This bounds a hung process, not Node startup performance on a busy runner.
+    try:
+        result = subprocess.run([NODE, str(path)], text=True, capture_output=True, timeout=60, check=False)
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(
+            f"Node UI test exceeded 60s; startup/completion markers locate the stall.\n"
+            f"stdout: {exc.stdout!r}\nstderr: {exc.stderr!r}",
+            pytrace=False,
+        )
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "FORMSLANG_UI_STARTED" in result.stdout.splitlines(), result.stdout + result.stderr
+    # An unresolved Promise alone does not keep Node alive; exit 0 is insufficient.
+    assert "FORMSLANG_UI_COMPLETE" in result.stdout.splitlines(), (
+        "Node exited without completing the async assertions.\n" + result.stdout + result.stderr
+    )
 
 
 def test_source_and_note_edits_survive_renders_and_navigation(tmp_path):
