@@ -6,6 +6,67 @@ application can be migrated faithfully; each section says where real
 Forms/APEX testing still has to happen. The release steps that produce
 these sections are in [releasing.md](releasing.md).
 
+## 1.3.2 verification (2026-09-11, America/Sao_Paulo)
+
+Published [FormsLang 1.3.2](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.3.2).
+Binary source: annotated tag `v1.3.2`, commit
+`7337d87877c15840ee192a06feef857ec5ab0067`.
+[PR #4](https://github.com/B2DEV-TECH/FormsLang/pull/4) integrated the Blueprint and
+conversion review improvements as `54ad1c30795bca796f36296c4428405a022a692d`.
+The release tag and merge have identical trees;
+this verification record is a later documentation-only change.
+
+- [CI 34600760770](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34600760770):
+  1,087 tests passed in each of eight Windows/Linux and Python 3.10-3.13
+  combinations. Ruff, deterministic showcase export and SQLcl offline APEX
+  validation, including negative controls, passed.
+- Local integrated suite: 1,085 passed; two symlink tests skipped under the local
+  account's permissions. The final harness correction also passed all 26 UI tests locally.
+  Ruff passed. The 43 new backend/JavaScript regressions
+  cover asynchronous request ordering, draft retention, actor/session isolation,
+  bounded AI context and compact dependency projections.
+- The new CI Edge acceptance job passed 30 checks and retained screenshots and
+  results in `workbench-browser-evidence`. It covers Blueprint navigation,
+  source-unit links and history, asynchronous explanation reconnect, saved
+  briefing download, review drafts/decisions, conversion views and edits, and
+  1366/720/390px layouts. The page made no external requests and raised no
+  JavaScript exceptions. Local final acceptance passed the same 30 checks.
+- [Installer acceptance 34600775515](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34600775515):
+  NSIS and MSI upgraded 1.3.1 to 1.3.2 on separate disposable Windows runners.
+  Approvals and all 59 showcase units survived, the source was unchanged,
+  repeated export bytes matched, and native desktop/engine startup passed.
+  The frozen engine generated the Blueprint, exposed selected source, retained
+  an architecture review, rejected stale context without changing a finding,
+  returned idle AI status without calling a provider, and omitted source bodies
+  from unselected list rows.
+- On the synthetic showcase, JSON for a 40-trigger explorer page with no selected
+  component fell from 83,212 to 71,636 bytes (13.9%). This measures one projection,
+  not whole-application speed or representative production performance.
+
+The initial candidate hit a 15-second Node subprocess timeout on a slow Windows
+Python 3.11 runner. The final test harness uses a bounded 60-second process watchdog
+and requires explicit asynchronous completion as well as exit code zero. Its
+functional assertions were retained. Four negative controls confirmed that both
+harnesses reject unresolved awaited promises and deliberate JavaScript assertion
+failures. The application code did not change for this harness correction; the
+final tag nevertheless rebuilt and revalidated both installers.
+
+Browser AI responses were explicitly labeled offline test fixtures; the conversion
+screenshot contains a hand-authored synthetic draft. No live model was evaluated
+for this release and no real Oracle runtime parity is implied. AI results remain
+proposals, with eight requests/results in process memory; restarting the app clears
+that cache. Discard suppresses a result without terminating its provider. Unsaved
+review drafts are tab memory only and should be saved before reload.
+
+Exact tested and uploaded installer SHA-256 digests:
+
+```text
+FormsLang_1.3.2_x64-setup.exe
+FF0BAB924733A7318F1ECBE675F122155F7986CD313016917D4EB177C6E1EE39
+FormsLang_1.3.2_x64_en-US.msi
+DE9C9A659B07FD10FB7D59049BF4DF6D6563DC0C9F9BF846D3A7A262288F571E
+```
+
 ## 1.3.1 verification (2026-09-10, America/Sao_Paulo)
 
 Published [FormsLang 1.3.1](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.3.1).
