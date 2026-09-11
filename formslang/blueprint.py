@@ -302,6 +302,7 @@ class _Builder:
         categories = sorted(categories)
         self.entities[nid]["attributes"].update(
             classification=categories, fingerprint=plsql.fingerprint(source),
+            source_text=source[:64000], source_truncated=len(source) > 64000,
             source_hash=hashlib.sha256(source.encode()).hexdigest(),
             risk=analysis["risk"], behavior=analysis["behavior"], migration_verdict=analysis["verdict"],
             observed_forms_coupling=coupling, inputs=inputs, bind_references=binds)
@@ -598,7 +599,13 @@ def explore(bp, *, node="", module="", entity_type="", dependency_type="",
         shown = edges[:limit]
         ids = {p for e in shown for p in e["evidence"]} | set(selected["evidence"])
         neighbor_ids = {e[k] for e in shown for k in ("source", "target")}
-        result["selected"] = {"entity": selected, "finding": findings.get(node) or findings.get(selected["attributes"].get("source_entity")),
+        source_entity = next((n for n in bp["entities"] if n["id"] == selected["attributes"].get("source_entity")), selected)
+        result["selected"] = {"entity": selected, "source_context": {
+                "text": source_entity["attributes"].get("source_text", ""),
+                "truncated": source_entity["attributes"].get("source_truncated", False),
+                "owner": source_entity["attributes"].get("owner", ""),
+                "basis": "decoded_body"},
+            "finding": findings.get(node) or findings.get(selected["attributes"].get("source_entity")),
             "inbound": [e for e in shown if e["target"] == node],
             "outbound": [e for e in shown if e["source"] == node],
             "neighbors": [n for n in bp["entities"] if n["id"] in neighbor_ids],

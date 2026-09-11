@@ -237,3 +237,31 @@ deterministic artifacts, partial failures, review invalidation, coverage, provid
 privacy/policy and Workbench authorization. Existing APEX/SQLcl gates remain
 unchanged. Runtime parity, synonym/overload resolution, executed regression tests,
 automatic ORDS generation and database discovery are not implemented or implied.
+
+### Guided Workbench experience
+
+The Blueprint opens with **Understand**, **Inspect & decide**, and **Modernization
+plan**. The first view shows source-backed connections and a bounded reading
+queue: stale reviews, integrations/transactions, rule candidates, then other
+code. This ordering is navigation advice, not a new risk score. Each arrow is
+an observed dependency, not a runtime execution sequence.
+
+**Explain this application** explicitly asks the configured provider for a
+structured architecture briefing. The request contains anonymous component
+aliases, types, classifications and observed relationships; source code, names,
+paths, literals, reviewer comments and credentials are excluded. Aliases resolve
+back to local names after the response, and unknown component links are rejected.
+The provider cannot establish business meaning without source semantics, so it
+must explain structural evidence and identify what to investigate, not invent
+business purpose. Echo asks the user to configure a real model. Existing egress
+policy applies, including local-provider support and enterprise cloud blocking.
+
+The explanation stays an unapproved proposal. It is cached in the current browser
+page for the source revision/provider and can be saved as a separate HTML briefing.
+It does not change deterministic reports, readiness, coverage or human decisions.
+A page reload clears that cache. No AI request is made just by opening Blueprint.
+
+Component inspection shows the decoded PL/SQL body when present in the snapshot
+(up to 64,000 characters, with truncation indicated). Existing snapshots without
+this optional field retain their evidence excerpts until regenerated. Recording
+an architecture decision and claiming implementation coverage remain separate.

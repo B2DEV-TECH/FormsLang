@@ -38,6 +38,7 @@ from . import (
     blueprint,
     blueprint_ai,
     blueprint_io,
+    blueprint_view,
     dashboard,
     depgraph,
     formdiff,
@@ -151,7 +152,9 @@ class Workbench:
         payload = self.store.blueprint()
         if payload is None:
             return {"available": False}
-        return {"available": True, **{key: payload[key] for key in (
+        return {"available": True, "guide": blueprint_view.overview(payload),
+            "ai_provider": {"type": self.provider.type_id, "label": self.provider.describe()},
+            **{key: payload[key] for key in (
             "application", "summary", "readiness", "architecture", "failures", "limitations",
             "source_revision", "stale_engine", "catalog_coverage")},
             "api_candidates": payload["api_candidates"][:30],
@@ -1364,7 +1367,10 @@ class Handler(BaseHTTPRequestHandler):
                 # Long provider calls must not hold the session mutex. The
                 # immutable snapshot above cannot apply decisions to a new session.
                 if path == "/api/blueprint/ai":
-                    self._json(blueprint_ai.review(payload, str(body.get("entity") or ""), provider))
+                    if body.get("scope") == "application":
+                        self._json(blueprint_ai.application_review(payload, provider))
+                    else:
+                        self._json(blueprint_ai.review(payload, str(body.get("entity") or ""), provider))
 
             elif self.path == "/api/auth/login":
                 email = str(body.get("email") or "")

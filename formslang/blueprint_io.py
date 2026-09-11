@@ -8,7 +8,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from . import blueprint
+from . import blueprint, blueprint_view
 from .oracle import convert_module, detect_toolchain
 from .parser import parse_xml
 from .store import Store
@@ -157,7 +157,7 @@ def diagrams(bp):
     return {"dependencies.mmd": "\n".join(graph) + "\n", "current-architecture.mmd": "\n".join(current) + "\n", "target-architecture.mmd": "\n".join(target) + "\n"}
 
 
-def render_html(bp):
+def _technical_html(bp):
     esc = html.escape
     reports = documents(bp)
     sections = "".join(f'<details><summary>{esc(name)}</summary><pre>{esc(body)}</pre></details>' for name, body in reports.items())
@@ -165,6 +165,47 @@ def render_html(bp):
     # library, CDN, generated links or source-provided markup.
     data = json.dumps(bp, ensure_ascii=False, sort_keys=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>FormsLang Blueprint</title><style>body{font:16px system-ui;max-width:1100px;margin:2rem auto;padding:1rem;background:#101820;color:#e7eef5}h1{color:#f5a640}pre{white-space:pre-wrap;overflow-wrap:anywhere}summary,button{cursor:pointer;padding:.7rem}details{border:1px solid #52606c;margin:1rem 0;padding:.7rem}input{padding:.7rem;width:90%}li{margin:.7rem 0}small{color:#bdcbd7}</style><h1>Modernization Blueprint</h1><h2>' + esc(bp["application"]["name"]) + '</h2><p>FACT · INFERENCE · ASSUMPTION · UNKNOWN remain distinct. Human decisions required.</p><p>Source failures: ' + str(len(bp["failures"])) + '</p><label>Find an entity <input id="search" placeholder="Module, name or entity type"></label><p id="count"></p><ul id="results"></ul>' + sections + '<script type="application/json" id="blueprint-data">' + data + '</script><script>const bp=JSON.parse(document.getElementById("blueprint-data").textContent);const input=document.getElementById("search");function render(){const q=input.value.toLowerCase();const rows=bp.entities.filter(n=>(n.name+" "+n.module+" "+n.type).toLowerCase().includes(q));document.getElementById("count").textContent="Showing "+Math.min(rows.length,100)+" of "+rows.length+" entities. Full evidence in JSON and reports below.";const ul=document.getElementById("results");ul.replaceChildren();for(const n of rows.slice(0,100)){const li=document.createElement("li");li.textContent=n.type+" · "+n.module+" · "+n.name+" · "+n.review_state;ul.appendChild(li)}}input.addEventListener("input",render);render();</script></html>'
+
+
+def render_html(bp):
+    """Lead the portable report with a readable guide, not raw inventory."""
+    esc = html.escape
+    guide = blueprint_view.overview(bp)
+    counts = bp["summary"]["entities"]
+    paths = "".join(
+        '<div class="route"><div><small>' + esc(p["source"]["owner"] or p["source"]["module"]) +
+        '</small><br><b>' + esc(p["source"]["name"]) + '</b></div><span>' +
+        esc(p["relationship"].lower().replace("_", " ")) + ' →</span><div><b>' +
+        esc(p["target"]["name"]) + '</b><br><small>' + esc(p["target"]["type"].lower().replace("_", " ")) +
+        '</small></div></div>' for p in guide["paths"][:12])
+    priorities = "".join('<tr><td>' + esc(n["name"]) + '<br><small>' +
+                         esc(n["owner"] or n["module"]) + '</small></td><td>' + esc(n["reason"]) +
+                         '</td></tr>' for n in guide["start_here"])
+    targets = "".join('<article><h3>' + esc(t["name"]) + '</h3><p>' + esc(t["reason"]) +
+                      '</p></article>' for t in bp["architecture"]["target"])
+    intro = (
+        '<style>p{line-height:1.7}.route{display:grid;grid-template-columns:1fr 140px 1fr;gap:16px;'
+        'align-items:center;border-bottom:1px solid #334155;padding:16px 0}.route>div,article{'
+        'border:1px solid #334155;border-radius:10px;padding:16px;background:#152332}'
+        'td{padding:14px;border-bottom:1px solid #334155;vertical-align:top}table{width:100%;border-collapse:collapse}'
+        'article{margin:12px 0}h2{margin-top:32px}small{overflow-wrap:anywhere}'
+        '@media(max-width:650px){.route{grid-template-columns:1fr}.route>span{text-align:center}}'
+        '@media print{body{background:white;color:black}article,.route>div{background:white;color:black}small{color:#444}}</style>'
+        '<h2>01 · Understand the application</h2><p>' + str(counts.get("FORM", 0)) + ' form(s), ' +
+        str(counts.get("BLOCK", 0)) + ' blocks and ' + str(counts.get("ITEM", 0)) + ' fields. Behavior is spread across ' +
+        str(counts.get("TRIGGER", 0)) + ' triggers and ' + str(counts.get("PROGRAM_UNIT", 0)) +
+        ' program units. ' + str(counts.get("BUSINESS_RULE", 0)) +
+        ' conditional-rejection candidates require business review.</p><h3>Observed connections</h3>'
+        '<p>These arrows represent source references, not execution order. Showing up to 12 of ' +
+        str(guide["path_total"]) + ' observed paths.</p>' + (paths or '<p>No supported paths were found.</p>') +
+        '<h2>02 · Decide what to investigate first</h2><p>' + esc(guide["reading_order"]) +
+        '</p><table><thead><tr><th>Component</th><th>Why it needs a decision</th></tr></thead><tbody>' +
+        priorities + '</tbody></table><h2>03 · Discuss the target architecture</h2>'
+        '<p>Analysis suggestions, subject to human review and implementation validation.</p>' + targets +
+        '<p>' + str(guide["code_reviewed"]) + ' of ' + str(guide["code_total"]) +
+        ' code units have an accepted or modified architecture decision. This is not verified functional parity.</p>'
+        '<h2>Evidence and full inventory</h2>')
+    return _technical_html(bp).replace('<label>Find an entity', intro + '<label>Find an entity', 1)
 
 
 def write(payload, out: Path) -> Path:
