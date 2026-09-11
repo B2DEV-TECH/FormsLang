@@ -45,7 +45,7 @@ STYLE_BLOCK = r"""<style>
     -webkit-font-smoothing: antialiased;
   }
   button { font: inherit; cursor: pointer; }
-  :focus-visible { outline: 2px solid var(--gold-line); outline-offset: 1px; border-radius: 4px; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 4px; }
   ::selection { background: rgba(245,166,64,.28); }
   ::-webkit-scrollbar { width: 9px; height: 9px; }
   ::-webkit-scrollbar-thumb { background: #2A3140; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
@@ -587,12 +587,106 @@ STYLE_BLOCK = r"""<style>
     .steps { grid-template-columns: 1fr; }
     .ready { grid-template-columns: 1fr; }
   }
+  /* Conversion review: keep the code readable, with evidence in its own view. */
+  main { grid-template-columns: 306px minmax(0, 1fr); position: relative; }
+  main > aside { min-width: 0; }
+  .header-tools { display: flex; gap: 7px; flex: 1 0 100%; align-items: center; overflow-x: auto; padding: 2px 0; }
+  .header-tools .btn { white-space: nowrap; }
+  .header-tools #btn-export { margin-left: auto; }
+  .brand small { display: none; }
+  header #provider { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  .flabel { font: 600 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--ink-dim); flex-basis: 100%; }
+  .frow button { font: 12px var(--sans); text-transform: none; letter-spacing: 0; padding: 3px 7px; }
+  .filters { gap: 7px; }
+  .row .title { font: 600 12.5px var(--sans); }
+  .row .sub, .units-summary { font-size: 11.5px; color: var(--ink-dim); }
+  .row .verdict { padding: 2px 4px; font-size: 9px; }
+  .row .rside { gap: 4px; }
+  .units-summary { padding: 6px 12px; border-bottom: 1px solid var(--line); }
+  #review-workspace .head { padding: 11px 18px; }
+  #review-workspace .head h1 { font: 650 19px var(--sans); overflow-wrap: anywhere; }
+  #review-workspace .head .where { color: var(--ink-dim); font-size: 12px; }
+  .head .meta { gap: 7px; margin-top: 6px; }
+  .apex-target { max-width: 100%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .review-toolbar { display: flex; gap: 8px; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+  .review-views { display: flex; gap: 4px; flex-wrap: wrap; }
+  .review-views button { background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--ink-dim); padding: 6px 9px; font-size: 12.5px; }
+  .review-views button:hover { color: var(--ink); background: var(--hover); }
+  .review-views button[aria-pressed="true"] { color: var(--gold); background: var(--gold-soft); border-color: var(--gold-line); }
+  .review-navigation { margin-left: auto; display: flex; gap: 4px; }
+  .review-navigation .btn { padding: 4px 9px; }
+  #unit-toggle { display: none; }
+  .pane h2 { font: 600 13px var(--sans); letter-spacing: 0; text-transform: none; padding: 9px 14px; gap: 8px; min-height: 48px; }
+  .pane h2 small { display: block; font-size: 11px; color: var(--ink-dim); font-weight: 400; }
+  .conf { font: 11px var(--sans); flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+  .conf .cbar { width: 52px; }
+  .code-wrap textarea.code.plain-code { color: #CBD3DF; }
+  pre.code, .code-wrap pre.code, .code-wrap textarea.code { font-size: 13px; }
+  pre.code .ln { color: #737E91; }
+  .c { color: #8B97AB; }
+  .notes { display: none; max-height: none; flex: 1; min-height: 0; padding: 18px; }
+  .notes details > summary { font: 600 13px/1.5 var(--sans); letter-spacing: 0; text-transform: none; padding: 7px 0; }
+  .notes h3 { font: 600 14px var(--sans); letter-spacing: 0; text-transform: none; margin-top: 16px; }
+  .notes .ev, .notes .pts, .notes .why { color: var(--ink-dim); }
+  #review-workspace[data-view="evidence"] .notes { display: block; }
+  #review-workspace[data-view="evidence"] .panes { display: none; }
+  #review-workspace[data-view="source"] .panes, #review-workspace[data-view="proposal"] .panes { grid-template-columns: 1fr; }
+  #review-workspace[data-view="source"] .pane:not(.source-pane), #review-workspace[data-view="proposal"] .source-pane { display: none; }
+  .actions { flex-direction: column; align-items: stretch; flex-shrink: 0; padding: 9px 14px; gap: 8px; }
+  .review-fields { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(110px, 180px); gap: 9px; }
+  .review-fields label { display: flex; align-items: center; gap: 8px; color: var(--ink-dim); font-size: 12px; white-space: nowrap; }
+  .review-fields input { min-width: 0; width: 100%; padding: 6px 9px; }
+  .review-buttons { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+  .review-buttons .btn { padding: 6px 10px; }
+  #review-status { font-size: 11.5px; color: var(--ink-dim); flex: 1 1 160px; line-height: 1.4; }
+  #review-status.err { color: var(--red); }
+  #discard-draft { font-size: 11px; }
+  #discard-draft[hidden], .code-wrap pre[hidden] { display: none; }
+  #out-busy { pointer-events: none; }
+  #out-busy .sub { max-width: 420px; }
+  @media (max-width: 1180px) {
+    header .counts { display: none; }
+    main { grid-template-columns: 270px minmax(0, 1fr); }
+    .review-buttons kbd { display: none; }
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: minmax(0, 1fr); }
+    main > aside { display: none; }
+    main.units-open > aside { display: flex; position: absolute; inset: 0 auto 0 0; width: min(330px, 88vw); z-index: 12; box-shadow: 15px 0 50px #0009; }
+    #unit-toggle { display: block; }
+    #review-workspace { overflow-y: auto; }
+    #review-workspace .head, #review-workspace .actions { flex-shrink: 0; }
+    #review-workspace .panes { min-height: 320px; flex: 1 0 320px; }
+    #review-workspace[data-view="compare"] .panes { grid-template-columns: 1fr; grid-template-rows: 320px 320px; min-height: 640px; }
+    .notes { min-height: 300px; overflow: visible; }
+    #working { flex-wrap: wrap; }
+  }
+  @media (max-width: 600px) {
+    header { padding: 7px 10px; gap: 6px; }
+    header #btn-module { max-width: 180px; }
+    header #provider { max-width: 155px; font-size: 10px; }
+    header #btn-propose-all { padding: 6px 8px; font-size: 12px; }
+    .brand .mark { font-size: 14px; }
+    .brand svg { width: 20px; height: 20px; }
+    .header-tools { margin-top: 2px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; overflow: visible; }
+    .header-tools .btn { font-size: 12px; padding: 6px 10px; }
+    .header-tools #btn-export { grid-column: span 2; margin-left: 0; }
+    .review-toolbar { padding: 7px 9px; flex-wrap: wrap; }
+    .review-views { flex: 1; }
+    .review-views button { font-size: 12px; padding: 5px 6px; }
+    .review-navigation { display: none; }
+    .review-fields { grid-template-columns: minmax(0, 1fr); }
+    .review-fields label { display: grid; grid-template-columns: 90px minmax(0, 1fr); }
+    #review-status { flex-basis: 100%; }
+    .head .meta { font-size: 11px; }
+    #toast { right: 10px; left: 10px; max-width: none; }
+  }
 </style>
 </head>
 """
 
 MODAL_HTML = r"""<div class="modal" id="modal">
-  <div class="sheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
     <div class="sheet-head">
       <h2 id="modal-title"></h2>
       <div class="path" id="modal-path"></div>
@@ -610,7 +704,7 @@ MODAL_HTML = r"""<div class="modal" id="modal">
 
 """
 
-TOAST_HTML = r"""<div id="toast"></div>
+TOAST_HTML = r"""<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 """
 
@@ -682,7 +776,7 @@ let deps = {};
 let tests = {}, TEST_ORIGINS = {};
 
 function esc(s) {
-  return (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function toast(msg, bad) {
   const t = $("toast");
@@ -692,7 +786,7 @@ function toast(msg, bad) {
   t._h = setTimeout(() => (t.className = ""), 4200);
 }
 async function api(path, body) {
-  const opt = body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {};
+  const opt = body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), cache: "no-store" } : { cache: "no-store" };
   const r = await fetch(path, opt);
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || r.statusText);
@@ -704,11 +798,34 @@ async function api(path, body) {
    the block-comment flag survives across lines, everything is escaped. */
 """
 
-MODAL_JS = r"""function closeModal() { $("modal").className = "modal"; }
+MODAL_JS = r"""let modalGeneration = 0, modalReturnFocus = null;
+function modalChanged() { modalGeneration++; window.dispatchEvent(new Event("formslang:modalchange")); }
+function closeModal() {
+  if (!$("modal").classList.contains("show")) return;
+  $("modal").className = "modal";
+  document.querySelector("main").inert = false;
+  document.querySelector("header").inert = false;
+  modalChanged();
+  if (modalReturnFocus && modalReturnFocus.isConnected) modalReturnFocus.focus();
+}
 function openModal(title) {
+  if (!$("modal").classList.contains("show")) modalReturnFocus = document.activeElement;
   $("modal-title").textContent = title;
   $("modal").className = "modal show";
+  document.querySelector("main").inert = true;
+  document.querySelector("header").inert = true;
+  modalChanged();
+  $("modal-close").focus();
 }
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || !$("modal").classList.contains("show")) return;
+  const focusable = Array.from($("modal").querySelectorAll('button, input, select, textarea, summary, a[href], [tabindex="0"]'))
+    .filter((el) => !el.disabled && el.getClientRects().length && !el.closest("[hidden]"));
+  if (!focusable.length) { e.preventDefault(); $("modal").querySelector(".sheet").focus(); return; }
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && (document.activeElement === first || !$("modal").contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (document.activeElement === last || !$("modal").contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+});
 /* One footer, reused by both pickers: a text field, an optional list of
    suggestions, and the button that commits. */
 function foot(opt) {

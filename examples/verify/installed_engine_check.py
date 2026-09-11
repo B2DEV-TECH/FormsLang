@@ -85,6 +85,16 @@ def main() -> None:
             with urllib.request.urlopen(req, timeout=30) as response:
                 return json.load(response)
 
+        def reject_stale_context(route: str, body: dict | None = None) -> None:
+            try:
+                request(route, body)
+            except urllib.error.HTTPError as error:
+                check(error.code == 400, "stale context was not rejected as an invalid request", error.code)
+                response = json.load(error)
+                check("session changed" in response.get("error", ""), "stale context rejection was not explicit", response)
+            else:
+                raise CheckFailed("stale context request unexpectedly succeeded")
+
         try:
             deadline = time.monotonic() + 60
             while True:
@@ -121,21 +131,45 @@ def main() -> None:
                 # Exercise the new modules inside the frozen candidate, not only
                 # the editable Python checkout. Baseline versions need not have
                 # the guided projection, so this belongs to the verify phase.
-                blueprint = request("/api/blueprint/build", {})
+                context = state.get("context_id", "")
+                check(isinstance(context, str) and len(context) == 64
+                      and all(c in "0123456789abcdef" for c in context),
+                      "session context is missing or is not an opaque identifier")
+                initial = request("/api/blueprint")
+                check(initial.get("context_id") == context, "initial Blueprint points to another session")
+                blueprint = request("/api/blueprint/build", {"context_id": context})
+                check(blueprint.get("context_id") == context, "Blueprint regeneration changed session identity")
                 check(blueprint["guide"]["code_total"] > 0, "Blueprint has no code reading guide")
                 check(bool(blueprint["guide"]["paths"]), "Blueprint has no observed paths")
+                ai = request("/api/blueprint/ai?scope=application&context_id=" + context)
+                check(ai == {"status": "idle"}, "reading AI status started or returned a provider request", ai)
+                page = request("/api/blueprint/explore?entity_type=TRIGGER&context_id=" + context)
+                check(bool(page["nodes"]), "Blueprint explorer returned no triggers")
+                check(all("source_text" not in node["attributes"] for node in page["nodes"]),
+                      "Blueprint list repeats source bodies")
                 entity = blueprint["guide"]["start_here"][0]["id"]
-                detail = request("/api/blueprint/explore?node=" + entity)["selected"]
+                detail_route = "/api/blueprint/explore?node=" + entity + "&context_id=" + context
+                detail = request(detail_route)["selected"]
                 check(bool(detail["source_context"]["text"]), "Blueprint lost decoded source context")
                 finding = detail["finding"]
-                request("/api/blueprint/review", {
+                review = {
                     "entity": finding["entity"], "revision": finding["revision"],
                     "action": "DEFER", "reviewer": REVIEWER,
                     "comment": "Installer acceptance: investigate after upgrade",
-                })
-                saved = request("/api/blueprint/explore?node=" + entity)["selected"]["finding"]
+                    "context_id": context,
+                }
+                wrong_context = "0" * 64 if context != "0" * 64 else "1" * 64
+                reject_stale_context("/api/blueprint/explore?context_id=" + wrong_context)
+                reject_stale_context("/api/blueprint/ai?scope=application&context_id=" + wrong_context)
+                reject_stale_context("/api/blueprint/review", {**review, "context_id": wrong_context})
+                check(request(detail_route)["selected"]["finding"] == finding,
+                      "rejected context changed a Blueprint review")
+                request("/api/blueprint/review", review)
+                saved = request(detail_route)["selected"]["finding"]
                 check(saved["review_state"] == "DEFER", "Blueprint review was not retained")
-                result.update(blueprint_guide=True, blueprint_source_context=True, blueprint_review=True)
+                result.update(blueprint_guide=True, blueprint_source_context=True, blueprint_review=True,
+                              opaque_session_context=True, blueprint_ai_idle=True,
+                              blueprint_context_rejected=True, blueprint_list_compact=True)
 
             zip_path = Path(request("/api/export", EXPORT)["zip"])
             first = sha256(zip_path)

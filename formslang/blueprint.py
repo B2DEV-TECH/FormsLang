@@ -588,7 +588,19 @@ def explore(bp, *, node="", module="", entity_type="", dependency_type="",
              and (not domain or context.get(n["id"], {}).get("potential_domain") == domain)
              and (not risk_level or n["attributes"].get("risk", {}).get("level") == risk_level)
              and (not query or query.casefold() in n["name"].casefold())]
-    result = {"nodes": sorted(nodes, key=lambda n: (n["name"], n["id"]))[offset:offset + limit],
+    # Source bodies belong to the selected detail, never every list row or
+    # neighboring entity. A page of 200 long units otherwise repeats megabytes.
+    by_id = {n["id"]: n for n in bp["entities"]}
+
+    def compact(n):
+        attrs = {k: v for k, v in n["attributes"].items()
+                 if k not in {"source_text", "source_truncated"}}
+        parent = by_id.get(attrs.get("source_entity"))
+        if parent and "owner" not in attrs:
+            attrs["owner"] = parent["attributes"].get("owner", "")
+        return {**n, "attributes": attrs}
+
+    result = {"nodes": [compact(n) for n in sorted(nodes, key=lambda n: (n["name"], n["id"]))[offset:offset + limit]],
               "total": len(nodes), "offset": offset, "limit": limit}
     if node:
         selected = next((n for n in bp["entities"] if n["id"] == node), None)
@@ -600,7 +612,7 @@ def explore(bp, *, node="", module="", entity_type="", dependency_type="",
         ids = {p for e in shown for p in e["evidence"]} | set(selected["evidence"])
         neighbor_ids = {e[k] for e in shown for k in ("source", "target")}
         source_entity = next((n for n in bp["entities"] if n["id"] == selected["attributes"].get("source_entity")), selected)
-        result["selected"] = {"entity": selected, "source_context": {
+        result["selected"] = {"entity": compact(selected), "source_context": {
                 "text": source_entity["attributes"].get("source_text", ""),
                 "truncated": source_entity["attributes"].get("source_truncated", False),
                 "owner": source_entity["attributes"].get("owner", ""),
@@ -608,7 +620,7 @@ def explore(bp, *, node="", module="", entity_type="", dependency_type="",
             "finding": findings.get(node) or findings.get(selected["attributes"].get("source_entity")),
             "inbound": [e for e in shown if e["target"] == node],
             "outbound": [e for e in shown if e["source"] == node],
-            "neighbors": [n for n in bp["entities"] if n["id"] in neighbor_ids],
+            "neighbors": [compact(n) for n in bp["entities"] if n["id"] in neighbor_ids],
             "edge_total": len(edges), "truncated": len(edges) > limit,
             "evidence": [p for p in bp["evidence"] if p["id"] in ids][:limit],
             "evidence_total": len(ids)}

@@ -14,9 +14,10 @@ HEADER_HTML = r"""<header>
   <button class="btn" id="btn-module" title="Pick another Forms module">—</button>
   <div class="spacer"></div>
   <div class="counts" id="counts"></div>
-  <span class="chip provider" id="provider" title="Pick the model that converts">—</span>
-  <button class="btn" id="btn-settings" title="Settings — model, API key, CLI">&#9881;</button>
+  <button class="chip provider" id="provider" title="Pick the model that converts">—</button>
+  <button class="btn" id="btn-settings" title="Settings — model, API key, CLI" aria-label="Settings">&#9881;</button>
   <button class="btn" id="btn-propose-all">Convert unconverted</button>
+  <nav class="header-tools" aria-label="Module tools">
   <button class="btn" id="btn-dash" title="Project view — what this session says, counted">Project</button>
   <button class="btn" id="btn-blueprint" title="Application knowledge, dependencies and modernization review">Blueprint</button>
   <button class="btn" id="btn-doc" title="HTML technical documentation for this module">Doc</button>
@@ -24,6 +25,7 @@ HEADER_HTML = r"""<header>
   <button class="btn" id="btn-diff" title="Compare this module against another version">Diff</button>
   <button class="btn" id="btn-exports" title="Exported ZIPs — open in folder">Exports</button>
   <button class="btn primary" id="btn-export">Export APEX 26.1</button>
+  </nav>
 </header>
 """
 
@@ -71,8 +73,13 @@ WELCOME_HTML = r"""    <div id="welcome">
 
 """
 
-DATA_REFRESH_JS = r"""async function refresh(keep = true) {
+DATA_REFRESH_JS = r"""let stateRequest = 0;
+async function refresh(keep = true) {
+  const request = ++stateRequest;
   const data = await api("/api/state");
+  if (request !== stateRequest) return;
+  const switchedSession = reviewContext() && reviewContext() !== reviewContext(data);
+  if (switchedSession) { deps = {}; tests = {}; editorTask = null; }
   state = data;
   $("btn-module").textContent = data.session.title || "Open a module…";
   $("provider").textContent = data.provider;
@@ -115,17 +122,39 @@ $("btn-dash").onclick = showDashboard;
 $("btn-doc").onclick = openDoc;
 $("btn-preview").onclick = openPreview;
 $("btn-diff").onclick = pickDiffTarget;
-$("q").oninput = (e) => { query = e.target.value.toLowerCase(); renderList(); };
-$("out").oninput = syncOutHighlight;
+let filterTimer;
+$("q").oninput = (e) => { query = e.target.value.toLowerCase(); clearTimeout(filterTimer); filterTimer = setTimeout(() => { renderList(); renderDetail(); }, 90); };
+$("out").oninput = () => {
+  captureReviewDraft();
+  cancelAnimationFrame(highlightFrame);
+  highlightFrame = requestAnimationFrame(syncOutHighlight);
+};
+$("comment").oninput = captureReviewDraft;
 $("out").onscroll = syncOutScroll;
+$("discard-draft").onclick = discardReviewDraft;
+for (const view of ["compare", "source", "proposal", "evidence"]) $("view-" + view).onclick = () => setReviewView(view);
+$("unit-prev").onclick = () => move(-1);
+$("unit-next").onclick = () => move(1);
+$("unit-toggle").onclick = () => {
+  const open = document.querySelector("main").classList.toggle("units-open");
+  $("unit-toggle").setAttribute("aria-expanded", String(open));
+  if (open) $("q").focus();
+};
+window.addEventListener("beforeunload", (e) => {
+  if (reviewDrafts.size) { e.preventDefault(); e.returnValue = ""; }
+});
 
 document.addEventListener("keydown", (e) => {
-  const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
-  if (e.key === "Escape") { closeModal(); document.activeElement.blur(); return; }
+  const typing = ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(document.activeElement.tagName) || document.activeElement.isContentEditable;
+  if (e.key === "Escape") {
+    if ($("modal").classList.contains("show")) closeModal();
+    else { document.querySelector("main").classList.remove("units-open"); $("unit-toggle").setAttribute("aria-expanded", "false"); }
+    return;
+  }
   // With the overlay up, every other shortcut belongs to the overlay.
   if ($("modal").classList.contains("show")) return;
   if (e.key === "/" && !typing) { e.preventDefault(); $("q").focus(); return; }
-  if (typing) return;
+  if (typing || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
   if (e.key === "j") move(1);
   else if (e.key === "k") move(-1);
   else if (e.key === "a") decide("approved");
@@ -136,7 +165,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "d") showDashboard();
 });
 
-$("reviewer").value = localStorage.getItem("formslang.reviewer") || "";
+try { $("reviewer").value = localStorage.getItem("formslang.reviewer") || ""; } catch (_) { /* storage may be disabled */ }
 PROPOSE_LABEL = $("btn-propose").innerHTML;
 refresh(false)
   /* A run started before this window opened still owns the screen. */

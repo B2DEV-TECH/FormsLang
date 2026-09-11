@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-09-11
+
+### Changed
+
+- Conversion review has Compare, Forms source, APEX proposal and Evidence & tests
+  views, more code space, persistent decision controls and a responsive unit drawer.
+  Modal keyboard focus stays inside the dialog and returns to its opener.
+- Blueprint uses a compact application header, sticky navigation, owner-qualified
+  rule candidates, component history and direct links to the originating code unit.
+  Source can be copied; AI sections expand individually. README includes current
+  Blueprint and conversion screenshots from the synthetic showcase.
+- Blueprint AI explanations run in the background with elapsed time and reconnect
+  after modal close/reopen or browser reload while the app remains open. Eight
+  requests/results are retained in memory, scoped to session, user, source/engine
+  revision and provider. Discard suppresses the result without pretending to kill
+  the provider. Synchronous API calls remain supported.
+- Explorer lists and neighbors omit unselected source bodies; repeated reads reuse
+  a snapshot invalidated by local or external SQLite writes. Source connections
+  prioritize diverse relationship kinds. Individual AI context is explicitly bounded.
+
+### Fixed
+
+- Conversion edits and architecture-review drafts survive navigation, filtering,
+  polling and late save responses. Unsaved state, explicit discard and unload
+  warnings make the in-memory draft lifetime clear.
+- Delayed responses cannot overwrite another modal, selected unit or newer AI
+  request. Polling is serialized; cancelling a failed discard resumes status checks.
+- Workbench requests carry an opaque session/user context guard to prevent stale
+  conversion decisions and Blueprint actions reaching a different open session.
+  Existing authorization, CSRF and source-revision checks remain in force.
+- Overlapping Blueprint/conversion provider jobs are refused; repeated identical
+  AI requests are reused. Provider errors are sanitized and do not trigger fallback.
+
+### Added
+
+- Reproducible isolated Edge/Chromium acceptance script with real screenshots,
+  draft/review/navigation/download checks and desktop/tablet/phone layouts.
+  New JavaScript and backend regression tests cover request races and isolation.
+
 ## [1.3.1] - 2026-09-10
 
 ### Changed
@@ -1105,7 +1144,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.1...v1.2.2

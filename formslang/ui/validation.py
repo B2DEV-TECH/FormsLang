@@ -4,12 +4,18 @@ from __future__ import annotations
 
 DEPENDENCIES_JS = r"""async function loadDeps(id) {
   if (deps[id]) return;
-  deps[id] = "loading";
+  const context = reviewContext(), contextId = state.context_id, cache = deps;
+  cache[id] = "loading";
+  let result;
   try {
-    deps[id] = await api("/api/deps?task=" + encodeURIComponent(id) + "&depth=2");
+    const query = new URLSearchParams({ task: id, depth: 2 });
+    if (contextId) query.set("context_id", contextId);
+    result = await api("/api/deps?" + query);
   } catch (e) {
-    deps[id] = { available: false, reason: e.message };
+    result = { available: false, reason: e.message };
   }
+  if (reviewContext() !== context || deps !== cache) return;
+  cache[id] = result;
   if (selected === id) renderDetail();
 }
 
@@ -47,14 +53,23 @@ function renderDeps(t) {
    section is there even for a unit nobody has proposed yet. */
 """
 
-TEST_CASES_JS = r"""async function loadTests(id) {
+TEST_CASES_JS = r"""const testRequests = new Map();
+async function loadTests(id) {
   if (tests[id]) return;
-  tests[id] = "loading";
+  const context = reviewContext(), contextId = state.context_id, cache = tests;
+  const request = (testRequests.get(id) || 0) + 1;
+  testRequests.set(id, request);
+  cache[id] = "loading";
+  let result;
   try {
-    tests[id] = await api("/api/tests?task=" + encodeURIComponent(id));
+    const query = new URLSearchParams({ task: id });
+    if (contextId) query.set("context_id", contextId);
+    result = await api("/api/tests?" + query);
   } catch (e) {
-    tests[id] = { cases: [], error: e.message };
+    result = { cases: [], error: e.message };
   }
+  if (reviewContext() !== context || tests !== cache || testRequests.get(id) !== request) return;
+  cache[id] = result;
   if (selected === id) renderDetail();
 }
 
@@ -62,34 +77,38 @@ const CASE_ACTION = { accepted: "Accept", rejected: "Reject", needs_work: "Needs
 const RUN_ACTION = { pass: "Pass", fail: "Fail", blocked: "Blocked" };
 const RUN_LABEL = { pass: "Passed", fail: "Failed", blocked: "Blocked", not_run: "Not run" };
 
-async function decideCase(caseId, state, taskId) {
+async function decideCase(caseId, decisionState, taskId) {
+  const context = reviewContext(), contextId = state.context_id, cache = tests;
   try {
     await api("/api/test-decision", {
-      case_id: caseId, state,
+      case_id: caseId, state: decisionState, context_id: contextId,
       reviewer: $("reviewer").value, comment: $("comment").value,
     });
   } catch (e) {
-    toast(e.message, true);
+    if (reviewContext() === context) toast(e.message, true);
     return;
   }
+  if (reviewContext() !== context || tests !== cache) return;
   delete tests[taskId];          // re-read: the counts in the header moved too
   await loadTests(taskId);
-  toast(CASE_ACTION[state] + "ed");
+  if (reviewContext() === context && tests === cache) toast(CASE_ACTION[decisionState] + "ed");
 }
 
 async function recordRun(caseId, runState, taskId) {
+  const context = reviewContext(), contextId = state.context_id, cache = tests;
   try {
     await api("/api/test-run", {
-      case_id: caseId, run_state: runState,
+      case_id: caseId, run_state: runState, context_id: contextId,
       run_by: $("reviewer").value, run_notes: $("comment").value,
     });
   } catch (e) {
-    toast(e.message, true);
+    if (reviewContext() === context) toast(e.message, true);
     return;
   }
+  if (reviewContext() !== context || tests !== cache) return;
   delete tests[taskId];          // re-read: the counts in the header moved too
   await loadTests(taskId);
-  toast(RUN_LABEL[runState]);
+  if (reviewContext() === context && tests === cache) toast(RUN_LABEL[runState]);
 }
 
 function caseBlock(c, taskId) {

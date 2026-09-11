@@ -27,6 +27,7 @@ function paintWorking() {
   }
   paintBusyRows();
   paintBusyPane();
+  paintReviewStatus();
 }
 
 function paintBusyRows() {
@@ -47,22 +48,20 @@ function paintBusyPane() {
   const box = $("out-busy");
   if (!box) return;
   const queue = new Set(running() ? (job.queue || []) : []);
-  // Only the unit being written is covered: its answer is about to replace
-  // whatever is in the box. A unit merely waiting in line stays editable --
-  // a queue of fifty must not lock fifty panes.
+  // Queued units stay readable; editing resumes after their result arrives.
   const mine = !!(running() && selected && selected === job.current_id);
   const ahead = !!(selected && !mine && queue.has(selected));
   box.hidden = !mine;
   $("out-queued").hidden = !ahead;
   if (ahead) {
     $("out-queued").textContent =
-      "in queue · " + Math.max(1, (job.total || 0) - (job.done || 0) - 1) + " ahead";
+      "in queue · " + Math.max(0, (job.queue || []).indexOf(selected)) + " ahead";
   }
   if (!mine) return;
   const who = job.provider || providerLabel();
   $("busy-title").textContent = "Reading this unit and writing the APEX version";
   $("busy-sub").textContent = who +
-    " has the whole trigger body, its built-ins and its globals. One unit usually takes 15 to 60 seconds; the proposal lands here the moment it answers.";
+    " is preparing a proposal from this unit. You can read the source, inspect evidence or review another unit while it runs.";
   $("busy-tick").textContent = elapsed() + " elapsed";
 }
 
@@ -80,8 +79,14 @@ function resetProposeButton() {
 """
 
 PROPOSE_AND_POLL_JS = r"""async function propose(all) {
-  const body = all ? { all: true } : { task_id: selected };
+  if (running() || decisionBusy) return;
+  const body = all ? { all: true, context_id: state.context_id } : { task_id: selected, context_id: state.context_id };
   if (!all && !selected) return;
+  const targets = all ? state.tasks.filter((t) => !t.proposal) : state.tasks.filter((t) => t.id === selected);
+  if (targets.some((t) => reviewDrafts.has(draftKey(t)))) {
+    toast("Save a review decision or discard your edits before replacing this code with an AI proposal.", true);
+    return;
+  }
   const btn = all ? $("btn-propose-all") : $("btn-propose");
   const before = btn.innerHTML;
   btn.disabled = true;
@@ -94,7 +99,7 @@ PROPOSE_AND_POLL_JS = r"""async function propose(all) {
   job = {
     running: true, done: 0, failed: 0, total: all ? Math.max(1, state.stats.unproposed || 1) : 1,
     current: all ? "" : (here || {}).title || "", current_id: all ? "" : selected,
-    queue: all ? [] : [selected], provider: providerLabel(),
+    queue: targets.map((t) => t.id), provider: providerLabel(),
   };
   paintWorking();
   startTicker();
@@ -109,16 +114,26 @@ PROPOSE_AND_POLL_JS = r"""async function propose(all) {
   poll();
 }
 
+let conversionPollGeneration = 0;
 function poll() {
-  clearInterval(polling);
+  const generation = ++conversionPollGeneration;
+  clearTimeout(polling);
   if (!jobStart) jobStart = Date.now();
   startTicker();
   let seen = (job && ((job.done || 0) + (job.failed || 0))) || 0;
-  let refreshing = false;
-  polling = setInterval(async () => {
+  let missed = 0;
+  const check = async () => {
     let snap;
     try { snap = await api("/api/job"); }
-    catch (e) { return; }  // one missed poll is not the end of the run
+    catch (e) {
+      if (generation !== conversionPollGeneration) return;
+      missed++;
+      if (missed === 3) toast("Connection interrupted. Checking the conversion again; your edits are kept.", true);
+      polling = setTimeout(check, Math.min(10000, 1000 * missed));
+      return;
+    }
+    if (generation !== conversionPollGeneration) return;
+    missed = 0;
     job = snap;
     if (snap.running) {
       paintWorking();
@@ -126,17 +141,14 @@ function poll() {
       // real proposals in as soon as the server reports one landing, not only
       // once the whole queue is done.
       const done = (snap.done || 0) + (snap.failed || 0);
-      if (done !== seen && !refreshing) {
-        seen = done;
-        refreshing = true;
-        const keep = selected;
-        refresh()
-          .then(() => { if (keep) { selected = keep; renderList(); renderDetail(); } })
-          .finally(() => { refreshing = false; });
+      if (done !== seen) {
+        try { await refresh(); seen = done; }
+        catch (e) { toast("Conversion continues, but the latest result could not be loaded: " + e.message, true); }
       }
+      if (generation === conversionPollGeneration) polling = setTimeout(check, 1000);
       return;
     }
-    clearInterval(polling);
+    clearTimeout(polling);
     stopTicker();
     job = null;
     jobStart = 0;
@@ -144,11 +156,11 @@ function poll() {
     resetProposeButton();
     if (snap.error) toast(snap.error, true);
     else if (snap.failed) toast(`${snap.failed} of ${snap.total} conversion(s) failed — ${snap.last_error}`, true);
-    else if (snap.total) toast(`Converted ${snap.done} unit(s). Now read them.`);
-    const keep = selected;
-    await refresh();  // restores the button's own label from the new counts
-    if (keep) { selected = keep; renderList(); renderDetail(); }
-  }, 700);
+    else if (snap.total) toast(`Converted ${snap.done} unit(s). Review the proposals before approving.`);
+    try { await refresh(); }
+    catch (e) { toast("Conversion finished. Reload to retrieve the latest proposals: " + e.message, true); }
+  };
+  polling = setTimeout(check, 500);
 }
 
 /* ── overlay: which module, which model ────────────────── */

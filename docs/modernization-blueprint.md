@@ -30,13 +30,13 @@ with no supported sources fails. Menus/libraries not representable as FormModule
 remain explicit parser failures, not invented Forms. An output directory nested
 under the source is excluded from collection.
 
-In the Workbench, use **Blueprint**, then **Analyze locally** on the open module
+In the Workbench, use **Blueprint**, then **Analyze open module** on the open module
 or supply an application directory. Open the generated session to resume a
-portfolio. **Regenerate** rereads available module XML; portfolio regeneration
+portfolio. **Analysis settings → Refresh source analysis** rereads available module XML; portfolio regeneration
 uses the CLI or the application-directory input. Stored snapshots remain readable
 when source files are unavailable. Snapshot content does not silently follow
-later source edits: regenerate after changes. Use **Write artifacts** to export
-the current review state.
+later source edits: regenerate after changes. Use **Modernization plan → Save
+reports to disk** to export the current review state.
 
 ## Local optional database/PL/SQL inventory
 
@@ -212,7 +212,7 @@ session exports. No telemetry, remote fonts, CDN, database connection or cloud
 AI is added. Output names are fixed and path containment is checked. HTML and
 Markdown escape source content; the browser never executes source-provided markup.
 
-The optional **Request advisory explanation** action explicitly sends only an
+The optional **Explain with AI** action explicitly sends only an
 allowlisted, anonymized structure: component/dependency types and counts,
 classification and recommendation. Source names, paths, code, literals and human
 review comments are excluded. It uses the already configured provider (including
@@ -256,12 +256,41 @@ must explain structural evidence and identify what to investigate, not invent
 business purpose. Echo asks the user to configure a real model. Existing egress
 policy applies, including local-provider support and enterprise cloud blocking.
 
-The explanation stays an unapproved proposal. It is cached in the current browser
-page for the source revision/provider and can be saved as a separate HTML briefing.
-It does not change deterministic reports, readiness, coverage or human decisions.
-A page reload clears that cache. No AI request is made just by opening Blueprint.
+The explanation stays an unapproved proposal and can be saved as a separate HTML
+briefing. Requests run in the background; reopening Blueprint or reloading the
+browser reconnects to an existing request without making another provider call.
+The last eight requests/results are held in Workbench process memory, isolated by
+session, authenticated actor, source/engine revision and provider/model/address.
+Restarting the Workbench clears them. Source or provider changes require a new
+explanation. No AI request is made just by opening Blueprint.
+
+Only one conversion/Blueprint provider job runs at a time. Repeated starts reuse
+an identical running request. **Discard request** suppresses its result, but does
+not terminate the provider process; another call waits until that provider settles.
+Provider failures do not trigger a silent fallback. AI never changes deterministic
+reports, readiness, coverage or human decisions.
+
+The local API supports background requests with `POST /api/blueprint/ai` and
+`background: true`; poll `GET /api/blueprint/ai?job_id=...` and discard with
+`POST /api/blueprint/ai/cancel`. Existing synchronous requests remain supported.
+State responses expose an opaque `context_id`. The Workbench sends it with
+Blueprint reads/mutations and conversion decisions/requests so an action from an
+older session cannot land on another open session. This additive context guard
+does not replace authentication, RBAC, CSRF or finding-revision checks.
+
+The explorer sends compact list/neighbor rows and loads the source body only for
+the selected component. Repeated reads reuse a snapshot until SQLite reports a
+write, including commits from another connection. Search is debounced. Same-name
+rule candidates display the owning block/item, and link to the containing code
+unit's dependencies. These are presentation changes, not new inferred edges.
 
 Component inspection shows the decoded PL/SQL body when present in the snapshot
 (up to 64,000 characters, with truncation indicated). Existing snapshots without
 this optional field retain their evidence excerpts until regenerated. Recording
 an architecture decision and claiming implementation coverage remain separate.
+
+Unsaved decisions are retained in browser-tab memory by session, finding and
+finding revision. Navigation and modal close/reopen restore them; a browser reload
+or process restart does not. Save or discard explicitly. A late save response
+preserves newer edits typed during the request. Stored decisions continue to use
+the existing append-only session review history; no session migration is required.
