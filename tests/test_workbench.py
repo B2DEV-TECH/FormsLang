@@ -20,6 +20,7 @@ import pytest
 
 from formslang import apeximport, secrets, testspec
 from formslang.ai import EchoProvider
+from formslang.apexlang import last_export_config
 from formslang.cli import _work_dir
 from formslang.convert import build_tasks
 from formslang.parser import parse_xml
@@ -1216,3 +1217,120 @@ def test_the_export_dialog_offers_to_import_straight_into_apex():
     # one import routine serves both the export dialog and the exports list
     assert INDEX_HTML.count("async function runImport(") == 1
     assert INDEX_HTML.count("runImport(") >= 4
+
+
+# -- data binding: the export dialog's half of a confirmed key -------------
+#
+# The exporter behind these was checked against a running APEX 26.1 already
+# (tests/test_apexlang_binding.py). What is new is the door: until now the
+# only way to confirm a key was a command line, so a reviewer working in the
+# desktop app could not reach any of it.
+
+
+def _exported_page(body) -> str:
+    """The page the export just wrote, read back from disk.
+
+    The reply is the exporter describing itself; the file is what APEX will
+    import. Only the second one is evidence.
+    """
+    pages = (Path(body["project"]) / "pages").glob("p00001-*.apx")
+    return next(pages).read_text(encoding="utf-8")
+
+
+def test_the_dialog_is_offered_the_columns_the_block_actually_places(server):
+    """The reviewer picks the key from a list rather than typing it.
+
+    A column the block does not place on the page is refused by the exporter
+    without ever saying so on screen -- the region simply stays unbound, with
+    the reason buried in the manifest -- so a free-text box would turn a typo
+    into a page that silently saves nothing.
+    """
+    base, _wb = server
+    code, payload = _get(base, "/api/bindings")
+    assert code == 200
+    candidates = {c["block"]: c for c in json.loads(payload)["candidates"]}
+
+    assert "ORDERS" in candidates
+    orders = candidates["ORDERS"]
+    assert orders["table"] == "ORDERS"
+    assert orders["columns"] == ["CUSTOMER", "ORDER_ID"]
+    # Nothing is confirmed until somebody confirms it. This module's .fmb
+    # marks no primary key at all, which is exactly the case the dialog must
+    # survive: it has a list to offer and no hint to put in front of it.
+    assert orders["confirmed_key"] == ""
+    assert orders["forms_hint"] == ""
+
+
+def test_a_key_chosen_in_the_dialog_binds_the_region(server):
+    """The dialog reaches the same gate the command line reaches, and the
+    proof is the exported page rather than the reply."""
+    base, _wb = server
+    code, body = _post(base, "/api/export", {"keys": {"ORDERS": "ORDER_ID"}})
+    assert code == 200
+
+    bound = {e["block"]: e for e in body["data_binding"]}["ORDERS"]
+    assert bound["bound"] is True
+    assert bound["confirmed_key"] == "ORDER_ID"
+
+    page = _exported_page(body)
+    assert "type: form" in page
+    assert "type: formAutoRowProcessing" in page
+
+
+def test_clearing_the_choice_takes_the_form_back_out(server):
+    """The blank option is the dialog's ``--forget-key``: the page goes back
+    to what it was, with nobody left on the hook for a key."""
+    base, wb = server
+    _post(base, "/api/export", {"keys": {"ORDERS": "ORDER_ID"}})
+    code, body = _post(base, "/api/export", {"keys": {"ORDERS": ""}})
+    assert code == 200
+
+    assert wb.store.block_keys() == {}
+    page = _exported_page(body)
+    assert "type: form" not in page
+    assert "formAutoRowProcessing" not in page
+
+
+def test_a_block_the_module_has_not_got_is_refused(server):
+    """A block name that cannot be meant is an error, never a quietly
+    ignored line: ignoring it would leave the reviewer certain they had
+    confirmed something."""
+    _base, wb = server
+    with pytest.raises(ValueError, match="block this module has not got"):
+        wb.export({"keys": {"NO_SUCH_BLOCK": "ID"}})
+    assert wb.store.block_keys() == {}
+
+
+def test_the_confirmation_records_who_confirmed_it(server):
+    """A key nobody is named for is the thing this whole gate exists to
+    avoid, so the workbench stamps the signed-in reviewer the way the CLI
+    stamps the OS user."""
+    _base, wb = server
+    wb.export({"keys": {"ORDERS": "ORDER_ID"}}, by="ana@example.com")
+    row = wb.store.block_keys()["ORDERS"]
+    assert row["key_column"] == "ORDER_ID"
+    assert row["confirmed_by"] == "ana@example.com"
+
+
+def test_the_remembered_export_config_does_not_keep_the_keys(server):
+    """The confirmation lives in one place. Copying it into the remembered
+    deployment choices would make a second copy that goes stale the moment a
+    key is withdrawn anywhere else."""
+    _base, wb = server
+    wb.export({"alias": "demo-orders", "keys": {"ORDERS": "ORDER_ID"}})
+    remembered = last_export_config(wb.store)
+    assert "keys" not in remembered
+    assert remembered["alias"] == "demo-orders"
+    assert wb.store.block_keys()["ORDERS"]["key_column"] == "ORDER_ID"
+
+
+def test_the_dialog_offers_the_key_and_the_command_that_repeats_it():
+    """The dialog promises the printed command rebuilds what it is about to
+    build, so a key confirmed by a click has to appear in that line too."""
+    from formslang.ui import INDEX_HTML
+
+    assert 'class="bind-section"' in INDEX_HTML
+    assert "leave unbound" in INDEX_HTML
+    assert "/api/bindings" in INDEX_HTML
+    assert '"--key"' in INDEX_HTML
+    assert '"--forget-key"' in INDEX_HTML
