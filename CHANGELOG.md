@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-12
+
+### Added
+
+- Adjustable conversion workspace: drag the dividers to resize the units list,
+  source/proposal comparison and evidence panel. Keyboard users can focus a
+  divider and resize it with the arrow keys.
+- Layout controls to show or collapse supporting panels, plus a code focus mode
+  that restores the previous workspace when closed. Layout preferences are kept
+  locally and can be reset; source code and review drafts are not stored there.
+- Collapsible desktop navigation, with labeled controls in both dark and light
+  themes. README screenshots show the running updated Workbench.
+
+### Fixed
+
+- Supporting sections no longer consume most of the code area on shorter
+  laptop screens. Panel sizes adapt when the window changes size.
+- The export dialog can display the completed ZIP's binding summary and open
+  Exports without a JavaScript scope error after a successful build.
+
 ## [1.4.0] - 2026-09-12
 
 ### Changed
@@ -1164,7 +1184,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.0...v1.3.1

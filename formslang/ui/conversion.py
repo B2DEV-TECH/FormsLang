@@ -270,7 +270,7 @@ EXPORT_JS = r"""function exportApex() {
   go.onclick = async () => {
     go.disabled = true;
     go.innerHTML = `<span class="spin"></span> Building ZIP…`;
-    let zipName;
+    let zipName, dataBinding;
     try {
       const r = await api("/api/export", {
         name: value("name"), alias: value("alias"), app_id: value("app_id"),
@@ -278,14 +278,15 @@ EXPORT_JS = r"""function exportApex() {
         ai_layout: aiLayout.checked ? "1" : "",
         keys: bindKeys(),
       });
-      zipName = r.zip.split(/[\/]/).pop();
+      zipName = r.zip.split(/[\\/]/).pop();
+      dataBinding = r.data_binding;
       toast(`APEXlang ZIP ready: ${r.zip}`);
     } catch (e) { toast(e.message, true); go.disabled = false; labelGo(); return; }
     if (!importNow.checked) {
       go.disabled = false; labelGo();
       // A page that binds is the whole point of confirming a key, so say
       // what happened to each block instead of closing over it.
-      const summary = bindResultHtml(r.data_binding);
+      const summary = bindResultHtml(dataBinding);
       if (summary) {
         resultBox.hidden = false;
         resultBox.innerHTML = summary;

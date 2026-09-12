@@ -34,7 +34,7 @@ proposal on every unit, a human decision on every proposal. What comes out
 is an APEX 26.1 application that SQLcl validates and imports — and that the
 same session rebuilds, byte for byte, on a build server.
 
-> **Status: 1.4.0, stable.** The CLI, the session file, the export layout and
+> **Status: 1.5.0, stable.** The CLI, the session file, the export layout and
 > the workbench's local HTTP API are promised stable within 1.x — additive
 > changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
 > proposal the workbench produces is still a draft for a human to approve;
@@ -57,12 +57,12 @@ NSIS and MSI. The steps are in [`docs/releasing.md`](docs/releasing.md).
 
 <p align="center">
   <img src="assets/screenshots/workbench-review.png" width="900"
-       alt="FormsLang conversion review: readable source and editable proposal panes, focused view tabs and human decision controls">
+       alt="FormsLang 1.5.0: adjustable conversion workspace with source and proposal panes, layout controls and human review">
 </p>
 
 <p align="center">
-  <sub>The conversion workspace in 1.3.2: compare source and proposal, focus on
-  either code pane, or inspect evidence and tests. This real browser capture uses
+  <sub>The conversion workspace in 1.5.0: resize the panels, collapse supporting
+  sections or expand the code with Focus. This real browser capture uses
   the synthetic showcase and a hand-authored test draft; it is not model output
   or evidence of a working migration.</sub>
 </p>
@@ -381,6 +381,16 @@ navigation, a focused code review area and consistent project, Blueprint, settin
 and export screens. Switch between dark and light themes from the navigation;
 the choice stays in your browser. Transitions respect reduced-motion preferences.
 
+Drag the dividers to give the units list, source, proposal or evidence more room.
+Use **Layout** to show or collapse supporting sections and **Focus** to expand
+the code area. Leaving Focus restores your workspace. Navigation can collapse
+to icons, and **Reset layout** restores the defaults. Panel preferences stay in
+this browser; review drafts remain in tab memory until you save a decision.
+
+Dividers also work from the keyboard: Tab to a divider, then use the arrow keys
+to resize it. Sizes adapt to the window, so a layout saved on a larger monitor
+does not push controls out of reach on a laptop.
+
 <details>
   <summary>See the light theme</summary>
   <p><img src="assets/screenshots/workbench-light.png" width="1000"
@@ -406,7 +416,7 @@ formslang workbench "D:\legacy\forms" -o out
 ```
 
 The workbench opens a review screen on `127.0.0.1:8765` (the desktop app
-picks its own port). **Open a module…** at the top left selects the `.fmb`
+picks its own port). The module selector at the top left selects the `.fmb`
 (or an already converted Forms2XML `.xml`) you want to work on. Each module
 gets its own resumable session under the FormsLang output directory; no
 session or generated artifact is written beside your source.
@@ -449,15 +459,14 @@ gets an overlay on the APEX pane — the screen accounts for every second of
 it instead of going quiet.
 
 <p align="center">
-  <img src="assets/screenshots/workbench-converting-cli.png" width="900"
-       alt="Converting WHEN-NEW-FORM-INSTANCE with the Claude Code CLI: the top bar names the unit and counts elapsed seconds, the APEX pane explains what the model is doing, and the risk, behaviour, compatibility and dependency panels below are already filled from the offline analysis">
+  <img src="assets/screenshots/workbench-focus.png" width="1000"
+       alt="FormsLang 1.5.0 code focus mode: expanded editing space and accessible review controls">
 </p>
 
 <p align="center">
-  <sub>One unit, one CLI call. The top bar says which unit and how long; the APEX
-  pane says what is happening and how long it usually takes; and the panels below —
-  risk LOW with its single factor, behaviour PRESERVED, dependencies counted both
-  ways — were computed offline, before the model was asked anything.</sub>
+  <sub>Focus expands the code workspace while keeping the review controls within
+  reach. Exit Focus restores the previous panel layout. This capture uses the
+  synthetic showcase and an offline test draft.</sub>
 </p>
 
 ### What the screen tells you before you decide
@@ -490,13 +499,12 @@ expandable sections expose the supporting findings:
 
 <p align="center">
   <img src="assets/screenshots/unit-review-risk-panel.png" width="900"
-       alt="A WHEN-NEW-FORM-INSTANCE unit at LOW risk: the panels explain why, that behaviour was preserved, and that a commented-out HOST() call was recognized as dead code and excluded from the conversion">
+       alt="FormsLang 1.5.0 evidence view: risk findings and source context for a synthetic showcase unit">
 </p>
 
 <p align="center">
-  <sub>The risk score is traced back to the exact constructs it counted —
-  here, a <code>HOST()</code> call that was already commented out in the source
-  contributes nothing, because it never runs.</sub>
+  <sub>Evidence can fill the workspace when you need to inspect the findings.
+  The risk score is traced back to the constructs found in the original source.</sub>
 </p>
 
 ### The project view (`d`)
@@ -508,7 +516,7 @@ session, never estimated.
 
 <p align="center">
   <img src="assets/screenshots/project-view.png" width="900"
-       alt="The project view: a readiness score of 62.7 with the five weighted components that produced it, plus totals for units, conversion modes, decisions, migration risk and behaviour after migration">
+       alt="FormsLang 1.5.0 project view: synthetic showcase totals, readiness components, conversion decisions and migration findings">
 </p>
 
 It carries one readiness score, and prints the exact arithmetic that
@@ -520,7 +528,7 @@ is in [docs/risk-model.md](docs/risk-model.md).
 
 ### Documentation and diffing (`Doc` / `Diff`)
 
-Two buttons in the workbench header — and the same two operations from the
+Two entries in the workbench navigation — and the same two operations from the
 CLI — working off the same parsed module, no separate tool or format.
 
 `Doc` writes a self-contained HTML technical reference for one module: every
@@ -711,7 +719,7 @@ open the setup terminal for a CLI, press **Test**, save.
 
 <p align="center">
   <img src="assets/screenshots/settings-providers.png" width="900"
-       alt="Settings screen listing every provider — Claude, Azure OpenAI, Claude Code CLI selected, Codex CLI, Offline, Gemini, Ollama, OpenAI — each labelled with what it needs and whether it is ready">
+       alt="FormsLang 1.5.0 settings: provider configuration and readiness in the isolated offline showcase">
 </p>
 
 | Provider | Kind | What it needs |
@@ -801,24 +809,15 @@ underneath, shows the exact command line that rebuilds the same ZIP from a
 terminal — `formslang export ORDERS.session.db --app-id 19078 --alias
 orders` — kept in step with the fields as you type.
 
-<table align="center">
-  <tr>
-    <td width="50%">
-      <img src="assets/screenshots/export-dialog-importing.png"
-           alt="The Export Oracle APEX 26.1 dialog: application name, alias, application ID 100, workspace and parsing schema left to be resolved during import, page 1, the 'Import into APEX right after building' checkbox, the equivalent command line, a JDBC thin connection to FREEPDB1, the schema user, a masked password, and the Importing… state; a toast says the APEXlang ZIP is ready">
-    </td>
-    <td width="50%">
-      <img src="assets/screenshots/export-dialog-imported.png"
-           alt="The same dialog after SQLcl returned: 'Importing application ID: 100 into workspace: FORMSLANG — Import successful.' in green, a Show exports button, and an 'Imported into APEX.' toast">
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="assets/screenshots/export-dialog.png" width="900"
+       alt="FormsLang 1.5.0 export dialog with application settings and the equivalent CLI command">
+</p>
 
 <p align="center">
-  <sub>The same dialog, a few seconds apart. Workspace and parsing schema are
-  resolved during import, not baked into the ZIP. The line under the checkbox is
-  the build a pipeline runs. The password is masked here and goes to the OS
-  credential store, never to a file. On the right, SQLcl's own verdict, verbatim.</sub>
+  <sub>The current export dialog, captured with the synthetic showcase. The
+  command shown beneath the settings reproduces the same build from a terminal.
+  This UI capture does not perform a database import.</sub>
 </p>
 
 The export folder contains:
@@ -840,7 +839,7 @@ once per export. This is what makes the ZIP a build artifact a pipeline can
 rebuild, cache and compare, and the APEXlang tree something you can commit
 and diff as two *reviews* rather than two clocks.
 
-The **Exports** button in the workbench header lists every ZIP built so
+The **Exports** entry in the workbench navigation lists every ZIP built so
 far, newest first, each with *Show in folder* (selects the file in your
 file manager) and an **Import** action that opens the SQLcl dialog —
 import, or *validate only, don't change anything*; the same panel opens
@@ -848,7 +847,7 @@ after every export.
 
 <p align="center">
   <img src="assets/screenshots/exports.png" width="900"
-       alt="Exported APEX applications panel: the export folder path in the header, three ZIPs with size and timestamp, and Show in folder and Import to database… actions on each">
+       alt="FormsLang 1.5.0 exports panel: generated showcase ZIP with file details and local export actions">
 </p>
 
 The ZIP is deliberately separate from the audit artifacts. Only approved

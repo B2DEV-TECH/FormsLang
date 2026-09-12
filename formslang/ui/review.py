@@ -8,7 +8,7 @@ MAIN_OPEN_HTML = r"""<main>
 LIST_PANE_HTML = r"""  <aside id="unit-list" aria-label="Conversion units">
     <div class="units-heading"><h2>Conversion units</h2><kbd class="hint" title="Search units">/</kbd><button id="unit-close" class="btn" aria-label="Close conversion units"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
     <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="q" aria-label="Filter units by name, block or built-in" placeholder="Find a unit or built-in…" spellcheck="false" autocomplete="off"></div>
-    <details class="unit-filters" open>
+    <details class="unit-filters" id="unit-filters">
       <summary>Filters <span id="active-filters"></span></summary>
       <div class="filters">
         <div class="frow"><span class="flabel" id="label-conv">Conversion</span><span id="f-conv" role="group" aria-labelledby="label-conv"></span></div>
@@ -20,17 +20,19 @@ LIST_PANE_HTML = r"""  <aside id="unit-list" aria-label="Conversion units">
     <div id="list" aria-label="Units matching the current filters"></div>
     <div class="units-footer"><span><kbd>J</kbd> <kbd>K</kbd> navigate</span><span>Human review</span></div>
   </aside>
+  <div id="units-splitter" class="workspace-splitter" role="separator" tabindex="0" aria-label="Resize conversion units" aria-orientation="vertical" aria-controls="unit-list" aria-valuemin="220" aria-valuemax="420" aria-valuenow="260" title="Drag to resize units. Arrow keys adjust; Home and End use limits."><span></span></div>
 
 """
 
 DETAIL_SECTION_HTML = r"""  <section id="review-workspace" data-view="compare" aria-label="Conversion review">
-    <div class="head">
+    <div class="head" id="unit-metadata">
       <div class="review-eyebrow">Unit review</div>
       <h1 id="t-title">—</h1>
       <div class="where" id="t-where"></div>
       <div class="meta" id="t-meta"></div>
     </div>
     <div class="review-toolbar">
+      <span id="focus-unit-title"></span>
       <button class="btn" id="unit-toggle" aria-controls="unit-list" aria-expanded="false">Units</button>
       <div class="review-views" role="group" aria-label="Review view">
         <button id="view-compare" aria-pressed="true" aria-controls="review-code">Compare</button>
@@ -38,17 +40,34 @@ DETAIL_SECTION_HTML = r"""  <section id="review-workspace" data-view="compare" a
         <button id="view-proposal" aria-pressed="false" aria-controls="review-code">APEX proposal</button>
         <button id="view-evidence" aria-pressed="false" aria-controls="notes">Evidence &amp; tests</button>
       </div>
+      <div class="workspace-tools">
+        <button class="btn workspace-tool" id="focus-code" aria-pressed="false" title="Expand code workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Focus</span></button>
+        <div class="layout-picker">
+          <button class="btn workspace-tool" id="layout-toggle" aria-expanded="false" aria-controls="layout-options"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M9 15h12"/></svg><span>Layout</span></button>
+          <div id="layout-options" class="layout-options" hidden>
+            <div class="layout-menu-title">Your workspace</div>
+            <label><input type="checkbox" id="layout-units">Conversion units</label>
+            <label><input type="checkbox" id="layout-evidence">Evidence panel</label>
+            <label><input type="checkbox" id="layout-details">Unit details</label>
+            <label><input type="checkbox" id="layout-fields">Reviewer fields</label>
+            <p>Drag the dividers to resize. Your layout is saved on this device.</p>
+            <button class="btn" id="reset-layout">Reset layout</button>
+          </div>
+        </div>
+      </div>
       <div class="review-navigation">
         <span id="unit-position"></span>
         <button class="btn" id="unit-prev" aria-label="Previous unit" title="Previous unit (K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
         <button class="btn" id="unit-next" aria-label="Next unit" title="Next unit (J)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button>
       </div>
     </div>
+    <div id="workspace-body">
     <div class="panes" id="review-code">
       <div class="pane source-pane">
         <h2><span class="pane-label"><span class="pane-dot forms-dot"></span>Oracle Forms <small>Original source</small></span><span id="t-lines"></span></h2>
         <pre class="code" id="src" tabindex="0" aria-label="Original Oracle Forms source"></pre>
       </div>
+      <div id="code-splitter" class="workspace-splitter" role="separator" tabindex="0" aria-label="Resize Forms and APEX panes" aria-orientation="vertical" aria-controls="src out" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50" title="Drag to resize code panes. Arrow keys adjust; Home and End use limits."><span></span></div>
       <div class="pane proposal-pane">
         <h2>
           <span class="pane-label"><span class="pane-dot apex-dot"></span>Oracle APEX <small>Editable proposal</small></span>
@@ -67,13 +86,19 @@ DETAIL_SECTION_HTML = r"""  <section id="review-workspace" data-view="compare" a
         </div>
       </div>
     </div>
-    <div class="notes" id="notes" tabindex="0" aria-label="Evidence, questions and test cases"></div>
+    <div id="evidence-splitter" class="workspace-splitter" role="separator" tabindex="0" aria-label="Resize evidence panel" aria-orientation="horizontal" aria-controls="evidence-panel" aria-valuemin="100" aria-valuemax="420" aria-valuenow="180" title="Drag to resize evidence. Arrow keys adjust; Home and End use limits."><span></span></div>
+    <div id="evidence-panel">
+      <div class="evidence-panel-head"><div><h2>Evidence &amp; context</h2><span>Findings, dependencies and validation</span></div><button class="btn" id="evidence-close" aria-label="Collapse evidence panel" title="Collapse evidence panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <div class="notes" id="notes" tabindex="0" aria-label="Evidence, questions and test cases"></div>
+    </div>
+    </div>
     <div class="actions">
-      <div class="review-fields">
+      <div class="review-fields" id="reviewer-fields">
         <label>Reviewer note <input id="comment" placeholder="Reason, checks or remaining work" maxlength="8000" autocomplete="off"></label>
         <label>Your name <input id="reviewer" placeholder="Reviewer" maxlength="200" autocomplete="off"></label>
       </div>
       <div class="review-buttons">
+        <button class="btn fields-toggle" id="fields-toggle" aria-expanded="false" aria-controls="reviewer-fields" title="Show or hide reviewer fields"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h7M4 6h.01M4 12h.01M4 18h.01"/></svg><span>Review note</span></button>
         <button class="btn approve" id="btn-approve">Approve <kbd class="hint">A</kbd></button>
         <button class="btn" id="btn-needs">Needs work <kbd class="hint">W</kbd></button>
         <button class="btn reject" id="btn-reject">Reject <kbd class="hint">R</kbd></button>
@@ -209,6 +234,7 @@ function setReviewView(view) {
   for (const name of ["compare", "source", "proposal", "evidence"])
     $("view-" + name).setAttribute("aria-pressed", String(name === view));
   syncOutScroll();
+  if (typeof applyWorkspaceLayout === "function") applyWorkspaceLayout();
 }
 function initReviewWorkspace() {
   $("reset-filters").onclick = () => {
@@ -216,9 +242,12 @@ function initReviewWorkspace() {
     renderFilters(); renderList(); renderDetail(); $("q").focus();
   };
   $("unit-close").onclick = () => {
-    document.querySelector("main").classList.remove("units-open");
-    $("unit-toggle").setAttribute("aria-expanded", "false");
-    $("unit-toggle").focus();
+    if (typeof setUnitsVisible === "function") setUnitsVisible(false, true);
+    else {
+      document.querySelector("main").classList.remove("units-open");
+      $("unit-toggle").setAttribute("aria-expanded", "false");
+      $("unit-toggle").focus();
+    }
   };
 }
 function matches(t) {
@@ -430,7 +459,7 @@ function renderDetail() {
   if (!p) bits.unshift(`<div class="empty">Not converted yet — press <kbd>P</kbd> to ask the model, or write the APEX code on the right and approve it.</div>`);
   if (p && p.model) bits.push(`<div class="conf proposal-origin"><span>Proposal generated by</span><strong>${esc(p.provider)} · ${esc(p.model)}</strong><span>${esc(p.created_at || "")}</span></div>`);
   const openDetails = new Set(Array.from($("notes").querySelectorAll("details[open]")).map((d) => d.querySelector("summary")?.textContent));
-  $("notes").innerHTML = `<div class="evidence-heading"><h2>Evidence &amp; context</h2><p>Findings, dependencies and validation for this unit.</p></div>` + bits.join("");
+  $("notes").innerHTML = bits.join("");
   if (!changedUnit) $("notes").querySelectorAll("details").forEach((d) => { d.open = openDetails.has(d.querySelector("summary")?.textContent); });
   $("notes").querySelectorAll(".tc-a:not(.run) button").forEach((b) =>
     (b.onclick = () => decideCase(b.dataset.case, b.dataset.state, b.dataset.task)));
@@ -442,6 +471,7 @@ function renderDetail() {
   $("unit-next").disabled = pos < 0 || pos >= rows.length - 1;
   const evidenceCount = ((a || {}).findings || []).length + ((p || {}).open_questions || []).length;
   $("view-evidence").textContent = "Evidence & tests" + (evidenceCount ? ` (${evidenceCount})` : "");
+  if (typeof applyWorkspaceLayout === "function") applyWorkspaceLayout();
   paintReviewStatus();
 }
 

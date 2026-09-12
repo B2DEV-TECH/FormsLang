@@ -146,7 +146,7 @@ def main() -> int:
                 browser, "--headless=new", "--disable-gpu", "--no-first-run",
                 "--disable-extensions", "--disable-background-networking", "--disable-sync",
                 "--remote-debugging-address=127.0.0.1", f"--remote-debugging-port={debug_port}",
-                "--window-size=1366,768", f"--user-data-dir={run / 'browser-profile'}", "about:blank",
+                "--window-size=1360,695", f"--user-data-dir={run / 'browser-profile'}", "about:blank",
             ], creationflags=hidden, stdout=log, stderr=log)
             node = subprocess.Popen([
                 args.node, str(Path(__file__).with_suffix(".mjs")), str(run),

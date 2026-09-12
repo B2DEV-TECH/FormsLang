@@ -9,6 +9,7 @@ BODY_OPEN_HTML = r"""<body>
   <div class="brand app-brand">
     <svg viewBox="0 0 512 512" aria-hidden="true"><path fill="#F5A640" fill-rule="evenodd" d="M112 72H322V104H112C90 104 72 122 72 144V368C72 390 90 408 112 408H322V440H112C72 440 40 408 40 368V144C40 104 72 72 112 72ZM290 72H322V440H290Z"/><rect x="322" y="112" width="92" height="24" rx="2" fill="#F5A640"/><rect x="322" y="160" width="132" height="24" rx="2" fill="#F5A640"/><rect x="322" y="208" width="104" height="24" rx="2" fill="#F5A640"/><rect x="322" y="256" width="148" height="24" rx="2" fill="#F5A640"/><rect x="322" y="304" width="116" height="24" rx="2" fill="#F5A640"/><rect x="322" y="352" width="140" height="24" rx="2" fill="#F5A640"/></svg>
     <div class="brand-copy"><span class="mark">FormsLang</span><small>Workbench</small></div>
+    <button class="btn nav-collapse" id="nav-collapse" type="button" aria-label="Collapse navigation" title="Collapse navigation" aria-controls="app-nav" aria-expanded="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 7-5 5 5 5"/></svg></button>
     <button class="btn nav-close" id="nav-close" aria-label="Close navigation">&times;</button>
   </div>
   <div class="module-switcher"><span class="nav-kicker">Current module</span><button class="btn" id="btn-module" aria-label="Open or switch Forms module" title="Open or switch Forms module">Open a module…</button></div>
@@ -197,8 +198,8 @@ for (const view of ["compare", "source", "proposal", "evidence"]) $("view-" + vi
 $("unit-prev").onclick = () => move(-1);
 $("unit-next").onclick = () => move(1);
 $("unit-toggle").onclick = () => {
-  const open = document.querySelector("main").classList.toggle("units-open");
-  $("unit-toggle").setAttribute("aria-expanded", String(open));
+  const open = $("unit-toggle").getAttribute("aria-expanded") !== "true";
+  setUnitsVisible(open);
   if (open) $("q").focus();
 };
 window.addEventListener("beforeunload", (e) => {
@@ -206,7 +207,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  const typing = ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(document.activeElement.tagName) || document.activeElement.isContentEditable;
+  const typing = ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(document.activeElement.tagName) || document.activeElement.isContentEditable || document.activeElement.getAttribute("role") === "separator";
   if (document.body.classList.contains("nav-open")) {
     if (e.key === "Escape") { e.preventDefault(); setNavigationOpen(false); }
     if (e.key === "Tab") {
@@ -219,11 +220,10 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape") {
     if ($("modal").classList.contains("show")) closeModal();
+    else if (workspaceFocus) setWorkspaceFocus(false);
     else {
       const unitsWereOpen = document.querySelector("main").classList.contains("units-open");
-      document.querySelector("main").classList.remove("units-open");
-      $("unit-toggle").setAttribute("aria-expanded", "false");
-      if (unitsWereOpen) $("unit-toggle").focus();
+      if (unitsWereOpen) setUnitsVisible(false, true);
     }
     return;
   }
@@ -231,10 +231,7 @@ document.addEventListener("keydown", (e) => {
   if ($("modal").classList.contains("show")) return;
   if (e.key === "/" && !typing) {
     e.preventDefault();
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      document.querySelector("main").classList.add("units-open");
-      $("unit-toggle").setAttribute("aria-expanded", "true");
-    }
+    setUnitsVisible(true);
     $("q").focus(); return;
   }
   if (typing || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
@@ -251,6 +248,7 @@ document.addEventListener("keydown", (e) => {
 try { $("reviewer").value = localStorage.getItem("formslang.reviewer") || ""; } catch (_) { /* storage may be disabled */ }
 PROPOSE_LABEL = $("btn-propose").innerHTML;
 initReviewWorkspace();
+initWorkspaceLayout();
 refresh(false)
   /* A run started before this window opened still owns the screen. */
   .then(() => api("/api/job"))

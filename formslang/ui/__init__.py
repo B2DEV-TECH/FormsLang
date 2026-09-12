@@ -20,6 +20,7 @@ from .blueprint import BLUEPRINT_JS
 from .conversion import EXPORT_JS, JOB_PROGRESS_JS, PROPOSE_AND_POLL_JS
 from .corporate_style import CORPORATE_STYLE, THEME_JS
 from .formdoc import FORMDOC_JS
+from .nav_layout import NAV_LAYOUT_JS
 from .projects import DASHBOARD_JS, PICKER_JS
 from .review import (
     DECIDE_JS,
@@ -45,10 +46,11 @@ from .shell import (
 )
 from .shell_style import SHELL_STYLE
 from .validation import DEPENDENCIES_JS, TEST_CASES_JS
+from .workspace_layout import WORKSPACE_LAYOUT_JS, WORKSPACE_LAYOUT_STYLE
 
 INDEX_HTML = (
     HEAD_HTML
-    + STYLE_BLOCK.replace("</style>", CORPORATE_STYLE + SHELL_STYLE + REVIEW_STYLE + "</style>")
+    + STYLE_BLOCK.replace("</style>", CORPORATE_STYLE + SHELL_STYLE + REVIEW_STYLE + WORKSPACE_LAYOUT_STYLE + "</style>")
     + BODY_OPEN_HTML
     + HEADER_HTML
     + PROGRESS_BAR_HTML
@@ -78,5 +80,7 @@ INDEX_HTML = (
     + DASHBOARD_JS
     + BLUEPRINT_JS
     + THEME_JS
+    + NAV_LAYOUT_JS
+    + WORKSPACE_LAYOUT_JS
     + WIRING_JS
 )
