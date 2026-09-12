@@ -6,6 +6,58 @@ application can be migrated faithfully; each section says where real
 Forms/APEX testing still has to happen. The release steps that produce
 these sections are in [releasing.md](releasing.md).
 
+## 1.4.0 verification (2026-09-12, America/Sao_Paulo)
+
+Published [FormsLang 1.4.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.4.0).
+Binary source: annotated tag `v1.4.0`, commit
+`3b3516d7ff1eb9991fd6de8339485c11559e18e9`. This acceptance record is a later
+documentation-only change.
+
+- Local full suite on the updated source checkout: **1,085 passed, two skipped**
+  (local symlink permissions), Python 3.12. Ruff passed. The UI behavior harness
+  now supplies the document body used to apply the first-run layout; its existing
+  draft retention and request isolation assertions were preserved.
+- Local Chromium acceptance: **53 checks passed**, including conversion and
+  Blueprint workflows, persisted review decisions, theme selection and persistence,
+  keyboard focus in dialogs and mobile navigation, source filtering, reduced
+  motion, navigation after an API failure and focus after a viewport change.
+  No page JavaScript exceptions or requests outside the isolated Workbench.
+  `examples/verify/workbench_browser_check.py` and its `.mjs` companion reproduce
+  these checks using the synthetic showcase and a deterministic offline provider.
+- Additional local visual acceptance: **54 checks passed**, dark/light themes at
+  1920, 1600, 1280, 768 and 390 pixels, including the wide evidence panel, settings,
+  navigation and unit drawers. First-run acceptance passed seven checks. Text
+  contrast samples were at least 4.91:1 in light mode and 6.08:1 in dark mode;
+  these are sampled checks, not an exhaustive accessibility certification.
+- Browser-tested HTML SHA-256:
+  `6f474f323aebbea33925ab4899f97fbb5b252e7748479c9a6b825a24088ba4a7`.
+  The source checkout that was committed produced the same HTML bytes. README
+  screenshots were refreshed from that synthetic browser run.
+- [CI 34700126723](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34700126723):
+  all 12 jobs passed, including eight Windows/Ubuntu and Python 3.10-3.13 test
+  combinations, Ruff, deterministic showcase export, SQLcl offline APEX validation
+  with negative controls, and the 53-check Edge browser acceptance. Ubuntu 3.12,
+  Windows 3.12 and Windows 3.13 logs each recorded 1,087 passed tests. No workflow
+  rerun was needed.
+- [Installer acceptance 34700126573](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34700126573):
+  NSIS and MSI passed clean installation and upgrade from 1.3.2 on separate
+  Windows runners. The saved review, source session and deterministic export
+  survived, and the installed desktop opened its native window and started the
+  frozen engine. Published binaries came from this run's `installers-1.4.0`
+  artifact; their local hashes matched the build log.
+
+Published installer SHA-256 values, verified against GitHub asset digests:
+
+| Asset | SHA-256 |
+|---|---|
+| `FormsLang_1.4.0_x64-setup.exe` | `4f32bd240cbfea80f4f086cc79690074f2cdf183ef8390741d0c7e4dcd3d07f0` |
+| `FormsLang_1.4.0_x64_en-US.msi` | `3701a52708a73d30c6e97f21fb28731ac7c15835cc8982ad212c0a85882bfe06` |
+
+This release changes the Workbench interface. It does not establish additional
+Oracle Forms/APEX runtime fidelity, production-scale performance or migration
+correctness. The browser and installer checks use synthetic fixtures; no cloud
+model or customer application was used for this UI acceptance.
+
 ## 1.3.2 verification (2026-09-11, America/Sao_Paulo)
 
 Published [FormsLang 1.3.2](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.3.2).
