@@ -6,6 +6,63 @@ application can be migrated faithfully; each section says where real
 Forms/APEX testing still has to happen. The release steps that produce
 these sections are in [releasing.md](releasing.md).
 
+## 1.5.0 verification (2026-09-12, America/Sao_Paulo)
+
+Published [FormsLang 1.5.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.5.0).
+Binary source: annotated tag `v1.5.0`, commit
+`95a5537d7a32ecd7c797ee7590f6bc64d61ae6ea`. This acceptance record is a later
+documentation-only change.
+
+- Local full suite: **1,085 passed, two skipped** (local symlink permissions),
+  Python 3.12. Ruff passed. After integration into the source repository, the
+  version and JavaScript behavior tests passed again: 27 tests, with Ruff clean.
+- Local Chromium acceptance: **101 checks passed**, with 27 screenshots.
+  The checks exercise real divider drags and keyboard resizing, navigation
+  collapse, layout reset and persistence, corrupt and unavailable browser storage,
+  code focus and modal focus restoration, draft retention, viewport constraints,
+  editor/highlight alignment, themes, Blueprint and conversion reviews. A real
+  offline export produced a ZIP and marked the new entry in Exports without a
+  JavaScript exception. No database import or cloud model was used.
+- Independent visual acceptance: **19 checks passed**, including the user's
+  1360x695 viewport with the synthetic `KEY-CLRFRM` unit. With the offline setup
+  banner visible, the editable code area measured 314 pixels tall in the default
+  layout and 516 pixels in Focus. Sticky review controls stayed in reach at
+  1360x695, 1100x695, 901x600, 768x600, 390x740 and 1360x480. At small sizes with
+  every supporting section and both banners open, scrolling the workspace or
+  using Focus is necessary to read more code. First-run acceptance passed seven
+  additional checks in dark/light themes at desktop and phone widths.
+- Browser-tested HTML SHA-256:
+  `c106423fac97d326d466254e53ea8c5f0028bb41fbe9e89c31e2fae9a0815693`.
+  The committed source produces identical HTML. README's current Workbench,
+  Blueprint, onboarding, project, settings, evidence and export screenshots are
+  real browser captures from these isolated synthetic runs. The hand-authored
+  proposal shown in the review images is explicitly identified as a test draft.
+- [CI 34702752930](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34702752930):
+  all 12 jobs passed: eight Windows/Ubuntu and Python 3.10-3.13 test combinations,
+  Ruff, deterministic export, SQLcl offline APEX validation with negative controls,
+  and the 101-check Edge browser acceptance. Ubuntu 3.12, Windows 3.12 and Windows
+  3.13 logs each recorded 1,087 passed tests. Edge tested the same HTML hash as the
+  local run, without page exceptions or external requests. No workflow rerun was
+  needed.
+- [Installer acceptance 34702763575](https://github.com/B2DEV-TECH/FormsLang/actions/runs/34702763575):
+  all three jobs passed. The NSIS and MSI installers passed clean installation
+  and upgrade from 1.4.0 on separate Windows runners. The saved review, source
+  session and deterministic export survived, and the native desktop started
+  its frozen engine. Published installers came from this run's
+  `installers-1.5.0` artifact; downloaded file hashes matched the build log.
+
+Published installer SHA-256 values, verified against GitHub asset digests:
+
+| Asset | SHA-256 |
+|---|---|
+| `FormsLang_1.5.0_x64-setup.exe` | `acbb0974ca84c4caf4ed448f70a3b2ea427ef2c30c34a4b1d402b6111e83cd48` |
+| `FormsLang_1.5.0_x64_en-US.msi` | `628260c00289a6747342a6d8482ef17990305f615f6834d3ba963b429b6e7a43` |
+
+This release changes workspace usability and export dialog behavior. These
+checks do not establish additional Oracle Forms/APEX runtime fidelity,
+production-scale performance or migration correctness. No customer application
+was used for this UI acceptance.
+
 ## 1.4.0 verification (2026-09-12, America/Sao_Paulo)
 
 Published [FormsLang 1.4.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.4.0).
