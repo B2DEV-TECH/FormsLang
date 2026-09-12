@@ -38,7 +38,7 @@ function element(id) {
   return elements.get(id);
 }
 const document = {
-  getElementById: element, querySelectorAll() { return []; },
+  body: element('body'), getElementById: element, querySelectorAll() { return []; },
   querySelector(selector) { return selector === 'main' ? element('main') : null; },
 };
 const window = { matchMedia() { return { matches: false }; }, confirm() { return true; } };

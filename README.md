@@ -34,7 +34,7 @@ proposal on every unit, a human decision on every proposal. What comes out
 is an APEX 26.1 application that SQLcl validates and imports — and that the
 same session rebuilds, byte for byte, on a build server.
 
-> **Status: 1.3.2, stable.** The CLI, the session file, the export layout and
+> **Status: 1.4.0, stable.** The CLI, the session file, the export layout and
 > the workbench's local HTTP API are promised stable within 1.x — additive
 > changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
 > proposal the workbench produces is still a draft for a human to approve;
@@ -375,6 +375,18 @@ The [Blueprint guide](docs/modernization-blueprint.md) documents evidence levels
 classification rules, formulas, metadata input, privacy and analysis limits.
 
 ## The workbench
+
+The Workbench uses a corporate graphite-and-amber interface with persistent
+navigation, a focused code review area and consistent project, Blueprint, settings
+and export screens. Switch between dark and light themes from the navigation;
+the choice stays in your browser. Transitions respect reduced-motion preferences.
+
+<details>
+  <summary>See the light theme</summary>
+  <p><img src="assets/screenshots/workbench-light.png" width="1000"
+    alt="FormsLang corporate Workbench in its light theme, using the synthetic showcase"></p>
+</details>
+
 
 Assessment tells you the size of the job. The workbench does the job — one
 code body at a time, with a human deciding on every one.

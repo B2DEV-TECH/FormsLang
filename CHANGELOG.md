@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-12
+
+### Changed
+
+- The Workbench has a new corporate interface: persistent navigation, a compact
+  session header, a clearer review workspace and consistent graphite and amber
+  styling across projects, Blueprint, settings, file selection and export dialogs.
+- Code comparison, unit selection, evidence and decision controls have clearer
+  hierarchy, more readable typography and layouts that adapt to smaller screens.
+- Hover, dialog and progress transitions use a shared motion system and respect
+  the operating system's reduced-motion preference.
+
+### Added
+
+- Dark and light themes, remembered on the current browser without sending the
+  preference or the source code to an external service.
+- Responsive application navigation with labeled controls and keyboard support.
+  Existing conversion drafts, review decisions and session context guards remain
+  part of the same local Workbench workflow.
+
 ## [1.3.2] - 2026-09-11
 
 ### Changed
@@ -1144,7 +1164,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.2.2...v1.3.0

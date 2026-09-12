@@ -6,20 +6,26 @@ MAIN_OPEN_HTML = r"""<main>
 """
 
 LIST_PANE_HTML = r"""  <aside id="unit-list" aria-label="Conversion units">
-    <div class="filters">
-      <div class="frow"><span class="flabel">Conversion</span><span id="f-conv"></span></div>
-      <div class="frow"><span class="flabel">Your call</span><span id="f-call"></span></div>
-      <div class="frow"><span class="flabel">Risk</span><span id="f-risk"></span></div>
-    </div>
-    <div class="search"><input id="q" aria-label="Filter units by name, block or built-in" placeholder="Find a unit…" spellcheck="false"></div>
-    <div id="units-summary" class="units-summary" aria-live="polite"></div>
-    <div id="list"></div>
+    <div class="units-heading"><h2>Conversion units</h2><kbd class="hint" title="Search units">/</kbd><button id="unit-close" class="btn" aria-label="Close conversion units"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="q" aria-label="Filter units by name, block or built-in" placeholder="Find a unit or built-in…" spellcheck="false" autocomplete="off"></div>
+    <details class="unit-filters" open>
+      <summary>Filters <span id="active-filters"></span></summary>
+      <div class="filters">
+        <div class="frow"><span class="flabel" id="label-conv">Conversion</span><span id="f-conv" role="group" aria-labelledby="label-conv"></span></div>
+        <div class="frow"><span class="flabel" id="label-call">Review decision</span><span id="f-call" role="group" aria-labelledby="label-call"></span></div>
+        <div class="frow"><span class="flabel" id="label-risk">Risk level</span><span id="f-risk" role="group" aria-labelledby="label-risk"></span></div>
+      </div>
+    </details>
+    <div class="units-meta"><span id="units-summary" class="units-summary" aria-live="polite"></span><button id="reset-filters" hidden>Clear filters</button></div>
+    <div id="list" aria-label="Units matching the current filters"></div>
+    <div class="units-footer"><span><kbd>J</kbd> <kbd>K</kbd> navigate</span><span>Human review</span></div>
   </aside>
 
 """
 
 DETAIL_SECTION_HTML = r"""  <section id="review-workspace" data-view="compare" aria-label="Conversion review">
     <div class="head">
+      <div class="review-eyebrow">Unit review</div>
       <h1 id="t-title">—</h1>
       <div class="where" id="t-where"></div>
       <div class="meta" id="t-meta"></div>
@@ -27,24 +33,25 @@ DETAIL_SECTION_HTML = r"""  <section id="review-workspace" data-view="compare" a
     <div class="review-toolbar">
       <button class="btn" id="unit-toggle" aria-controls="unit-list" aria-expanded="false">Units</button>
       <div class="review-views" role="group" aria-label="Review view">
-        <button id="view-compare" aria-pressed="true">Compare</button>
-        <button id="view-source" aria-pressed="false">Forms source</button>
-        <button id="view-proposal" aria-pressed="false">APEX proposal</button>
-        <button id="view-evidence" aria-pressed="false">Evidence &amp; tests</button>
+        <button id="view-compare" aria-pressed="true" aria-controls="review-code">Compare</button>
+        <button id="view-source" aria-pressed="false" aria-controls="review-code">Forms source</button>
+        <button id="view-proposal" aria-pressed="false" aria-controls="review-code">APEX proposal</button>
+        <button id="view-evidence" aria-pressed="false" aria-controls="notes">Evidence &amp; tests</button>
       </div>
       <div class="review-navigation">
-        <button class="btn" id="unit-prev" aria-label="Previous unit" title="Previous unit (K)">←</button>
-        <button class="btn" id="unit-next" aria-label="Next unit" title="Next unit (J)">→</button>
+        <span id="unit-position"></span>
+        <button class="btn" id="unit-prev" aria-label="Previous unit" title="Previous unit (K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
+        <button class="btn" id="unit-next" aria-label="Next unit" title="Next unit (J)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button>
       </div>
     </div>
     <div class="panes" id="review-code">
       <div class="pane source-pane">
-        <h2><span>Oracle Forms <small>Original source</small></span><span id="t-lines"></span></h2>
+        <h2><span class="pane-label"><span class="pane-dot forms-dot"></span>Oracle Forms <small>Original source</small></span><span id="t-lines"></span></h2>
         <pre class="code" id="src" tabindex="0" aria-label="Original Oracle Forms source"></pre>
       </div>
-      <div class="pane">
+      <div class="pane proposal-pane">
         <h2>
-          <span>Oracle APEX <small>Proposal · editable</small></span>
+          <span class="pane-label"><span class="pane-dot apex-dot"></span>Oracle APEX <small>Editable proposal</small></span>
           <span class="qtag" id="out-queued" hidden>in queue</span>
           <span class="conf" id="t-conf"></span>
         </h2>
@@ -52,7 +59,7 @@ DETAIL_SECTION_HTML = r"""  <section id="review-workspace" data-view="compare" a
           <pre class="code hl-overlay" id="out-hl" aria-hidden="true"></pre>
           <textarea class="code" id="out" aria-label="Editable Oracle APEX proposal" spellcheck="false" autocomplete="off" placeholder="No proposal yet. Generate one with Convert, or write the APEX replacement here."></textarea>
         </div>
-        <div class="pane-busy" id="out-busy" hidden>
+        <div class="pane-busy" id="out-busy" role="status" hidden>
           <div class="spin big"></div>
           <strong id="busy-title"></strong>
           <span class="sub" id="busy-sub"></span>
@@ -201,6 +208,18 @@ function setReviewView(view) {
   $("review-workspace").dataset.view = view;
   for (const name of ["compare", "source", "proposal", "evidence"])
     $("view-" + name).setAttribute("aria-pressed", String(name === view));
+  syncOutScroll();
+}
+function initReviewWorkspace() {
+  $("reset-filters").onclick = () => {
+    conv = "all"; call = "all"; risk = "all"; query = ""; $("q").value = "";
+    renderFilters(); renderList(); renderDetail(); $("q").focus();
+  };
+  $("unit-close").onclick = () => {
+    document.querySelector("main").classList.remove("units-open");
+    $("unit-toggle").setAttribute("aria-expanded", "false");
+    $("unit-toggle").focus();
+  };
 }
 function matches(t) {
   if (conv === "unconverted" && t.proposal) return false;
@@ -219,7 +238,11 @@ function renderRow(id, defs, current, set) {
   $(id).innerHTML = defs.map(([value, text]) =>
     `<button data-v="${value}" aria-pressed="${value === current}" class="${value === current ? "on" : ""}">${text}</button>`).join("");
   $(id).querySelectorAll("button").forEach((b) =>
-    b.onclick = () => { set(b.dataset.v); renderFilters(); renderList(); renderDetail(); }
+    b.onclick = () => {
+      const value = b.dataset.v;
+      set(value); renderFilters(); renderList(); renderDetail();
+      $(id).querySelector(`[data-v="${value}"]`)?.focus({ preventScroll: true });
+    }
   );
 }
 
@@ -227,24 +250,35 @@ function renderFilters() {
   renderRow("f-conv", CONV, conv, (v) => (conv = v));
   renderRow("f-call", CALL, call, (v) => (call = v));
   renderRow("f-risk", RISK, risk, (v) => (risk = v));
+  const count = [conv, call, risk].filter((v) => v !== "all").length;
+  $("active-filters").textContent = count ? `${count} active` : "";
 }
 
 function renderList() {
   const rows = filtered();
   $("units-summary").textContent = `${rows.length} of ${state.tasks.length} units`;
+  $("reset-filters").hidden = !filtering();
+  let previousGroup = "";
+  const groupHeading = (t) => {
+    const group = t.kind === "program_unit" ? "Program units" : t.owner || "Form level";
+    if (group === previousGroup) return "";
+    previousGroup = group;
+    return `<div class="unit-group">${esc(group)}</div>`;
+  };
   $("list").innerHTML = rows.map((t) => `
+    ${groupHeading(t)}
     <div class="row ${t.id === selected ? "sel" : ""}" role="button" tabindex="0" aria-pressed="${t.id === selected}" aria-label="${esc(t.title)}, ${esc(label(t.state))}" data-id="${esc(t.id)}">
-      <div class="state st-${t.state}" data-mark="${MARK[t.state] || "●"}">${MARK[t.state] || "●"}</div>
+      <div class="state st-${t.state}" title="${esc(label(t.state))}" aria-hidden="true" data-mark="${MARK[t.state] || "●"}">${MARK[t.state] || "●"}</div>
       <div>
-        <div class="title">${esc(t.title)}</div>
-        <div class="sub">${esc(t.module)} · ${t.lines} lines${t.proposal ? "" : " · not converted"}</div>
+        <div class="title" title="${esc(t.title)}">${esc(t.name || t.title)}</div>
+        <div class="sub">${t.lines} lines · ${esc(label(t.state))}${t.proposal ? "" : " · not converted"}</div>
       </div>
       <div class="rside">
         ${sensOf(t) ? `<i class="sflag r-${sensOf(t)}" title="Sensitive data found in the source — ${esc(sensOf(t))}">&#9888;</i>` : ""}
         ${riskOf(t) ? `<i class="rdot r-${riskOf(t)}" title="${esc(RISK_HELP[riskOf(t)] || "")}"></i>` : ""}
         <div class="verdict v-${t.verdict || "DROP"}" title="${esc(help(t.verdict))}">${t.verdict || "PU"}</div>
       </div>
-    </div>`).join("") || `<div class="empty">Nothing matches this filter.</div>`;
+    </div>`).join("") || `<div class="empty"><strong>${state.tasks.length ? "No matching units" : "Your units will appear here"}</strong><span>${state.tasks.length ? "Try another name or clear the filters above." : "Open a Forms module to start reviewing."}</span></div>`;
   $("list").querySelectorAll(".row").forEach((r) => {
     r.onclick = () => select(r.dataset.id);
     r.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(r.dataset.id); } };
@@ -280,6 +314,7 @@ function renderDetail() {
     $("t-where").textContent = "";
     $("src").innerHTML = ""; $("out").value = ""; $("out-hl").innerHTML = ""; $("t-meta").innerHTML = "";
     $("t-lines").textContent = ""; $("t-conf").textContent = "";
+    $("unit-position").textContent = "";
     $("unit-prev").disabled = true; $("unit-next").disabled = true;
     $("notes").innerHTML = state.tasks.length
       ? `<div class="empty">Nothing selected.</div>`
@@ -291,10 +326,11 @@ function renderDetail() {
   $("t-title").textContent = t.title;
   const rows = filtered();
   const pos = rows.findIndex((x) => x.id === t.id);
+  $("unit-position").textContent = pos >= 0 ? `${pos + 1} / ${rows.length}` : "Outside filter";
   // The one line that says what this screen is, on every unit.
   $("t-where").innerHTML =
     (pos >= 0 ? `Unit <b>${pos + 1}</b> of <b>${rows.length}</b>${filtering() ? " in this view" : ""} · ` : "") +
-    `${esc(t.kind)} · review the source, inspect the evidence, then decide`;
+    `${esc(t.kind === "program_unit" ? "Program unit" : "Trigger")} · ${esc(t.module)}`;
   const p = t.proposal;
   const a = t.analysis || null;
   const lvl = riskOf(t), beh = behOf(t);
@@ -321,6 +357,9 @@ function renderDetail() {
     $("src").scrollTop = 0;
     $("notes").scrollTop = 0;
     reviewError = "";
+    const workspace = $("review-code");
+    if (workspace.animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      workspace.animate([{ opacity: .6, transform: "translateY(3px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 180, easing: "ease-out" });
   }
   editorTask = { key, code: t.final_code || "", comment: t.comment || "" };
   const code = draft ? draft.code : editorTask.code;
@@ -378,9 +417,9 @@ function renderDetail() {
   }
   bits.push(renderDeps(t));
   if (p && p.notes && p.notes.length)
-    bits.push(`<h3>What changed</h3><ul>${p.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`);
+    bits.push(`<div class="evidence-card"><h3>What changed</h3><ul>${p.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>`);
   if (p && p.open_questions && p.open_questions.length)
-    bits.push(`<h3>Open questions</h3><ul>${p.open_questions.map((n) => `<li class="q">${esc(n)}</li>`).join("")}</ul>`);
+    bits.push(`<div class="evidence-card questions"><h3>Open questions <span>${p.open_questions.length}</span></h3><ul>${p.open_questions.map((n) => `<li class="q">${esc(n)}</li>`).join("")}</ul></div>`);
   bits.push(renderTests(t));
   // Sessions created before the analysis engine still show their built-ins.
   if (!a && (t.builtins || []).length)
@@ -389,9 +428,9 @@ function renderDetail() {
   if (t.globals && t.globals.length)
     bits.push(`<h3>Globals</h3><ul><li>${t.globals.map(esc).join(", ")}</li></ul>`);
   if (!p) bits.unshift(`<div class="empty">Not converted yet — press <kbd>P</kbd> to ask the model, or write the APEX code on the right and approve it.</div>`);
-  if (p && p.model) bits.push(`<div class="conf">${esc(p.provider)} · ${esc(p.model)} · ${esc(p.created_at || "")}</div>`);
+  if (p && p.model) bits.push(`<div class="conf proposal-origin"><span>Proposal generated by</span><strong>${esc(p.provider)} · ${esc(p.model)}</strong><span>${esc(p.created_at || "")}</span></div>`);
   const openDetails = new Set(Array.from($("notes").querySelectorAll("details[open]")).map((d) => d.querySelector("summary")?.textContent));
-  $("notes").innerHTML = bits.join("");
+  $("notes").innerHTML = `<div class="evidence-heading"><h2>Evidence &amp; context</h2><p>Findings, dependencies and validation for this unit.</p></div>` + bits.join("");
   if (!changedUnit) $("notes").querySelectorAll("details").forEach((d) => { d.open = openDetails.has(d.querySelector("summary")?.textContent); });
   $("notes").querySelectorAll(".tc-a:not(.run) button").forEach((b) =>
     (b.onclick = () => decideCase(b.dataset.case, b.dataset.state, b.dataset.task)));
@@ -424,6 +463,7 @@ NAVIGATION_JS = r"""function select(id) {
   if (row) {
     row.scrollIntoView({ block: "nearest" });
     if (fromList && window.matchMedia("(min-width: 901px)").matches) row.focus({ preventScroll: true });
+    else if (fromList) $("unit-toggle").focus({ preventScroll: true });
   }
 }
 

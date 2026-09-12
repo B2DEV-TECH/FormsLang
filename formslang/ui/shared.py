@@ -8,29 +8,36 @@ HEAD_HTML = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
 <title>FormsLang Workbench</title>
+<script>
+/* Resolve before the first paint; this preference contains no session data. */
+try {
+  const theme = localStorage.getItem("formslang.theme");
+  document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+} catch (_) { document.documentElement.dataset.theme = "dark"; }
+</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%23F5A640' fill-rule='evenodd' d='M112 72H322V104H112C90 104 72 122 72 144V368C72 390 90 408 112 408H322V440H112C72 440 40 408 40 368V144C40 104 72 72 112 72ZM290 72H322V440H290Z'/%3E%3Crect x='322' y='112' width='92' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='160' width='132' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='208' width='104' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='256' width='148' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='304' width='116' height='24' rx='2' fill='%23F5A640'/%3E%3Crect x='322' y='352' width='140' height='24' rx='2' fill='%23F5A640'/%3E%3C/svg%3E">
 """
 
 STYLE_BLOCK = r"""<style>
-  /* FormsLang commits to one visual world: a dark review room where the
-     code under review is the brightest thing on screen. Single theme, chosen. */
+  /* Shared semantic tokens keep every workbench view in the same visual system. */
   :root {
     --gold: #F5A640;
     --gold-deep: #C07F22;
     --gold-soft: rgba(245, 166, 64, .10);
     --gold-line: rgba(245, 166, 64, .38);
-    --ground: #07090D;
-    --panel: #0C1016;
-    --raised: #11161E;
-    --hover: #171D27;
-    --line: #222937;
-    --line-hi: #2E3746;
-    --ink: #EEF1F6;
-    --ink-dim: #9AA3B2;
-    --ink-faint: #5B6472;
-    --green: #4ADE80;
-    --red: #F87171;
+    --ground: #0A0D12;
+    --panel: #10141A;
+    --raised: #161B23;
+    --hover: #1C232D;
+    --line: #262D38;
+    --line-hi: #384252;
+    --ink: #E9EDF3;
+    --ink-dim: #A7B0BE;
+    --ink-faint: #8995A6;
+    --green: #6EC59A;
+    --red: #EB8585;
     --violet: #A78BFA;
     --blue: #7DABF8;
     --mono: "Cascadia Code", "Cascadia Mono", ui-monospace, Consolas, "JetBrains Mono", monospace;
@@ -685,7 +692,7 @@ STYLE_BLOCK = r"""<style>
 </head>
 """
 
-MODAL_HTML = r"""<div class="modal" id="modal">
+MODAL_HTML = r"""<div class="modal" id="modal" aria-hidden="true">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
     <div class="sheet-head">
       <h2 id="modal-title"></h2>
@@ -695,7 +702,7 @@ MODAL_HTML = r"""<div class="modal" id="modal">
     <div class="hint" id="modal-hint"></div>
     <div class="sheet-body" id="modal-body"></div>
     <div class="sheet-foot" id="modal-foot">
-      <input id="modal-input" list="modal-models" spellcheck="false">
+      <input id="modal-input" list="modal-models" spellcheck="false" aria-label="Path or value">
       <datalist id="modal-models"></datalist>
       <button class="btn primary" id="modal-go">Open</button>
     </div>
@@ -803,15 +810,20 @@ function modalChanged() { modalGeneration++; window.dispatchEvent(new Event("for
 function closeModal() {
   if (!$("modal").classList.contains("show")) return;
   $("modal").className = "modal";
+  $("modal").setAttribute("aria-hidden", "true");
   document.querySelector("main").inert = false;
   document.querySelector("header").inert = false;
   modalChanged();
-  if (modalReturnFocus && modalReturnFocus.isConnected) modalReturnFocus.focus();
+  const canFocus = (el) => el && el.isConnected && el.getClientRects().length &&
+    getComputedStyle(el).visibility !== "hidden" && !el.closest("[inert]") && !el.disabled;
+  const target = [modalReturnFocus, $("nav-toggle"), $("btn-settings"), $("workspace-title")].find(canFocus);
+  if (target) target.focus({ preventScroll: true });
 }
 function openModal(title) {
   if (!$("modal").classList.contains("show")) modalReturnFocus = document.activeElement;
   $("modal-title").textContent = title;
   $("modal").className = "modal show";
+  $("modal").setAttribute("aria-hidden", "false");
   document.querySelector("main").inert = true;
   document.querySelector("header").inert = true;
   modalChanged();

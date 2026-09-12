@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from .blueprint import BLUEPRINT_JS
 from .conversion import EXPORT_JS, JOB_PROGRESS_JS, PROPOSE_AND_POLL_JS
+from .corporate_style import CORPORATE_STYLE, THEME_JS
 from .formdoc import FORMDOC_JS
 from .projects import DASHBOARD_JS, PICKER_JS
 from .review import (
@@ -29,6 +30,7 @@ from .review import (
     NAVIGATION_JS,
     SYNTAX_HIGHLIGHT_JS,
 )
+from .review_style import REVIEW_STYLE
 from .settings import SETTINGS_JS
 from .shared import HEAD_HTML, MODAL_HTML, MODAL_JS, SCRIPT_CORE, STYLE_BLOCK, TOAST_HTML
 from .shell import (
@@ -41,11 +43,12 @@ from .shell import (
     WIRING_JS,
     WORKING_BANNER_HTML,
 )
+from .shell_style import SHELL_STYLE
 from .validation import DEPENDENCIES_JS, TEST_CASES_JS
 
 INDEX_HTML = (
     HEAD_HTML
-    + STYLE_BLOCK
+    + STYLE_BLOCK.replace("</style>", CORPORATE_STYLE + SHELL_STYLE + REVIEW_STYLE + "</style>")
     + BODY_OPEN_HTML
     + HEADER_HTML
     + PROGRESS_BAR_HTML
@@ -74,5 +77,6 @@ INDEX_HTML = (
     + EXPORT_JS
     + DASHBOARD_JS
     + BLUEPRINT_JS
+    + THEME_JS
     + WIRING_JS
 )
