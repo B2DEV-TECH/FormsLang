@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormsLangBenchmarkManifest",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "source_commit",
+    "generated_at",
+    "files"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "string"
+    },
+    "source_commit": {
+      "type": ["string", "null"]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "original_path",
+          "sanitized_path",
+          "original_sha256",
+          "sanitized_sha256"
+        ],
+        "properties": {
+          "original_path": {
+            "type": "string"
+          },
+          "sanitized_path": {
+            "type": "string"
+          },
+          "original_sha256": {
+            "type": "string"
+          },
+          "sanitized_sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

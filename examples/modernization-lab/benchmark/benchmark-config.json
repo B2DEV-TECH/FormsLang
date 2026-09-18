@@ -1,0 +1,39 @@
+{
+  "protocol_version": "1.0",
+  "ground_truth_version": "1.0",
+  "runner_version": "1.0",
+  "ground_truth_path": "expected/modernization-ground-truth.json",
+  "canonical_xml_dir": "forms/xml",
+  "generated_dir": "benchmark/generated",
+  "baselines_dir": "benchmark/baselines",
+  "taxonomy": {
+    "classification": [
+      "PRESERVE",
+      "CONVERT",
+      "REFACTOR",
+      "MOVE_TO_PLSQL_API",
+      "REPLACE_WITH_APEX_NATIVE",
+      "MANUAL_REVIEW",
+      "DROP"
+    ],
+    "risk": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "verdict": [
+      "AUTO",
+      "ASSISTED",
+      "MANUAL",
+      "DROP"
+    ]
+  },
+  "engine": {
+    "name": "FormsLang",
+    "entrypoint": "formslang.blueprint.build",
+    "parser": "formslang.parser.parse_xml",
+    "deterministic": true,
+    "ai_assisted": false
+  }
+}

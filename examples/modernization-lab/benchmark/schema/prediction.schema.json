@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormsLangBenchmarkPredictions",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "forms_lang_version",
+    "source_commit",
+    "generated_at",
+    "engine_path",
+    "predictions"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "string"
+    },
+    "forms_lang_version": {
+      "type": "string"
+    },
+    "source_commit": {
+      "type": ["string", "null"]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "engine_path": {
+      "type": "string"
+    },
+    "predictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "finding_id",
+          "status",
+          "source",
+          "classification",
+          "risk",
+          "verdict",
+          "evidence",
+          "raw_output_ref"
+        ],
+        "properties": {
+          "finding_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PREDICTED", "PARTIAL", "UNSUPPORTED", "ERROR", "UNMATCHED"]
+          },
+          "source": {
+            "type": "object",
+            "required": ["file", "module"],
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "block": {
+                "type": ["string", "null"]
+              },
+              "item": {
+                "type": ["string", "null"]
+              },
+              "trigger": {
+                "type": ["string", "null"]
+              },
+              "procedure": {
+                "type": ["string", "null"]
+              }
+            },
+            "additionalProperties": false
+          },
+          "classification": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["AUTO", "ASSISTED", "MANUAL", "DROP", "UNKNOWN"]
+          },
+          "evidence": {
+            "type": "array"
+          },
+          "raw_output_ref": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -49,3 +49,7 @@ packaging/build/
 packaging/dist/
 *.apex.zip
 uploads/
+
+# Modernization lab benchmark disposable working outputs
+examples/modernization-lab/benchmark/generated/
+

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormsLangBenchmarkReport",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "benchmark_version",
+    "ground_truth_version",
+    "source_commit",
+    "generated_at",
+    "engine_path",
+    "ground_truth_sha256",
+    "coverage",
+    "classification_metrics",
+    "risk_metrics",
+    "safety_metrics",
+    "confusion_matrix",
+    "per_case_results"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "string"
+    },
+    "benchmark_version": {
+      "type": "string"
+    },
+    "ground_truth_version": {
+      "type": "string"
+    },
+    "source_commit": {
+      "type": ["string", "null"]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "engine_path": {
+      "type": "string"
+    },
+    "ground_truth_sha256": {
+      "type": "string"
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "total_cases",
+        "fully_observable",
+        "partially_observable",
+        "not_observable",
+        "predicted",
+        "partial",
+        "unsupported",
+        "error",
+        "unmatched"
+      ]
+    },
+    "classification_metrics": {
+      "type": "object"
+    },
+    "risk_metrics": {
+      "type": "object"
+    },
+    "verdict_metrics": {
+      "type": "object"
+    },
+    "safety_metrics": {
+      "type": "object"
+    },
+    "confusion_matrix": {
+      "type": "object"
+    },
+    "per_case_results": {
+      "type": "array"
+    }
+  }
+}

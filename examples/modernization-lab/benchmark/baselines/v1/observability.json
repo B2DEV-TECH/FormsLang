@@ -1,0 +1,579 @@
+{
+  "total_cases": 41,
+  "fully_observable": 16,
+  "partially_observable": 12,
+  "not_observable": 13,
+  "cases": [
+    {
+      "case_id": "LOM-MOD-001",
+      "title": "Hardcoded business constants in LOM_ORDER_API",
+      "classification": "REFACTOR",
+      "risk": "MEDIUM",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_order_api.pks"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-002",
+      "title": "Order status transitions enforced only by a hardcoded PL/SQL matrix",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_order_api.pkb"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-003",
+      "title": "LOM_ORDER_API and LOM_APPROVAL_API call each other (body-level mutual dependency)",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_approval_api.pkb",
+        "database/packages/lom_order_api.pkb"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-004",
+      "title": "LOM_CUSTOMER_TYPES.DEFAULT_CREDIT_LIMIT is a one-time suggestion, never a ceiling",
+      "classification": "MANUAL_REVIEW",
+      "risk": "LOW",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_lookup_tables.sql",
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-005",
+      "title": "LOM_ORDER_STATUS.SEQUENCE_NO is documentation-only",
+      "classification": "MANUAL_REVIEW",
+      "risk": "LOW",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_lookup_tables.sql"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-006",
+      "title": "OM_SHARED.pll presentation helpers have no PL/SQL to port",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "forms/libraries/OM_SHARED.md"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides in library documentation (OM_SHARED.md). Current FormsLang engine does not ingest non-XML documentation."
+    },
+    {
+      "case_id": "LOM-MOD-007",
+      "title": "OM_SHARED.open_form_with_context has no APEX equivalent to preserve",
+      "classification": "DROP",
+      "risk": "LOW",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "forms/libraries/OM_SHARED.md"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides in library documentation (OM_SHARED.md). Current FormsLang engine does not ingest non-XML documentation."
+    },
+    {
+      "case_id": "LOM-MOD-008",
+      "title": ":GLOBAL.G_USER should become :APP_USER",
+      "classification": "REFACTOR",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/CUSTOMERS.xml, ORDERS.xml, INVENTORY.xml, APPROVALS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/APPROVALS.xml",
+        "forms/xml/CUSTOMERS.xml",
+        "forms/xml/INVENTORY.xml",
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-009",
+      "title": "LOM_AUDIT_LOG's polymorphic design has no referential integrity by choice",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_audit_log.sql"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-010",
+      "title": "Forms mirrors CK_LOM_CUST_CREDIT in a WHEN-VALIDATE-ITEM",
+      "classification": "CONVERT",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-011",
+      "title": "Forms duplicates LOM_CUSTOMER_API.has_open_orders",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_customer_api.pkb",
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-012",
+      "title": "Customer type default credit limit applied via COPY()",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-013",
+      "title": "Sequence-generated primary keys on PRE-INSERT",
+      "classification": "CONVERT",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/CUSTOMERS.xml, ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/CUSTOMERS.xml",
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-014",
+      "title": "Pre-change STATUS stashed in a global for the audit trigger",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-015",
+      "title": "Hand-rolled email format check",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/CUSTOMERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-016",
+      "title": "INVENTORY.fmb's adjustment button correctly calls the DB API",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/INVENTORY.xml"
+      ],
+      "available_sources": [
+        "forms/xml/INVENTORY.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-017",
+      "title": "Order line numbering by inline MAX()+1",
+      "classification": "REFACTOR",
+      "risk": "MEDIUM",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-018",
+      "title": "No constraint enforces a single default warehouse",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_lookup_tables.sql",
+        "forms/xml/INVENTORY.xml"
+      ],
+      "available_sources": [
+        "forms/xml/INVENTORY.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-019",
+      "title": "Customer eligibility gate already calls the API cleanly",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_customer_api.pks",
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-020",
+      "title": "CALL_FORM into APPROVALS is modal and blocks ORDERS",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-021",
+      "title": "Submit-order button is a clean, single call site",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-022",
+      "title": "OPEN_FORM into INVENTORY preserves a non-modal multi-form session",
+      "classification": "REFACTOR",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-023",
+      "title": "CALL_FORM into CUSTOMERS is query-only and low-consequence",
+      "classification": "REFACTOR",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-024",
+      "title": "CLEAR_FORM(NO_VALIDATE) + CREATE_RECORD for a new order",
+      "classification": "CONVERT",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-025",
+      "title": "Availability re-derived with an inline SELECT",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "MEDIUM",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_products_inventory.sql",
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-026",
+      "title": "Quantity threshold check re-implemented instead of called",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_inventory_api.pks",
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-027",
+      "title": "Line total formula duplicated on two items",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_order_api.pkb",
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-028",
+      "title": "Order totals recalculated via a centralized API call",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_order_api.pkb",
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-029",
+      "title": "Approval worklist filter is hardcoded",
+      "classification": "REFACTOR",
+      "risk": "MEDIUM",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/APPROVALS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/APPROVALS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-030",
+      "title": "No constraint prevents duplicate PENDING approval requests for one order",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_approvals.sql"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-031",
+      "title": "Approval attribution defaults to the database session USER, not the APEX end user",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_approval_api.pks"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-032",
+      "title": "Mandatory rejection comments are enforced only in PL/SQL",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_approvals.sql",
+        "database/packages/lom_approval_api.pks",
+        "gc_err_comments_required)"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-033",
+      "title": "ENTER_QUERY/EXECUTE_QUERY toolbar buttons",
+      "classification": "CONVERT",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-034",
+      "title": "SHOW_ALERT confirmation before submit",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "observability": "FULLY_OBSERVABLE",
+      "required_sources": [
+        "forms/xml/APPROVALS.xml",
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/APPROVALS.xml",
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "All source evidence referenced by the case is fully contained within the sanitized Forms2XML files parsed by FormsLang."
+    },
+    {
+      "case_id": "LOM-MOD-035",
+      "title": "Low-stock flag computed in POST-QUERY",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/views/lom_views.sql",
+        "forms/xml/INVENTORY.xml"
+      ],
+      "available_sources": [
+        "forms/xml/INVENTORY.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-036",
+      "title": "No row-level filtering on the approval worklist or inventory views",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/views/lom_views.sql"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-037",
+      "title": "No PL/SQL API exists for order-line operations",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_order_api.pks",
+        "forms/xml/ORDERS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/ORDERS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-038",
+      "title": "LOM_SHIPMENTS.TRACKING_REFERENCE is never populated or read",
+      "classification": "DROP",
+      "risk": "LOW",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/ddl/lom_shipments.sql",
+        "database/packages/lom_order_api.pkb"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-039",
+      "title": "OM_SHARED.pll's log_action bypasses LOM_AUDIT_API",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "MEDIUM",
+      "observability": "NOT_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_audit_api.pks",
+        "forms/libraries/OM_SHARED.md"
+      ],
+      "available_sources": [],
+      "reason": "Case source resides exclusively in database packages/DDL/views. Current FormsLang engine does not ingest standalone SQL/PLSQL."
+    },
+    {
+      "case_id": "LOM-MOD-041",
+      "title": "APPROVALS.fmb's Approve button bypasses LOM_APPROVAL_API",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_approval_api.pks",
+        "forms/xml/APPROVALS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/APPROVALS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    },
+    {
+      "case_id": "LOM-MOD-042",
+      "title": "APPROVALS.fmb's Reject button bypasses LOM_APPROVAL_API and its mandatory-comment rule",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "observability": "PARTIALLY_OBSERVABLE",
+      "required_sources": [
+        "database/packages/lom_approval_api.pks",
+        "forms/xml/APPROVALS.xml"
+      ],
+      "available_sources": [
+        "forms/xml/APPROVALS.xml"
+      ],
+      "reason": "Form trigger/item is visible in Forms2XML, but associated database packages, views, or library definitions cited by the case rationale are not ingested."
+    }
+  ]
+}

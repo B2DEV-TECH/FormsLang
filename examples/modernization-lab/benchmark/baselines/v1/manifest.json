@@ -1,0 +1,31 @@
+{
+  "protocol_version": "1.0",
+  "source_commit": "22f24805d0f8b277368723306565b94c5e2d25b0",
+  "generated_at": "2026-09-18T20:51:28.784772+00:00",
+  "files": [
+    {
+      "original_path": "forms/xml/APPROVALS.xml",
+      "sanitized_path": "benchmark/generated/input/forms/xml/APPROVALS.xml",
+      "original_sha256": "b147a4cdb05a67ce1ea670486cfa3ec76529ae18f11beb4460ccecd30058f97d",
+      "sanitized_sha256": "44da4fa4716c14f62b1fb4be1dcc248400b7baac704f629749e6df0372f759cd"
+    },
+    {
+      "original_path": "forms/xml/CUSTOMERS.xml",
+      "sanitized_path": "benchmark/generated/input/forms/xml/CUSTOMERS.xml",
+      "original_sha256": "66a720a789c65bb185db7afd9d07135cb46eebb3fa9ae0f0cb365871bbc5360b",
+      "sanitized_sha256": "3ed8b78091e2cd477e2d5f34ee5a8c6da8ca3267a0f09fd419f1f493f9ebd6a4"
+    },
+    {
+      "original_path": "forms/xml/INVENTORY.xml",
+      "sanitized_path": "benchmark/generated/input/forms/xml/INVENTORY.xml",
+      "original_sha256": "63edfa8343d5d1fb7f413e73a0d5c4c18b0a56c8cc0d57dfa55cf0ca9fd2d0c0",
+      "sanitized_sha256": "e2cf3adf97adbdf0d3aaf2a68cf3e49ec7ce6730a0c012c279847898ffeb4234"
+    },
+    {
+      "original_path": "forms/xml/ORDERS.xml",
+      "sanitized_path": "benchmark/generated/input/forms/xml/ORDERS.xml",
+      "original_sha256": "3d48a3eb0d80e7a79f1c053c62458154abb84ceffb6069def30c00cd1830a277",
+      "sanitized_sha256": "2abaf9625485fa75b71c9df11ee2ca82079cff2c1987ca46b64ca31a5ed349d0"
+    }
+  ]
+}

@@ -292,3 +292,37 @@ Recommended next step, in order: (1) run the three SQL scripts in a
 disposable schema and record the exact output here; (2) define the
 prediction protocol and produce the first FormsLang prediction set for the
 41 cases; only then compute and publish agreement metrics.
+
+## Prediction Benchmark v1
+
+Date: 2026-09-18. Protocol version: 1.0. Runner version: 1.0.
+
+- **Baseline Status**: `BASELINE_COMPLETE`
+- **Source Commit**: `22f24805d0f8b277368723306565b94c5e2d25b0`
+- **FormsLang Engine Path**: `formslang.parser.parse_xml -> formslang.blueprint.build` (Deterministic, AI: None)
+- **Total Benchmark Cases**: 41 (LOM-MOD-001 through LOM-MOD-042; single intentional gap LOM-MOD-040)
+- **Observability Counts**:
+  - Fully Observable (Forms2XML only): 16 (39.0%)
+  - Partially Observable (Forms2XML + DB citations): 12 (29.3%)
+  - Not Observable (Standalone DB DDL/packages or library docs): 13 (31.7%)
+  - Total Eligible Observable Cases Evaluated: 28 (68.3%)
+- **Measured Performance Metrics (Observable)**:
+  - Exact Classification Accuracy: 21.4% (6/28)
+  - Exact Classification Accuracy (Fully Observable): 25.0% (4/16)
+  - Macro F1: 0.1333
+  - Exact Risk Accuracy: 21.4% (6/28)
+  - Critical Risk Recall: 0.0% (0/2 observable CRITICAL cases flagged as CRITICAL; both flagged as HIGH)
+  - High+Critical Risk Recall: 33.3% (2/6)
+- **Enterprise Safety Metrics**:
+  - Manual Review Recall: 60.0% (3/5 observable MANUAL_REVIEW cases flagged for manual review)
+  - False Automation Rate: 40.0% (2/5 observable MANUAL_REVIEW cases misclassified as CONVERT / AUTO verdict)
+  - Critical Safety Misses: 0 (0 observable CRITICAL cases missed or labeled safe/AUTO)
+- **Frozen Artifacts**:
+  - Location: `examples/modernization-lab/benchmark/baselines/v1/`
+  - Includes: `manifest.json`, `observability.json`, `raw-analysis.json`, `predictions.json`, `benchmark-report.json`, `benchmark-report.md`, `failure-analysis.md`
+- **Remaining Limitations**:
+  1. FormsLang currently ingests Forms2XML (`.xml`) files only; standalone database packages (`.pks`/`.pkb`) and DDL (`.sql`) remain un-ingested, leaving 13 cases `NOT_OBSERVABLE`.
+  2. PL/SQL analysis is lexical and syntax-evidence based; no semantic cross-module type or dependency resolution is performed.
+  3. No live Oracle database validation has been performed.
+  4. Forms2XML fixtures are hand-authored per ADR-001 and have not been round-tripped through Oracle Forms Builder.
+
