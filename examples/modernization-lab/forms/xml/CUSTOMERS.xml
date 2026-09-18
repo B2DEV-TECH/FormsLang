@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CUSTOMERS.fmb - Legacy Order Management (LOM) modernization lab.
+  FIXTURE: hand-authored Forms2XML, following the conventions confirmed in
+  tests/fixtures/minicase/module.xml and tests/fixtures/showcase/module.xml
+  (this repository never reverse-engineers or fabricates a compiled .fmb,
+  see forms/source/README.md). Not compiled against a real Forms Builder;
+  treat this as a documentation-quality, parser-valid representation of what
+  the module would contain.
+
+  One base-table block (BK_CUSTOMER) on LOM_CUSTOMERS. Illustrates
+  LOM-MOD-010 through LOM-MOD-015, see expected/modernization-ground-truth.json.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="CUSTOMERS"
+              Title="Customer Maintenance"
+              Comment="Customer master maintenance: status gating, credit limit and duplicate-validation examples for the LOM modernization lab."
+              FirstNavigationBlockName="BK_CUSTOMER"
+              MenuModule="LOM_MAIN">
+
+    <Coordinate CoordinateSystem="Real" RealUnit="Point"
+                CharacterCellWidth="5" CharacterCellHeight="10"/>
+
+    <ModuleParameter Name="P_CUSTOMER_ID" ParameterDataType="Number"
+                     Comment="Optional: pre-filters the initial query when this form is opened from ORDERS.fmb (BT_VIEW_CUSTOMER, LOM-MOD-023)."/>
+
+      <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="BEGIN&amp;#10;  :GLOBAL.G_USER := NVL(:GLOBAL.G_USER, GET_APPLICATION_PROPERTY(USERNAME));&amp;#10;  IF :PARAMETER.P_CUSTOMER_ID IS NOT NULL THEN&amp;#10;    SET_BLOCK_PROPERTY('BK_CUSTOMER', DEFAULT_WHERE,&amp;#10;      'CUSTOMER_ID = ' || :PARAMETER.P_CUSTOMER_ID);&amp;#10;  END IF;&amp;#10;  GO_BLOCK('BK_CUSTOMER');&amp;#10;  EXECUTE_QUERY;&amp;#10;END;"/>
+
+    <Block Name="BK_CUSTOMER" DatabaseBlock="true"
+           QueryDataSourceName="LOM_CUSTOMERS" QueryDataSourceType="Table"
+           InsertAllowed="true" UpdateAllowed="true" DeleteAllowed="false"
+           RecordsDisplayCount="1" OrderByClause="CUSTOMER_NAME">
+
+      <Trigger Name="WHEN-NEW-RECORD-INSTANCE" TriggerText="BEGIN&amp;#10;  -- Baseline for the POST-UPDATE audit trigger below: Forms has no&amp;#10;  -- built-in &quot;old value&quot; accessor, so the pre-change STATUS is stashed&amp;#10;  -- per record on entry (LOM-MOD-014).&amp;#10;  :GLOBAL.G_OLD_STATUS := :BK_CUSTOMER.STATUS;&amp;#10;END;"/>
+      <Trigger Name="PRE-INSERT" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-013 (CONVERT, category A): PK generated from a sequence in&amp;#10;  -- Forms' PRE-INSERT. Identical idiom repeated in ORDERS.fmb,&amp;#10;  -- INVENTORY.fmb is query-only so it does not need this. A straightforward&amp;#10;  -- mapping to an APEX page process / identity column; no business logic&amp;#10;  -- to lose.&amp;#10;  IF :BK_CUSTOMER.CUSTOMER_ID IS NULL THEN&amp;#10;    :BK_CUSTOMER.CUSTOMER_ID := lom_customer_id_seq.NEXTVAL;&amp;#10;  END IF;&amp;#10;  :BK_CUSTOMER.CREATED_BY := :GLOBAL.G_USER;&amp;#10;  :BK_CUSTOMER.CREATED_DATE := SYSDATE;&amp;#10;END;"/>
+      <Trigger Name="POST-UPDATE" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-014 (PRESERVE): unlike OM_SHARED.pll's log_action&amp;#10;  -- (LOM-MOD-039), this trigger calls LOM_AUDIT_API.log_event directly --&amp;#10;  -- already correctly centralized. Only the call site moves in APEX (a&amp;#10;  -- page process), the logic does not change.&amp;#10;  IF :BK_CUSTOMER.STATUS != :GLOBAL.G_OLD_STATUS THEN&amp;#10;    lom_audit_api.log_event(&amp;#10;      p_entity_name =&gt; 'CUSTOMER',&amp;#10;      p_entity_id   =&gt; TO_CHAR(:BK_CUSTOMER.CUSTOMER_ID),&amp;#10;      p_action      =&gt; 'STATUS_CHANGE',&amp;#10;      p_old_value   =&gt; :GLOBAL.G_OLD_STATUS,&amp;#10;      p_new_value   =&gt; :BK_CUSTOMER.STATUS,&amp;#10;      p_changed_by  =&gt; :GLOBAL.G_USER&amp;#10;    );&amp;#10;  END IF;&amp;#10;  :GLOBAL.G_OLD_STATUS := :BK_CUSTOMER.STATUS;&amp;#10;END;"/>
+
+      <Item Name="CUSTOMER_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="CUSTOMER_ID" DatabaseItem="true" PrimaryKey="true"
+            UpdateAllowed="false" Prompt="Customer ID" MaximumLength="10"
+            CanvasName="CV_CUSTOMER" Tooltip="Generated from LOM_CUSTOMER_ID_SEQ on PRE-INSERT (LOM-MOD-013)."
+            XPosition="20" YPosition="20" Width="80" Height="17"/>
+
+      <Item Name="CUSTOMER_NAME" ItemType="Text Item" DataType="Char"
+            ColumnName="CUSTOMER_NAME" DatabaseItem="true" Required="true"
+            Prompt="Customer Name" MaximumLength="200" CanvasName="CV_CUSTOMER"
+            XPosition="120" YPosition="20" Width="240" Height="17"/>
+
+      <Item Name="CUSTOMER_TYPE_CODE" ItemType="Text Item" DataType="Char"
+            ColumnName="CUSTOMER_TYPE_CODE" DatabaseItem="true" Required="true"
+            LovName="LOV_CUSTOMER_TYPE" ValidateFromList="true"
+            Prompt="Customer Type" MaximumLength="10" CanvasName="CV_CUSTOMER"
+            XPosition="20" YPosition="50" Width="100" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="DECLARE&amp;#10;  v_default_limit lom_customer_types.default_credit_limit%TYPE;&amp;#10;BEGIN&amp;#10;  SELECT default_credit_limit INTO v_default_limit&amp;#10;    FROM lom_customer_types&amp;#10;   WHERE customer_type_code = :BK_CUSTOMER.CUSTOMER_TYPE_CODE;&amp;#10;&amp;#10;  -- LOM-MOD-012 (REPLACE_WITH_APEX_NATIVE, LOW risk): only a default&amp;#10;  -- suggestion, applied with COPY so it does not fire this item's own&amp;#10;  -- WHEN-VALIDATE-ITEM again and does not overwrite a value the user&amp;#10;  -- already typed. An APEX cascading LOV / page item default achieves the&amp;#10;  -- same UX with no PL/SQL.&amp;#10;  IF :BK_CUSTOMER.CREDIT_LIMIT IS NULL THEN&amp;#10;    COPY(TO_CHAR(v_default_limit), 'BK_CUSTOMER.CREDIT_LIMIT');&amp;#10;  END IF;&amp;#10;EXCEPTION&amp;#10;  WHEN NO_DATA_FOUND THEN&amp;#10;    NULL;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="STATUS" ItemType="Text Item" DataType="Char"
+            ColumnName="STATUS" DatabaseItem="true" Required="true"
+            ListItemElement="true" CanvasName="CV_CUSTOMER"
+            Prompt="Status" MaximumLength="10"
+            XPosition="140" YPosition="50" Width="100" Height="17">
+        <RadioButton Name="ACTIVE" Label="Active" Value="ACTIVE" XPosition="0" YPosition="0" Width="80" Height="17"/>
+        <RadioButton Name="INACTIVE" Label="Inactive" Value="INACTIVE" XPosition="90" YPosition="0" Width="80" Height="17"/>
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="DECLARE&amp;#10;  v_open_orders NUMBER;&amp;#10;BEGIN&amp;#10;  IF :BK_CUSTOMER.STATUS = 'INACTIVE' AND :GLOBAL.G_OLD_STATUS = 'ACTIVE' THEN&amp;#10;    -- LOM-MOD-011 (MOVE_TO_PLSQL_API, HIGH risk): this duplicates&amp;#10;    -- LOM_CUSTOMER_API.has_open_orders, which LOM_CUSTOMER_API.change_status&amp;#10;    -- already calls before allowing the same transition. Two independent&amp;#10;    -- implementations of &quot;does this customer have open orders&quot; is exactly&amp;#10;    -- the kind of divergence risk this lab exists to surface: if one copy&amp;#10;    -- is fixed (e.g. the SHIPPED/REJECTED/CANCELLED exclusion list changes)&amp;#10;    -- and the other is not, the two layers silently disagree.&amp;#10;    SELECT COUNT(*) INTO v_open_orders&amp;#10;      FROM lom_orders&amp;#10;     WHERE customer_id = :BK_CUSTOMER.CUSTOMER_ID&amp;#10;       AND status NOT IN ('SHIPPED', 'REJECTED', 'CANCELLED');&amp;#10;&amp;#10;    IF v_open_orders &gt; 0 THEN&amp;#10;      om_shared.show_message('Cannot inactivate customer ' || :BK_CUSTOMER.CUSTOMER_ID&amp;#10;        || ': ' || v_open_orders || ' open order(s) still in progress.');&amp;#10;      RAISE FORM_TRIGGER_FAILURE;&amp;#10;    END IF;&amp;#10;  END IF;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="CREDIT_LIMIT" ItemType="Text Item" DataType="Number"
+            ColumnName="CREDIT_LIMIT" DatabaseItem="true" Required="true"
+            Prompt="Credit Limit" MaximumLength="12" FormatMask="FM999G999G990D00"
+            CanvasName="CV_CUSTOMER" XPosition="20" YPosition="80" Width="100" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-010 (MOVE_TO_PLSQL_API): duplicates CK_LOM_CUST_CREDIT&amp;#10;  -- (credit_limit &gt;= 0). The DB constraint is the real guarantee; this&amp;#10;  -- trigger only exists to fail fast with a friendly message before&amp;#10;  -- COMMIT_FORM reaches the database.&amp;#10;  IF :BK_CUSTOMER.CREDIT_LIMIT &lt; 0 THEN&amp;#10;    om_shared.show_message('Credit limit cannot be negative.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="EMAIL" ItemType="Text Item" DataType="Char"
+            ColumnName="EMAIL" DatabaseItem="true"
+            Prompt="Email" MaximumLength="200" CanvasName="CV_CUSTOMER"
+            XPosition="140" YPosition="80" Width="200" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-015 (REPLACE_WITH_APEX_NATIVE, LOW risk): a hand-rolled shape&amp;#10;  -- check. APEX ships a native &quot;Email&quot; validation type; no PL/SQL needed.&amp;#10;  IF :BK_CUSTOMER.EMAIL IS NOT NULL&amp;#10;     AND NOT REGEXP_LIKE(:BK_CUSTOMER.EMAIL, '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$') THEN&amp;#10;    om_shared.show_message('Email address does not look valid.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="PHONE" ItemType="Text Item" DataType="Char"
+            ColumnName="PHONE" DatabaseItem="true"
+            Prompt="Phone" MaximumLength="40" CanvasName="CV_CUSTOMER"
+            XPosition="20" YPosition="110" Width="140" Height="17"/>
+
+      <Item Name="CREATED_BY" ItemType="Text Item" DataType="Char"
+            ColumnName="CREATED_BY" DatabaseItem="true" UpdateAllowed="false"
+            Enabled="false" Prompt="Created By" MaximumLength="30"
+            CanvasName="CV_CUSTOMER" XPosition="20" YPosition="140" Width="100" Height="17"/>
+
+      <Item Name="CREATED_DATE" ItemType="Text Item" DataType="Date"
+            ColumnName="CREATED_DATE" DatabaseItem="true" UpdateAllowed="false"
+            Enabled="false" Prompt="Created" MaximumLength="20" FormatMask="DD-MON-YYYY"
+            CanvasName="CV_CUSTOMER" XPosition="140" YPosition="140" Width="100" Height="17"/>
+
+    </Block>
+
+    <RecordGroup Name="RG_CUSTOMER_TYPE" RecordGroupType="Query"
+                 RecordGroupQuery="SELECT description, customer_type_code FROM lom_customer_types ORDER BY 1">
+      <RecordGroupColumn Name="DESCRIPTION" ColumnDataType="Character" MaximumLength="100"/>
+      <RecordGroupColumn Name="CUSTOMER_TYPE_CODE" ColumnDataType="Character" MaximumLength="10"/>
+    </RecordGroup>
+    <LOV Name="LOV_CUSTOMER_TYPE" RecordGroupName="RG_CUSTOMER_TYPE" Title="Customer Types"
+         AutoDisplay="true" AutoSelect="true" Width="300" Height="200" XPosition="150" YPosition="150">
+      <LOVColumnMapping Name="DESCRIPTION" Title="Type" DisplayWidth="200" ReturnItem="BK_CUSTOMER.CUSTOMER_TYPE_CODE"/>
+      <LOVColumnMapping Name="CUSTOMER_TYPE_CODE" Title="Code" DisplayWidth="60" ReturnItem="BK_CUSTOMER.CUSTOMER_TYPE_CODE"/>
+    </LOV>
+
+    <AttachedLibrary Name="OM_SHARED"/>
+
+    <Alert Name="AL_ERROR" AlertStyle="Stop" Title="Error"
+           AlertMessage="(message text set at runtime by om_shared.show_message)" Button1Label="OK"/>
+
+    <Canvas Name="CV_CUSTOMER" CanvasType="Content" WindowName="WIN_CUSTOMER" Width="400" Height="220"/>
+    <Window Name="WIN_CUSTOMER" Title="Customer Maintenance" Width="420" Height="260"/>
+
+  </FormModule>
+</Module>

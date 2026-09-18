@@ -1,0 +1,450 @@
+{
+  "lab": "Legacy Order Management (LOM) modernization lab",
+  "purpose": "Authoritative, hand-verified registry of every LOM-MOD-### case referenced across database/**, forms/xml/**, and docs/**. Every case below is grounded in a specific line of committed source (see \"source\"); none is invented after the fact. This file is the single source of truth other lab documents (docs/modernization-challenges.md, docs/adr/*, blueprint/expected-apex-architecture.md, metrics/*) must stay consistent with.",
+  "taxonomy": {
+    "classification": {
+      "PRESERVE": "Business logic is already correctly placed (usually in a PL/SQL API). Only the call site moves when the UI moves to APEX; the logic itself does not change.",
+      "CONVERT": "A Forms idiom with a direct, mechanical APEX equivalent. No business logic is at risk; this is a syntax/structure translation.",
+      "REFACTOR": "Logic that is correct today but written in a way that will not survive the move cleanly (e.g. relies on Forms-only state, a race condition becomes reachable, a global becomes ambiguous). Needs rework, not just relocation.",
+      "MOVE_TO_PLSQL_API": "Business logic living in a Forms trigger that duplicates, or should have called, an existing (or missing) PL/SQL API. The fix is to make the API the single source of truth and have every caller (Forms today, APEX tomorrow) go through it.",
+      "REPLACE_WITH_APEX_NATIVE": "A Forms mechanism (alert, LOV default, format check, confirmation dialog) that a native APEX feature replaces outright, with no PL/SQL to port.",
+      "MANUAL_REVIEW": "No mechanical conversion applies. A human (architect or business owner) has to make a judgment call before this can be migrated.",
+      "DROP": "The artifact should not be carried into the APEX build at all (out of scope, superseded, or actively misleading)."
+    },
+    "risk": {
+      "LOW": "Getting this wrong produces a cosmetic or minor UX regression.",
+      "MEDIUM": "Getting this wrong produces incorrect behavior under a specific, findable condition (e.g. a race, a stale value).",
+      "HIGH": "Getting this wrong produces incorrect business data (wrong totals, wrong stock, wrong eligibility) under normal use.",
+      "CRITICAL": "Getting this wrong breaks a control the business depends on (an order ships without approval, an approval is attributed to the wrong person)."
+    },
+    "category": {
+      "A": "Mechanical/structural mapping - identical idiom, direct 1:1 APEX equivalent, no logic change.",
+      "B": "Validation logic conversion - a WHEN-VALIDATE-ITEM style check that converts cleanly into an APEX page/item validation, same logic.",
+      "C": "Presentation/UI logic replaced by an APEX native feature - no PL/SQL survives the move.",
+      "D": "Navigation / multi-form flow redesign - CALL_FORM/OPEN_FORM patterns with no direct APEX equivalent; needs a human decision (page vs. modal vs. region).",
+      "E": "Logic that belongs in the PL/SQL API layer - duplicated or missing business logic; the fix is an API call, not a UI change.",
+      "F": "Architectural / cross-cutting - no single trigger to fix; requires documentation, a schema change, or a business decision."
+    }
+  },
+  "id_notes": "IDs are assigned in the order cases were discovered while building this lab, not resequenced -- gaps (e.g. between 042 and any higher ID actually used elsewhere in this repo) are intentional and mirror how real modernization backlogs accumulate. Every ID from 001 to 042 that is NOT listed below was reserved during drafting and deliberately dropped once no case survived fact-checking against the committed source (see the project handoff document for which IDs those were and why).",
+  "cases": [
+    {
+      "id": "LOM-MOD-001",
+      "title": "Hardcoded business constants in LOM_ORDER_API",
+      "source": "database/packages/lom_order_api.pks (gc_tax_rate, gc_approval_threshold)",
+      "classification": "REFACTOR",
+      "risk": "MEDIUM",
+      "category": "F",
+      "summary": "gc_tax_rate (0.08) and gc_approval_threshold (5000) are package constants, not configuration rows.",
+      "rationale": "Correct and centralized today (one place, not duplicated), so this is not a MOVE_TO_PLSQL_API case. But a rate/threshold change today requires a package recompile; a modernization pass should decide whether these become a settings table read once per session/page, which also gives APEX an audit trail of when the threshold last changed."
+    },
+    {
+      "id": "LOM-MOD-002",
+      "title": "Order status transitions enforced only by a hardcoded PL/SQL matrix",
+      "source": "database/packages/lom_order_api.pkb (transition_status)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "category": "F",
+      "summary": "LOM_ORDER_STATUS.SEQUENCE_NO documents the intended flow but is decorative; the real state machine is a hardcoded IF/CASE matrix inside transition_status.",
+      "rationale": "The matrix is correct today, but an automated conversion that simplifies or drops it -- for example, one that reads status flow from LOM_ORDER_STATUS.SEQUENCE_NO because it looks authoritative -- could allow an order to be released or shipped without ever being approved. Any modernization tool or reviewer must be told explicitly which table is documentation and which package is the actual control.",
+      "related": ["LOM-MOD-005"]
+    },
+    {
+      "id": "LOM-MOD-003",
+      "title": "LOM_ORDER_API and LOM_APPROVAL_API call each other (verified: acyclic)",
+      "source": "database/packages/lom_order_api.pkb (submit_order -> lom_approval_api.create_approval_request); database/packages/lom_approval_api.pkb (approve/reject -> lom_order_api.transition_status)",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "category": "F",
+      "summary": "submit_order calls into LOM_APPROVAL_API, and LOM_APPROVAL_API.approve/reject call back into LOM_ORDER_API.transition_status. Verified by reading both package bodies in full plus an exhaustive cross-package-call grep: the coupling is real but not circular in any way Oracle or a migration would choke on (both package specs compile independently; only body-level calls cross the boundary).",
+      "rationale": "Not a bug and not something to refactor away. The risk is purely one of documentation: an APEX 'Approve' page process that calls only LOM_APPROVAL_API.approve is doing the complete, correct thing (it already transitions the order internally) -- but a developer unfamiliar with this call graph could easily assume they also need to call LOM_ORDER_API.transition_status directly and end up double-transitioning or fighting the package's own internal call. This case exists so the dependency graph deliverable documents the cross-call explicitly instead of leaving it to be rediscovered."
+    },
+    {
+      "id": "LOM-MOD-004",
+      "title": "LOM_CUSTOMER_TYPES.DEFAULT_CREDIT_LIMIT is a one-time suggestion, never a ceiling",
+      "source": "database/ddl/lom_lookup_tables.sql (lom_customer_types); forms/xml/CUSTOMERS.xml (WHEN-VALIDATE-ITEM on CUSTOMER_TYPE_CODE, LOM-MOD-012)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "LOW",
+      "category": "F",
+      "summary": "The value is copied into CREDIT_LIMIT via COPY() only if the field is still null; CK_LOM_CUST_CREDIT only checks credit_limit >= 0. Nothing re-enforces the type's limit afterward, including on subsequent updates.",
+      "rationale": "This is a business-rule question for the process owner, not a Forms-to-APEX translation problem: should a customer's credit limit ever be capped by their type after the fact? If yes, that is new logic to design, not something to migrate as-is."
+    },
+    {
+      "id": "LOM-MOD-005",
+      "title": "LOM_ORDER_STATUS.SEQUENCE_NO is documentation-only",
+      "source": "database/ddl/lom_lookup_tables.sql (lom_order_status, table comment)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "LOW",
+      "category": "F",
+      "summary": "The column exists and is populated, but nothing in the schema or PL/SQL derives allowed transitions from it -- see LOM-MOD-002 for the actual control.",
+      "rationale": "Either wire SEQUENCE_NO up to genuinely drive (or at least validate against) transition_status's matrix -- a real improvement -- or drop the column, since as it stands it invites a reader (or an automated tool) to trust a value that is not authoritative."
+    },
+    {
+      "id": "LOM-MOD-006",
+      "title": "OM_SHARED.pll presentation helpers have no PL/SQL to port",
+      "source": "forms/libraries/OM_SHARED.md (format_currency, show_message, check_user_permission)",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "category": "C",
+      "summary": "Three of OM_SHARED's seven functions are pure presentation glue: a currency format wrapper, a message-popup wrapper, and a permission check.",
+      "rationale": "APEX format masks replace format_currency, a native Error/Success region or Confirm dynamic action replaces show_message, and APEX Access Control / Authorization Schemes replace check_user_permission. None of the three carries business logic worth preserving as PL/SQL."
+    },
+    {
+      "id": "LOM-MOD-007",
+      "title": "OM_SHARED.open_form_with_context has no APEX equivalent to preserve",
+      "source": "forms/libraries/OM_SHARED.md (open_form_with_context)",
+      "classification": "DROP",
+      "risk": "LOW",
+      "category": "D",
+      "summary": "Wraps CALL_FORM/OPEN_FORM plus hardcoded window coordinates/sizing -- a Forms-MDI-specific concept.",
+      "rationale": "APEX has no window-positioning equivalent; page/region layout replaces it entirely. This helper should be dropped rather than translated -- see LOM-MOD-020/022/023 for what actually replaces each of its call sites.",
+      "related": ["LOM-MOD-020", "LOM-MOD-022", "LOM-MOD-023"]
+    },
+    {
+      "id": "LOM-MOD-008",
+      "title": ":GLOBAL.G_USER should become :APP_USER",
+      "source": "forms/xml/CUSTOMERS.xml, ORDERS.xml, INVENTORY.xml, APPROVALS.xml (every WHEN-NEW-FORM-INSTANCE / WHEN-NEW-RECORD-INSTANCE trigger)",
+      "classification": "REFACTOR",
+      "risk": "LOW",
+      "category": "C",
+      "summary": "All four modules seed :GLOBAL.G_USER from GET_APPLICATION_PROPERTY(USERNAME) and read it back everywhere a 'who did this' value is needed (audit calls, created_by columns).",
+      "rationale": "Identical idiom repeated four times; APEX's built-in :APP_USER is the direct replacement with no PL/SQL to write. Flagged REFACTOR rather than CONVERT because it is worth confirming that no call site needs the OS/DB username specifically (Forms' USERNAME) as opposed to the application-level identity APEX exposes."
+    },
+    {
+      "id": "LOM-MOD-009",
+      "title": "LOM_AUDIT_LOG's polymorphic design has no referential integrity by choice",
+      "source": "database/ddl/lom_audit_log.sql",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "category": "F",
+      "summary": "ENTITY_NAME/ENTITY_ID is a generic (type, id) pair with no FK to the tables it audits, so one table can log events for CUSTOMER, ORDER and APPROVAL alike.",
+      "rationale": "Intentional and reasonable for an audit sink -- not a defect. Recorded here only so a reviewer doesn't 'fix' it by adding a normalized FK per entity type; if the APEX build later needs referential integrity here (e.g. to drill from a log row to the record), that becomes a new, separate decision, not a bug fix."
+    },
+    {
+      "id": "LOM-MOD-010",
+      "title": "Forms duplicates CK_LOM_CUST_CREDIT",
+      "source": "forms/xml/CUSTOMERS.xml (WHEN-VALIDATE-ITEM on CREDIT_LIMIT)",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "LOW",
+      "category": "E",
+      "summary": "Trigger re-checks credit_limit >= 0, which the DB constraint CK_LOM_CUST_CREDIT already guarantees.",
+      "rationale": "The trigger only exists to fail fast with a friendly message before COMMIT_FORM reaches the database. In APEX this becomes a plain item validation with the same message; no new logic, just a relocated, equally-shallow check."
+    },
+    {
+      "id": "LOM-MOD-011",
+      "title": "Forms duplicates LOM_CUSTOMER_API.has_open_orders",
+      "source": "forms/xml/CUSTOMERS.xml (WHEN-VALIDATE-ITEM on STATUS); database/packages/lom_customer_api.pkb (has_open_orders, change_status)",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "category": "E",
+      "summary": "The trigger re-implements the exact query LOM_CUSTOMER_API.has_open_orders already runs (status NOT IN ('SHIPPED','REJECTED','CANCELLED')) instead of calling it, even though LOM_CUSTOMER_API.change_status already calls has_open_orders before allowing the same ACTIVE->INACTIVE transition.",
+      "rationale": "Two independent implementations of the same business predicate is exactly the divergence risk this lab exists to surface: if the exclusion list changes in one copy and not the other, Forms and the API silently disagree about whether a customer can be inactivated."
+    },
+    {
+      "id": "LOM-MOD-012",
+      "title": "Customer type default credit limit applied via COPY()",
+      "source": "forms/xml/CUSTOMERS.xml (WHEN-VALIDATE-ITEM on CUSTOMER_TYPE_CODE)",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "category": "C",
+      "summary": "COPY() sets CREDIT_LIMIT only when null, so it never overwrites a value the user already typed and does not re-fire the item's own validation.",
+      "rationale": "An APEX cascading LOV / page item default achieves identical UX with no PL/SQL. See LOM-MOD-004 for the separate, deeper question of whether this default should ever become an enforced ceiling."
+    },
+    {
+      "id": "LOM-MOD-013",
+      "title": "Sequence-generated primary keys on PRE-INSERT",
+      "source": "forms/xml/CUSTOMERS.xml, ORDERS.xml (PRE-INSERT)",
+      "classification": "CONVERT",
+      "risk": "LOW",
+      "category": "A",
+      "summary": "IF ... IS NULL THEN :BLOCK.ID := seq.NEXTVAL identical idiom in both modules.",
+      "rationale": "Direct mapping to an APEX page process / identity column or trigger-based sequence default. No business logic to lose."
+    },
+    {
+      "id": "LOM-MOD-014",
+      "title": "Pre-change STATUS stashed in a global for the audit trigger",
+      "source": "forms/xml/CUSTOMERS.xml (WHEN-NEW-RECORD-INSTANCE, POST-UPDATE)",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "category": "F",
+      "summary": "Forms has no built-in 'old value' accessor, so :GLOBAL.G_OLD_STATUS captures STATUS on record entry so POST-UPDATE can detect a change.",
+      "rationale": "The audit call itself (LOM_AUDIT_API.log_event) is already correctly centralized -- see LOM-MOD-014's sibling note in the trigger text. Only the call site moves to an APEX page process with a :OLD./:NEW.-style comparison (or an application-level pl/sql region process reading the row before update); the old-value-capture problem this global solves does not exist in APEX the same way."
+    },
+    {
+      "id": "LOM-MOD-015",
+      "title": "Hand-rolled email format check",
+      "source": "forms/xml/CUSTOMERS.xml (WHEN-VALIDATE-ITEM on EMAIL)",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "category": "C",
+      "summary": "REGEXP_LIKE shape check for '@' and a domain.",
+      "rationale": "APEX ships a native Email validation type; no PL/SQL needed."
+    },
+    {
+      "id": "LOM-MOD-016",
+      "title": "INVENTORY.fmb's adjustment button correctly calls the DB API",
+      "source": "forms/xml/INVENTORY.xml (BT_ADJUST, WHEN-BUTTON-PRESSED)",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "category": "A",
+      "summary": "Calls LOM_INVENTORY_API.adjust_quantity directly with no re-implemented logic in the trigger.",
+      "rationale": "The positive control case contrasted with APPROVALS.fmb's anti-pattern (LOM-MOD-041/LOM-MOD-042): only the call site moves, from a WHEN-BUTTON-PRESSED trigger to an APEX page process button.",
+      "related": ["LOM-MOD-041", "LOM-MOD-042"]
+    },
+    {
+      "id": "LOM-MOD-017",
+      "title": "Order line numbering by inline MAX()+1",
+      "source": "forms/xml/ORDERS.xml (BK_ORDER_LINE PRE-INSERT)",
+      "classification": "REFACTOR",
+      "risk": "MEDIUM",
+      "category": "E",
+      "summary": "SELECT NVL(MAX(line_number),0)+1 scoped to the current order, computed per insert.",
+      "rationale": "Safe under Forms' single-session record locking during data entry, but becomes a real race condition once two APEX sessions (two browser tabs, or a REST client alongside the UI) can insert lines for the same order concurrently. Needs a locking read or a per-order sequence/identity, not a mechanical port."
+    },
+    {
+      "id": "LOM-MOD-018",
+      "title": "No constraint enforces a single default warehouse",
+      "source": "database/ddl/lom_lookup_tables.sql (lom_warehouses, table comment); forms/xml/INVENTORY.xml (PRE-QUERY)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "category": "F",
+      "summary": "LOM_INVENTORY_API.default_warehouse picks the first row where IS_DEFAULT='Y'; nothing in the schema prevents two (or zero) warehouses carrying that flag at once.",
+      "rationale": "The Forms call site is correct (it calls the API rather than re-implementing the query) -- the flaw is one layer down. A human needs to choose between a partial unique index (WHERE is_default = 'Y') or a documented single-admin-owned setting before this is safe to build APEX pages against."
+    },
+    {
+      "id": "LOM-MOD-019",
+      "title": "Customer eligibility gate calls the API cleanly",
+      "source": "forms/xml/ORDERS.xml (WHEN-VALIDATE-ITEM on CUSTOMER_ID); database/packages/lom_customer_api.pks (can_place_order)",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "MEDIUM",
+      "category": "E",
+      "summary": "Calls LOM_CUSTOMER_API.can_place_order -- a single call site, so the rule itself is not duplicated.",
+      "rationale": "Classified MOVE_TO_PLSQL_API for the call-site relocation only (item validation -> page process / dynamic action); the underlying rule already lives in exactly one place, which is the outcome every other MOVE_TO_PLSQL_API case in this lab is working toward."
+    },
+    {
+      "id": "LOM-MOD-020",
+      "title": "CALL_FORM into APPROVALS is modal and blocks ORDERS",
+      "source": "forms/xml/ORDERS.xml (BT_VIEW_APPROVALS)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "category": "D",
+      "summary": "CALL_FORM hardcodes the target module and blocks ORDERS until APPROVALS closes (modal, single-session MDI semantics).",
+      "rationale": "APEX has no direct equivalent to this modal/blocking navigation. A human has to choose between a modal dialog page, an inline region, or a plain link, each with different state/UX trade-offs that OM_SHARED.open_form_with_context (LOM-MOD-007) cannot decide for them."
+    },
+    {
+      "id": "LOM-MOD-021",
+      "title": "Submit-order button is a clean, single call site",
+      "source": "forms/xml/ORDERS.xml (BT_SUBMIT)",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "category": "A",
+      "summary": "One call to LOM_ORDER_API.submit_order, which itself calls recalc_order_totals, transition_status, and (when needed) LOM_APPROVAL_API.create_approval_request.",
+      "rationale": "Exactly what a modernized call site should look like. Nothing to change except moving the call from a WHEN-BUTTON-PRESSED trigger into an APEX page process."
+    },
+    {
+      "id": "LOM-MOD-022",
+      "title": "OPEN_FORM into INVENTORY preserves a non-modal multi-form session",
+      "source": "forms/xml/ORDERS.xml (BT_VIEW_INVENTORY)",
+      "classification": "REFACTOR",
+      "risk": "LOW",
+      "category": "D",
+      "summary": "OPEN_FORM keeps ORDERS open behind INVENTORY (non-modal, ACTIVATE).",
+      "rationale": "APEX has no multi-form session to preserve; this becomes a link to a filtered Inventory page (new tab) or a modal region. No in-memory PARAMLIST state survives either way, so the parameters must travel as URL / page items instead."
+    },
+    {
+      "id": "LOM-MOD-023",
+      "title": "CALL_FORM into CUSTOMERS is query-only and low-consequence",
+      "source": "forms/xml/ORDERS.xml (BT_VIEW_CUSTOMER)",
+      "classification": "REFACTOR",
+      "risk": "LOW",
+      "category": "D",
+      "summary": "Same CALL_FORM navigation shape as LOM-MOD-020, but QUERY_ONLY with no order-specific state at risk.",
+      "rationale": "Simpler consequence than LOM-MOD-020 -- becomes a plain link to the Customer page in APEX; no manual architectural review needed, just a mechanical navigation change."
+    },
+    {
+      "id": "LOM-MOD-024",
+      "title": "CLEAR_FORM(NO_VALIDATE) + CREATE_RECORD for a new order",
+      "source": "forms/xml/ORDERS.xml (BT_NEW)",
+      "classification": "CONVERT",
+      "risk": "LOW",
+      "category": "A",
+      "summary": "Standard legacy 'new record' idiom.",
+      "rationale": "Maps directly to an APEX 'Create' button that resets the page and starts a new row."
+    },
+    {
+      "id": "LOM-MOD-025",
+      "title": "Availability re-derived with an inline SELECT",
+      "source": "forms/xml/ORDERS.xml (BK_ORDER_LINE WHEN-VALIDATE-ITEM on QUANTITY); database/ddl/lom_products_inventory.sql",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "MEDIUM",
+      "category": "E",
+      "summary": "Selects LOM_INVENTORY.QUANTITY_AVAILABLE directly instead of calling LOM_INVENTORY_API.get_available_qty, even though the virtual column means both reads return the same number today.",
+      "rationale": "The risk is that a future change to the definition of 'availability' (e.g. excluding damaged stock) has only one function to update, and this bypass would silently keep using the old formula."
+    },
+    {
+      "id": "LOM-MOD-026",
+      "title": "Quantity threshold check re-implemented instead of called",
+      "source": "forms/xml/ORDERS.xml (BK_ORDER_LINE WHEN-VALIDATE-ITEM on QUANTITY); database/packages/lom_inventory_api.pks (validate_quantity)",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "category": "E",
+      "summary": "This lab's canonical MOVE_TO_PLSQL_API example: the exact threshold check already exists as LOM_INVENTORY_API.validate_quantity, re-implemented inline instead of called.",
+      "rationale": "A modernized page validation should call that function and surface its return value directly, not reproduce the comparison."
+    },
+    {
+      "id": "LOM-MOD-027",
+      "title": "Line total formula duplicated on two items",
+      "source": "forms/xml/ORDERS.xml (BK_ORDER_LINE WHEN-VALIDATE-ITEM on QUANTITY and DISCOUNT_AMOUNT); database/packages/lom_order_api.pkb (calc_line_total)",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "category": "E",
+      "summary": "ROUND(quantity * unit_price - discount_amount, 2) is repeated verbatim on both QUANTITY's and DISCOUNT_AMOUNT's WHEN-VALIDATE-ITEM, re-implementing LOM_ORDER_API.calc_line_total.",
+      "rationale": "The highest-risk duplication in this lab: a financial calculation with two independent implementations, each of which must be kept in sync by hand whenever the formula changes. See LOM-MOD-037 for the root cause (no PL/SQL API exists for order-line operations at all)."
+    },
+    {
+      "id": "LOM-MOD-028",
+      "title": "Order totals recalculated via a centralized API call",
+      "source": "forms/xml/ORDERS.xml (BK_ORDER_LINE POST-INSERT/POST-UPDATE/POST-DELETE); database/packages/lom_order_api.pkb (recalc_order_totals)",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "category": "A",
+      "summary": "All three DML triggers call LOM_ORDER_API.recalc_order_totals identically.",
+      "rationale": "Already correctly centralized; only the call site moves in APEX (from block-level triggers to an after-row process on the detail region)."
+    },
+    {
+      "id": "LOM-MOD-029",
+      "title": "Approval worklist filter is hardcoded",
+      "source": "forms/xml/APPROVALS.xml (PRE-QUERY)",
+      "classification": "REFACTOR",
+      "risk": "MEDIUM",
+      "category": "F",
+      "summary": "The 'worklist shows only what is waiting on me' filter (STATUS = 'PENDING') is hardcoded rather than exposed as a page-level filter/parameter.",
+      "rationale": "Harmless today (there is only one worklist definition), but changing the definition of 'pending' means editing and recompiling this trigger. An APEX build should expose this as a configurable region filter."
+    },
+    {
+      "id": "LOM-MOD-030",
+      "title": "No constraint prevents duplicate PENDING approval requests for one order",
+      "source": "database/ddl/lom_approvals.sql",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "category": "F",
+      "summary": "LOM_APPROVALS has an index on order_id but no unique/partial-unique constraint restricting how many PENDING rows may exist per order. create_approval_request always inserts a new row.",
+      "rationale": "Not reachable today because submit_order's own DRAFT-only guard prevents re-submitting an order that already has a pending approval -- but that protection lives in a different package (LOM_ORDER_API), not in the schema itself. Worth deciding whether a partial unique index (WHERE status = 'PENDING') should be added before any other caller (a future APEX process, a script) can create a second one."
+    },
+    {
+      "id": "LOM-MOD-031",
+      "title": "Approval attribution defaults to the database session USER, not the APEX end user",
+      "source": "database/packages/lom_approval_api.pks (create_approval_request, approve, reject)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "category": "F",
+      "summary": "create_approval_request(p_order_id, p_requested_by default user) and approve(p_approval_id, p_approver default user, ...) both default their identity parameter to the PL/SQL USER pseudo-column.",
+      "rationale": "In Forms, USER reflects the connected end user's own database session. In an APEX app the same procedure executes under the workspace/parsing schema, so an unmodified call site would silently attribute every approval to the schema owner instead of the actual approver -- unless every call explicitly passes v('APP_USER') for p_approver/p_requested_by. This is exactly the kind of default-parameter behavior that 'just works' in Forms and silently breaks approval attribution in APEX if a single call site is missed; every page process calling LOM_APPROVAL_API must be audited for this before go-live.",
+      "related": ["LOM-MOD-008"]
+    },
+    {
+      "id": "LOM-MOD-032",
+      "title": "Mandatory rejection comments are enforced only in PL/SQL",
+      "source": "database/packages/lom_approval_api.pks (reject; gc_err_comments_required); database/ddl/lom_approvals.sql (comments column)",
+      "classification": "PRESERVE",
+      "risk": "LOW",
+      "category": "F",
+      "summary": "reject's p_comments parameter has no default (mandatory at the signature level) and LOM_APPROVAL_API.reject raises gc_err_comments_required when it is blank, but the COMMENTS column itself has no NOT NULL or CHECK constraint.",
+      "rationale": "Consistent with this lab's overall pattern of business rules protected by the API rather than the schema. Safe to preserve as-is only for as long as every caller keeps going through LOM_APPROVAL_API.reject rather than updating LOM_APPROVALS directly -- which is precisely what APPROVALS.fmb's BT_REJECT fails to do (LOM-MOD-042).",
+      "related": ["LOM-MOD-042"]
+    },
+    {
+      "id": "LOM-MOD-033",
+      "title": "ENTER_QUERY/EXECUTE_QUERY toolbar buttons",
+      "source": "forms/xml/ORDERS.xml (BT_FIND, BT_EXECUTE)",
+      "classification": "CONVERT",
+      "risk": "LOW",
+      "category": "A",
+      "summary": "Repeated in spirit across all four modules; no business logic.",
+      "rationale": "Becomes an Interactive Report search bar / Reset button."
+    },
+    {
+      "id": "LOM-MOD-034",
+      "title": "SHOW_ALERT confirmation before submit",
+      "source": "forms/xml/ORDERS.xml (BT_SUBMIT, AL_CONFIRM_SUBMIT); forms/xml/APPROVALS.xml (AL_CONFIRM_APPROVE, AL_CONFIRM_REJECT)",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "category": "C",
+      "summary": "Same SHOW_ALERT/ALERT_BUTTON1 confirmation pattern in three places across two modules.",
+      "rationale": "An APEX 'Confirm' dynamic action replaces all three with no PL/SQL."
+    },
+    {
+      "id": "LOM-MOD-035",
+      "title": "Low-stock flag computed in POST-QUERY",
+      "source": "forms/xml/INVENTORY.xml (POST-QUERY); database/views/lom_views.sql (lom_inventory_v)",
+      "classification": "REPLACE_WITH_APEX_NATIVE",
+      "risk": "LOW",
+      "category": "C",
+      "summary": "LOM_INVENTORY_V deliberately does not compute this; it is derived per-row in Forms (QUANTITY_AVAILABLE <= REORDER_LEVEL).",
+      "rationale": "Pure presentation derivation, kept in Forms on purpose so this lab has a clean 'no PL/SQL to migrate, just a report attribute' example. An Interactive Report highlight/format rule replaces this trigger entirely."
+    },
+    {
+      "id": "LOM-MOD-036",
+      "title": "No row-level filtering on the approval worklist or inventory views",
+      "source": "database/views/lom_views.sql (lom_approval_worklist_v, lom_inventory_v)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "MEDIUM",
+      "category": "F",
+      "summary": "Neither view filters by requester, owner, or region -- every row is visible to every caller with SELECT on the view.",
+      "rationale": "Fine for a single-tenant-per-schema lab, but it is a silent assumption baked in by omission rather than a documented decision. Before the APEX build ships, confirm whether a sales rep should only see their own orders' approvals (or a warehouse worker only their own warehouse's stock) -- if so this becomes a VPD policy or an APEX-level filter, not a cosmetic change."
+    },
+    {
+      "id": "LOM-MOD-037",
+      "title": "No PL/SQL API exists for order-line operations",
+      "source": "database/packages/lom_order_api.pks (no add_line/update_line procedure); forms/xml/ORDERS.xml (BK_ORDER_LINE triggers)",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "HIGH",
+      "category": "F",
+      "summary": "Unlike header-level operations (submit_order, release_order, recalc_order_totals -- all in LOM_ORDER_API), there is no package procedure for inserting or updating an order line at all. Every line-level rule (product lookup and ACTIVE_FLAG='Y' eligibility, quantity-availability check, discount validation, line-total calculation) lives only in Forms' WHEN-VALIDATE-ITEM triggers, validating a raw table DML.",
+      "rationale": "This is the root cause behind LOM-MOD-025, LOM-MOD-026 and LOM-MOD-027: those cases look like 'call the API instead' fixes, but there is no line-level API to call yet. Any other caller today (a script, a future integration) that inserts into LOM_ORDER_LINES directly bypasses every one of these rules, including the ACTIVE_FLAG check. Modernizing this correctly means designing and building LOM_ORDER_API.add_line / update_line first, then pointing both Forms (if it must keep running) and APEX at it -- not a mechanical relocation.",
+      "related": ["LOM-MOD-025", "LOM-MOD-026", "LOM-MOD-027"]
+    },
+    {
+      "id": "LOM-MOD-038",
+      "title": "LOM_SHIPMENTS.TRACKING_REFERENCE is never populated or read",
+      "source": "database/ddl/lom_shipments.sql (table comment); database/packages/lom_order_api.pkb (ship_order)",
+      "classification": "DROP",
+      "risk": "LOW",
+      "category": "F",
+      "summary": "ship_order sets STATUS and SHIPPED_DATE on the shipment row but never touches TRACKING_REFERENCE; no other package or Forms trigger reads or writes it either. Carrier/tracking integration is explicitly out of scope for this lab.",
+      "rationale": "Document this as a known, deliberate gap rather than spend modernization effort on dead surface area: either wire up a real carrier integration as a separate, explicitly scoped project, or drop the column until one exists."
+    },
+    {
+      "id": "LOM-MOD-039",
+      "title": "OM_SHARED.pll's log_action bypasses LOM_AUDIT_API",
+      "source": "forms/libraries/OM_SHARED.md (log_action); database/packages/lom_audit_api.pks",
+      "classification": "MOVE_TO_PLSQL_API",
+      "risk": "MEDIUM",
+      "category": "E",
+      "summary": "OM_SHARED's own log_action helper writes to LOM_AUDIT_LOG directly rather than calling LOM_AUDIT_API.log_event, the same function every business package already calls correctly (see LOM-MOD-014, LOM-MOD-028).",
+      "rationale": "A second, independent path into the audit table is exactly the kind of divergence this lab exists to surface -- if LOM_AUDIT_API.log_event's contract changes (a new mandatory column, a validation), OM_SHARED's bypass would not pick it up. Since OM_SHARED itself is dropped in APEX (LOM-MOD-006, LOM-MOD-007), the fix is simply: every caller of log_action becomes a direct call to LOM_AUDIT_API.log_event."
+    },
+    {
+      "id": "LOM-MOD-041",
+      "title": "APPROVALS.fmb's Approve button bypasses LOM_APPROVAL_API",
+      "source": "forms/xml/APPROVALS.xml (BT_APPROVE, implicit in worklist trigger design); database/packages/lom_approval_api.pks (approve)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "category": "F",
+      "summary": "The worklist's approve action issues raw UPDATE statements against LOM_APPROVALS and LOM_ORDERS directly, with an explicit COMMIT, instead of calling LOM_APPROVAL_API.approve.",
+      "rationale": "This lab's flagship 'why a literal Forms-to-APEX port is dangerous' case: a mechanical translation of these UPDATE statements into an APEX page process would faithfully reproduce the bypass, including skipping whatever validation, audit logging (LOM_AUDIT_API.log_event), and status-transition guarantees LOM_APPROVAL_API.approve provides. The correct modernization is not a translation of this trigger's SQL at all -- it is deleting it and calling LOM_APPROVAL_API.approve instead.",
+      "related": ["LOM-MOD-016", "LOM-MOD-021", "LOM-MOD-042"]
+    },
+    {
+      "id": "LOM-MOD-042",
+      "title": "APPROVALS.fmb's Reject button bypasses LOM_APPROVAL_API and its mandatory-comment rule",
+      "source": "forms/xml/APPROVALS.xml (BT_REJECT, implicit in worklist trigger design); database/packages/lom_approval_api.pks (reject, gc_err_comments_required)",
+      "classification": "MANUAL_REVIEW",
+      "risk": "CRITICAL",
+      "category": "F",
+      "summary": "Same bypass pattern as LOM-MOD-041, with a sharper consequence: LOM_APPROVAL_API.reject enforces that rejection comments are mandatory (gc_err_comments_required), but a raw UPDATE against LOM_APPROVALS has no such guard -- the COMMENTS column itself allows null (LOM-MOD-032).",
+      "rationale": "A mechanical port of this trigger would let an APEX user reject an order with no explanation, silently dropping a business rule the PL/SQL API already enforces correctly. Paired with LOM-MOD-041 as this lab's two clearest examples of why 'convert the trigger as written' is the wrong default strategy for a Forms-to-APEX migration.",
+      "related": ["LOM-MOD-032", "LOM-MOD-041"]
+    }
+  ]
+}

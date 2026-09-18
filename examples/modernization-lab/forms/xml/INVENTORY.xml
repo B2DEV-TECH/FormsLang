@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  INVENTORY.fmb - Legacy Order Management (LOM) modernization lab.
+  FIXTURE: see forms/source/README.md, hand-authored Forms2XML, not a
+  compiled .fmb. Read-only worklist block on LOM_INVENTORY_V plus one
+  adjustment action that DOES correctly call the DB API (LOM-MOD-016),
+  contrasted with APPROVALS.fmb's anti-pattern.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="INVENTORY"
+              Title="Inventory Inquiry"
+              Comment="Stock position worklist by product/warehouse, with a manual quantity-adjustment action. Query source is LOM_INVENTORY_V."
+              FirstNavigationBlockName="BK_INVENTORY"
+              MenuModule="LOM_MAIN">
+
+    <Coordinate CoordinateSystem="Real" RealUnit="Point"
+                CharacterCellWidth="5" CharacterCellHeight="10"/>
+
+    <ModuleParameter Name="P_PRODUCT_ID" ParameterDataType="Number"
+                     Comment="Optional: set when opened from ORDERS.fmb / BT_VIEW_INVENTORY (LOM-MOD-022)."/>
+    <ModuleParameter Name="P_WAREHOUSE_CODE" ParameterDataType="Char"
+                     Comment="Optional: defaults to LOM_INVENTORY_API.default_warehouse when not supplied (LOM-MOD-018)."/>
+
+      <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="BEGIN&amp;#10;  :GLOBAL.G_USER := NVL(:GLOBAL.G_USER, GET_APPLICATION_PROPERTY(USERNAME));&amp;#10;  GO_BLOCK('BK_INVENTORY');&amp;#10;  EXECUTE_QUERY;&amp;#10;END;"/>
+
+    <Block Name="BK_INVENTORY" DatabaseBlock="true"
+           QueryDataSourceName="LOM_INVENTORY_V" QueryDataSourceType="Table"
+           InsertAllowed="false" UpdateAllowed="false" DeleteAllowed="false"
+           RecordsDisplayCount="10" OrderByClause="PRODUCT_CODE">
+
+      <Trigger Name="PRE-QUERY" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-018 (MANUAL_REVIEW, category F): the form correctly calls&amp;#10;  -- LOM_INVENTORY_API.default_warehouse rather than re-implementing the&amp;#10;  -- &quot;first row where IS_DEFAULT='Y'&quot; query inline -- so there is nothing to&amp;#10;  -- fix HERE. The flaw is one layer down, in the function itself: nothing&amp;#10;  -- in the schema prevents two warehouses from carrying IS_DEFAULT='Y' at&amp;#10;  -- once, so this call is silently non-deterministic if that ever happens.&amp;#10;  -- A human needs to decide whether the fix is a partial unique index&amp;#10;  -- (WHERE is_default = 'Y') or a documented single-admin-owned setting.&amp;#10;  IF :PARAMETER.P_WAREHOUSE_CODE IS NOT NULL THEN&amp;#10;    SET_BLOCK_PROPERTY('BK_INVENTORY', DEFAULT_WHERE,&amp;#10;      'WAREHOUSE_CODE = ''' || :PARAMETER.P_WAREHOUSE_CODE || '''');&amp;#10;  ELSE&amp;#10;    SET_BLOCK_PROPERTY('BK_INVENTORY', DEFAULT_WHERE,&amp;#10;      'WAREHOUSE_CODE = ''' || lom_inventory_api.default_warehouse || '''');&amp;#10;  END IF;&amp;#10;  IF :PARAMETER.P_PRODUCT_ID IS NOT NULL THEN&amp;#10;    SET_BLOCK_PROPERTY('BK_INVENTORY', DEFAULT_WHERE,&amp;#10;      GET_BLOCK_PROPERTY('BK_INVENTORY', DEFAULT_WHERE)&amp;#10;      || ' AND PRODUCT_ID = ' || :PARAMETER.P_PRODUCT_ID);&amp;#10;  END IF;&amp;#10;END;"/>
+      <Trigger Name="POST-QUERY" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-035 (REPLACE_WITH_APEX_NATIVE): LOM_INVENTORY_V deliberately&amp;#10;  -- does not compute this (see database/views/lom_views.sql). Pure&amp;#10;  -- presentation derivation, kept in Forms on purpose so this lab has a&amp;#10;  -- clean &quot;no PL/SQL to migrate, just a report attribute&quot; example -- an&amp;#10;  -- Interactive Report highlight/format rule on QUANTITY_AVAILABLE &lt;=&amp;#10;  -- REORDER_LEVEL replaces this trigger entirely.&amp;#10;  IF :BK_INVENTORY.QUANTITY_AVAILABLE &lt;= :BK_INVENTORY.REORDER_LEVEL THEN&amp;#10;    :BK_INVENTORY.LOW_STOCK_FLAG := 'YES';&amp;#10;  ELSE&amp;#10;    :BK_INVENTORY.LOW_STOCK_FLAG := NULL;&amp;#10;  END IF;&amp;#10;END;"/>
+
+      <Item Name="PRODUCT_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="PRODUCT_ID" DatabaseItem="true"
+            Prompt="Product ID" MaximumLength="10" CanvasName="CV_INVENTORY"
+            XPosition="20" YPosition="20" Width="70" Height="17"/>
+
+      <Item Name="PRODUCT_CODE" ItemType="Text Item" DataType="Char"
+            ColumnName="PRODUCT_CODE" DatabaseItem="true"
+            Prompt="Code" MaximumLength="20" CanvasName="CV_INVENTORY"
+            XPosition="100" YPosition="20" Width="90" Height="17"/>
+
+      <Item Name="PRODUCT_NAME" ItemType="Text Item" DataType="Char"
+            ColumnName="PRODUCT_NAME" DatabaseItem="true"
+            Prompt="Product" MaximumLength="200" CanvasName="CV_INVENTORY"
+            XPosition="200" YPosition="20" Width="180" Height="17"/>
+
+      <Item Name="WAREHOUSE_CODE" ItemType="Text Item" DataType="Char"
+            ColumnName="WAREHOUSE_CODE" DatabaseItem="true"
+            Prompt="Whse" MaximumLength="10" CanvasName="CV_INVENTORY"
+            XPosition="390" YPosition="20" Width="50" Height="17"/>
+
+      <Item Name="QUANTITY_ON_HAND" ItemType="Text Item" DataType="Number"
+            ColumnName="QUANTITY_ON_HAND" DatabaseItem="true"
+            Prompt="On Hand" MaximumLength="12" CanvasName="CV_INVENTORY"
+            XPosition="20" YPosition="45" Width="70" Height="17"/>
+
+      <Item Name="QUANTITY_RESERVED" ItemType="Text Item" DataType="Number"
+            ColumnName="QUANTITY_RESERVED" DatabaseItem="true"
+            Prompt="Reserved" MaximumLength="12" CanvasName="CV_INVENTORY"
+            XPosition="100" YPosition="45" Width="70" Height="17"/>
+
+      <Item Name="QUANTITY_AVAILABLE" ItemType="Text Item" DataType="Number"
+            ColumnName="QUANTITY_AVAILABLE" DatabaseItem="true" UpdateAllowed="false"
+            Prompt="Available" MaximumLength="12" CanvasName="CV_INVENTORY"
+            Tooltip="Virtual column: quantity_on_hand - quantity_reserved (single authoritative definition, see LOM-MOD-025)."
+            XPosition="180" YPosition="45" Width="70" Height="17"/>
+
+      <Item Name="REORDER_LEVEL" ItemType="Text Item" DataType="Number"
+            ColumnName="REORDER_LEVEL" DatabaseItem="true"
+            Prompt="Reorder At" MaximumLength="12" CanvasName="CV_INVENTORY"
+            XPosition="260" YPosition="45" Width="70" Height="17"/>
+
+      <Item Name="LOW_STOCK_FLAG" ItemType="Text Item" DataType="Char"
+            DatabaseItem="false" Enabled="false"
+            Prompt="Low Stock" MaximumLength="3" CanvasName="CV_INVENTORY"
+            Tooltip="Computed in POST-QUERY, not stored -- see LOM-MOD-035."
+            XPosition="340" YPosition="45" Width="50" Height="17"/>
+
+      <Item Name="P_ADJUST_QTY" ItemType="Text Item" DataType="Number"
+            DatabaseItem="false"
+            Prompt="Adjust By" MaximumLength="12" CanvasName="CV_INVENTORY"
+            Tooltip="Positive to receive stock, negative to write off; passed to LOM_INVENTORY_API.adjust_quantity as-is."
+            XPosition="20" YPosition="75" Width="70" Height="17"/>
+
+      <Item Name="BT_ADJUST" ItemType="Push Button" Label="Adjust"
+            CanvasName="CV_INVENTORY" XPosition="100" YPosition="75" Width="60" Height="17">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN&amp;#10;  IF :BK_INVENTORY.P_ADJUST_QTY IS NULL OR :BK_INVENTORY.P_ADJUST_QTY = 0 THEN&amp;#10;    om_shared.show_message('Enter a non-zero adjustment quantity first.');&amp;#10;    RETURN;&amp;#10;  END IF;&amp;#10;&amp;#10;  -- LOM-MOD-016 (PRESERVE): correctly delegates to&amp;#10;  -- LOM_INVENTORY_API.adjust_quantity instead of an inline UPDATE -- the&amp;#10;  -- direct contrast to APPROVALS.fmb's BT_APPROVE/BT_REJECT&amp;#10;  -- (LOM-MOD-041/LOM-MOD-042). Nothing to change here in APEX beyond the&amp;#10;  -- call site (a page process button).&amp;#10;  lom_inventory_api.adjust_quantity(&amp;#10;    p_product_id     =&gt; :BK_INVENTORY.PRODUCT_ID,&amp;#10;    p_warehouse_code =&gt; :BK_INVENTORY.WAREHOUSE_CODE,&amp;#10;    p_delta          =&gt; :BK_INVENTORY.P_ADJUST_QTY,&amp;#10;    p_changed_by     =&gt; :GLOBAL.G_USER&amp;#10;  );&amp;#10;  COMMIT;&amp;#10;  :BK_INVENTORY.P_ADJUST_QTY := NULL;&amp;#10;  om_shared.show_message('Inventory adjusted.');&amp;#10;  EXECUTE_QUERY;&amp;#10;EXCEPTION&amp;#10;  WHEN OTHERS THEN&amp;#10;    ROLLBACK;&amp;#10;    om_shared.show_message('Adjustment failed: ' || SQLERRM);&amp;#10;END;"/>
+      </Item>
+
+    </Block>
+
+    <AttachedLibrary Name="OM_SHARED"/>
+
+    <Canvas Name="CV_INVENTORY" CanvasType="Content" WindowName="WIN_INVENTORY" Width="470" Height="180"/>
+    <Window Name="WIN_INVENTORY" Title="Inventory Inquiry" Width="490" Height="220"/>
+
+  </FormModule>
+</Module>

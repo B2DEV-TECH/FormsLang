@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  APPROVALS.fmb - Legacy Order Management (LOM) modernization lab.
+  FIXTURE: see forms/source/README.md. This module is the lab's flagship
+  "why a literal Forms-to-APEX port is dangerous" example: BT_APPROVE and
+  BT_REJECT update LOM_APPROVALS/LOM_ORDERS directly instead of calling
+  LOM_APPROVAL_API (LOM-MOD-041/LOM-MOD-042). See
+  docs/modernization-challenges.md and expected/modernization-ground-truth.json.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="APPROVALS"
+              Title="Approval Worklist"
+              Comment="Approval worklist for orders whose total exceeds LOM_ORDER_API.gc_approval_threshold. Query source is LOM_APPROVAL_WORKLIST_V."
+              FirstNavigationBlockName="BK_APPROVAL"
+              MenuModule="LOM_MAIN">
+
+    <Coordinate CoordinateSystem="Real" RealUnit="Point"
+                CharacterCellWidth="5" CharacterCellHeight="10"/>
+
+    <ModuleParameter Name="P_ORDER_ID" ParameterDataType="Number"
+                     Comment="Optional: set when opened from ORDERS.fmb / BT_VIEW_APPROVALS (LOM-MOD-020)."/>
+
+      <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="BEGIN&amp;#10;  :GLOBAL.G_USER := NVL(:GLOBAL.G_USER, GET_APPLICATION_PROPERTY(USERNAME));&amp;#10;  GO_BLOCK('BK_APPROVAL');&amp;#10;  EXECUTE_QUERY;&amp;#10;END;"/>
+
+    <Block Name="BK_APPROVAL" DatabaseBlock="true"
+           QueryDataSourceName="LOM_APPROVAL_WORKLIST_V" QueryDataSourceType="Table"
+           InsertAllowed="false" UpdateAllowed="false" DeleteAllowed="false"
+           RecordsDisplayCount="10" OrderByClause="REQUESTED_DATE">
+
+      <Trigger Name="PRE-QUERY" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-029 (REFACTOR, LOW/MEDIUM risk): the &quot;worklist shows only what&amp;#10;  -- is waiting on me&quot; filter is hardcoded here rather than exposed as a&amp;#10;  -- page-level filter/parameter. Harmless today (there is only one&amp;#10;  -- worklist), but it means changing the definition of &quot;pending&quot; means&amp;#10;  -- editing and recompiling this trigger.&amp;#10;  IF :PARAMETER.P_ORDER_ID IS NOT NULL THEN&amp;#10;    SET_BLOCK_PROPERTY('BK_APPROVAL', DEFAULT_WHERE,&amp;#10;      'ORDER_ID = ' || :PARAMETER.P_ORDER_ID);&amp;#10;  ELSE&amp;#10;    SET_BLOCK_PROPERTY('BK_APPROVAL', DEFAULT_WHERE, 'STATUS = ''PENDING''');&amp;#10;  END IF;&amp;#10;END;"/>
+
+      <Item Name="APPROVAL_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="APPROVAL_ID" DatabaseItem="true"
+            Prompt="Approval ID" MaximumLength="10" CanvasName="CV_APPROVAL"
+            XPosition="20" YPosition="20" Width="70" Height="17"/>
+
+      <Item Name="ORDER_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="ORDER_ID" DatabaseItem="true"
+            Prompt="Order" MaximumLength="10" CanvasName="CV_APPROVAL"
+            XPosition="100" YPosition="20" Width="70" Height="17"/>
+
+      <Item Name="CUSTOMER_NAME" ItemType="Text Item" DataType="Char"
+            ColumnName="CUSTOMER_NAME" DatabaseItem="true"
+            Prompt="Customer" MaximumLength="200" CanvasName="CV_APPROVAL"
+            XPosition="180" YPosition="20" Width="180" Height="17"/>
+
+      <Item Name="ORDER_TOTAL" ItemType="Text Item" DataType="Number"
+            ColumnName="ORDER_TOTAL" DatabaseItem="true"
+            Prompt="Total" MaximumLength="14" FormatMask="FM999G999G990D00"
+            CanvasName="CV_APPROVAL" XPosition="370" YPosition="20" Width="80" Height="17"/>
+
+      <Item Name="REQUESTED_BY" ItemType="Text Item" DataType="Char"
+            ColumnName="REQUESTED_BY" DatabaseItem="true"
+            Prompt="Requested By" MaximumLength="30" CanvasName="CV_APPROVAL"
+            XPosition="20" YPosition="45" Width="100" Height="17"/>
+
+      <Item Name="REQUESTED_DATE" ItemType="Text Item" DataType="Date"
+            ColumnName="REQUESTED_DATE" DatabaseItem="true" FormatMask="DD-MON-YYYY"
+            Prompt="Requested" MaximumLength="20" CanvasName="CV_APPROVAL"
+            XPosition="130" YPosition="45" Width="90" Height="17"/>
+
+      <Item Name="STATUS" ItemType="Text Item" DataType="Char"
+            ColumnName="STATUS" DatabaseItem="true" Enabled="false"
+            Prompt="Status" MaximumLength="20" CanvasName="CV_APPROVAL"
+            XPosition="230" YPosition="45" Width="90" Height="17"/>
+
+      <Item Name="COMMENTS" ItemType="Text Item" DataType="Char"
+            ColumnName="COMMENTS" DatabaseItem="true" MultiLine="true"
+            Prompt="Comments" MaximumLength="2000" CanvasName="CV_APPROVAL"
+            Hint="Required to reject (LOM_APPROVAL_API.reject enforces this too)."
+            XPosition="20" YPosition="70" Width="430" Height="34"/>
+
+      <Item Name="BT_APPROVE" ItemType="Push Button" Label="Approve"
+            CanvasName="CV_APPROVAL" XPosition="20" YPosition="110" Width="70" Height="17">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-041 (MANUAL_REVIEW, CRITICAL): direct UPDATE against&amp;#10;  -- LOM_APPROVALS and LOM_ORDERS instead of calling&amp;#10;  -- LOM_APPROVAL_API.approve, which also calls&amp;#10;  -- LOM_ORDER_API.transition_status (enforcing the real status matrix,&amp;#10;  -- LOM-MOD-002) and LOM_AUDIT_API.log_event. A mechanical translation of&amp;#10;  -- THIS trigger's SQL into an APEX page process would faithfully carry&amp;#10;  -- the bypass forward, skipping both. The correct modernization deletes&amp;#10;  -- this trigger's body and calls LOM_APPROVAL_API.approve instead --&amp;#10;  -- contrast with INVENTORY.fmb's BT_ADJUST (LOM-MOD-016), which already&amp;#10;  -- does this correctly.&amp;#10;  SHOW_ALERT('AL_CONFIRM_APPROVE');&amp;#10;  IF :SYSTEM.ALERT_BUTTON = ALERT_BUTTON1 THEN&amp;#10;    UPDATE lom_approvals&amp;#10;       SET status = 'APPROVED',&amp;#10;           approver = :GLOBAL.G_USER,&amp;#10;           approval_date = SYSDATE&amp;#10;     WHERE approval_id = :BK_APPROVAL.APPROVAL_ID;&amp;#10;&amp;#10;    UPDATE lom_orders&amp;#10;       SET status = 'APPROVED'&amp;#10;     WHERE order_id = :BK_APPROVAL.ORDER_ID;&amp;#10;&amp;#10;    COMMIT;&amp;#10;    om_shared.show_message('Order approved.');&amp;#10;    EXECUTE_QUERY;&amp;#10;  END IF;&amp;#10;EXCEPTION&amp;#10;  WHEN OTHERS THEN&amp;#10;    ROLLBACK;&amp;#10;    om_shared.show_message('Approval failed: ' || SQLERRM);&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="BT_REJECT" ItemType="Push Button" Label="Reject"
+            CanvasName="CV_APPROVAL" XPosition="100" YPosition="110" Width="70" Height="17">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-042 (MANUAL_REVIEW, CRITICAL): direct UPDATE bypassing&amp;#10;  -- LOM_APPROVAL_API.reject -- including its mandatory-comments guard&amp;#10;  -- (gc_err_comments_required). The COMMENTS item's Hint above says a&amp;#10;  -- reason is required, but nothing in THIS trigger enforces it: a user&amp;#10;  -- can reject with COMMENTS left blank. A mechanical port of this&amp;#10;  -- trigger into an APEX page process would carry the same gap forward.&amp;#10;  -- See LOM-MOD-041's sibling note on BT_APPROVE above.&amp;#10;  SHOW_ALERT('AL_CONFIRM_REJECT');&amp;#10;  IF :SYSTEM.ALERT_BUTTON = ALERT_BUTTON1 THEN&amp;#10;    UPDATE lom_approvals&amp;#10;       SET status = 'REJECTED',&amp;#10;           approver = :GLOBAL.G_USER,&amp;#10;           approval_date = SYSDATE,&amp;#10;           comments = :BK_APPROVAL.COMMENTS&amp;#10;     WHERE approval_id = :BK_APPROVAL.APPROVAL_ID;&amp;#10;&amp;#10;    UPDATE lom_orders&amp;#10;       SET status = 'REJECTED'&amp;#10;     WHERE order_id = :BK_APPROVAL.ORDER_ID;&amp;#10;&amp;#10;    COMMIT;&amp;#10;    om_shared.show_message('Order rejected.');&amp;#10;    EXECUTE_QUERY;&amp;#10;  END IF;&amp;#10;EXCEPTION&amp;#10;  WHEN OTHERS THEN&amp;#10;    ROLLBACK;&amp;#10;    om_shared.show_message('Rejection failed: ' || SQLERRM);&amp;#10;END;"/>
+      </Item>
+
+    </Block>
+
+    <AttachedLibrary Name="OM_SHARED"/>
+
+    <Alert Name="AL_CONFIRM_APPROVE" AlertStyle="Note" Title="Approve Order"
+           AlertMessage="Approve this order? This will release it for shipment scheduling." Button1Label="Approve" Button2Label="Cancel"/>
+    <Alert Name="AL_CONFIRM_REJECT" AlertStyle="Caution" Title="Reject Order"
+           AlertMessage="Reject this order? The customer will need to resubmit." Button1Label="Reject" Button2Label="Cancel"/>
+
+    <Canvas Name="CV_APPROVAL" CanvasType="Content" WindowName="WIN_APPROVAL" Width="470" Height="180"/>
+    <Window Name="WIN_APPROVAL" Title="Approval Worklist" Width="490" Height="260"/>
+
+  </FormModule>
+</Module>

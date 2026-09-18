@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ORDERS.fmb - Legacy Order Management (LOM) modernization lab. Central,
+  master-detail module: BK_ORDER (header) / BK_ORDER_LINE (detail) via
+  REL_ORDER_LINES. FIXTURE: see forms/source/README.md.
+
+  Illustrates most of this lab's numbered modernization cases in one place:
+  LOM-MOD-013, 017, 019, 020, 021, 022, 023, 024, 025, 026, 027, 028, 033,
+  034, see expected/modernization-ground-truth.json for the full,
+  authoritative list and classifications.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="ORDERS"
+              Title="Sales Orders"
+              Comment="Central order-entry module: header + line master-detail, status-transition buttons, and cross-form navigation to Customers/Inventory/Approvals."
+              FirstNavigationBlockName="BK_ORDER"
+              MenuModule="LOM_MAIN">
+
+    <Coordinate CoordinateSystem="Real" RealUnit="Point"
+                CharacterCellWidth="5" CharacterCellHeight="10"/>
+
+    <ModuleParameter Name="P_ORDER_ID" ParameterDataType="Number"
+                     Comment="Optional: pre-filters the initial query when this form is opened with a specific order in mind."/>
+
+      <Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="BEGIN&amp;#10;  :GLOBAL.G_USER := NVL(:GLOBAL.G_USER, GET_APPLICATION_PROPERTY(USERNAME));&amp;#10;  IF :PARAMETER.P_ORDER_ID IS NOT NULL THEN&amp;#10;    SET_BLOCK_PROPERTY('BK_ORDER', DEFAULT_WHERE, 'ORDER_ID = ' || :PARAMETER.P_ORDER_ID);&amp;#10;    GO_BLOCK('BK_ORDER');&amp;#10;    EXECUTE_QUERY;&amp;#10;  ELSE&amp;#10;    GO_BLOCK('BK_ORDER');&amp;#10;  END IF;&amp;#10;END;"/>
+
+    <Block Name="BK_ORDER" DatabaseBlock="true"
+           QueryDataSourceName="LOM_ORDERS" QueryDataSourceType="Table"
+           InsertAllowed="true" UpdateAllowed="true" DeleteAllowed="false"
+           RecordsDisplayCount="1" OrderByClause="ORDER_DATE DESC">
+
+      <Trigger Name="WHEN-NEW-RECORD-INSTANCE" TriggerText="BEGIN&amp;#10;  -- Header fields that are either system-maintained (LOM-MOD-028) or only&amp;#10;  -- ever changed through a status-transition button, never typed directly.&amp;#10;  SET_ITEM_PROPERTY('BK_ORDER.STATUS', ENABLED, PROPERTY_FALSE);&amp;#10;  SET_ITEM_PROPERTY('BK_ORDER.SUBTOTAL', ENABLED, PROPERTY_FALSE);&amp;#10;  SET_ITEM_PROPERTY('BK_ORDER.TAX_AMOUNT', ENABLED, PROPERTY_FALSE);&amp;#10;  SET_ITEM_PROPERTY('BK_ORDER.TOTAL_AMOUNT', ENABLED, PROPERTY_FALSE);&amp;#10;  SET_ITEM_PROPERTY('BK_ORDER.APPROVAL_REQUIRED', ENABLED, PROPERTY_FALSE);&amp;#10;  SET_ITEM_PROPERTY('BK_ORDER.CREATED_BY', ENABLED, PROPERTY_FALSE);&amp;#10;  SET_ITEM_PROPERTY('BK_ORDER.CREATED_DATE', ENABLED, PROPERTY_FALSE);&amp;#10;END;"/>
+      <Trigger Name="PRE-INSERT" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-013 (CONVERT, category A): same sequence-PK idiom as&amp;#10;  -- CUSTOMERS.fmb.&amp;#10;  IF :BK_ORDER.ORDER_ID IS NULL THEN&amp;#10;    :BK_ORDER.ORDER_ID := lom_order_id_seq.NEXTVAL;&amp;#10;  END IF;&amp;#10;  :BK_ORDER.STATUS := 'DRAFT';&amp;#10;  :BK_ORDER.WAREHOUSE_CODE := NVL(:BK_ORDER.WAREHOUSE_CODE, lom_inventory_api.default_warehouse);&amp;#10;  :BK_ORDER.CREATED_BY := :GLOBAL.G_USER;&amp;#10;  :BK_ORDER.CREATED_DATE := SYSDATE;&amp;#10;END;"/>
+
+      <Item Name="ORDER_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="ORDER_ID" DatabaseItem="true" PrimaryKey="true"
+            UpdateAllowed="false" Prompt="Order ID" MaximumLength="10"
+            CanvasName="CV_ORDER" XPosition="20" YPosition="20" Width="80" Height="17"/>
+
+      <Item Name="CUSTOMER_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="CUSTOMER_ID" DatabaseItem="true" Required="true"
+            LovName="LOV_CUSTOMER" ValidateFromList="true"
+            Prompt="Customer ID" MaximumLength="10" CanvasName="CV_ORDER"
+            XPosition="120" YPosition="20" Width="80" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="DECLARE&amp;#10;  v_can_place VARCHAR2(1);&amp;#10;BEGIN&amp;#10;  BEGIN&amp;#10;    SELECT customer_name INTO :BK_ORDER.CUSTOMER_NAME&amp;#10;      FROM lom_customers&amp;#10;     WHERE customer_id = :BK_ORDER.CUSTOMER_ID;&amp;#10;  EXCEPTION&amp;#10;    WHEN NO_DATA_FOUND THEN&amp;#10;      om_shared.show_message('Customer ' || :BK_ORDER.CUSTOMER_ID || ' not found.');&amp;#10;      RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END;&amp;#10;&amp;#10;  -- LOM-MOD-019 (MOVE_TO_PLSQL_API, MEDIUM risk): calls&amp;#10;  -- LOM_CUSTOMER_API.can_place_order -- a clean single call site, so the&amp;#10;  -- rule itself is not duplicated. What moves in APEX is only the call&amp;#10;  -- site (item validation -&gt; page process / dynamic action), not the logic.&amp;#10;  v_can_place := lom_customer_api.can_place_order(:BK_ORDER.CUSTOMER_ID);&amp;#10;  IF v_can_place = 'N' THEN&amp;#10;    om_shared.show_message('Customer ' || :BK_ORDER.CUSTOMER_ID&amp;#10;      || ' is not ACTIVE and cannot place new orders.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="CUSTOMER_NAME" ItemType="Text Item" DataType="Char"
+            DatabaseItem="false" Enabled="false"
+            Prompt="Customer Name" MaximumLength="200" CanvasName="CV_ORDER"
+            XPosition="220" YPosition="20" Width="220" Height="17"/>
+
+      <Item Name="ORDER_DATE" ItemType="Text Item" DataType="Date"
+            ColumnName="ORDER_DATE" DatabaseItem="true" Required="true"
+            FormatMask="DD-MON-YYYY" InitializeValue="SYSDATE"
+            Prompt="Order Date" MaximumLength="20" CanvasName="CV_ORDER"
+            XPosition="20" YPosition="50" Width="90" Height="17"/>
+
+      <Item Name="WAREHOUSE_CODE" ItemType="Text Item" DataType="Char"
+            ColumnName="WAREHOUSE_CODE" DatabaseItem="true" Required="true"
+            LovName="LOV_WAREHOUSE" ValidateFromList="true"
+            Prompt="Warehouse" MaximumLength="10" CanvasName="CV_ORDER"
+            XPosition="120" YPosition="50" Width="80" Height="17"/>
+
+      <Item Name="STATUS" ItemType="Text Item" DataType="Char"
+            ColumnName="STATUS" DatabaseItem="true"
+            Prompt="Status" MaximumLength="20" CanvasName="CV_ORDER"
+            Tooltip="Changed only via BT_SUBMIT / APPROVALS.fmb / release-ship processing, never typed -- see LOM-MOD-002."
+            XPosition="220" YPosition="50" Width="110" Height="17"/>
+
+      <Item Name="SUBTOTAL" ItemType="Text Item" DataType="Number"
+            ColumnName="SUBTOTAL" DatabaseItem="true" FormatMask="FM999G999G990D00"
+            Prompt="Subtotal" MaximumLength="14" CanvasName="CV_ORDER"
+            XPosition="20" YPosition="80" Width="90" Height="17"/>
+
+      <Item Name="TAX_AMOUNT" ItemType="Text Item" DataType="Number"
+            ColumnName="TAX_AMOUNT" DatabaseItem="true" FormatMask="FM999G999G990D00"
+            Prompt="Tax" MaximumLength="14" CanvasName="CV_ORDER"
+            XPosition="120" YPosition="80" Width="90" Height="17"/>
+
+      <Item Name="TOTAL_AMOUNT" ItemType="Text Item" DataType="Number"
+            ColumnName="TOTAL_AMOUNT" DatabaseItem="true" FormatMask="FM999G999G990D00"
+            Prompt="Total" MaximumLength="14" CanvasName="CV_ORDER"
+            XPosition="220" YPosition="80" Width="90" Height="17"/>
+
+      <Item Name="APPROVAL_REQUIRED" ItemType="Text Item" DataType="Char"
+            ColumnName="APPROVAL_REQUIRED" DatabaseItem="true"
+            Prompt="Approval Req'd" MaximumLength="1" CanvasName="CV_ORDER"
+            XPosition="320" YPosition="80" Width="40" Height="17"/>
+
+      <Item Name="CREATED_BY" ItemType="Text Item" DataType="Char"
+            ColumnName="CREATED_BY" DatabaseItem="true" UpdateAllowed="false"
+            Prompt="Created By" MaximumLength="30" CanvasName="CV_ORDER"
+            XPosition="20" YPosition="110" Width="100" Height="17"/>
+
+      <Item Name="CREATED_DATE" ItemType="Text Item" DataType="Date"
+            ColumnName="CREATED_DATE" DatabaseItem="true" UpdateAllowed="false"
+            FormatMask="DD-MON-YYYY" Prompt="Created" MaximumLength="20"
+            CanvasName="CV_ORDER" XPosition="140" YPosition="110" Width="90" Height="17"/>
+
+      <Item Name="BT_NEW" ItemType="Push Button" Label="New"
+            CanvasName="CV_ORDER" XPosition="360" YPosition="110" Width="60" Height="20">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-024 (CONVERT, category A): CLEAR_FORM(NO_VALIDATE) +&amp;#10;  -- CREATE_RECORD is the standard legacy &quot;new record&quot; idiom. Maps&amp;#10;  -- directly to an APEX &quot;Create&quot; button that resets the page and starts a&amp;#10;  -- new row.&amp;#10;  CLEAR_FORM(NO_VALIDATE);&amp;#10;  GO_BLOCK('BK_ORDER');&amp;#10;  CREATE_RECORD;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="BT_FIND" ItemType="Push Button" Label="Find"
+            CanvasName="CV_ORDER" XPosition="360" YPosition="135" Width="60" Height="20">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-033 (CONVERT, category A): ENTER_QUERY/EXECUTE_QUERY toolbar&amp;#10;  -- buttons, repeated in spirit across all four modules. No business&amp;#10;  -- logic; becomes an Interactive Report search bar / Reset button.&amp;#10;  GO_BLOCK('BK_ORDER');&amp;#10;  ENTER_QUERY;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="BT_EXECUTE" ItemType="Push Button" Label="Run Query"
+            CanvasName="CV_ORDER" XPosition="360" YPosition="160" Width="60" Height="20">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN&amp;#10;  EXECUTE_QUERY;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="BT_SUBMIT" ItemType="Push Button" Label="Submit"
+            CanvasName="CV_ORDER" XPosition="20" YPosition="140" Width="80" Height="20">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="DECLARE&amp;#10;  v_button PLS_INTEGER;&amp;#10;BEGIN&amp;#10;  IF :BK_ORDER.STATUS != 'DRAFT' THEN&amp;#10;    om_shared.show_message('Only DRAFT orders can be submitted.');&amp;#10;    RETURN;&amp;#10;  END IF;&amp;#10;&amp;#10;  -- LOM-MOD-034 (REPLACE_WITH_APEX_NATIVE, LOW risk): SHOW_ALERT&amp;#10;  -- confirmation, same pattern as APPROVALS.fmb's AL_CONFIRM_APPROVE /&amp;#10;  -- AL_CONFIRM_REJECT -- an APEX &quot;Confirm&quot; dynamic action replaces all&amp;#10;  -- three with no PL/SQL.&amp;#10;  v_button := SHOW_ALERT('AL_CONFIRM_SUBMIT');&amp;#10;  IF v_button != ALERT_BUTTON1 THEN&amp;#10;    RETURN;&amp;#10;  END IF;&amp;#10;&amp;#10;  COMMIT_FORM;&amp;#10;&amp;#10;  -- LOM-MOD-021 (PRESERVE): unlike APPROVALS.fmb's buttons, this is&amp;#10;  -- exactly what a modernized call site should look like -- one call to&amp;#10;  -- LOM_ORDER_API.submit_order, which itself calls recalc_order_totals,&amp;#10;  -- transition_status and (when needed) LOM_APPROVAL_API.create_approval_request.&amp;#10;  -- Nothing to change here except moving the call from a&amp;#10;  -- WHEN-BUTTON-PRESSED trigger into an APEX page process.&amp;#10;  lom_order_api.submit_order(:BK_ORDER.ORDER_ID);&amp;#10;  COMMIT;&amp;#10;  om_shared.show_message('Order ' || :BK_ORDER.ORDER_ID || ' submitted.');&amp;#10;  EXECUTE_QUERY;&amp;#10;EXCEPTION&amp;#10;  WHEN OTHERS THEN&amp;#10;    ROLLBACK;&amp;#10;    om_shared.show_message('Submit failed: ' || SQLERRM);&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="BT_VIEW_CUSTOMER" ItemType="Push Button" Label="View Customer"
+            CanvasName="CV_ORDER" XPosition="110" YPosition="140" Width="100" Height="20">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="DECLARE&amp;#10;  v_paramlist PARAMLIST;&amp;#10;BEGIN&amp;#10;  v_paramlist := GET_PARAMETER_LIST('lom_nav_params');&amp;#10;  IF NOT Id_Null(v_paramlist) THEN&amp;#10;    DESTROY_PARAMETER_LIST(v_paramlist);&amp;#10;  END IF;&amp;#10;  v_paramlist := CREATE_PARAMETER_LIST('lom_nav_params');&amp;#10;  ADD_PARAMETER(v_paramlist, 'P_CUSTOMER_ID', TEXT_PARAMETER, TO_CHAR(:BK_ORDER.CUSTOMER_ID));&amp;#10;&amp;#10;  -- LOM-MOD-023 (REFACTOR, category D): same CALL_FORM navigation shape as&amp;#10;  -- LOM-MOD-020, simpler consequence (CUSTOMERS.fmb is read/write but has&amp;#10;  -- no order-specific state to lose) -- becomes a plain link to the&amp;#10;  -- Customer page in APEX, no manual review needed.&amp;#10;  CALL_FORM('CUSTOMERS', HIDE, NO_REPLACE, QUERY_ONLY, v_paramlist);&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="BT_VIEW_APPROVALS" ItemType="Push Button" Label="View Approvals"
+            CanvasName="CV_ORDER" XPosition="220" YPosition="140" Width="110" Height="20">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="DECLARE&amp;#10;  v_paramlist PARAMLIST;&amp;#10;BEGIN&amp;#10;  IF :BK_ORDER.STATUS NOT IN ('PENDING_APPROVAL', 'APPROVED', 'REJECTED') THEN&amp;#10;    om_shared.show_message('This order has no approval history yet.');&amp;#10;    RETURN;&amp;#10;  END IF;&amp;#10;&amp;#10;  v_paramlist := GET_PARAMETER_LIST('lom_nav_params');&amp;#10;  IF NOT Id_Null(v_paramlist) THEN&amp;#10;    DESTROY_PARAMETER_LIST(v_paramlist);&amp;#10;  END IF;&amp;#10;  v_paramlist := CREATE_PARAMETER_LIST('lom_nav_params');&amp;#10;  ADD_PARAMETER(v_paramlist, 'P_ORDER_ID', TEXT_PARAMETER, TO_CHAR(:BK_ORDER.ORDER_ID));&amp;#10;&amp;#10;  -- LOM-MOD-020 (MANUAL_REVIEW, category D): CALL_FORM hardcodes the&amp;#10;  -- target module name and blocks ORDERS until APPROVALS closes (modal,&amp;#10;  -- single-session MDI semantics). APEX has no direct equivalent -- a&amp;#10;  -- human has to choose between a modal dialog page, an inline region, or&amp;#10;  -- a plain navigation link, each with different state/UX trade-offs&amp;#10;  -- open_form_with_context (OM_SHARED.pll) cannot make for them.&amp;#10;  CALL_FORM('APPROVALS', HIDE, NO_REPLACE, QUERY_ONLY, v_paramlist);&amp;#10;END;"/>
+      </Item>
+
+    </Block>
+
+    <Block Name="BK_ORDER_LINE" DatabaseBlock="true"
+           QueryDataSourceName="LOM_ORDER_LINES" QueryDataSourceType="Table"
+           InsertAllowed="true" UpdateAllowed="true" DeleteAllowed="true"
+           RecordsDisplayCount="6" OrderByClause="LINE_NUMBER">
+
+      <Trigger Name="PRE-INSERT" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-017 (REFACTOR, MEDIUM risk): line numbering by inline&amp;#10;  -- MAX()+1 instead of a sequence. Safe under Forms' single-session&amp;#10;  -- record locking during data entry, but a real race condition once two&amp;#10;  -- APEX sessions can insert lines for the same order concurrently&amp;#10;  -- (e.g. two browser tabs, or a REST client alongside the UI).&amp;#10;  IF :BK_ORDER_LINE.LINE_NUMBER IS NULL THEN&amp;#10;    SELECT NVL(MAX(line_number), 0) + 1 INTO :BK_ORDER_LINE.LINE_NUMBER&amp;#10;      FROM lom_order_lines&amp;#10;     WHERE order_id = :BK_ORDER.ORDER_ID;&amp;#10;  END IF;&amp;#10;END;"/>
+      <Trigger Name="POST-INSERT" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-028 (PRESERVE): already correctly centralized in&amp;#10;  -- LOM_ORDER_API.recalc_order_totals. Only the call site moves in APEX&amp;#10;  -- (from a block-level trigger to an after-row process on the detail&amp;#10;  -- region); the logic itself does not change.&amp;#10;  lom_order_api.recalc_order_totals(:BK_ORDER.ORDER_ID);&amp;#10;END;"/>
+      <Trigger Name="POST-UPDATE" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-028 (PRESERVE): already correctly centralized in&amp;#10;  -- LOM_ORDER_API.recalc_order_totals. Only the call site moves in APEX&amp;#10;  -- (from a block-level trigger to an after-row process on the detail&amp;#10;  -- region); the logic itself does not change.&amp;#10;  lom_order_api.recalc_order_totals(:BK_ORDER.ORDER_ID);&amp;#10;END;"/>
+      <Trigger Name="POST-DELETE" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-028 (PRESERVE): already correctly centralized in&amp;#10;  -- LOM_ORDER_API.recalc_order_totals. Only the call site moves in APEX&amp;#10;  -- (from a block-level trigger to an after-row process on the detail&amp;#10;  -- region); the logic itself does not change.&amp;#10;  lom_order_api.recalc_order_totals(:BK_ORDER.ORDER_ID);&amp;#10;END;"/>
+
+      <Item Name="LINE_NUMBER" ItemType="Text Item" DataType="Number"
+            ColumnName="LINE_NUMBER" DatabaseItem="true" PrimaryKey="true"
+            UpdateAllowed="false" Prompt="Line" MaximumLength="5"
+            CanvasName="CV_ORDER" XPosition="20" YPosition="200" Width="40" Height="17"/>
+
+      <Item Name="PRODUCT_ID" ItemType="Text Item" DataType="Number"
+            ColumnName="PRODUCT_ID" DatabaseItem="true" Required="true"
+            LovName="LOV_PRODUCT" ValidateFromList="true"
+            Prompt="Product ID" MaximumLength="10" CanvasName="CV_ORDER"
+            XPosition="70" YPosition="200" Width="70" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  SELECT product_name, unit_price&amp;#10;    INTO :BK_ORDER_LINE.PRODUCT_NAME, :BK_ORDER_LINE.UNIT_PRICE&amp;#10;    FROM lom_products&amp;#10;   WHERE product_id = :BK_ORDER_LINE.PRODUCT_ID&amp;#10;     AND active_flag = 'Y';&amp;#10;EXCEPTION&amp;#10;  WHEN NO_DATA_FOUND THEN&amp;#10;    om_shared.show_message('Product ' || :BK_ORDER_LINE.PRODUCT_ID || ' not found or inactive.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="PRODUCT_NAME" ItemType="Text Item" DataType="Char"
+            DatabaseItem="false" Enabled="false"
+            Prompt="Product" MaximumLength="200" CanvasName="CV_ORDER"
+            XPosition="150" YPosition="200" Width="160" Height="17"/>
+
+      <Item Name="QUANTITY" ItemType="Text Item" DataType="Number"
+            ColumnName="QUANTITY" DatabaseItem="true" Required="true"
+            Prompt="Qty" MaximumLength="10" CanvasName="CV_ORDER"
+            XPosition="320" YPosition="200" Width="50" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="DECLARE&amp;#10;  v_available NUMBER;&amp;#10;BEGIN&amp;#10;  -- LOM-MOD-025 (MOVE_TO_PLSQL_API): re-derives availability with an&amp;#10;  -- inline SELECT against LOM_INVENTORY.QUANTITY_AVAILABLE instead of&amp;#10;  -- calling LOM_INVENTORY_API.get_available_qty, even though the virtual&amp;#10;  -- column means both reads return the same number today -- the risk is&amp;#10;  -- that a future change to &quot;availability&quot; (e.g. excluding damaged stock)&amp;#10;  -- only has one function to update, and this bypass would not see it.&amp;#10;  SELECT NVL(quantity_available, 0) INTO v_available&amp;#10;    FROM lom_inventory&amp;#10;   WHERE product_id = :BK_ORDER_LINE.PRODUCT_ID&amp;#10;     AND warehouse_code = :BK_ORDER.WAREHOUSE_CODE;&amp;#10;&amp;#10;  -- LOM-MOD-026 (MOVE_TO_PLSQL_API, this lab's canonical example): the&amp;#10;  -- exact threshold check already exists as&amp;#10;  -- LOM_INVENTORY_API.validate_quantity, re-implemented here instead of&amp;#10;  -- called. A modernized page validation should call that function and&amp;#10;  -- surface its return value directly, not this inline comparison.&amp;#10;  IF :BK_ORDER_LINE.QUANTITY &gt; v_available THEN&amp;#10;    om_shared.show_message('Only ' || v_available || ' unit(s) available for product '&amp;#10;      || :BK_ORDER_LINE.PRODUCT_ID || ' in warehouse ' || :BK_ORDER.WAREHOUSE_CODE);&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;&amp;#10;  -- LOM-MOD-027 (MOVE_TO_PLSQL_API, HIGH risk): re-implements&amp;#10;  -- LOM_ORDER_API.calc_line_total's formula inline. This is a financial&amp;#10;  -- calculation with two independent implementations (also duplicated in&amp;#10;  -- DISCOUNT_AMOUNT's WHEN-VALIDATE-ITEM below) -- the highest-risk&amp;#10;  -- duplication in this lab precisely because it affects money, not just&amp;#10;  -- a validation message.&amp;#10;  :BK_ORDER_LINE.LINE_TOTAL := ROUND(&amp;#10;    (:BK_ORDER_LINE.QUANTITY * :BK_ORDER_LINE.UNIT_PRICE) - NVL(:BK_ORDER_LINE.DISCOUNT_AMOUNT, 0), 2);&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="UNIT_PRICE" ItemType="Text Item" DataType="Number"
+            ColumnName="UNIT_PRICE" DatabaseItem="true" Required="true"
+            FormatMask="FM999G999G990D00" Prompt="Unit Price" MaximumLength="12"
+            CanvasName="CV_ORDER" XPosition="380" YPosition="200" Width="70" Height="17"/>
+
+      <Item Name="DISCOUNT_AMOUNT" ItemType="Text Item" DataType="Number"
+            ColumnName="DISCOUNT_AMOUNT" DatabaseItem="true"
+            FormatMask="FM999G999G990D00" Prompt="Discount" MaximumLength="12"
+            CanvasName="CV_ORDER" XPosition="460" YPosition="200" Width="70" Height="17">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  IF :BK_ORDER_LINE.DISCOUNT_AMOUNT &lt; 0 THEN&amp;#10;    om_shared.show_message('Discount cannot be negative.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;&amp;#10;  -- Second occurrence of the LOM-MOD-027 duplicate (see QUANTITY above):&amp;#10;  -- the same formula has to be repeated here too, or a discount entered&amp;#10;  -- after the quantity would leave LINE_TOTAL stale until some other&amp;#10;  -- item re-triggers the calculation. This repetition-on-every-input-item&amp;#10;  -- pattern is itself part of why LOM-MOD-027 is HIGH risk, not just the&amp;#10;  -- duplication against LOM_ORDER_API.calc_line_total.&amp;#10;  :BK_ORDER_LINE.LINE_TOTAL := ROUND(&amp;#10;    (:BK_ORDER_LINE.QUANTITY * :BK_ORDER_LINE.UNIT_PRICE) - NVL(:BK_ORDER_LINE.DISCOUNT_AMOUNT, 0), 2);&amp;#10;END;"/>
+      </Item>
+
+      <Item Name="LINE_TOTAL" ItemType="Text Item" DataType="Number"
+            ColumnName="LINE_TOTAL" DatabaseItem="true" UpdateAllowed="false" Enabled="false"
+            FormatMask="FM999G999G990D00" Prompt="Line Total" MaximumLength="14"
+            CanvasName="CV_ORDER" XPosition="540" YPosition="200" Width="80" Height="17"/>
+
+      <Item Name="BT_VIEW_INVENTORY" ItemType="Push Button" Label="Stock"
+            CanvasName="CV_ORDER" XPosition="630" YPosition="200" Width="60" Height="20">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="DECLARE&amp;#10;  v_paramlist PARAMLIST;&amp;#10;BEGIN&amp;#10;  IF :BK_ORDER_LINE.PRODUCT_ID IS NULL THEN&amp;#10;    om_shared.show_message('Select a product line first.');&amp;#10;    RETURN;&amp;#10;  END IF;&amp;#10;&amp;#10;  v_paramlist := GET_PARAMETER_LIST('lom_nav_params');&amp;#10;  IF NOT Id_Null(v_paramlist) THEN&amp;#10;    DESTROY_PARAMETER_LIST(v_paramlist);&amp;#10;  END IF;&amp;#10;  v_paramlist := CREATE_PARAMETER_LIST('lom_nav_params');&amp;#10;  ADD_PARAMETER(v_paramlist, 'P_PRODUCT_ID', TEXT_PARAMETER, TO_CHAR(:BK_ORDER_LINE.PRODUCT_ID));&amp;#10;  ADD_PARAMETER(v_paramlist, 'P_WAREHOUSE_CODE', TEXT_PARAMETER, :BK_ORDER.WAREHOUSE_CODE);&amp;#10;&amp;#10;  -- LOM-MOD-022 (REFACTOR, category D): OPEN_FORM keeps ORDERS open&amp;#10;  -- behind INVENTORY (non-modal multi-form session). APEX has no&amp;#10;  -- multi-form session to preserve -- becomes a link to a filtered&amp;#10;  -- Inventory page (new tab) or a modal region; no in-memory PARAMLIST&amp;#10;  -- state survives either way, so the parameters must travel as URL /&amp;#10;  -- page items instead.&amp;#10;  OPEN_FORM('INVENTORY', ACTIVATE, NO_QUERY_ONLY, v_paramlist);&amp;#10;END;"/>
+      </Item>
+
+    </Block>
+
+    <Relation Name="REL_ORDER_LINES" DetailBlock="BK_ORDER_LINE"
+              JoinCondition="BK_ORDER.ORDER_ID = BK_ORDER_LINE.ORDER_ID"
+              Deferred="false" AutoQuery="true" DeleteRecord="Cascading"
+              PreventMasterlessOperations="true"/>
+
+    <RecordGroup Name="RG_CUSTOMER" RecordGroupType="Query"
+                 RecordGroupQuery="SELECT customer_name, customer_id FROM lom_customers WHERE status = 'ACTIVE' ORDER BY 1">
+      <RecordGroupColumn Name="CUSTOMER_NAME" ColumnDataType="Character" MaximumLength="200"/>
+      <RecordGroupColumn Name="CUSTOMER_ID" ColumnDataType="Number" MaximumLength="10"/>
+    </RecordGroup>
+    <LOV Name="LOV_CUSTOMER" RecordGroupName="RG_CUSTOMER" Title="Customers"
+         AutoDisplay="true" AutoSelect="true" Width="320" Height="220" XPosition="150" YPosition="150">
+      <LOVColumnMapping Name="CUSTOMER_NAME" Title="Customer" DisplayWidth="220" ReturnItem="BK_ORDER.CUSTOMER_NAME"/>
+      <LOVColumnMapping Name="CUSTOMER_ID" Title="ID" DisplayWidth="60" ReturnItem="BK_ORDER.CUSTOMER_ID"/>
+    </LOV>
+
+    <RecordGroup Name="RG_PRODUCT" RecordGroupType="Query"
+                 RecordGroupQuery="SELECT product_name, product_id, unit_price FROM lom_products WHERE active_flag = 'Y' ORDER BY 1">
+      <RecordGroupColumn Name="PRODUCT_NAME" ColumnDataType="Character" MaximumLength="200"/>
+      <RecordGroupColumn Name="PRODUCT_ID" ColumnDataType="Number" MaximumLength="10"/>
+      <RecordGroupColumn Name="UNIT_PRICE" ColumnDataType="Number" MaximumLength="12"/>
+    </RecordGroup>
+    <LOV Name="LOV_PRODUCT" RecordGroupName="RG_PRODUCT" Title="Products"
+         AutoDisplay="true" AutoSelect="true" Width="360" Height="220" XPosition="150" YPosition="150">
+      <LOVColumnMapping Name="PRODUCT_NAME" Title="Product" DisplayWidth="220" ReturnItem="BK_ORDER_LINE.PRODUCT_NAME"/>
+      <LOVColumnMapping Name="PRODUCT_ID" Title="ID" DisplayWidth="60" ReturnItem="BK_ORDER_LINE.PRODUCT_ID"/>
+      <LOVColumnMapping Name="UNIT_PRICE" Title="Price" DisplayWidth="80" ReturnItem="BK_ORDER_LINE.UNIT_PRICE"/>
+    </LOV>
+
+    <RecordGroup Name="RG_WAREHOUSE" RecordGroupType="Query"
+                 RecordGroupQuery="SELECT warehouse_name, warehouse_code FROM lom_warehouses WHERE active_flag = 'Y' ORDER BY 1">
+      <RecordGroupColumn Name="WAREHOUSE_NAME" ColumnDataType="Character" MaximumLength="100"/>
+      <RecordGroupColumn Name="WAREHOUSE_CODE" ColumnDataType="Character" MaximumLength="10"/>
+    </RecordGroup>
+    <LOV Name="LOV_WAREHOUSE" RecordGroupName="RG_WAREHOUSE" Title="Warehouses"
+         AutoDisplay="true" AutoSelect="true" Width="280" Height="180" XPosition="150" YPosition="150">
+      <LOVColumnMapping Name="WAREHOUSE_NAME" Title="Warehouse" DisplayWidth="180" ReturnItem="BK_ORDER.WAREHOUSE_CODE"/>
+      <LOVColumnMapping Name="WAREHOUSE_CODE" Title="Code" DisplayWidth="60" ReturnItem="BK_ORDER.WAREHOUSE_CODE"/>
+    </LOV>
+
+    <AttachedLibrary Name="OM_SHARED"/>
+
+    <Alert Name="AL_CONFIRM_SUBMIT" AlertStyle="Note" Title="Submit Order"
+           AlertMessage="Submit this order? Totals will be recalculated and, if over threshold, routed for approval." Button1Label="Submit" Button2Label="Cancel"/>
+    <Alert Name="AL_ERROR" AlertStyle="Stop" Title="Error"
+           AlertMessage="(message text set at runtime by om_shared.show_message)" Button1Label="OK"/>
+
+    <Canvas Name="CV_ORDER" CanvasType="Content" WindowName="WIN_ORDER" Width="720" Height="260"/>
+    <Window Name="WIN_ORDER" Title="Sales Orders" Width="740" Height="300"/>
+
+  </FormModule>
+</Module>
