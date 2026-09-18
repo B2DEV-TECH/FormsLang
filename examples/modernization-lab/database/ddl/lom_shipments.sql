@@ -1,9 +1,11 @@
 -- =============================================================================
 -- LOM_SHIPMENTS
--- FACT: one shipment row is created by LOM_ORDER_API.release_order when an
--- order transitions RELEASED -> SHIPPED is out of this lab's scope (no
--- carrier/tracking integration is modeled); the shipment row exists mainly to
--- give the order lifecycle a visible terminal state and an audit trail.
+-- FACT: one shipment row (status PENDING) is inserted by
+-- LOM_ORDER_API.release_order when an order becomes RELEASED, and set to
+-- SHIPPED by LOM_ORDER_API.ship_order on the RELEASED -> SHIPPED transition.
+-- Anything beyond that (carrier/tracking integration) is out of this lab's
+-- scope; the shipment row exists mainly to give the order lifecycle a
+-- visible terminal state and an audit trail.
 -- =============================================================================
 
 create table lom_shipments (
@@ -23,6 +25,6 @@ create table lom_shipments (
     constraint ck_lom_ship_status check (status in ('PENDING','SHIPPED','CANCELLED'))
 );
 
-comment on table lom_shipments is 'One shipment record per released order. Created by LOM_ORDER_API.release_order; there is intentionally no separate Forms screen for shipments in this lab (see docs/forms-inventory.md, "what was deliberately left out").';
+comment on table lom_shipments is 'One shipment record per released order. Created by LOM_ORDER_API.release_order; there is intentionally no separate Forms screen for shipments in this lab (see forms/source/README.md, "What is intentionally NOT built").';
 
 create index ix_lom_shipments_status on lom_shipments (status);

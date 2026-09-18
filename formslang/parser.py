@@ -5,7 +5,7 @@ Two details that break naive parsers, both handled here:
 1. **Double-escaped newlines.** Forms2XML stores trigger and program-unit
    bodies in an XML ATTRIBUTE, escaping newline and tab as the literal
    entities ``&#10;`` / ``&#9;``. After the normal XML unescape the text
-   still contains the seven-character string ``&#10;``. Without a second
+   still contains the five-character string ``&#10;``. Without a second
    decoding pass every trigger collapses into a single line.
 
 2. **Accent mojibake.** The .fmb stores text in cp1252; Forms2XML declares
@@ -119,6 +119,14 @@ def _parse_triggers(parent: ET.Element, scope: str, owner: str) -> list[Trigger]
     ]
 
 
+def _tri(el: ET.Element, attr: str) -> bool | None:
+    """A boolean attribute Forms2XML may leave out entirely: ``None`` then."""
+    raw = el.get(attr)
+    if raw is None:
+        return None
+    return raw.strip().lower() == "true"
+
+
 def _parse_item(el: ET.Element, block_name: str) -> Item:
     name = _s(el, "Name")
     return Item(
@@ -135,6 +143,7 @@ def _parse_item(el: ET.Element, block_name: str) -> Item:
         prompt=decode_forms_text(el.get("Prompt")),
         canvas=_s(el, "CanvasName"),
         lov_name=_s(el, "LovName"),
+        validate_from_list=_tri(el, "ValidateFromList"),
         list_elements=len(_kids(el, "ListItemElement")),
         triggers=_parse_triggers(el, "item", f"{block_name}.{name}"),
         subclassed=bool(el.get("ParentName")),
@@ -302,7 +311,15 @@ def _parse_block(el: ET.Element) -> Block:
 def parse_xml(path: str | Path, *, convert_log: str = "") -> FormModule:
     """Read a Forms module XML and return the normalized FormModule."""
     path = Path(path)
-    root = ET.parse(path).getroot()
+    try:
+        root = ET.parse(path).getroot()
+    except ET.ParseError as e:
+        # A batch over many exports must say WHICH file is broken; the raw
+        # ParseError only carries a line/column. Keep it chained for anyone
+        # who needs the expat code.
+        pos = getattr(e, "position", None)
+        where = f" at line {pos[0]}, column {pos[1]}" if pos else ""
+        raise ValueError(f"{path.name}: invalid XML{where}: {e}") from e
     fm = root.find(f"{NS}FormModule")
     if fm is None:
         raise ValueError(f"{path.name}: no <FormModule> element (menu or library?)")

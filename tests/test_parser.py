@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+
 import pytest
 
 from formslang.parser import decode_forms_text, parse_xml
@@ -77,6 +79,44 @@ def test_item_lov_name_is_read_case_correctly(sample_xml):
     mod = parse_xml(sample_xml)
     customer = next(i for i in mod.all_items if i.name == "CUSTOMER")
     assert customer.lov_name == "LOV_CUSTOMER"
+
+
+def test_validate_from_list_is_tri_state(tmp_path, sample_xml):
+    """``ValidateFromList`` says whether an LOV is a hard constraint (the
+    value must match a row) or only a lookup aid. An item without the
+    attribute reads as ``None`` so "not set" stays distinct from "false"."""
+    xml = sample_xml.read_text(encoding="utf-8").replace(
+        'LovName="LOV_CUSTOMER"',
+        'LovName="LOV_CUSTOMER" ValidateFromList="true"',
+    ).replace(
+        'Name="ORDER_ID" ItemType="Text Item"',
+        'Name="ORDER_ID" ItemType="Text Item" ValidateFromList="false"',
+    )
+    path = tmp_path / "VFL_fmb.xml"
+    path.write_text(xml, encoding="utf-8")
+    by_name = {i.name: i for i in parse_xml(path).all_items}
+    assert by_name["CUSTOMER"].validate_from_list is True
+    assert by_name["ORDER_ID"].validate_from_list is False
+    assert by_name["BTN_PRINT"].validate_from_list is None
+
+
+def test_malformed_xml_names_the_file(tmp_path):
+    """A run over a directory of exports must say which file is broken and
+    where; the bare ``ParseError`` carries only a line/column. The original
+    exception stays chained for anyone who needs the expat code."""
+    path = tmp_path / "BROKEN_fmb.xml"
+    path.write_text(
+        '<?xml version="1.0"?>\n'
+        '<Module xmlns="http://xmlns.oracle.com/Forms">\n'
+        "  <!-- a bare -- inside an XML comment is illegal -->\n"
+        '  <FormModule Name="B"/>\n'
+        "</Module>",
+        encoding="utf-8",
+    )
+    expected = r"^BROKEN_fmb\.xml: invalid XML at line \d+, column \d+: "
+    with pytest.raises(ValueError, match=expected) as info:
+        parse_xml(path)
+    assert isinstance(info.value.__cause__, ET.ParseError)
 
 
 def test_item_geometry_is_parsed(sample_xml):

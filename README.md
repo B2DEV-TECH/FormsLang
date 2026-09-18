@@ -1178,7 +1178,7 @@ Two parser details that break naive readers, both handled:
 
 1. **Double-escaped newlines.** Forms2XML stores code in an XML *attribute*,
    escaping newlines as the literal string `&#10;`. After the normal XML
-   unescape the text still contains those seven characters. Without a second
+   unescape the text still contains those five characters. Without a second
    decoding pass, every trigger collapses to a single line.
 2. **Accent mojibake.** The `.fmb` stores cp1252; Forms2XML declares UTF-8
    but emits the original bytes, so `Conexão` arrives as `ConexÃ£o`. The

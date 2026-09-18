@@ -19,19 +19,27 @@ than it looks.
   when a new customer's credit limit is left blank; it is never enforced
   as an ongoing ceiling.
 - `LOM_CUSTOMER_API.can_place_order` is the single gate deciding whether a
-  customer is eligible to have a new order entered against them at all
-  (active status plus whatever credit/standing checks that function
-  implements).
+  customer is eligible to have a new order entered against them at all.
+  Today it checks exactly one thing — `get_status(p_customer_id) =
+  'ACTIVE'` — and returns `'Y'`/`'N'`; there is no credit or standing
+  check behind it (`database/packages/lom_customer_api.pkb`).
 
 ## Orders and order lines
 
 - An order's `STATUS` moves through a fixed lifecycle: `DRAFT` ->
   `SUBMITTED` -> (`PENDING_APPROVAL` when over the approval threshold) ->
   `APPROVED` -> `RELEASED` -> `SHIPPED`, with `PENDING_APPROVAL` ->
-  `REJECTED` and any state -> `CANCELLED`. The only thing that may ever
-  change `STATUS` is `LOM_ORDER_API.transition_status` — a hardcoded
-  PL/SQL matrix, not the `SEQUENCE_NO` column on `LOM_ORDER_STATUS`, which
-  is descriptive only.
+  `REJECTED`, and `CANCELLED` reachable only from `DRAFT`, `SUBMITTED` or
+  `PENDING_APPROVAL` (an `APPROVED`, `RELEASED`, `SHIPPED` or `REJECTED`
+  order cannot be cancelled). That is exactly ten legal `(from, to)`
+  pairs, and the only thing that may ever change `STATUS` is
+  `LOM_ORDER_API.transition_status` — a hardcoded PL/SQL matrix
+  (`is_valid_transition`), not the `SEQUENCE_NO` column on
+  `LOM_ORDER_STATUS`, which is descriptive only. All ten legal pairs
+  happen to increase `SEQUENCE_NO`, so a "sequence must go up" shortcut
+  would accept every legal transition and also several illegal ones
+  (`DRAFT` -> `SHIPPED`, `REJECTED` -> `APPROVED`); `tests/test_fixtures.py`
+  pins both facts from the seed data and the package body.
 - Submitting an order (`LOM_ORDER_API.submit_order`) recalculates totals,
   transitions status, and — when the order total exceeds
   `LOM_ORDER_API.gc_approval_threshold` (5000, a package constant) —
@@ -82,13 +90,27 @@ than it looks.
 - Approving (`LOM_APPROVAL_API.approve`) or rejecting
   (`LOM_APPROVAL_API.reject`) an approval transitions the underlying order
   via `LOM_ORDER_API.transition_status` — the same status matrix every
-  other order-lifecycle change goes through.
+  other order-lifecycle change goes through. Neither procedure checks that
+  the request is still `PENDING` before updating it (the `SELECT ... FOR
+  UPDATE` has no status predicate, and the audit row hardcodes
+  `p_old_value => 'PENDING'`); a second approve/reject on the same request
+  is stopped only because the follow-on order transition is illegal
+  (`APPROVED` -> `APPROVED`, `REJECTED` -> `REJECTED` and `APPROVED` ->
+  `REJECTED` are not in the matrix). Since neither package commits or uses
+  an autonomous transaction, the raised error takes the approval update
+  and its audit row back with it — provided the caller lets the exception
+  propagate instead of catching it and committing.
 - Rejecting an approval requires a non-blank `p_comments` argument
   (`gc_err_comments_required`) — a rule enforced in PL/SQL, not by any
   `NOT NULL`/`CHECK` constraint on `LOM_APPROVALS.COMMENTS`.
 - Both `create_approval_request` and `approve`/`reject` default their
   identity parameter (`p_requested_by`/`p_approver`) to the PL/SQL `USER`
-  pseudo-column — the connected database session's own identity.
+  pseudo-column — the connected database session's own identity. So does
+  `LOM_ORDER_API.transition_status` (`p_changed_by default user`), while
+  `submit_order`, `release_order` and `ship_order` expose no identity
+  parameter at all and always write `USER` into the audit trail. Under
+  APEX that session belongs to the APEX engine's pool account, not to the
+  end user — see ADR-004.
 
 ## Audit trail
 

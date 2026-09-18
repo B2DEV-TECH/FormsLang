@@ -17,7 +17,7 @@
 -- 03_products_inventory.sql). This is intentional: it is a realistic
 -- "approved but not releasable yet" situation, and calling
 -- LOM_ORDER_API.release_order(5004) is expected to raise
--- LOM_INVENTORY_API.gc_err_insufficient_stock. See tests/.
+-- LOM_INVENTORY_API.gc_err_insufficient_stock. See scripts/verify.sql.
 -- =============================================================================
 
 -- 5001: DRAFT, no approval needed

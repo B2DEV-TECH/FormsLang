@@ -35,7 +35,7 @@ mean nothing in a responsive browser layout.
   always-modal) would misrepresent flows that were never modal in the
   legacy system (LOM-MOD-022) and would lose the blocking guarantee the
   legacy system did rely on for others (LOM-MOD-020).
-- Each of the three cases is marked `MANUAL_REVIEW` or `REPLACE_WITH_APEX_NATIVE`
-  in the ground-truth registry rather than `CONVERT`, precisely because the
-  right answer depends on human judgment about the calling context, not on
-  a mechanical rule.
+- Each of the three cases is marked `MANUAL_REVIEW` (LOM-MOD-020) or
+  `REFACTOR` (LOM-MOD-022/023) in the ground-truth registry rather than
+  `CONVERT`, precisely because the right answer depends on human judgment
+  about the calling context, not on a mechanical rule.

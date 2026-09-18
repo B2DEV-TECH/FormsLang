@@ -20,7 +20,7 @@ create table lom_products (
     constraint ck_lom_prod_active check (active_flag in ('Y','N'))
 );
 
-comment on table lom_products is 'Product catalog. UNIT_PRICE is the current default sales price copied into LOM_ORDER_LINES.UNIT_PRICE at line-entry time (a snapshot, not a live reference -- see data-model.md).';
+comment on table lom_products is 'Product catalog. UNIT_PRICE is the current default sales price copied into LOM_ORDER_LINES.UNIT_PRICE at line-entry time (a snapshot, not a live reference -- see docs/business-rules.md).';
 
 create table lom_inventory (
     product_id          number(10)  not null,

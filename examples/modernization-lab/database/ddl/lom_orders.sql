@@ -31,7 +31,7 @@ create table lom_orders (
     constraint ck_lom_ord_amounts check (subtotal >= 0 and tax_amount >= 0 and total_amount >= 0)
 );
 
-comment on table lom_orders is 'Sales order header. STATUS is only ever changed through LOM_ORDER_API.transition_status, which enforces the DRAFT -> SUBMITTED -> PENDING_APPROVAL -> APPROVED -> RELEASED -> SHIPPED flow (with PENDING_APPROVAL -> REJECTED and any status -> CANCELLED). See LOM-MOD-002 (CRITICAL) and docs/business-rules.md.';
+comment on table lom_orders is 'Sales order header. STATUS is only ever changed through LOM_ORDER_API.transition_status, which enforces the DRAFT -> SUBMITTED -> PENDING_APPROVAL -> APPROVED -> RELEASED -> SHIPPED flow (with PENDING_APPROVAL -> REJECTED and DRAFT/SUBMITTED/PENDING_APPROVAL -> CANCELLED). See LOM-MOD-002 (CRITICAL) and docs/business-rules.md.';
 
 create index ix_lom_orders_customer on lom_orders (customer_id);
 create index ix_lom_orders_status on lom_orders (status);

@@ -29,9 +29,9 @@ this lab.
   is exactly and deliberately what `metrics/compute_metrics.py` reports —
   there is no ambiguity about what a "real" export would have contained,
   because there is no real export to diverge from.
-- The XML comment restriction (`<!-- ... -->` cannot contain `--` anywhere,
-  since `xml.etree.ElementTree` treats a bare `--` inside a comment as a
-  parse error) had to be discovered and documented
+- The XML comment restriction (`<!-- ... -->` cannot contain `--` anywhere;
+  XML 1.0 forbids it, so every conforming parser -- `xml.etree.ElementTree`
+  included -- rejects the file) had to be discovered and documented
   (`forms/source/README.md`) specifically because hand-authoring surfaces
   gotchas a real export tool would never trigger.
 - Anyone wanting to regenerate these fixtures from an actual Forms Builder

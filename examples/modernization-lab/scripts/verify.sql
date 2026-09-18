@@ -2,14 +2,18 @@
 -- LOM modernization lab -- post-install/seed verification
 -- Run after install.sql and seed.sql. Fails loudly (RAISE_APPLICATION_ERROR)
 -- on the first check that doesn't hold, rather than printing a silent
--- mismatch -- this is meant to be safe to run in an automated pipeline.
+-- mismatch -- and exits SQL*Plus with a failure code (whenever sqlerror
+-- exit failure), so it is safe to run in an automated pipeline: a failed
+-- check is a non-zero exit, not a line of output somebody has to read.
 --
--- Usage:
+-- Usage (from this directory or from the lab root):
 --   sqlplus lom_lab/<your_password>@//localhost:1521/freepdb1 @verify.sql
+--   sqlplus lom_lab/<your_password>@//localhost:1521/freepdb1 @scripts/verify.sql
 -- =============================================================================
 
 set define off
 set serveroutput on
+whenever sqlerror exit failure rollback
 
 prompt === Row counts ===
 select 'lom_customer_types' tbl, count(*) rows_ from lom_customer_types

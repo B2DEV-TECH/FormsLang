@@ -10,12 +10,18 @@ directly in a Forms trigger (`WHEN-VALIDATE-ITEM`, `WHEN-BUTTON-PRESSED`)
 against raw tables, even where an equivalent `LOM_*_API` package procedure
 already exists and is called correctly from other trigger sites in the
 same codebase. See `docs/modernization-challenges.md` Theme 1 and Theme 3
-for the full case inventory (LOM-MOD-010/011/025/026/027/039/041/042).
+for the full case inventory: LOM-MOD-011/025/026/027/039 (duplicated or
+bypassed logic that must move into an existing API), LOM-MOD-037 (no API
+exists yet), and LOM-MOD-041/042 (the Approve/Reject buttons that bypass
+`LOM_APPROVAL_API`, classified `MANUAL_REVIEW` because the fix is a page
+redesign, not a code move). LOM-MOD-010 is the deliberate contrast: a
+`CHECK` constraint mirrored in a trigger, where nothing needs to move
+(`CONVERT`).
 
 ## Decision
-Every one of these cases is classified `MOVE_TO_PLSQL_API` (where an API
-procedure already exists to call instead) or, where no such procedure
-exists yet (LOM-MOD-037), flagged as requiring new PL/SQL to be designed
+Each duplicated-or-bypassed case is classified `MOVE_TO_PLSQL_API` (where
+an API procedure already exists to call instead) or, where no such
+procedure exists yet (LOM-MOD-037), flagged as requiring new PL/SQL to be designed
 before the APEX page can be built at all. In no case is the correct
 modernization outcome "translate the trigger's SQL into an APEX page
 process as-is." The UI layer (Forms today, APEX tomorrow) may only ever

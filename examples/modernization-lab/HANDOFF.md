@@ -1,14 +1,18 @@
 # Handoff: Legacy Order Management (LOM) modernization lab
 
-Status: **complete and tested**. This document is the single handoff for
-this build -- what was delivered, what was verified and how, what remains
-a known limitation, and (its own required section) the FormsLang
-improvements discovered while building it.
+Status: **complete and tested** at the original handoff. This document is
+the handoff for that build -- what was delivered, what was verified and
+how, what remains a known limitation, and (its own required section) the
+FormsLang improvements discovered while building it. A later hardening
+pass is recorded separately in `REVIEW.md`; where the two differ (case
+classifications, test counts, the reserved-ID note below), `REVIEW.md`
+and the registry are current and this document is historical.
 
 ## What was delivered
 
 A complete, self-contained, fictional Oracle Forms-to-APEX modernization
-scenario under `examples/modernization-lab/` (53 files):
+scenario under `examples/modernization-lab/` (53 files at handoff; 54
+with `REVIEW.md`):
 
 - **Database** (`database/`): 11 tables across 8 DDL files in verified FK
   order, 2 views, 5 PL/SQL API packages (spec + body each), 7 seed
@@ -19,7 +23,7 @@ scenario under `examples/modernization-lab/` (53 files):
   design -- see ADR-001) for the `OM_SHARED.pll` library and the
   `LOM_MAIN` menu module.
 - **Ground truth** (`expected/modernization-ground-truth.json`): 41
-  classified modernization cases (`LOM-MOD-001`..`LOM-MOD-042`, 3 IDs
+  classified modernization cases (`LOM-MOD-001`..`LOM-MOD-042`, one ID
   deliberately reserved and dropped -- see "Reserved case IDs" below),
   each with a `classification`/`risk`/`category` grounded in a specific
   cited source line, against a fully-defined taxonomy.
@@ -27,7 +31,8 @@ scenario under `examples/modernization-lab/` (53 files):
   script that parses the fixtures with FormsLang's own
   `formslang.parser.parse_xml()` and cross-checks every `LOM-MOD-###` ID
   referenced anywhere in `forms/`/`database/` against the ground-truth
-  registry, plus a 9-test `unittest` suite covering the same ground and
+  registry, plus a `unittest` suite (9 tests at handoff; current count in
+  `REVIEW.md`) covering the same ground and
   specific business-rule assertions.
 - **SQL scripts** (`scripts/`): `install.sql`, `seed.sql`, `verify.sql`,
   `reset.sql`.
@@ -45,7 +50,8 @@ scenario under `examples/modernization-lab/` (53 files):
   parser (`formslang.parser.parse_xml`) against each fixture, so a
   successful run is also proof the fixtures are valid, parseable
   Forms2XML by FormsLang's own definition, not just well-formed XML.
-- `python -m unittest tests/test_fixtures.py -v` -- 9/9 tests pass,
+- `python -m unittest tests/test_fixtures.py -v` -- 9/9 tests passed at
+  handoff (current count in `REVIEW.md`),
   including three that assert specific business-rule text is present or
   absent in specific triggers (not just structural counts), and one that
   cross-checks every ID the ground truth is allowed to omit against every
@@ -73,19 +79,32 @@ correctly refuse to embed one (`install.sql`'s own header says so
 explicitly). Run all four scripts against a disposable schema before
 relying on them in anything more permanent than this lab.
 
+This limitation still stood at the hardening pass (`REVIEW.md`): a local
+Oracle instance existed by then, but no credential able to create an
+isolated, disposable schema did, and the lab's scripts are not meant to be
+run in a schema that cannot be dropped afterwards. The scripts were
+hardened to fail loudly (`whenever sqlerror exit failure rollback`,
+invalid-object check) but remain statically validated only.
+
 ## Reserved case IDs
 
 `expected/modernization-ground-truth.json`'s `id_notes` field states IDs
-were assigned in discovery order and that some were "reserved during
-drafting and deliberately dropped once no case survived fact-checking
-against the committed source." The three gaps in the 001-042 range
-(**040, 043, 044**) fall in that category: each was drafted as a candidate
-case during registry construction, then discarded rather than force-
-filled once checking it against the actual committed `forms/`/`database/`
-source turned up no real defect or decision point to document there. They
-are not missing by oversight -- filling them with invented content would
-have violated the registry's own stated purpose ("none is invented after
-the fact").
+were assigned in discovery order and that 040 "was reserved during
+drafting and dropped once no case survived fact-checking against the
+committed source." Exactly one ID inside the 001-042 range is
+unfilled: **040**. It was drafted as a candidate case during registry
+construction, then discarded rather than force-filled once checking it
+against the actual committed `forms/`/`database/` source turned up no real
+defect or decision point to document there. It is not missing by oversight
+-- filling it with invented content would have violated the registry's own
+stated purpose ("none is invented after the fact").
+
+Correction (hardening pass): this section originally listed **043** and
+**044** as two further gaps. They are not inside the 001-042 range and no
+ID above 042 is referenced anywhere in the lab (`tests/test_fixtures.py`
+now checks every `LOM-MOD-###` reference in `forms/`, `database/`, the
+docs, the blueprint and the assessment against the registry), so the
+registry has one gap, not three.
 
 ## Defect found and fixed in this lab during the self-review
 
@@ -105,9 +124,10 @@ confirm it themselves.
 Three concrete, verified findings surfaced while building and cross-
 checking this lab against FormsLang's actual parser code
 (`formslang/parser.py`, `formslang/model.py`) and its own `README.md` --
-none of these were fixed here, since they're changes to FormsLang itself,
-outside this lab's scope, but all three were confirmed by direct
-inspection, not inferred:
+all three confirmed by direct inspection, not inferred. None was fixed at
+handoff (changes to FormsLang itself were outside this lab's scope); all
+three have since been fixed in FormsLang core, with tests, during the
+hardening pass -- see `REVIEW.md`, "FormsLang Core Changes":
 
 1. **Both `README.md` and `formslang/parser.py`'s module docstring
    miscount the double-escaped newline sequence.** Both describe `&#10;`

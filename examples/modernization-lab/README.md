@@ -18,8 +18,8 @@ documents below is speculative.
    harder than a literal Forms-to-page port, organized by recurring
    theme and cross-referenced to specific cases.
 3. **`expected/modernization-ground-truth.json`** -- the full registry of
-   41 modernization cases (`LOM-MOD-001`..`LOM-MOD-042`, with three IDs
-   deliberately reserved/unfilled), each classified against the taxonomy
+   41 modernization cases (`LOM-MOD-001`..`LOM-MOD-042`, with one ID,
+   `LOM-MOD-040`, deliberately unfilled), each classified against the taxonomy
    defined in the same file (`classification`, `risk`, `category`).
 4. **`assessment/complexity-and-risk-rollup.md`** -- the same registry,
    summarized: counts by classification/risk/category/module, and which 8
@@ -70,15 +70,18 @@ sqlplus <user>/<password>@<connect_string> @scripts/verify.sql
 # scripts/reset.sql tears everything back down (destructive, see its header)
 ```
 
-`compute_metrics.py` and `tests/test_fixtures.py` were run and passed as
-part of building this lab. The SQL scripts were validated by static review
-against the actual DDL/package/view names (dependency order confirmed by
-grepping every `references` clause) but **not executed against a live
-database** in this session -- no stored credentials for any Oracle
-instance were found in this environment, and inventing one was out of the
-question given the "never hardcode a real password" rule the scripts
-themselves state. Run them yourself against a disposable schema before
-trusting them in anything more permanent.
+`compute_metrics.py` and `tests/test_fixtures.py` are run on every change
+to this lab (exact commands and counts in `REVIEW.md`). The SQL scripts
+were validated by static review against the actual DDL/package/view names
+(dependency order confirmed by grepping every `references` clause) and
+hardened to fail loudly (`whenever sqlerror exit failure rollback`,
+script-relative `@@` paths so the commands above work from the lab root),
+but they have **not been executed against a live database**: no isolated,
+disposable Oracle schema was available while building or reviewing this
+lab, and running them against a schema you cannot drop afterwards is not
+what they are for. Run them yourself against a disposable schema before
+trusting them in anything more permanent; `REVIEW.md` records exactly what
+has and has not been executed.
 
 ## What this lab is not
 

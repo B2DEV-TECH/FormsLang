@@ -23,13 +23,14 @@ transition by comparing `SEQUENCE_NO` values.
 ## Consequences
 - A migration that "simplifies" the transition check into
   `new.sequence_no > old.sequence_no` (an intuitive-looking shortcut, since
-  the sequence numbers do happen to increase along the common path) would
-  silently allow illegal transitions the matrix forbids (for example,
-  jumping straight from `DRAFT` to `SHIPPED`) and silently forbid a
-  legal one the matrix allows (`PENDING_APPROVAL` -> `REJECTED` has a
-  `SEQUENCE_NO` that is not monotonically related to the surrounding
-  happy-path states). This is exactly the kind of defect a demo would not
-  surface, because demo data rarely exercises rejection or cancellation.
+  every one of the ten legal transitions does increase `SEQUENCE_NO` --
+  including `PENDING_APPROVAL` (30) -> `REJECTED` (35)) would keep every
+  legal transition and silently admit illegal ones the matrix forbids:
+  `DRAFT` -> `SHIPPED`, `REJECTED` -> `APPROVED`, `APPROVED` ->
+  `CANCELLED`, `RELEASED` -> `CANCELLED`. Nothing in the seed data or the
+  happy path would reveal the difference; `tests/test_fixtures.py` checks
+  it statically (the legal set from `is_valid_transition`, the sequence
+  numbers from `database/seed/01_lookup_data.sql`).
 - The APEX target architecture (`blueprint/expected-apex-architecture.md`)
   routes every status change through a single call to
   `LOM_ORDER_API.transition_status`, never through direct `UPDATE ...

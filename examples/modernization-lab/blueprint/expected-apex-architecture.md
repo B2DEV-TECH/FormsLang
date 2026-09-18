@@ -17,7 +17,7 @@ the registry for the full rationale behind any individual decision.
 | 3. Inventory | `INVENTORY.fmb` | Interactive Report over `lom_inventory_v` | read-mostly, one adjustment modal |
 | 3a. Adjust quantity | `INVENTORY.fmb` (BT_ADJUST) | Modal dialog page | calls `LOM_INVENTORY_API.adjust_quantity` (LOM-MOD-016, `PRESERVE` -- already calls the API correctly) |
 | 4. Approvals worklist | `APPROVALS.fmb` | Interactive Report over `lom_approval_worklist_v` | see LOM-MOD-036 caveat below |
-| 4a. Approve / Reject | `APPROVALS.fmb` (BT_APPROVE/BT_REJECT) | Page processes on Page 4, not raw DML | must call `LOM_APPROVAL_API.approve`/`.reject` -- see LOM-MOD-041/042 and ADR-002 |
+| 4a. Approve / Reject | `APPROVALS.fmb` (BT_APPROVE/BT_REJECT) | Page processes on Page 4, not raw DML | must call `LOM_APPROVAL_API.approve`/`.reject` -- see LOM-MOD-041/042, ADR-003 and ADR-004 |
 
 No page replaces `OM_SHARED.pll` or the `LOM_MAIN` menu module directly:
 their responsibilities are absorbed into APEX platform features (page
@@ -117,7 +117,8 @@ requiring the most care to build correctly rather than mechanically:
   triggers' SQL would reproduce both defects in APEX. Do not do that.
 - Both calls must explicitly pass `v('APP_USER')` as the approver
   identity (ADR-004) -- omitting it lets the identity parameter default to
-  the parsing schema, silently misattributing every approval.
+  the APEX engine's database session user, silently misattributing every
+  approval.
 - The confirmation alerts before Approve/Reject (`AL_CONFIRM_APPROVE`/
   `AL_CONFIRM_REJECT` in the Forms fixture) become APEX confirmation
   Dynamic Actions on the respective buttons, same as LOM-MOD-034 on the
@@ -136,7 +137,7 @@ requiring the most care to build correctly rather than mechanically:
   workaround.
 - Hardcoded constants (LOM-MOD-001: approval threshold 5000, tax rate
   0.08) stay exactly where they are, inside `LOM_ORDER_API`'s package
-  spec -- `PRESERVE`/`REFACTOR` at most (e.g. promoting them to an
+  spec -- `REFACTOR` in the registry (e.g. promoting them to an
   application-level settings table is a legitimate future improvement,
   but out of scope for this migration itself).
 

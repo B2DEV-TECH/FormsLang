@@ -26,8 +26,13 @@ the moment one changes and the other doesn't.
   (`ROUND(quantity * unit_price - discount_amount, 2)`) duplicated
   verbatim on two different triggers instead of calling
   `LOM_ORDER_API.calc_line_total` once.
-- LOM-MOD-010 — a low-risk instance of the same pattern (a `CHECK`
-  constraint re-verified in a trigger, harmlessly).
+- LOM-MOD-010 — the contrast case: a `CHECK` constraint re-verified in a
+  trigger, harmlessly. It is *not* classified `MOVE_TO_PLSQL_API`, because
+  nothing needs to be centralized — the constraint already owns the rule,
+  and the trigger maps one-to-one onto an APEX item validation
+  (`CONVERT`, `LOW`). It is in the registry precisely so that a classifier
+  which flags every duplicated check as "move it into the API" is caught
+  over-classifying.
 - LOM-MOD-039 — even `OM_SHARED.pll`, the *shared* library, has its own
   bypass: `log_action` writes to `LOM_AUDIT_LOG` directly instead of
   calling `LOM_AUDIT_API.log_event`, the function every business package
@@ -83,7 +88,8 @@ to preserve.
 
 ## Theme 4 — Rules enforced only where they're least visible
 
-- LOM-MOD-011/019 pattern, generalized to `ACTIVE_FLAG`: only Forms
+- The status-gate idea behind LOM-MOD-011/019, generalized to
+  `ACTIVE_FLAG`: only Forms
   (the order-line product lookup trigger, and both the Product/Warehouse
   LOVs) filters out inactive products and warehouses. No PL/SQL API
   independently enforces this. Any future caller that bypasses Forms —
@@ -92,10 +98,11 @@ to preserve.
   forward; it will not happen automatically.
 - LOM-MOD-031 — `default user` as an identity-parameter default resolves
   to the *database session's* identity. In Forms, that is genuinely the
-  connected end user. In APEX, procedures run under the workspace/parsing
-  schema — an unmodified call site would silently attribute every
-  approval to the schema owner. This is invisible in code review unless
-  you already know to look for it.
+  connected end user. In APEX, the database session belongs to the APEX
+  engine's pool account (`APEX_PUBLIC_USER` when fronted by ORDS) — not
+  the parsing schema and not the end user — so an unmodified call site
+  would silently attribute every approval to that pool account. This is
+  invisible in code review unless you already know to look for it.
 - LOM-MOD-032 — the mandatory-rejection-comment rule (see Theme 3) is
   visible only as a UI `Hint` string and a PL/SQL exception; there is no
   schema-level `NOT NULL` a reviewer could grep for.

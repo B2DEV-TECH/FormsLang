@@ -27,7 +27,7 @@
            InsertAllowed="false" UpdateAllowed="false" DeleteAllowed="false"
            RecordsDisplayCount="10" OrderByClause="REQUESTED_DATE">
 
-      <Trigger Name="PRE-QUERY" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-029 (REFACTOR, LOW/MEDIUM risk): the &quot;worklist shows only what&amp;#10;  -- is waiting on me&quot; filter is hardcoded here rather than exposed as a&amp;#10;  -- page-level filter/parameter. Harmless today (there is only one&amp;#10;  -- worklist), but it means changing the definition of &quot;pending&quot; means&amp;#10;  -- editing and recompiling this trigger.&amp;#10;  IF :PARAMETER.P_ORDER_ID IS NOT NULL THEN&amp;#10;    SET_BLOCK_PROPERTY('BK_APPROVAL', DEFAULT_WHERE,&amp;#10;      'ORDER_ID = ' || :PARAMETER.P_ORDER_ID);&amp;#10;  ELSE&amp;#10;    SET_BLOCK_PROPERTY('BK_APPROVAL', DEFAULT_WHERE, 'STATUS = ''PENDING''');&amp;#10;  END IF;&amp;#10;END;"/>
+      <Trigger Name="PRE-QUERY" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-029 (REFACTOR, MEDIUM risk): the &quot;worklist shows only what&amp;#10;  -- is waiting on me&quot; filter is hardcoded here rather than exposed as a&amp;#10;  -- page-level filter/parameter. Harmless today (there is only one&amp;#10;  -- worklist), but it means changing the definition of &quot;pending&quot; means&amp;#10;  -- editing and recompiling this trigger.&amp;#10;  IF :PARAMETER.P_ORDER_ID IS NOT NULL THEN&amp;#10;    SET_BLOCK_PROPERTY('BK_APPROVAL', DEFAULT_WHERE,&amp;#10;      'ORDER_ID = ' || :PARAMETER.P_ORDER_ID);&amp;#10;  ELSE&amp;#10;    SET_BLOCK_PROPERTY('BK_APPROVAL', DEFAULT_WHERE, 'STATUS = ''PENDING''');&amp;#10;  END IF;&amp;#10;END;"/>
 
       <Item Name="APPROVAL_ID" ItemType="Text Item" DataType="Number"
             ColumnName="APPROVAL_ID" DatabaseItem="true"

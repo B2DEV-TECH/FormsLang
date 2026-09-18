@@ -1,8 +1,8 @@
 # Forms source note
 
 There is no `.fmb` (binary Oracle Forms module) anywhere in this lab, and
-there never will be — see [FormsLang: sem reverse-engineering de .fmb] in
-this project's own contribution policy: FormsLang only ever reads Oracle's
+there never will be — see the repository's `CONTRIBUTING.md` (no `.fmb`, no
+Forms2XML extracted from any real system): FormsLang only ever reads Oracle's
 **Forms2XML** export format, never the proprietary compiled binary.
 
 What lives in `forms/xml/*.xml` is **hand-authored Forms2XML**, written
@@ -10,7 +10,7 @@ directly to look like what `frmf2xml` (or Forms Builder's own XML export)
 would produce for a real `CUSTOMERS.fmb` / `ORDERS.fmb` / `INVENTORY.fmb` /
 `APPROVALS.fmb`. Every module, block, item, trigger, LOV, alert and relation
 in those four files is a **FIXTURE**: invented for this lab, not extracted
-from any real Forms application, and grounded only in the DDL/PL&#8203;SQL
+from any real Forms application, and grounded only in the DDL/PL/SQL
 under `database/` that this lab also invents.
 
 ## Why hand-authored XML instead of a real `.fmb` export
@@ -53,21 +53,19 @@ The encoding used throughout `forms/xml/*.xml` follows Forms2XML exactly:
   `&amp;#10;` exclusively — grep for a bare `&#10;` (no `amp;` before it)
   as a quick sanity check; it should never match.
 
-One restriction is **not** part of the Forms2XML format itself, but a
-consequence of using Python's standard-library `xml.etree.ElementTree` to
-validate these fixtures (which is what FormsLang's own parser uses): a
-literal `<!-- ... -->` XML comment must not contain the two-character
-sequence `--` anywhere inside it, or `ElementTree.parse()` raises
-`xml.etree.ElementTree.ParseError`. This does **not** apply inside
-attribute values (a `TriggerText` attribute can and does contain `--` for
-inline PL/SQL comments freely, escaped as ordinary attribute text) — it
-only bites the hand-written file-header `<!-- ... -->` comments at the top
-of each module. Every header comment in `forms/xml/*.xml` was written with
-this in mind (using `--` only inside PL/SQL, never inside an XML comment
-body). If you add a new file-header comment and it fails to parse, this is
-almost certainly why — see the FormsLang-improvements handoff document at
-the root of this lab for a proposal to make this failure mode easier to
-diagnose.
+One restriction is **not** part of the Forms2XML format itself, but of XML
+1.0: a literal `<!-- ... -->` comment must not contain the two-character
+sequence `--` anywhere inside it. Every conforming parser rejects such a
+file — FormsLang's `xml.etree.ElementTree` included, which is where the
+error surfaces here. This does **not** apply inside attribute values (a
+`TriggerText` attribute can and does contain `--` for inline PL/SQL
+comments freely, escaped as ordinary attribute text) — it only bites the
+hand-written file-header `<!-- ... -->` comments at the top of each module.
+Every header comment in `forms/xml/*.xml` was written with this in mind
+(using `--` only inside PL/SQL, never inside an XML comment body). If you
+add a new file-header comment and it fails to parse, this is almost
+certainly why; FormsLang's `parse_xml` now names the failing file and the
+line/column (proposed in `HANDOFF.md`, fixed and recorded in `REVIEW.md`).
 
 ## What is intentionally NOT built
 

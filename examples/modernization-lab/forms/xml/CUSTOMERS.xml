@@ -68,7 +68,7 @@
             ColumnName="CREDIT_LIMIT" DatabaseItem="true" Required="true"
             Prompt="Credit Limit" MaximumLength="12" FormatMask="FM999G999G990D00"
             CanvasName="CV_CUSTOMER" XPosition="20" YPosition="80" Width="100" Height="17">
-        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-010 (MOVE_TO_PLSQL_API): duplicates CK_LOM_CUST_CREDIT&amp;#10;  -- (credit_limit &gt;= 0). The DB constraint is the real guarantee; this&amp;#10;  -- trigger only exists to fail fast with a friendly message before&amp;#10;  -- COMMIT_FORM reaches the database.&amp;#10;  IF :BK_CUSTOMER.CREDIT_LIMIT &lt; 0 THEN&amp;#10;    om_shared.show_message('Credit limit cannot be negative.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;END;"/>
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN&amp;#10;  -- LOM-MOD-010 (CONVERT, LOW risk): mirrors CK_LOM_CUST_CREDIT&amp;#10;  -- (credit_limit &gt;= 0). The DB constraint is the real guarantee; this&amp;#10;  -- trigger only exists to fail fast with a friendly message before&amp;#10;  -- COMMIT_FORM reaches the database. Nothing to centralize: it maps&amp;#10;  -- one-to-one onto an APEX item validation (contrast LOM-MOD-011).&amp;#10;  IF :BK_CUSTOMER.CREDIT_LIMIT &lt; 0 THEN&amp;#10;    om_shared.show_message('Credit limit cannot be negative.');&amp;#10;    RAISE FORM_TRIGGER_FAILURE;&amp;#10;  END IF;&amp;#10;END;"/>
       </Item>
 
       <Item Name="EMAIL" ItemType="Text Item" DataType="Char"

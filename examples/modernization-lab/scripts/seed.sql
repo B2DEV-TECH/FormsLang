@@ -2,8 +2,11 @@
 -- LOM modernization lab -- seed data
 -- Run after install.sql, against the same schema.
 --
--- Usage:
+-- Usage (from this directory or from the lab root -- nested paths use @@):
 --   sqlplus lom_lab/<your_password>@//localhost:1521/freepdb1 @seed.sql
+--   sqlplus lom_lab/<your_password>@//localhost:1521/freepdb1 @scripts/seed.sql
+-- Stops at the first error and rolls back the partial seed, so a failed
+-- run never leaves half the fixtures in place.
 --
 -- Order matters: 01-06 insert fixed, hand-picked primary keys (not
 -- sequence-generated -- see database/seed/07_align_sequences.sql for why),
@@ -19,15 +22,15 @@
 
 set define off
 set echo on
-whenever sqlerror continue
+whenever sqlerror exit failure rollback
 
-@../database/seed/01_lookup_data.sql
-@../database/seed/02_customers.sql
-@../database/seed/03_products_inventory.sql
-@../database/seed/04_orders_and_lines.sql
-@../database/seed/05_approvals_and_shipments.sql
-@../database/seed/06_audit_log.sql
-@../database/seed/07_align_sequences.sql
+@@../database/seed/01_lookup_data.sql
+@@../database/seed/02_customers.sql
+@@../database/seed/03_products_inventory.sql
+@@../database/seed/04_orders_and_lines.sql
+@@../database/seed/05_approvals_and_shipments.sql
+@@../database/seed/06_audit_log.sql
+@@../database/seed/07_align_sequences.sql
 
 prompt Seed complete. Run verify.sql to sanity-check row counts and the
 prompt known fixtures (e.g. order 5004's deliberate under-stock condition).

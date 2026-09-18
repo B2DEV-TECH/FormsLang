@@ -17,7 +17,8 @@ non-trivial value?
 - Yes -- `metrics/compute_metrics.py` calls `formslang.parser.parse_xml()`
   directly (not a hand-rolled re-count) and both it and
   `tests/test_fixtures.py` pass cleanly against the current fixtures (9/9
-  tests, metrics exit 0).
+  tests at the time of this review, metrics exit 0; `REVIEW.md` has the
+  current count).
 - **Found and fixed**: `forms/source/README.md` claimed the newline
   escape sequence baked into every `TriggerText` attribute was the
   "literal five-character sequence `&#10;`" -- but a grep of the actual
@@ -30,14 +31,15 @@ non-trivial value?
   fact, and found both call `&#10;` a "seven-character string" -- it's
   five (`len("&#10;") == 5`, confirmed by direct evaluation). This is a
   FormsLang defect, not a lab defect, so it isn't fixed here -- it's
-  reported in `HANDOFF.md`.
+  reported in `HANDOFF.md` (since fixed in FormsLang; see `REVIEW.md`).
 - Also confirmed, by reading `formslang/model.py` directly, that the
   `Item` dataclass captures `lov_name` but has no field at all for
   `ValidateFromList` -- an attribute both this lab's fixtures and
   FormsLang's own `tests/fixtures/showcase/module.xml` actually set to
   `"true"`. This is a real, silent parser gap, also reported in
-  `HANDOFF.md` rather than patched here (patching FormsLang's parser is
-  outside this lab's scope).
+  `HANDOFF.md` rather than patched here (patching FormsLang's parser was
+  outside this lab's scope; since fixed as `Item.validate_from_list`, see
+  `REVIEW.md`).
 
 ## 2. The migration architect -- "does this answer questions I'd actually ask?"
 
@@ -57,12 +59,14 @@ them without contradiction.
   explicitly says "do not do that" about a literal translation.
 - "Which module is the highest-risk piece of this migration?" --
   `assessment/complexity-and-risk-rollup.md` answers this quantitatively
-  (3 of 4 CRITICAL cases converge on `APPROVALS.fmb` and the status
-  matrix it calls into) rather than just asserting it qualitatively.
+  (all 4 CRITICAL cases sit on one surface: the two `APPROVALS.fmb`
+  buttons, LOM-MOD-041/042, and the two package-level rules they bypass,
+  LOM-MOD-002/031) rather than just asserting it qualitatively.
 - "Is there a case where duplicating logic between Forms and PL/SQL is
-  actually low-risk and fine to leave?" -- Yes: LOM-MOD-010 is `LOW` risk,
-  called out explicitly in `docs/modernization-challenges.md` Theme 1 as
-  a harmless instance of the same pattern, alongside the high-risk ones.
+  actually low-risk and fine to leave?" -- Yes: LOM-MOD-010 is `LOW` risk
+  and `CONVERT` (a `CHECK` constraint mirrored in a trigger; nothing to
+  centralize), called out explicitly in `docs/modernization-challenges.md`
+  Theme 1 as the contrast to LOM-MOD-011, alongside the high-risk ones.
   The lab does not flatten every instance of a pattern to the same risk
   level, which would have been a cheaper but less honest way to write it.
 - "Where do I still have to make a judgment call the lab can't make for
@@ -85,9 +89,9 @@ resolves to a real file.
   `assessment/complexity-and-risk-rollup.md` (relative paths
   `../docs/adr/00N-*.md`, confirmed to resolve from that file's own
   directory).
-- `forms/source/README.md` promises "see the FormsLang-improvements
-  handoff document at the root of this lab" -- confirmed that document
-  now exists at `HANDOFF.md`.
+- `forms/source/README.md` points at `HANDOFF.md` (where the
+  parser-error-context gap was first proposed) and `REVIEW.md` (where its
+  fix is recorded) -- both exist at the root of this lab.
 - The top-level `README.md`'s "Running the lab" section gives commands
   that were actually run during this build (`compute_metrics.py`,
   `unittest`), not aspirational ones -- both re-confirmed passing
@@ -128,7 +132,8 @@ Checked: rather than trusting that `metrics/compute_metrics.py` and
   missed until a reader noticed, is itself evidence the tests are load-
   bearing rather than decorative.
 - Re-ran both after every subsequent fixture edit (not just once at the
-  end) -- both still pass (9/9 tests, metrics exit 0) as of this review.
+  end) -- both still passed (9/9 tests, metrics exit 0) as of this review;
+  the suite has grown since, see `REVIEW.md`.
 - Spot-checked one narrative claim against source directly rather than
   trusting the ground-truth JSON's own prose: `docs/business-rules.md`
   states the approval-rejection comment requirement is "enforced in
@@ -139,8 +144,9 @@ Checked: rather than trusting that `metrics/compute_metrics.py` and
 - One limitation this review does not close: the SQL scripts
   (`install.sql`/`seed.sql`/`verify.sql`/`reset.sql`) were validated by
   static review (names and FK order cross-checked against the actual DDL)
-  but never executed against a live Oracle instance in this session, for
-  lack of any stored credential in this environment. This is stated
+  but never executed against a live Oracle instance, because no isolated,
+  disposable schema was available (see `REVIEW.md`, "SQL validation
+  status", for what has and has not been run since). This is stated
   plainly in `README.md`'s "Running the lab" section rather than glossed
   over, and is the one honest gap in this lab's own verification of
   itself.

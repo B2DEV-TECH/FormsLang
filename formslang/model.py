@@ -85,6 +85,12 @@ class Item:
     prompt: str = ""
     canvas: str = ""
     lov_name: str = ""
+    # ``ValidateFromList="true"``: the LOV is a hard constraint (the typed
+    # value must match one of its rows), not just a lookup aid -- a select
+    # list with validation, not a free-text autocomplete, on the APEX side.
+    # ``None`` when Forms2XML omits the attribute, so a reader can tell
+    # "not set" from "set to false".
+    validate_from_list: bool | None = None
     list_elements: int = 0
     triggers: list[Trigger] = field(default_factory=list)
     subclassed: bool = False

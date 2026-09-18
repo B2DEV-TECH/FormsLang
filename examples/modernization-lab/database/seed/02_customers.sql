@@ -2,7 +2,7 @@
 -- LOM seed data -- customers
 -- FACT: customer_id values are fixed (not sequence-generated) so the rest of
 -- the seed data, expected/modernization-ground-truth.json examples, and any
--- documentation can reference them stably. See docs/data-model.md.
+-- documentation can reference them stably. See docs/business-rules.md.
 -- FIXTURE: 1004 is seeded INACTIVE on purpose, to exercise the
 -- LOM_CUSTOMER_API.can_place_order gate (LOM-MOD-019).
 -- =============================================================================

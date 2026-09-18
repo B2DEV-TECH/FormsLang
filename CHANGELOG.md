@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Item.validate_from_list` (`True` / `False` / `None`): the parser now carries
+  Forms2XML's `ValidateFromList` attribute, so a reader can tell an LOV that
+  constrains the value from one that only offers a lookup. `None` means the
+  attribute was absent from the export.
+- `examples/modernization-lab`: hardening pass documented in its `REVIEW.md`
+  (ground-truth reclassifications, doc/registry consistency tests, script
+  hardening).
+
+### Fixed
+
+- `parse_xml` on malformed XML raises `ValueError("<file>: invalid XML at line
+  L, column C: ...")` with the original `ParseError` chained, instead of a
+  bare `ParseError` that does not say which file failed.
+- README and the parser docstring called `&#10;` a seven-character string; it
+  is five.
+
 ## [1.5.0] - 2026-09-12
 
 ### Added
