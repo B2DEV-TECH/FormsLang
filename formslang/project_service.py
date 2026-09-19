@@ -46,11 +46,11 @@ class ProjectService:
         return resolved
 
     def create(self, name: str, *, roots: tuple[SourceRoot, ...] = (),
-               description: str = "", client_label: str = "") -> ProjectDescriptor:
+               description: str = "", client_label: str = "", project_id: str | None = None) -> ProjectDescriptor:
         self._require(rbac.CREATE_PROJECT)
-        if self.access.org_id is not None:
+        if self.access.org_id is not None and (project_id is None or self._authorize_callback is None):
             raise ProjectError("Authenticated creation requires the project intake adapter")
-        descriptor = ProjectDescriptor(id=uuid.uuid4().hex, name=name, source_roots=roots,
+        descriptor = ProjectDescriptor(id=project_id if project_id is not None else uuid.uuid4().hex, name=name, source_roots=roots,
                                        description=description, client_label=client_label)
         validate_descriptor(descriptor)
         for root in roots:
@@ -80,22 +80,22 @@ class ProjectService:
             raise PermissionError('Project operations require fresh authorization')
         return self._authorize_callback() if self._authorize_callback else self.access
 
-    def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None):
+    def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None, started=None):
         from .project_analysis import analyze_project
 
         self.open()
         return analyze_project(self._job_authority(), expected_revision=expected_revision,
             expected_configuration=expected_configuration, authorize=self._job_authority,
-            progress=progress, cancellation=cancellation)
+            progress=progress, cancellation=cancellation, started=started)
 
-    def discover(self):
+    def discover(self, *, expected_revision=..., expected_configuration=...):
         from .project_conversion import discover_project_sources
         from .project_jobs import ProjectJobManager
 
         descriptor = self.open()
         manager = ProjectJobManager(self._job_authority(), self._job_authority)
-        with manager.claim('DISCOVER', expected_revision=descriptor.analysis_revision,
-                           expected_configuration=self._store.configuration_revision()) as lease:
+        with manager.claim('DISCOVER', expected_revision=descriptor.analysis_revision if expected_revision is ... else expected_revision,
+                           expected_configuration=self._store.configuration_revision() if expected_configuration is ... else expected_configuration) as lease:
             result = discover_project_sources(self.access, descriptor, lease.store,
                                                checkpoint=lease.checkpoint, progress=lease.progress, preview=True)
             lease.store.record_discovery(result, run_id=lease.job_id)
@@ -117,7 +117,7 @@ class ProjectService:
         return convert_selected(self._job_authority(), source_id, expected_configuration=expected_configuration,
                                 confirmed=confirmed, authorize=self._job_authority)
 
-    def freshness(self):
+    def freshness(self, *, started=None):
         from .project_freshness import check_freshness
         from .project_jobs import ProjectJobManager
 
@@ -125,11 +125,11 @@ class ProjectService:
         authorize = lambda: self._job_authority(rbac.VIEW_PROJECT)
         manager = ProjectJobManager(authorize(), authorize)
         with manager.claim('FRESHNESS', expected_revision=descriptor.analysis_revision,
-                           expected_configuration=self._store.configuration_revision()) as lease:
+                           expected_configuration=self._store.configuration_revision(), started=started) as lease:
             lease.progress({'phase': 'FRESHNESS', 'processed': 0, 'total': None})
             result = check_freshness(self.access, lease.store.descriptor(), lease.store.load_assessment(),
                                      checkpoint=lease.checkpoint)
-            lease.finish('COMPLETED' if result['status'] == 'CURRENT' else 'COMPLETED_WITH_WARNINGS')
+            lease.finish('COMPLETED' if result['status'] == 'CURRENT' else 'COMPLETED_WITH_WARNINGS', outcome=result)
             return result
 
     def relink(self, root_id, path, *, expected_configuration):

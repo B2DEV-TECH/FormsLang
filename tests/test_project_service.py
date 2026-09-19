@@ -7,7 +7,7 @@ import pytest
 from formslang import ai, authstore, oracle, rbac
 from formslang.project_model import ProjectError, SourceRoot
 from formslang.project_service import ProjectService
-from formslang.projects import authorized_project_access, local_project_access
+from formslang.projects import ProjectAccess, authorized_project_access, local_project_access
 
 
 def test_local_create_reopen_without_provider_or_auth(tmp_path, monkeypatch):
@@ -52,6 +52,22 @@ def test_sources_need_host_authority_and_viewer_cannot_create(tmp_path, monkeypa
     with pytest.raises(PermissionError):
         viewer.import_session(tmp_path / "secret.db", source_key="legacy/source")
     assert not (tmp_path / "project/.formslang").exists()
+
+
+def test_trusted_managed_creation_uses_service_and_fresh_grant(tmp_path):
+    access = ProjectAccess(tmp_path / 'managed', 'actor', 'org', frozenset({rbac.CREATE_PROJECT, rbac.VIEW_PROJECT}), ())
+    service = ProjectService(access, authorize=lambda: access)
+    try:
+        created = service.create('Managed', project_id='b' * 32)
+        assert created.id == 'b' * 32
+        assert service.open().name == 'Managed'
+    finally:
+        service.close()
+    denied = replace(access, root=tmp_path / 'denied')
+    revoked = ProjectService(denied, authorize=lambda: replace(denied, actions=frozenset({rbac.VIEW_PROJECT})))
+    with pytest.raises(PermissionError):
+        revoked.create('Denied', project_id='c' * 32)
+    assert not denied.root.exists()
 
 
 def test_missing_project_is_not_created_by_read(tmp_path, monkeypatch):

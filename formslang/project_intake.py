@@ -8,7 +8,7 @@ import json
 import os
 import tempfile
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,7 +24,7 @@ from .project_model import (
     descriptor_to_dict,
 )
 from .project_service import ProjectService
-from .project_store import ProjectStore
+from .project_store import ProjectStore, replace_mirror
 from .projects import ProjectAccess, authorized_project_access, local_project_access
 
 
@@ -36,9 +36,22 @@ class ProjectIdentity:
     org_id: str
 
 
+def _path_spelling(path):
+    # Windows realpath may retain its extended prefix during concurrent mkdir.
+    # Normalize only DOS/UNC aliases, never GLOBALROOT or a different target.
+    value = str(path)
+    if os.name == 'nt':
+        if value.startswith('\\\\?\\UNC\\'):
+            return Path('\\\\' + value[8:])
+        if (value.startswith('\\\\?\\') and len(value) > 6 and value[4].isascii()
+                and value[4].isalpha() and value[5:7] == ':\\'):
+            return Path(value[4:])
+    return path
+
+
 def _plain_path(value):
-    path = Path(os.path.abspath(value))
-    if path.resolve() != path:
+    path = _path_spelling(Path(os.path.abspath(value)))
+    if _path_spelling(path.resolve()) != path:
         raise ProjectError('Redirected path is not an authorized location')
     return path
 
@@ -51,16 +64,17 @@ def _atomic_json(path, payload):
             stream.write(canonical_json(payload))
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        replace_mirror(Path(temporary), path)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
 
 class ProjectIntake:
-    def __init__(self, data_dir, config_dir, *, identity=None):
+    def __init__(self, data_dir, config_dir, *, identity=None, auth_db_path=None):
         self.data_dir = _plain_path(data_dir)
         self.config_dir = _plain_path(config_dir)
         self.identity = identity
+        self.auth_db_path = _plain_path(auth_db_path or self.data_dir / 'auth.db')
         self.metadata_root = self.config_dir / 'project-intake'
 
     def _local(self):
@@ -72,7 +86,7 @@ class ProjectIntake:
     def _auth(self, action=rbac.VIEW_PROJECT):
         if not isinstance(self.identity, ProjectIdentity):
             raise PermissionError('An authenticated session is required')
-        store = authstore.AuthStore(_plain_path(self.data_dir / 'auth.db'))
+        store = authstore.AuthStore(_plain_path(self.auth_db_path))
         try:
             session = store.get_session(self.identity.token)
             if (session is None or session['scope'] != authstore.NORMAL or
@@ -111,7 +125,7 @@ class ProjectIntake:
     def _metadata(self, *, write=False):
         directory = _plain_path(self.metadata_root / '.formslang')
         directory.mkdir(parents=True, exist_ok=True)
-        with project_worker_lock(self.metadata_root):
+        with project_worker_lock(self.metadata_root) if write else nullcontext():
             path = _plain_path(directory / 'locators.json')
             try:
                 if path.exists():
@@ -132,6 +146,8 @@ class ProjectIntake:
 
     def select_source(self, path, kind):
         actor = self._local()
+        if not isinstance(path, (str, Path)) or not str(path).strip():
+            raise ProjectError('Select a source folder explicitly')
         if kind not in {'forms', 'database', 'supporting'}:
             raise ProjectError('Unknown source type')
         selected = _plain_path(path)
@@ -269,7 +285,17 @@ class ProjectIntake:
                     finally:
                         store.close()
                 else:
-                    ProjectStore.create(root, descriptor).close()
+                    def authorize_initialization():
+                        with self._auth(rbac.CREATE_PROJECT):
+                            if self._selections(selections) != roots:
+                                raise PermissionError('Source authority changed during project initialization')
+                            return access
+                    service = ProjectService(access, authorize=authorize_initialization)
+                    try:
+                        service.create(name, roots=roots, description=description,
+                                       client_label=client_label, project_id=pid)
+                    finally:
+                        service.close()
                 registry.register_modernization_project(owner.org_id, pid, data_dir=self.data_dir, created_by=owner.user_id)
             with self._metadata(write=True) as metadata:
                 metadata['projects'][pid].pop('pending_key', None)

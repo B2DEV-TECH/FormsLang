@@ -76,7 +76,7 @@ class JobLease:
             db.execute('UPDATE project_job SET phase=?,processed=?,total=?,warnings_count=?,errors_count=?,heartbeat=? WHERE job_id=?',
                        (phase, processed, total, warnings, errors, now(), self.job_id))
 
-    def finish(self, status, safe_failure=None):
+    def finish(self, status, safe_failure=None, *, outcome=None):
         if status not in TERMINAL:
             raise ProjectError('Invalid job terminal state')
         with self.store._write() as db:
@@ -89,6 +89,8 @@ class JobLease:
                 status, safe_failure = 'CANCELLED', None
             db.execute('UPDATE project_job SET status=?,finished_at=?,heartbeat=?,safe_failure_json=? WHERE job_id=?',
                        (status, now(), now(), canonical_json(safe_failure) if safe_failure else None, self.job_id))
+            if outcome is not None:
+                db.execute('UPDATE project_job SET outcome_json=? WHERE job_id=?', (canonical_json(outcome), self.job_id))
 
 
 class ProjectJobManager:
@@ -125,7 +127,7 @@ class ProjectJobManager:
             return []
 
     @contextmanager
-    def claim(self, operation, *, expected_revision, expected_configuration):
+    def claim(self, operation, *, expected_revision, expected_configuration, started=None):
         if operation not in {'ANALYZE', 'DISCOVER', 'FRESHNESS', 'CONVERT'}:
             raise ProjectError('Unknown project operation')
         fresh = self._authorize(rbac.VIEW_PROJECT if operation == 'FRESHNESS' else rbac.RUN_CONVERSION)
@@ -137,15 +139,17 @@ class ProjectJobManager:
                 with store._write() as db:
                     if store.descriptor().analysis_revision != expected_revision or store.configuration_revision() != expected_configuration:
                         raise RevisionConflict('Project changed; reload before starting analysis')
-                    job_id, token, started = uuid.uuid4().hex, uuid.uuid4().hex, now()
+                    job_id, token, started_at = uuid.uuid4().hex, uuid.uuid4().hex, now()
                     db.execute('''INSERT INTO project_job(job_id,project_id,operation,requested_revision,
                         requested_configuration,status,phase,started_at,owner_token,owner_pid,heartbeat)
                         VALUES (?,?,?,?,?,'QUEUED','DISCOVERY',?,?,?,?)''',
                         (job_id, store.descriptor().id, operation, expected_revision, expected_configuration,
-                         started, token, os.getpid(), started))
+                         started_at, token, os.getpid(), started_at))
                 lease = JobLease(self, store, job_id, token)
                 with store._write() as db:
                     db.execute("UPDATE project_job SET status='RUNNING' WHERE job_id=?", (job_id,))
+                if started is not None:
+                    started(job_id)
                 yield lease
             except AnalysisCancelled:
                 if lease:

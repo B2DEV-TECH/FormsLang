@@ -27,18 +27,18 @@ def _failure(code, message, remediation):
 
 
 def analyze_project(access, *, expected_revision, expected_configuration, authorize,
-                    progress=None, cancellation=None):
+                    progress=None, cancellation=None, started=None):
     manager = ProjectJobManager(access, authorize)
-    started = time.perf_counter()
+    analysis_started = time.perf_counter()
     durations = {}
-    current_phase, phase_started = None, started
+    current_phase, phase_started = None, analysis_started
     job_id = None
     denied = None
     counts = {'warnings_count': 0, 'errors_count': 0}
     diagnostics = []
     inventory = {}
     with manager.claim('ANALYZE', expected_revision=expected_revision,
-                       expected_configuration=expected_configuration) as lease:
+                       expected_configuration=expected_configuration, started=started) as lease:
         job_id = lease.job_id
 
         def checkpoint():
@@ -60,7 +60,7 @@ def analyze_project(access, *, expected_revision, expected_configuration, author
             event = {**counts, **event}
             lease.progress(event)
             if progress:
-                progress({**event, 'job_id': job_id, 'elapsed_ms': int((clock - started) * 1000)})
+                progress({**event, 'job_id': job_id, 'elapsed_ms': int((clock - analysis_started) * 1000)})
             checkpoint()
 
         def phase(name):
@@ -119,7 +119,7 @@ def analyze_project(access, *, expected_revision, expected_configuration, author
                 durations[current_phase] = durations.get(current_phase, 0) + (time.perf_counter() - phase_started) * 1000
             metadata = {'phase_duration_ms': {k: round(v, 3) for k, v in durations.items()},
                         'diagnostics': diagnostics, 'inventory': inventory,
-                        'total_duration_ms': round((time.perf_counter() - started) * 1000, 3)}
+                        'total_duration_ms': round((time.perf_counter() - analysis_started) * 1000, 3)}
             with lease.store._write() as db:
                 db.execute('INSERT INTO project_analysis_run VALUES (?,?)', (job_id, canonical_json(metadata)))
     if denied:

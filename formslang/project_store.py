@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import time
 from contextlib import closing, contextmanager
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -88,6 +89,18 @@ def contained_path(directory: Path, relative: str) -> Path:
     if not candidate.resolve().is_relative_to(base):
         raise ProjectError("Project path escapes its storage directory")
     return candidate
+
+
+def replace_mirror(source: Path, destination: Path) -> None:
+    """Atomic replace with a bounded Windows reader-sharing retry, never fallback writes."""
+    for attempt in range(10):
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as exc:
+            if os.name != 'nt' or getattr(exc, 'winerror', None) not in {5, 32, 33} or attempt == 9:
+                raise
+            time.sleep(.025)
 
 
 class ProjectStore:
@@ -282,7 +295,7 @@ class ProjectStore:
                     temporary.unlink(missing_ok=True)
                     raise
             try:
-                os.replace(temporary, destination)
+                replace_mirror(temporary, destination)
             finally:
                 temporary.unlink(missing_ok=True)
         except OSError as exc:

@@ -265,9 +265,10 @@ def test_selected_area_cannot_be_redirected_by_junction(intake, project_sources)
     assert (moved / 'orders.xml').is_file()
 
 
-def _create_local_worker(data, config, source, name, result):
+def _create_local_worker(data, config, source, name, result, ready):
     from formslang.project_intake import ProjectIntake
     intake = ProjectIntake(data, config)
+    ready.wait(timeout=10)
     for _ in range(100):
         try:
             selected = intake.select_source(source, 'forms')
@@ -287,8 +288,9 @@ def _create_local_worker(data, config, source, name, result):
 def test_concurrent_locator_updates_do_not_lose_projects(intake, project_sources):
     ctx = multiprocessing.get_context('spawn')
     results = ctx.Queue()
+    ready = ctx.Barrier(2)
     workers = [ctx.Process(target=_create_local_worker, args=(intake.data_dir, intake.config_dir,
-                project_sources[2].parent, name, results)) for name in ('A', 'B')]
+                project_sources[2].parent, name, results, ready)) for name in ('A', 'B')]
     for worker in workers:
         worker.start()
     try:
@@ -334,3 +336,33 @@ def test_authenticated_relink_and_conversion_are_audited(tenant_intake, auth_sto
     events = auth_store.list_audit_events(org_id=owner['organization_id'])
     types = {e['event_type'] for e in events}
     assert {'PROJECT_CREATED', 'PROJECT_SOURCES_RELINKED', 'PROJECT_SOURCE_CONVERTED'} <= types
+
+
+def test_locator_reads_use_committed_snapshot_during_metadata_write(intake, project_sources):
+    selected = intake.select_source(project_sources[2].parent, 'forms')
+    pid = intake.create('Readable', [selected])['project']['id']
+    with intake._metadata(write=True) as pending:
+        pending['projects'] = {}
+        assert intake.list_recent()[0]['project']['id'] == pid
+    assert intake.list_recent() == []
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows extended-path spelling regression')
+@pytest.mark.parametrize('redirected', [False, True])
+def test_extended_windows_prefix_is_not_itself_a_redirect(tmp_path, monkeypatch, redirected):
+    from pathlib import Path
+
+    from formslang.project_intake import _plain_path
+    requested = tmp_path / 'config/project-intake/.formslang'
+    original = Path.resolve
+    def resolved(path, *a, **k):
+        if path == requested:
+            destination = tmp_path / 'foreign' if redirected else requested
+            return Path('\\\\?\\' + str(destination))
+        return original(path, *a, **k)
+    monkeypatch.setattr(Path, 'resolve', resolved)
+    if redirected:
+        with pytest.raises(ProjectError):
+            _plain_path(requested)
+    else:
+        assert _plain_path(requested) == requested

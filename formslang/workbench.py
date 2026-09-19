@@ -130,6 +130,8 @@ class Workbench:
         # what it was before this existed.
         self.auth_store = auth_store
         self.auth_data_dir = Path(auth_data_dir) if auth_data_dir is not None else None
+        from .project_http import ProjectHTTP
+        self.project_api = ProjectHTTP(self)
         self._lock = threading.RLock()
         self._blueprint_cache = None
         self._blueprint_ai_jobs = OrderedDict()
@@ -1298,7 +1300,10 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin") or ""
         if not origin:
             return False
-        host = urlsplit(origin).hostname or ""
+        try:
+            host = urlsplit(origin).hostname or ""
+        except ValueError:
+            return False
         return host in {"127.0.0.1", "localhost", "::1"}
 
     def _session_cookie_header(self, raw_token: str) -> str:
@@ -1378,7 +1383,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
         try:
-            if wb.auth_store is None and (
+            if path.startswith('/api/v2/'):
+                status, payload = wb.project_api.dispatch('GET', path, {k: v[0] for k, v in parse_qs(query).items()}, {}, auth)
+                self._json(payload, status)
+            elif wb.auth_store is None and (
                 path.startswith(("/api/auth/", "/api/projects"))
             ):
                 # A 404, not a 401 -- with the subsystem off, these routes
@@ -1498,6 +1506,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         auth = None
+        if path.startswith('/api/v2/') and self.headers.get('Origin') and not self._origin_is_allowed():
+            self._drain()
+            self._json({'error': 'forbidden origin'}, 403)
+            return
         if wb.auth_store is not None:
             # Auth mode's own layer on top of the Content-Type gate above: a
             # strict Origin check on every mutating request, and an
@@ -1543,7 +1555,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            if path.startswith("/api/blueprint/"):
+            if path.startswith('/api/v2/'):
+                status, payload = wb.project_api.dispatch('POST', path, {k: v[0] for k, v in parse_qs(query).items()}, body, auth)
+                self._json(payload, status)
+            elif path.startswith("/api/blueprint/"):
                 with wb._lock:
                     action = rbac.APPROVE_AI_PROPOSAL if path.endswith("/review") else rbac.RUN_CONVERSION
                     if path.endswith("/export"):
@@ -1904,4 +1919,5 @@ def serve(
     except KeyboardInterrupt:
         print("\nStopped. The session file keeps every decision.")
     finally:
+        workbench.project_api.close()
         httpd.server_close()
