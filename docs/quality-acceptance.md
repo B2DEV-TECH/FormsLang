@@ -6,6 +6,67 @@ application can be migrated faithfully; each section says where real
 Forms/APEX testing still has to happen. The release steps that produce
 these sections are in [releasing.md](releasing.md).
 
+## 1.6.0 verification (2026-09-19, America/Sao_Paulo)
+
+Published [FormsLang 1.6.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.6.0).
+Binary source: annotated tag `v1.6.0`, commit
+`7563431792e4f6e4d1360e32328be5cbec69e113`. This acceptance record is a later
+documentation-only change.
+
+- Local full suite: **1,134 passed, two skipped** (local symlink permissions),
+  Python 3.13.
+- [CI 35442199131](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35442199131):
+  **11 of 12 jobs passed; `ruff` failed.** All eight Windows/Ubuntu and Python
+  3.10-3.13 test combinations passed, as did deterministic export, SQLcl offline
+  APEX validation and the Edge browser acceptance. The lint job reported seven
+  errors -- three `SIM102`, one `SIM114`, one `PIE810`, one `I001` and one
+  `F841` for a variable assigned and never read inside a function that had no
+  caller -- introduced by the modernization-lab commits of 2026-09-18 and
+  inherited by the release commit; `main` had been red on this job since
+  `feat(examples): add Legacy Order Management modernization lab`. They are
+  fixed in a follow-up commit, not in the tagged one: the fixes are
+  behaviour-preserving, and re-running the benchmark with them applied produced
+  predictions identical to the frozen v3 baseline in every scored field, with
+  only `forms_lang_version`, `generated_at` and `source_commit` differing. The
+  release was published from the tag as-is rather than re-tagged, so the
+  published binaries are exactly the ones acceptance tested.
+- [Installer acceptance 35442203266](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35442203266):
+  all three jobs passed. The NSIS and MSI installers passed clean installation
+  and upgrade from 1.5.0 on separate Windows runners. The saved approval, the
+  source session and the deterministic export survived the upgrade, with the
+  export SHA-256 unchanged at
+  `18286b139f384591db58a325d97d962825cb1d5a2414607fe32b9555a42e1d7a` before and
+  after. Published installers came from this run's `installers-1.6.0` artifact;
+  downloaded file hashes matched the build log.
+- Modernization benchmark: baseline v3 was generated once and frozen in the same
+  command, and the run verified the ground-truth SHA-256 unchanged
+  (`4b43e879e6124c7b2821ffedfc64c3ff19a825f61b39d7b911d9da209ce69615`). All
+  sixteen files of `baselines/v1`, `baselines/v2` and the ground-truth registry
+  were re-hashed after the release work: sixteen identical, zero divergent.
+- Oracle fixtures: the lab's SQL was installed, seeded, verified and reset in a
+  disposable schema on Oracle AI Database 26ai Free 23.26.3.0.0. Fifty-four
+  objects were created, all `VALID`, with 6/6 fixture assertions `OK`. This
+  validates the fixtures, not the predictions: no engine output was checked
+  against a running database.
+
+Published installer SHA-256 values, verified against GitHub asset digests:
+
+| Asset | SHA-256 |
+|---|---|
+| `FormsLang_1.6.0_x64-setup.exe` | `7f3637c648dec20b544e38940dee553d83299d5b5e1676ccc6a5c21be25d812c` |
+| `FormsLang_1.6.0_x64_en-US.msi` | `ad691ddbdb3f1d1a38cd88360839a9e90ae16625bf19010b8a0afe51507f58b9` |
+
+This release changes modernization reasoning and adds standalone database
+ingestion. The benchmark figures it reports were measured on the synthetic
+Legacy Order Management lab that ships in this repository, under the protocol
+in `examples/modernization-lab/benchmark/protocol.md`. They are a
+project-owned reproducible measurement and establish neither Oracle
+Forms/APEX runtime fidelity nor migration correctness for any real
+application. No customer application was used. Four cases the previous
+baseline classified correctly are now wrong, and one concurrency finding is
+emitted without a risk grade; both are recorded in
+`examples/modernization-lab/benchmark/baselines/v3/comparison-v1-v2-v3.md`.
+
 ## 1.5.0 verification (2026-09-12, America/Sao_Paulo)
 
 Published [FormsLang 1.5.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.5.0).
