@@ -111,7 +111,7 @@ def _validate_completion(value: dict) -> None:
             raise ProjectError('Invalid diagnostic code or remediation')
 
 
-def current_assessment(store, *, expected_engines: dict[str, str]) -> dict | None:
+def current_assessment(store, *, expected_engines: dict[str, str], freshness=None) -> dict | None:
     # All projections must refer to one read snapshot, including external writers.
     db = store.session.db
     if db.in_transaction:
@@ -125,8 +125,12 @@ def current_assessment(store, *, expected_engines: dict[str, str]) -> dict | Non
         reviewed = store.session.blueprint()
         result["blueprint"] = reviewed
         result["review_revision"] = db.execute("SELECT review_revision FROM modernization_project WHERE id=1").fetchone()[0]
-        if saved["engine_identity"] != expected_engines:
-            result["status"] = "Stale"
+        if (saved["engine_identity"] != expected_engines or
+                (freshness is not None and (freshness.get('status') != 'CURRENT' or
+                 freshness.get('analysis_revision') != saved['analysis_revision']))):
+            result["status"] = ("Incomplete" if freshness is not None and freshness.get('status') == 'INCOMPLETE'
+                                and freshness.get('analysis_revision') == saved['analysis_revision']
+                                and saved['engine_identity'] == expected_engines else "Stale")
             for finding in reviewed["findings"]:
                 if finding.get("review_history"):
                     finding["review_state"] = "STALE"

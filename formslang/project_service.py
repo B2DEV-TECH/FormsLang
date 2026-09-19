@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 from . import authstore, rbac
@@ -63,11 +64,15 @@ class ProjectService:
         self._require(rbac.VIEW_PROJECT)
         if self._store is None:
             self._store = ProjectStore.open(self.access.root)
+            if self.access.org_id is None or self._authorize_callback is not None:
+                from .project_jobs import ProjectJobManager
+                authorize = lambda: self._job_authority(rbac.VIEW_PROJECT)
+                ProjectJobManager(authorize(), authorize).recover()
         return self._store.descriptor()
 
-    def assessment(self) -> dict | None:
+    def assessment(self, *, freshness=None) -> dict | None:
         self.open()
-        return current_assessment(self._store, expected_engines=engine_identity())
+        return current_assessment(self._store, expected_engines=engine_identity(), freshness=freshness)
 
     def _job_authority(self, action=rbac.RUN_CONVERSION):
         self._require(action)
@@ -104,6 +109,44 @@ class ProjectService:
     def cancel(self, job_id):
         from .project_jobs import ProjectJobManager
         return ProjectJobManager(self._job_authority(), self._job_authority).cancel(job_id)
+
+    def freshness(self):
+        from .project_freshness import check_freshness
+        from .project_jobs import ProjectJobManager
+
+        descriptor = self.open()
+        authorize = lambda: self._job_authority(rbac.VIEW_PROJECT)
+        manager = ProjectJobManager(authorize(), authorize)
+        with manager.claim('FRESHNESS', expected_revision=descriptor.analysis_revision,
+                           expected_configuration=self._store.configuration_revision()) as lease:
+            lease.progress({'phase': 'FRESHNESS', 'processed': 0, 'total': None})
+            result = check_freshness(self.access, lease.store.descriptor(), lease.store.load_assessment(),
+                                     checkpoint=lease.checkpoint)
+            lease.finish('COMPLETED' if result['status'] == 'CURRENT' else 'COMPLETED_WITH_WARNINGS')
+            return result
+
+    def relink(self, root_id, path, *, expected_configuration):
+        from .project_discovery import authorized_roots
+        from .project_jobs import ProjectJobManager
+        from .project_lock import project_worker_lock
+
+        self._job_authority()
+        self.open()
+        with project_worker_lock(self.access.root):
+            self._job_authority()
+            descriptor = self._store.descriptor()
+            if root_id not in {root.id for root in descriptor.source_roots}:
+                raise ProjectError('Unknown source root')
+            raw = self.access.root / Path(path)
+            resolved = self._source(raw)
+            if raw.absolute() != resolved or not resolved.is_dir():
+                raise ProjectError('Select an available source folder without redirects')
+            spelling = resolved.relative_to(self.access.root).as_posix() if resolved.is_relative_to(self.access.root) else str(resolved)
+            roots = tuple(replace(root, path=spelling) if root.id == root_id else root for root in descriptor.source_roots)
+            authorized_roots(self.access, replace(descriptor, source_roots=roots))
+            ProjectJobManager._recover_locked(self._store)
+            self._store.replace_roots(roots, expected_configuration=expected_configuration)
+        return {'descriptor': self.open(), 'freshness': self.freshness()}
 
     def import_session(self, source: Path, *, source_key: str) -> dict:
         self._require(rbac.ADOPT_PROJECT)
