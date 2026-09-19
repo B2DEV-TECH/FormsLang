@@ -1,6 +1,7 @@
 # FormsLang 2.0 product architecture
 
-Status: proposed architecture for review; implementation and release acceptance are not complete.
+Status: architecture approved by the project owner on 2026-09-19;
+implementation and release acceptance are not complete.
 
 Date: 2026-09-19. Audited source: `d592998`, following release `v1.6.0` at
 `7563431792e4f6e4d1360e32328be5cbec69e113`.
@@ -743,4 +744,4 @@ review effort, improve decisions, improve trust or improve delivery.
 - Migration preserves originals and full history: required with tests.
 - Product scope and release gates: P0 before optional expansion.
 - Benchmark history and customer confidentiality: immutable/public-safe boundaries.
-- Implementation status: proposed; no feature or release claim is made by this document.
+- Implementation status: design approved; no feature or release claim is made by this document.
