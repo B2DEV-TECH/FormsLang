@@ -63,6 +63,8 @@ rewritten to achieve this stronger project contract.
 source/analysis revisions, engine identity, options, analysis timestamp and status.
 Binding changes finding revision identities, not deterministic recommendations.
 Architectural history remains in the existing append-only Blueprint review table.
+A finding retains its original engine revision; publication verifies the derived
+project finding revision against the current analysis revision before writing.
 A project-local trigger increments the review revision for each committed review;
 rolled-back reviews do not advance it. Conversion approval remains separate.
 
@@ -123,3 +125,5 @@ Creation needs no provider, Oracle connection or account in local mode.
 Authenticated mode rejects local shortcuts. Server adapters must obtain a fresh
 authorized project context on every request, honoring membership and RBAC; the
 in-process context is not a credential that can be submitted by a browser.
+Registered paths are checked before canonicalization so an adopted project cannot
+hide a junction into another organization's project under the same data directory.

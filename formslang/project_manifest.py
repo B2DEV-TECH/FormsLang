@@ -119,14 +119,16 @@ def source_revision(entries: tuple[ManifestEntry, ...], options: dict) -> str:
 
 def engine_identity() -> dict[str, str]:
     names = ("parser", "database", "analysis", "plsql", "plsql_evidence", "rules",
-             "risk", "modernization", "blueprint", "assess", "depgraph", "behavior")
+             "risk", "modernization", "blueprint", "assess", "depgraph", "behavior",
+             "dashboard", "testspec", "sensitive", "model", "store", "convert",
+             "project_assessment", "project_manifest")
     result = {"project_analysis": "project-analysis/1"}
     try:
         package = resources.files("formslang")
         for name in names:
             result[name + ".sha256"] = hashlib.sha256(package.joinpath(name + ".py").read_bytes()).hexdigest()
             module = importlib.import_module("formslang." + name)
-            for attr in ("VERSION", "ENGINE_VERSION"):
+            for attr in sorted(name for name in vars(module) if name.isupper() and name.endswith("VERSION")):
                 if isinstance(value := getattr(module, attr, None), str):
                     result[name + "." + attr] = value
     except (OSError, TypeError, ModuleNotFoundError) as exc:

@@ -24,7 +24,8 @@ def bind_assessment(descriptor: ProjectDescriptor, manifest: tuple[ManifestEntry
     bound["source_revision"] = source_rev
     bound["project_analysis_revision"] = revision
     for finding in bound["findings"]:
-        finding["revision"] = blueprint.digest(["project-finding/1", revision, finding["revision"]])
+        finding["engine_finding_revision"] = finding["revision"]
+        finding["revision"] = blueprint.digest(["project-finding/1", revision, finding["engine_finding_revision"]])
     result = {"schema_version": "project-assessment/1", "project_id": descriptor.id,
         "source_manifest": [asdict(e) for e in manifest], "source_revision": source_rev,
         "analysis_revision": revision, "engine_identity": copy.deepcopy(engines),
@@ -61,6 +62,12 @@ def validate_assessment(descriptor: ProjectDescriptor, value: dict) -> None:
         if (bp["schema_version"] != blueprint.VERSION or bp["source_revision"] != expected_source
                 or bp["project_analysis_revision"] != expected_analysis):
             raise ProjectError("Blueprint provenance mismatch")
+        for finding in bp["findings"]:
+            original = finding.get("engine_finding_revision")
+            if not isinstance(original, str) or finding["revision"] != blueprint.digest([
+                "project-finding/1", expected_analysis, original,
+            ]):
+                raise ProjectError("Finding revision does not match project analysis")
         if value["status"] == "Current" and (not entries or bp["failures"] or
                 any(e.selected and e.status != "available" for e in entries)):
             raise ProjectError("Partial assessment cannot be Current")

@@ -30,6 +30,9 @@ or switch its project identity while an operation is running. Project creation
 does not initialize AuthStore. Authenticated access goes through the existing
 registry authorization check before its stored path is resolved; legacy registry
 entries retain their legacy interface until explicit project migration.
+The original registered spelling is checked for redirects before the legacy path
+resolver canonicalizes it. A real Windows junction regression exercises this
+boundary; checking only containment in the global data directory is insufficient.
 
 Read projections use one SQLite read transaction. Assessment publication uses
 compare-and-swap inside a write transaction, preventing competing analyses from

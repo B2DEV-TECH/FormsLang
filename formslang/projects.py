@@ -65,6 +65,12 @@ def authorized_project_access(store: authstore.AuthStore, project_id: str, *,
                               data_dir: Path, approved_roots: tuple[Path, ...]) -> ProjectAccess:
     project = authorize_project_access(store, user_id, active_org_id, project_id, action)
     authorize_project_access(store, user_id, active_org_id, project_id, rbac.VIEW_PROJECT)
+    # Inspect the registered spelling BEFORE the legacy resolver canonicalizes it.
+    # Otherwise an adopted junction into another tenant under data_dir is hidden.
+    registered = Path(project["external_path"] if project["storage_mode"] == authstore.EXTERNAL_LEGACY
+                      else project["session_db_path"]).absolute()
+    if registered.resolve() != registered:
+        raise ProjectError("Registered project path is redirected")
     path = resolve_project_path(project, data_dir=data_dir)
     if path.name != "project.session.db" or path.parent.name != ".formslang":
         raise ProjectError("Legacy registry entry requires explicit project migration")

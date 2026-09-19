@@ -10,9 +10,11 @@
 
 **Spec:** [Approved product architecture](../../formsLang-2-product-architecture.md), especially sections 3, 5, 6, 9, 16, 18 and 20. [Current-state audit](../../formsLang-2-current-state-audit.md) records the starting evidence.
 
-**Status:** Approved for native execution on 2026-09-19. Tasks 1-6 are implemented;
-Task 7 acceptance and documentation are implemented, with final verification and
-independent branch review in progress. This is Phase A, not a 2.0 release.
+**Status:** Phase A implemented and verified on 2026-09-19. All seven tasks are
+complete. Independent review found three Important issues; each was reproduced
+RED, fixed and verified GREEN. Final suite: 1,217 passed / four OS symlink skips;
+browser 101/101; Ruff clean. Integration decision remains with the owner.
+This is Phase A, not a 2.0 release. See [acceptance record](../../quality-acceptance.md).
 
 ## Execution record
 
