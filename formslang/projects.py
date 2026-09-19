@@ -15,12 +15,15 @@ and have it opened.
 
 from __future__ import annotations
 
+import getpass
 import os
 import shutil
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import authstore, rbac
+from .project_model import ProjectError
 from .store import Store
 
 
@@ -37,6 +40,45 @@ class ProjectPathEscape(ValueError):
     only at adoption time, in case the on-disk layout was tampered with
     after the fact.
     """
+
+
+@dataclass(frozen=True)
+class ProjectAccess:
+    """Server-created, request-scoped authority; never deserialize from a client."""
+
+    root: Path
+    actor: str
+    org_id: str | None
+    actions: frozenset[str]
+    source_roots: tuple[Path, ...]
+
+
+def local_project_access(root: Path, *, approved_roots: tuple[Path, ...]) -> ProjectAccess:
+    if authstore.auth_enabled():
+        raise PermissionError("Authenticated mode requires project membership")
+    return ProjectAccess(Path(root).resolve(), getpass.getuser(), None,
+                         frozenset(rbac.ACTIONS), tuple(Path(p).resolve() for p in approved_roots))
+
+
+def authorized_project_access(store: authstore.AuthStore, project_id: str, *,
+                              active_org_id: str, user_id: str, action: str,
+                              data_dir: Path, approved_roots: tuple[Path, ...]) -> ProjectAccess:
+    project = authorize_project_access(store, user_id, active_org_id, project_id, action)
+    authorize_project_access(store, user_id, active_org_id, project_id, rbac.VIEW_PROJECT)
+    # Inspect the registered spelling BEFORE the legacy resolver canonicalizes it.
+    # Otherwise an adopted junction into another tenant under data_dir is hidden.
+    registered = Path(project["external_path"] if project["storage_mode"] == authstore.EXTERNAL_LEGACY
+                      else project["session_db_path"]).absolute()
+    if registered.resolve() != registered:
+        raise ProjectError("Registered project path is redirected")
+    path = resolve_project_path(project, data_dir=data_dir)
+    if path.name != "project.session.db" or path.parent.name != ".formslang":
+        raise ProjectError("Legacy registry entry requires explicit project migration")
+    root = path.absolute().parent.parent
+    if root.resolve() != root or path.resolve() != path.absolute() or not path.is_file():
+        raise ProjectError("Registered project path is unavailable or redirected")
+    return ProjectAccess(root, user_id, active_org_id, frozenset({action, rbac.VIEW_PROJECT}),
+                         tuple(Path(p).resolve() for p in approved_roots))
 
 
 def resolve_project_path(project: dict, *, data_dir: Path | str) -> Path:

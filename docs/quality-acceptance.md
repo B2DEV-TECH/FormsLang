@@ -6,6 +6,85 @@ application can be migrated faithfully; each section says where real
 Forms/APEX testing still has to happen. The release steps that produce
 these sections are in [releasing.md](releasing.md).
 
+## 2.0 Phase A foundation verification (2026-09-19)
+
+This is a development milestone, **not a FormsLang 2.0 release**. Implementation
+base: `7191ec8`; initial acceptance commit: `99e323c`. Product versions remain
+1.6.0. No tag, remote publication, installer build or database import was performed.
+
+- Windows / Python 3.13 full local suite: **1,214 passed, four skipped**, 139.52 s.
+- Ruff: **all checks passed**. Git whitespace check passed.
+- Existing Workbench browser acceptance: **101/101 checks**, 27 screenshots,
+  local run `run-bce6a132b3d3` under `scratch_tmp/phase-a-browser/`.
+  Its explanation provider is an explicitly synthetic offline stub, not a live AI.
+- New foundation acceptance: real Forms XML parsing and Blueprint, committed
+  architectural review, close/reopen, relocation and two-process publication race.
+- Migration acceptance: original session preservation, complete legacy table
+  comparison, committed WAL state, duplicate module identities, retry after
+  interruption, injected migration failure and identical APEXlang export ZIP bytes.
+- Frozen benchmark baselines and ground truth: **24 tracked files compared with
+  implementation base, zero content differences**. No baseline was regenerated.
+
+New OS symlink tests were skipped because this Windows account cannot create
+symlinks; lexical traversal and invalid-path cases did execute. Do not treat those
+OS skips as proof of junction/symlink behavior on other environments.
+
+The implemented scope is a project application-library foundation, documented in
+[project model](project-model.md) and [implementation architecture](architecture-2.md).
+It does not yet include project onboarding UI, project HTTP/CLI commands, analysis
+jobs, reports, project generation or live source freshness on reopen. Independent
+branch review and resulting fixes are recorded below.
+Installer upgrade from 1.6.0, clean-machine UX, frozen fingerprint resources,
+100/500-form performance, and connected Oracle/APEX validation remain later gates.
+
+### Independent Phase A review
+
+A fresh-context read-only reviewer inspected `7191ec8..99e323c` and identified
+three Important findings, with no Critical or Minor findings. The implementer
+independently reproduced all three as failing tests before changing product code:
+
+1. An ADOPTED registered path could hide a cross-tenant directory junction after
+   the legacy resolver canonicalized it. The new project access boundary now
+   validates the registered spelling before resolution. The regression uses a
+   real Windows NTFS junction and ran successfully, not as a symlink skip.
+2. Publication validated outer revisions but not each finding's binding. Findings
+   now retain the original engine revision, and publication checks its derivation
+   against the current project analysis revision before any transaction writes.
+3. The engine identity omitted persisted readiness dependencies. Fingerprinting
+   now includes dashboard, test specifications, model, sensitive-source analysis,
+   Store/conversion dependencies and the project binding code; relevant public
+   version constants also participate.
+
+Final corrected-tree verification: **1,217 passed, four skipped**, 141.40 s;
+Ruff and Git whitespace checks passed. All four skips were OS symlink-privilege
+limitations; the new Windows junction security regression **passed**. Browser
+acceptance was rerun after the fixes: **101/101 checks**, 27 screenshots, run
+`run-4025b7d72189` under `scratch_tmp/phase-a-browser-final/`. All 24 frozen files
+were compared again with the implementation base and remained unchanged.
+No second reviewer pass is implied by the implementer's regression verification.
+
+### Execution decisions and remaining boundaries
+
+- Engine identity includes additional transitive dependencies: conservative
+  invalidation is preferable to keeping approvals after changed reasoning.
+- Intake options bind source revision; all analysis options and the target bind
+  analysis revision. Consumers must preserve that distinction.
+- Assessment publication and validation were delivered together in Task 4 rather
+  than publishing a temporarily unvalidated storage API in Task 3.
+- Exclusive directory reservation plus hardlink publication replaces POSIX
+  directory rename, which can overwrite an empty destination. Filesystems without
+  hardlink support fail explicitly; failed pre-publication reservations may need
+  inspection. Existing user data is not overwritten to recover them.
+- UI/API/CLI, discovery, jobs and generation remain later phases: they are not yet
+  available through this foundation. Saved Current is not a live filesystem check.
+- Authenticated contexts are request-scoped; later adapters must reauthorize each
+  request. Caching one indefinitely would defeat membership revocation.
+- Frozen fingerprint resources, installer upgrades, scale and full-product
+  acceptance remain unverified release gates, not implied by unit acceptance.
+- Instantaneous filesystem replacement by a compromised OS account remains outside
+  the application isolation boundary. Pre-existing cross-tenant redirects are
+  explicitly in scope and covered by the new real-junction test.
+
 ## 1.6.0 verification (2026-09-19, America/Sao_Paulo)
 
 Published [FormsLang 1.6.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v1.6.0).

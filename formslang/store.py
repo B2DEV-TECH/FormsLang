@@ -265,17 +265,22 @@ class TaskView:
 class Store:
     """One conversion session, backed by a single .db file."""
 
-    def __init__(self, path: Path | str):
+    def __init__(self, path: Path | str, *, reconcile_jobs: bool = True):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # No WAL: on Windows it keeps file handles alive and makes a session
         # file awkward to move, copy or delete while the tool is running.
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA)
-        self._migrate()
-        self.db.commit()
-        self.reconcile_job_runs()
+        try:
+            self.db.executescript(SCHEMA)
+            self._migrate()
+            self.db.commit()
+            if reconcile_jobs:
+                self.reconcile_job_runs()
+        except Exception:
+            self.db.close()
+            raise
 
     def _migrate(self) -> None:
         """Add columns that older session files do not have yet.
