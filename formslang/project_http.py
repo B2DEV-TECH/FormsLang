@@ -13,7 +13,7 @@ from dataclasses import asdict
 
 from . import authstore, config, rbac
 from .project_intake import ProjectIdentity, ProjectIntake
-from .project_model import ProjectBusy, ProjectError, RevisionConflict
+from .project_model import ProjectBusy, ProjectError, RevisionConflict, TargetProfile
 from .project_service import ProjectService
 
 logger = logging.getLogger(__name__)
@@ -156,13 +156,14 @@ class ProjectHTTP:
         if parts == ['source-selections'] and method == 'POST':
             return 200, {'selection': intake.select_source(body.get('path', ''), body.get('kind', 'forms'))}
         if parts == ['source-areas'] and method == 'GET':
+            target = asdict(TargetProfile())
             if intake.identity:
-                return 200, {'local': False, 'areas': [{'id': key, 'name': key} for key in intake._host_areas()]}
+                return 200, {'local': False, 'target_profile': target, 'areas': [{'id': key, 'name': key} for key in intake._host_areas()]}
             intake._local()
             with intake._metadata() as metadata:
                 areas = [{'id': key, 'name': value['path']} for key, value in metadata['areas'].items()
                          if value['actor'] == intake._local()]
-            return 200, {'local': True, 'areas': areas, 'browse_root': str(self.workbench.browse_root)}
+            return 200, {'local': True, 'target_profile': target, 'areas': areas, 'browse_root': str(self.workbench.browse_root)}
         if len(parts) == 3 and parts[0] == 'source-areas' and parts[2] == 'browse' and method == 'GET':
             return 200, intake.browse(parts[1], query.get('relative', ''))
         if parts == ['discovery-preview'] and method == 'POST':

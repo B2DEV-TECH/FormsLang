@@ -86,6 +86,13 @@ def create_project(client, source):
     return created.json['project']['id'], selected
 
 
+def test_onboarding_exposes_backend_target_profile(project_server):
+    client, _ = project_server
+    response = client.get('/api/v2/source-areas')
+    assert response.status == 200
+    assert response.json['target_profile'] == {'platform': 'Oracle APEX', 'version': '26.1', 'representation': 'APEXlang'}
+
+
 def test_cli_and_http_produce_same_revision(project_server, project_sources, capsys):
     from formslang.cli import main
 
