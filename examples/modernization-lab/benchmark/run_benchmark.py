@@ -56,8 +56,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="FormsLang Modernization Prediction Benchmark Runner")
     parser.add_argument("--dry-run", action="store_true", help="Validate fixtures, schemas, and pipeline without baseline freeze")
     parser.add_argument("--freeze", action="store_true", help="Freeze outputs to versioned baseline directory (see --baseline-name)")
-    parser.add_argument("--baseline-name", default="v1", help="Target baseline directory name (default: v1)")
-    parser.add_argument("--force", action="store_true", help="Force overwrite of existing baseline directory")
+    parser.add_argument(
+        "--baseline-name",
+        help="Target baseline directory name. Required with --freeze; "
+        "a frozen baseline is never re-used, so name the next one.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing baseline directory. The protocol says a "
+        "frozen baseline does not move, so this should not be needed.",
+    )
     parser.add_argument("--predictions", type=str, help="Evaluate existing predictions file directly")
     args = parser.parse_args()
 
@@ -173,9 +182,27 @@ def main() -> int:
         return 3
     print("      Ground truth immutability verified (SHA256 unchanged).")
 
-    # Baseline Freeze
-    if args.freeze or not args.dry_run:
+    # Baseline Freeze. Only ever on an explicit --freeze: a run that merely
+    # checks a number must not be able to overwrite recorded history.
+    if args.freeze:
+        if not args.baseline_name:
+            print(
+                "ERROR: --freeze requires --baseline-name. Frozen baselines are "
+                "immutable, so the new run needs a directory of its own.",
+                file=sys.stderr,
+            )
+            return 4
         baseline_dir = BENCHMARK_DIR / "baselines" / args.baseline_name
+        if baseline_dir.exists() and not args.force:
+            print(
+                f"ERROR: baseline '{args.baseline_name}' already exists at "
+                f"{baseline_dir}. A frozen baseline is never edited, re-run or "
+                f"overwritten -- not to correct a number, not to re-render a "
+                f"report. Freeze the new engine under a new name, or pass "
+                f"--force if you truly mean to destroy the recorded one.",
+                file=sys.stderr,
+            )
+            return 4
         baseline_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(manifest_path, baseline_dir / "manifest.json")
         shutil.copy2(obs_path, baseline_dir / "observability.json")
@@ -184,6 +211,8 @@ def main() -> int:
         shutil.copy2(report_json_path, baseline_dir / "benchmark-report.json")
         shutil.copy2(report_md_path, baseline_dir / "benchmark-report.md")
         print(f"\nBaseline frozen into: {baseline_dir}")
+    else:
+        print(f"\nOutputs left in: {generated_dir} (no --freeze, nothing frozen)")
 
     # Terminal summary output
     cov = report["coverage"]
