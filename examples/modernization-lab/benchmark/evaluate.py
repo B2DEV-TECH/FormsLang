@@ -57,6 +57,17 @@ CASE_SOURCE_TARGETS = {
     "LOM-MOD-037": {"module": "ORDERS", "block": "BK_ORDER_LINE", "item": None, "trigger": "PRE-INSERT"},
     "LOM-MOD-041": {"module": "APPROVALS", "block": "BK_APPROVAL", "item": "BT_APPROVE", "trigger": "WHEN-BUTTON-PRESSED"},
     "LOM-MOD-042": {"module": "APPROVALS", "block": "BK_APPROVAL", "item": "BT_REJECT", "trigger": "WHEN-BUTTON-PRESSED"},
+    # Database target mappings for benchmark v2
+    "LOM-MOD-001": {"package": "LOM_ORDER_API", "constant": True},
+    "LOM-MOD-002": {"package": "LOM_ORDER_API", "procedure": "TRANSITION_STATUS"},
+    "LOM-MOD-003": {"package": "LOM_ORDER_API", "procedure": "SUBMIT_ORDER"},
+    "LOM-MOD-005": {"table": "LOM_ORDER_STATUS"},
+    "LOM-MOD-009": {"table": "LOM_AUDIT_LOG"},
+    "LOM-MOD-030": {"table": "LOM_APPROVALS"},
+    "LOM-MOD-031": {"package": "LOM_APPROVAL_API", "procedure": "APPROVE"},
+    "LOM-MOD-032": {"package": "LOM_APPROVAL_API", "procedure": "REJECT"},
+    "LOM-MOD-036": {"view": "LOM_APPROVAL_WORKLIST_V"},
+    "LOM-MOD-038": {"table": "LOM_SHIPMENTS"},
 }
 
 
@@ -64,15 +75,37 @@ def find_matching_prediction(target: dict[str, Any], predictions: list[dict[str,
     """Find prediction corresponding to structural target."""
     for p in predictions:
         src = p.get("source", {})
-        if src.get("module") != target.get("module"):
+        # Database targets matching
+        if target.get("constant"):
+            if src.get("package") == target.get("package") and src.get("procedure") is None and src.get("table") is None and src.get("view") is None and p.get("classification") == "REFACTOR":
+                return p
             continue
-        if target.get("trigger") and src.get("trigger") != target.get("trigger"):
+        if target.get("table"):
+            if src.get("table") == target.get("table") and p.get("status") == "PREDICTED":
+                return p
             continue
-        if target.get("block") != src.get("block"):
+        if target.get("view"):
+            if src.get("view") == target.get("view") and p.get("status") == "PREDICTED":
+                return p
             continue
-        if target.get("item") != src.get("item"):
+        if target.get("package") and target.get("procedure"):
+            if src.get("package") == target.get("package") and src.get("procedure") == target.get("procedure"):
+                # Prefer findings with valid risk level or non-trivial classification
+                if p.get("risk") not in (None, "UNKNOWN"):
+                    return p
             continue
-        return p
+
+        # Forms targets matching
+        if target.get("module"):
+            if src.get("module") != target.get("module"):
+                continue
+            if target.get("trigger") and src.get("trigger") != target.get("trigger"):
+                continue
+            if target.get("block") != src.get("block"):
+                continue
+            if target.get("item") != src.get("item"):
+                continue
+            return p
     return None
 
 
@@ -338,10 +371,11 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     safe = report["safety_metrics"]
     v_metrics = report.get("verdict_metrics", {})
     per_case = report["per_case_results"]
+    baseline_tag = report.get("baseline_name", report.get("benchmark_version", "v1"))
 
     md = []
     # 1. Executive Summary
-    md.append("# FormsLang Modernization Benchmark Baseline Report (v1)")
+    md.append(f"# FormsLang Modernization Benchmark Baseline Report ({baseline_tag})")
     md.append("")
     md.append("## 1. Executive Summary")
     md.append("")

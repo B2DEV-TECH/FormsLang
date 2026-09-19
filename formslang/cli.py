@@ -120,7 +120,8 @@ def cmd_blueprint(args: argparse.Namespace) -> int:
         else:
             payload = blueprint_io.load(source, out, title=args.title,
                 oracle_home=args.oracle_home, enterprise=args.enterprise_context,
-                metadata_path=args.metadata, recursive=not args.no_recursive)
+                metadata_path=args.metadata, recursive=not args.no_recursive,
+                database_sources=getattr(args, "database_src", None))
             session = blueprint_io.save_session(payload, out, source)
             store = Store(session)
             try:
@@ -820,6 +821,7 @@ def build_parser() -> argparse.ArgumentParser:
     bp.add_argument("--no-recursive", action="store_true")
     bp.add_argument("--enterprise-context", action="store_true", help="conservative optional ERP naming-pattern detection")
     bp.add_argument("--metadata", help="local JSON objects inventory, with optional PL/SQL bodies")
+    bp.add_argument("--database-src", default=None, help="directory or file path containing Oracle SQL/DDL/packages (.sql, .pks, .pkb)")
     bp.set_defaults(func=cmd_blueprint)
 
     a = sub.add_parser("assess", help="assess a portfolio of modules")

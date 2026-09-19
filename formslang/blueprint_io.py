@@ -17,7 +17,7 @@ MAX_SOURCE_BYTES = 256 * 1024 * 1024
 
 
 def load(source: Path, out: Path, *, title="", oracle_home=None, enterprise=False,
-         metadata_path=None, recursive=True) -> dict:
+         metadata_path=None, recursive=True, database_sources=None) -> dict:
     # Share directory collection/Forms2XML conventions with assessment.
     from .cli import _collect
 
@@ -70,7 +70,8 @@ def load(source: Path, out: Path, *, title="", oracle_home=None, enterprise=Fals
             raise ValueError("metadata must contain an objects array")
         metadata = payload["objects"]
     return blueprint.build(modules, title=title or source.stem, source_keys=keys,
-                           failures=failures, enterprise=enterprise, metadata=metadata)
+                           failures=failures, enterprise=enterprise, metadata=metadata,
+                           database_sources=database_sources)
 
 
 def save_session(payload, out: Path, source: Path) -> Path:

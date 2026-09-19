@@ -108,10 +108,34 @@ def sanitize_text(text: str) -> str:
     return text
 
 
+def sanitize_sql_text(text: str) -> str:
+    """Deterministically sanitize SQL/PLSQL source text to remove benchmark answer keys."""
+    lines = text.splitlines()
+    cleaned: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        # If line is a comment containing LOM-MOD or leakage
+        if stripped.startswith("--"):
+            if any(pat.search(line) for pat in LEAKAGE_PATTERNS):
+                continue
+        # Table comments e.g. comment on table ... is '...';
+        if stripped.lower().startswith("comment on"):
+            for pat in LEAKAGE_PATTERNS:
+                line = pat.sub("", line)
+        cleaned.append(line)
+    res = "\n".join(cleaned)
+    for pat in LEAKAGE_PATTERNS:
+        res = pat.sub("", res)
+    return res
+
+
 def sanitize_file(input_path: Path, output_path: Path) -> str:
     """Sanitize one file deterministically, write output, and return SHA256."""
     input_text = input_path.read_text(encoding="utf-8")
-    sanitized = sanitize_text(input_text)
+    if input_path.suffix.lower() in {".sql", ".pks", ".pkb"}:
+        sanitized = sanitize_sql_text(input_text)
+    else:
+        sanitized = sanitize_text(input_text)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(sanitized, encoding="utf-8", newline="\n")
     return hashlib.sha256(sanitized.encode("utf-8")).hexdigest()

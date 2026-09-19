@@ -326,3 +326,44 @@ Date: 2026-09-18. Protocol version: 1.0. Runner version: 1.0.
   3. No live Oracle database validation has been performed.
   4. Forms2XML fixtures are hand-authored per ADR-001 and have not been round-tripped through Oracle Forms Builder.
 
+## Prediction Benchmark v2
+
+Date: 2026-09-18. Protocol version: 1.0. Runner version: 1.0.
+
+- **Baseline Status**: `BASELINE_COMPLETE`
+- **Source Commit**: `9005c4389834ffcdf132734d04f6843a6b657cdf`
+- **FormsLang Engine Path**: `formslang.parser.parse_xml -> formslang.blueprint.build` (Deterministic, AI: None)
+- **Database Sources Ingested**: 11 tables (DDL), 2 views, 5 PL/SQL package specifications (`.pks`), 5 package bodies (`.pkb`)
+- **Total Benchmark Cases**: 41 (LOM-MOD-001 through LOM-MOD-042; single intentional gap LOM-MOD-040)
+- **Observability Counts**:
+  - Fully Observable (Forms2XML + Ingested Database Sources): **38 (92.7%)** *(vs. 16 in v1)*
+  - Partially Observable: **0 (0.0%)** *(vs. 12 in v1)*
+  - Not Observable (Non-code library documentation `OM_SHARED.md`): **3 (7.3%)** *(vs. 13 in v1)*
+  - Total Eligible Observable Cases Evaluated: **38 (92.7%)** *(vs. 28 in v1)*
+- **Measured Performance Metrics (Observable)**:
+  - Exact Classification Accuracy: **68.4%** (26/38) *(vs. 21.4% in v1, +47.0% absolute)*
+  - Exact Classification Accuracy (Fully Observable): **68.4%** (26/38) *(vs. 25.0% in v1, +43.4% absolute)*
+  - Macro F1: **0.6257** *(vs. 0.1333 in v1, +0.4924)*
+  - Exact Risk Accuracy: **68.4%** (26/38) *(vs. 21.4% in v1, +47.0% absolute)*
+  - Critical Risk Recall: **100.0%** (4/4 observable CRITICAL cases flagged as CRITICAL) *(vs. 0.0% in v1)*
+  - High+Critical Risk Recall: **87.5%** (7/8) *(vs. 33.3% in v1)*
+- **Enterprise Safety Metrics**:
+  - Manual Review Recall: **80.0%** (8/10 observable MANUAL_REVIEW cases flagged for manual review) *(vs. 60.0% in v1)*
+  - False Automation Rate: **20.0%** (2/10 observable MANUAL_REVIEW cases misclassified as CONVERT / AUTO verdict) *(vs. 40.0% in v1, cut in half)*
+  - Critical Safety Misses: **0** (0 observable CRITICAL cases missed or labeled safe/AUTO)
+- **Frozen Artifacts**:
+  - Location: `examples/modernization-lab/benchmark/baselines/v2/`
+  - Includes: `manifest.json`, `observability.json`, `raw-analysis.json`, `predictions.json`, `benchmark-report.json`, `benchmark-report.md`, `failure-analysis.md`, `comparison-v1-v2.md`
+- **Key Engineering Enhancements Delivered**:
+  1. Standalone Oracle DDL and PL/SQL parser (`formslang.database`) extracting tables, constraints, views, packages, and subprogram lexical tokens.
+  2. Cross-source blueprint graph linking Forms triggers and DB procedures with `READS`, `CALLS`, `REFERENCES`, `DECLARES`, `IMPLEMENTS`, and `DUPLICATES_LOGIC` edges.
+  3. Status list exclusion normalization (`MOVE_TO_PLSQL_API`, `HIGH` risk) resolving duplicate predicate logic (e.g. `LOM-MOD-011`).
+  4. Arithmetic line total formula structural comparison (`MOVE_TO_PLSQL_API`, `HIGH` risk) resolving financial duplication (e.g. `LOM-MOD-027`).
+  5. State machine direct DML bypass detection (`MANUAL_REVIEW`, `CRITICAL` risk) enforcing safety against unsafe automation (e.g. `LOM-MOD-041`, `042`).
+  6. CLI support for `--database-src` in `formslang blueprint`.
+- **Remaining Limitations**:
+  1. Non-XML library documentation (`OM_SHARED.md`, 3 cases) is un-ingested; native binary `.pll` or structured library format is required to reach 100% observability.
+  2. PL/SQL analysis remains token/lexical evidence based; semantic type synthesis and live Oracle compiler feedback have not been added.
+  3. False Automation Rate remains at 20.0% (2 cases: credit limit update ceiling policy and dynamic WHERE clause default warehouse constraint ambiguity).
+
+

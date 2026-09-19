@@ -35,6 +35,9 @@ def normalize_findings(
         item: str | None = None
         trigger: str | None = None
         procedure: str | None = None
+        package: str | None = attrs.get("package") or None
+        table: str | None = attrs.get("table") or None
+        view: str | None = None
 
         if etype == "TRIGGER":
             trigger = ename
@@ -52,6 +55,17 @@ def normalize_findings(
             block = ename
         elif etype == "PROGRAM_UNIT":
             procedure = ename
+        elif etype in {"PACKAGE_SUBPROGRAM", "SUBPROGRAM_BODY"}:
+            procedure = attrs.get("procedure") or (ename.split(".")[1] if "." in ename else ename)
+            package = attrs.get("package") or (ename.split(".")[0] if "." in ename else None)
+        elif etype == "PACKAGE_SPEC" or etype == "PACKAGE_BODY":
+            package = ename
+        elif etype == "CONSTANT_DECLARATION":
+            package = attrs.get("package") or (ename.split(".")[0] if "." in ename else ename)
+        elif etype == "TABLE":
+            table = ename
+        elif etype == "VIEW":
+            view = ename
 
         recommendation = f.get("recommendation", "UNKNOWN")
         if recommendation in {"PRESERVE", "CONVERT", "REFACTOR", "DROP", "MANUAL_REVIEW"}:
@@ -74,6 +88,9 @@ def normalize_findings(
                 "item": item,
                 "trigger": trigger,
                 "procedure": procedure,
+                "package": package,
+                "table": table,
+                "view": view,
             },
             "classification": recommendation,
             "risk": risk_level,

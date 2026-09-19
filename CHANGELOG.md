@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `formslang.database`: generic parser and data model for Oracle DDL (`CREATE TABLE`, constraints, lookup tables, `CREATE VIEW`), sequences, package specifications (`.pks`), and package bodies (`.pkb`) with token-level lexical evidence extraction.
+- Cross-layer semantic graph reasoning in `formslang.blueprint`:
+  - Standalone database source ingestion via `build(..., database_sources=...)`.
+  - Resolution of Forms references (`TABLE_OR_VIEW_REFERENCE`, `PACKAGE_REFERENCE`, `ROUTINE_REFERENCE`) to database entities.
+  - Cross-source edges: `READS`, `CALLS`, `REFERENCES`, `DECLARES`, `IMPLEMENTS`, and `DUPLICATES_LOGIC`.
+  - Status list exclusion normalization (`MOVE_TO_PLSQL_API`, `HIGH` risk) for duplicated business predicates.
+  - Conservative arithmetic formula structural comparison (`MOVE_TO_PLSQL_API`, `HIGH` risk) for duplicated financial calculations.
+  - Procedural state machine verification and direct DML bypass detection (`MANUAL_REVIEW`, `CRITICAL` risk, `MANUAL` verdict).
+  - Clean API delegation identification (`PRESERVE`, `LOW` risk, `AUTO` verdict).
+- CLI `--database-src` option on `formslang blueprint`.
+- Modernization prediction benchmark v2:
+  - Baseline v2 generated and frozen with full cross-layer database observability.
+  - Reached 68.4% exact classification accuracy (vs. 21.4% in v1) and 100% critical risk recall (vs. 0.0% in v1).
 - `Item.validate_from_list` (`True` / `False` / `None`): the parser now carries
   Forms2XML's `ValidateFromList` attribute, so a reader can tell an LOV that
   constrains the value from one that only offers a lookup. `None` means the

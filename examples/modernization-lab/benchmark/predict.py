@@ -19,8 +19,12 @@ from formslang.blueprint import build as build_blueprint
 from formslang.parser import parse_xml
 
 
-def run_prediction(sanitized_xml_dir: Path, raw_output_path: Path) -> dict[str, Any]:
-    """Execute FormsLang engine over sanitized XML and save raw-analysis.json."""
+def run_prediction(
+    sanitized_xml_dir: Path,
+    raw_output_path: Path,
+    sanitized_db_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Execute FormsLang engine over sanitized XML and optional database sources and save raw-analysis.json."""
     if not sanitized_xml_dir.exists():
         raise FileNotFoundError(f"Sanitized XML directory does not exist: {sanitized_xml_dir}")
 
@@ -42,6 +46,7 @@ def run_prediction(sanitized_xml_dir: Path, raw_output_path: Path) -> dict[str, 
         modules,
         title="LOM Modernization Lab",
         source_keys=source_keys,
+        database_sources=sanitized_db_dir,
     )
 
     raw_output = {

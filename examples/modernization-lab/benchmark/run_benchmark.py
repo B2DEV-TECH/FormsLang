@@ -80,9 +80,11 @@ def main() -> int:
     input_xml_dir = generated_dir / "input" / "forms" / "xml"
     input_xml_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. Sanitize Canonical XML
-    print("[2/8] Sanitizing Forms2XML source fixtures...")
+    # 2. Sanitize Canonical XML and Database Sources
+    print("[2/8] Sanitizing Forms2XML and database source fixtures...")
     canonical_xml_dir = LAB_ROOT / config["canonical_xml_dir"]
+    canonical_db_dir = LAB_ROOT / config.get("canonical_database_dir", "database")
+    input_db_dir = generated_dir / "input" / "database"
     manifest_files = []
 
     for xml_file in sorted(canonical_xml_dir.glob("*.xml")):
@@ -96,10 +98,24 @@ def main() -> int:
             "sanitized_sha256": san_sha,
         })
 
+    if canonical_db_dir.exists():
+        for db_file in sorted(canonical_db_dir.rglob("*")):
+            if db_file.is_file() and db_file.suffix.lower() in {".sql", ".pks", ".pkb"}:
+                rel_path = db_file.relative_to(canonical_db_dir)
+                dest_path = input_db_dir / rel_path
+                orig_sha = get_file_sha256(db_file)
+                san_sha = sanitize.sanitize_file(db_file, dest_path)
+                manifest_files.append({
+                    "original_path": f"database/{rel_path.as_posix()}",
+                    "sanitized_path": f"benchmark/generated/input/database/{rel_path.as_posix()}",
+                    "original_sha256": orig_sha,
+                    "sanitized_sha256": san_sha,
+                })
+
     # 3. Leakage Validation
     print("[3/8] Scanning sanitized inputs for answer-key leakage...")
     try:
-        sanitize.verify_no_leakage(input_xml_dir)
+        sanitize.verify_no_leakage(generated_dir / "input")
         print("      Leakage check passed: zero answer keys found in inputs.")
     except (RuntimeError, ValueError) as exc:
         print(f"ERROR: Leakage check failed: {exc}", file=sys.stderr)
@@ -118,7 +134,7 @@ def main() -> int:
 
     # 5. Observability Analysis
     obs_path = generated_dir / "observability.json"
-    obs_summary = discover.write_observability(gt_path, canonical_xml_dir, obs_path)
+    obs_summary = discover.write_observability(gt_path, canonical_xml_dir, obs_path, canonical_db_dir)
     print(f"[5/8] Observability analyzed: {obs_summary['fully_observable']} Fully, {obs_summary['partially_observable']} Partially, {obs_summary['not_observable']} Not Observable")
 
     if args.dry_run:
@@ -131,7 +147,7 @@ def main() -> int:
     # 6. Execute Real FormsLang Engine
     print("[6/8] Executing FormsLang prediction engine on sanitized inputs...")
     raw_analysis_path = generated_dir / "raw-analysis.json"
-    raw_analysis = predict.run_prediction(input_xml_dir, raw_analysis_path)
+    raw_analysis = predict.run_prediction(input_xml_dir, raw_analysis_path, input_db_dir if input_db_dir.exists() else None)
     print(f"      Raw analysis saved: {len(raw_analysis['blueprint']['findings'])} findings extracted.")
 
     # 7. Normalize Predictions
@@ -144,6 +160,7 @@ def main() -> int:
     print("[8/8] Evaluating predictions against authoritative ground truth...")
     gt_payload = json.loads(gt_path.read_text(encoding="utf-8"))
     report = evaluate.evaluate_run(predictions_payload, obs_summary, gt_payload, gt_sha_before)
+    report["baseline_name"] = args.baseline_name
 
     report_json_path = generated_dir / "benchmark-report.json"
     report_md_path = generated_dir / "benchmark-report.md"

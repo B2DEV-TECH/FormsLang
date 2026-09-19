@@ -16,13 +16,14 @@ NOT_OBSERVABLE = "NOT_OBSERVABLE"
 OBSERVABILITY_STATUSES = (FULLY_OBSERVABLE, PARTIALLY_OBSERVABLE, NOT_OBSERVABLE)
 
 
-def analyze_observability(ground_truth_path: Path, xml_dir: Path) -> dict:
+def analyze_observability(ground_truth_path: Path, xml_dir: Path, db_dir: Path | None = None) -> dict:
     """Analyze observability for all cases in ground truth."""
     data = json.loads(ground_truth_path.read_text(encoding="utf-8"))
     cases = data.get("cases", [])
 
     results = []
-    available_files = {p.name for p in xml_dir.glob("*.xml")}
+    available_xml_files = {p.name for p in xml_dir.glob("*.xml")}
+    available_db_files = {p.name for p in db_dir.rglob("*") if p.is_file() and p.suffix.lower() in {".sql", ".pks", ".pkb"}} if db_dir and db_dir.exists() else set()
 
     for c in cases:
         cid = c["id"]
@@ -44,33 +45,61 @@ def analyze_observability(ground_truth_path: Path, xml_dir: Path) -> dict:
                 src_path = p.strip()
             required_sources.append(src_path)
 
-            for xml_file in available_files:
+            for xml_file in available_xml_files:
                 if xml_file in p:
                     available_sources.append(f"forms/xml/{xml_file}")
+            for db_file in available_db_files:
+                if db_file in p:
+                    available_sources.append(f"database/{db_file}")
 
         required_sources = sorted(set(required_sources))
         available_sources = sorted(set(available_sources))
 
-        if not has_forms:
-            status = NOT_OBSERVABLE
-            if has_db:
+        db_available = bool(db_dir and db_dir.exists())
+
+        if has_lib:
+            if has_forms:
+                status = PARTIALLY_OBSERVABLE
                 reason = (
-                    "Case source resides exclusively in database packages/DDL/views. "
-                    "Current FormsLang engine does not ingest standalone SQL/PLSQL."
+                    "Form trigger/item is visible in Forms2XML, but associated library definitions "
+                    "cited by the case rationale (OM_SHARED.md) are not ingested."
                 )
-            elif has_lib:
+            else:
+                status = NOT_OBSERVABLE
                 reason = (
                     "Case source resides in library documentation (OM_SHARED.md). "
                     "Current FormsLang engine does not ingest non-XML documentation."
                 )
+        elif not has_forms:
+            if has_db:
+                if db_available:
+                    status = FULLY_OBSERVABLE
+                    reason = (
+                        "All source evidence referenced by the case is fully contained within the "
+                        "sanitized Oracle database DDL/package files parsed by FormsLang."
+                    )
+                else:
+                    status = NOT_OBSERVABLE
+                    reason = (
+                        "Case source resides exclusively in database packages/DDL/views. "
+                        "Current FormsLang engine does not ingest standalone SQL/PLSQL."
+                    )
             else:
-                reason = "Case source is not present in ingested Forms2XML files."
-        elif has_db or has_lib:
-            status = PARTIALLY_OBSERVABLE
-            reason = (
-                "Form trigger/item is visible in Forms2XML, but associated database packages, "
-                "views, or library definitions cited by the case rationale are not ingested."
-            )
+                status = NOT_OBSERVABLE
+                reason = "Case source is not present in ingested source files."
+        elif has_db:
+            if db_available:
+                status = FULLY_OBSERVABLE
+                reason = (
+                    "All source evidence referenced by the case is fully contained within the "
+                    "sanitized Forms2XML and database source files parsed by FormsLang."
+                )
+            else:
+                status = PARTIALLY_OBSERVABLE
+                reason = (
+                    "Form trigger/item is visible in Forms2XML, but associated database packages, "
+                    "views, or lookup tables cited by the case rationale are not ingested."
+                )
         else:
             status = FULLY_OBSERVABLE
             reason = (
@@ -100,9 +129,9 @@ def analyze_observability(ground_truth_path: Path, xml_dir: Path) -> dict:
     return summary
 
 
-def write_observability(ground_truth_path: Path, xml_dir: Path, output_path: Path) -> dict:
+def write_observability(ground_truth_path: Path, xml_dir: Path, output_path: Path, db_dir: Path | None = None) -> dict:
     """Generate and write observability.json."""
-    summary = analyze_observability(ground_truth_path, xml_dir)
+    summary = analyze_observability(ground_truth_path, xml_dir, db_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return summary

@@ -4,6 +4,7 @@
   "runner_version": "1.0",
   "ground_truth_path": "expected/modernization-ground-truth.json",
   "canonical_xml_dir": "forms/xml",
+  "canonical_database_dir": "database",
   "generated_dir": "benchmark/generated",
   "baselines_dir": "benchmark/baselines",
   "taxonomy": {

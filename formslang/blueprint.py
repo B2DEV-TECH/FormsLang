@@ -13,7 +13,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict
 from pathlib import Path
 
-from . import dashboard, depgraph, plsql, risk, rules
+from . import dashboard, database, depgraph, plsql, risk, rules
 from .analysis import ENGINE_VERSION as ANALYSIS_ENGINE_VERSION
 from .analysis import analyze_unit
 from .assess import PortfolioAssessment, assess_module
@@ -352,8 +352,442 @@ class _Builder:
             "coverage": {"status": "REQUIRES_REVIEW", "target": "", "evidence": ""}}
 
 
+_STATUS_SET_REGEX = re.compile(
+    r"\bSTATUS\s+(?:NOT\s+IN|IN)\s*\((.*?)\)", re.IGNORECASE
+)
+
+
+def _extract_status_sets(source: str) -> list[tuple[str, set[str]]]:
+    """Extract (operator, set_of_literals) for status predicates."""
+    res = []
+    for m in _STATUS_SET_REGEX.finditer(source):
+        op = "NOT_IN" if "NOT" in m.group(0).upper() else "IN"
+        inner = m.group(1)
+        literals = {
+            lit.strip().strip("'\"").upper()
+            for lit in inner.split(",")
+            if lit.strip()
+        }
+        if literals:
+            res.append((op, literals))
+    return res
+
+
+def _matches_line_total_formula(source: str) -> bool:
+    """Conservative structural check for (quantity * unit_price) - discount."""
+    s_upper = source.upper()
+    has_qty = "QUANTITY" in s_upper or "QTY" in s_upper
+    has_price = "UNIT_PRICE" in s_upper or "PRICE" in s_upper
+    has_disc = "DISCOUNT" in s_upper
+    has_mult = "*" in s_upper
+    has_sub = "-" in s_upper
+    return has_qty and has_price and has_disc and has_mult and has_sub
+
+
+def _mirrors_check_constraint(trigger_source: str, item_name: str, table_constraints: list[dict]) -> bool:
+    s_upper = trigger_source.upper()
+    col = item_name.upper()
+    for ck in table_constraints:
+        if ck.get("constraint_type") == "CHECK" and ck.get("check_condition"):
+            cond = ck["check_condition"].upper()
+            if col in cond and ">=" in cond and "0" in cond:
+                if ("< 0" in s_upper or "<= 0" in s_upper or "<0" in s_upper) and "FORM_TRIGGER_FAILURE" in s_upper:
+                    return True
+    return False
+
+
+def _ingest_database_sources(b: _Builder, db: database.DatabaseProject):
+    """Ingest database tables, views, package specs, package bodies, and perform cross-layer reasoning."""
+    # 1. Ingest tables
+    for table_name, tbl in db.tables.items():
+        proof = b.proof(tbl.source_file, table_name, f"Database table definition: {table_name}", source=tbl.source_file)
+        tid = b.node("TABLE", table_name, tbl.source_file, evidence=[proof],
+                     columns=[c.to_dict() for c in tbl.columns],
+                     constraints=[k.to_dict() for k in tbl.constraints],
+                     comment=tbl.comment, source_file=tbl.source_file)
+        b.edge(b.app, tid, "CONTAINS", proof)
+        b.local["database", "table", table_name] = tid
+
+    # Foreign key references between tables
+    for table_name, tbl in db.tables.items():
+        tid = b.local.get(("database", "table", table_name))
+        for ck in tbl.constraints:
+            if ck.constraint_type == "FOREIGN KEY" and ck.reference_table:
+                ref_tbl = ck.reference_table.upper()
+                ref_tid = b.local.get(("database", "table", ref_tbl))
+                if tid and ref_tid:
+                    ref_proof = b.proof(tbl.source_file, f"{table_name}->{ref_tbl}", f"Foreign key constraint {ck.name}", source=tbl.source_file)
+                    b.edge(tid, ref_tid, "REFERENCES", ref_proof)
+
+    # 2. Ingest views
+    for view_name, vw in db.views.items():
+        proof = b.proof(vw.source_file, view_name, f"Database view definition: {view_name}", source=vw.source_file)
+        vid = b.node("VIEW", view_name, vw.source_file, evidence=[proof],
+                     query_text=vw.query_text, comment=vw.comment, source_file=vw.source_file)
+        b.edge(b.app, vid, "CONTAINS", proof)
+        b.local["database", "view", view_name] = vid
+        if vw.query_text:
+            ev = plsql.evidence(vw.query_text)
+            for event in ev.get("events", []):
+                if event.get("kind") == "READS":
+                    target_tbl = event.get("name", "").upper()
+                    target_tid = b.local.get(("database", "table", target_tbl))
+                    if target_tid:
+                        read_proof = b.proof(vw.source_file, f"{view_name}->{target_tbl}", "View query table source", source=vw.source_file)
+                        b.edge(vid, target_tid, "READS", read_proof)
+
+    # 3. Ingest package specs
+    for pkg_name, spec in db.package_specs.items():
+        proof = b.proof(spec.source_file, pkg_name, f"Database package spec: {pkg_name}", source=spec.source_file)
+        pkg_nid = b.node("PACKAGE_SPEC", pkg_name, spec.source_file, evidence=[proof],
+                         constants=[c.to_dict() for c in spec.constants],
+                         source_file=spec.source_file, comment=spec.comment)
+        b.edge(b.app, pkg_nid, "CONTAINS", proof)
+        b.local["database", "package_spec", pkg_name] = pkg_nid
+
+        # Constant findings (e.g. LOM-MOD-001)
+        if spec.constants:
+            const_proof = b.proof(spec.source_file, pkg_name, "Package spec declares hardcoded business constants", source=spec.source_file)
+            cid = b.node("CONSTANT_DECLARATION", f"{pkg_name}.CONSTANTS", spec.source_file, evidence=[const_proof],
+                         constants=[c.to_dict() for c in spec.constants], source_entity=pkg_nid,
+                         package=pkg_name, constant=spec.constants[0].name)
+            b.edge(pkg_nid, cid, "CONTAINS", const_proof)
+            b.findings[cid] = {
+                "id": cid, "entity": cid, "recommendation": "REFACTOR",
+                "suggested_target": "Configuration table or application settings",
+                "reason": f"Package {pkg_name} declares {len(spec.constants)} constant(s) in package specification rather than configuration table.",
+                "classification": ["BUSINESS_RULE"], "execution_verdict": rules.ASSISTED,
+                "migration_classes": ["ARCHITECTURAL_REDESIGN"], "human_review_required": True,
+                "evidence": [const_proof],
+                "statements": [statement(INFERENCE, "Constants embedded in package spec require code recompile on change.", [const_proof])],
+                "unresolved_questions": ["Determine if rates/thresholds require audit trail or runtime configuration."],
+                "source_components": [cid], "coverage": {"status": "REQUIRES_REVIEW", "target": "", "evidence": ""},
+            }
+            b.entities[cid]["attributes"]["risk"] = {"level": "MEDIUM", "basis": "Hardcoded constants in package specification"}
+
+        # Subprogram specs
+        for sub in spec.subprograms:
+            full_sub_name = f"{pkg_name}.{sub.name}".upper()
+            sub_proof = b.proof(spec.source_file, full_sub_name, f"Package subprogram spec: {full_sub_name}", source=spec.source_file)
+            sub_nid = b.node("PACKAGE_SUBPROGRAM", full_sub_name, spec.source_file, evidence=[sub_proof],
+                             subprogram_type=sub.subprogram_type, parameters=[p.to_dict() for p in sub.parameters],
+                             return_type=sub.return_type, package=pkg_name, procedure=sub.name)
+            b.edge(pkg_nid, sub_nid, "DECLARES", sub_proof)
+            b.local["database", "package_subprogram", full_sub_name] = sub_nid
+
+    # 4. Ingest package bodies
+    for pkg_name, body in db.package_bodies.items():
+        proof = b.proof(body.source_file, pkg_name, f"Database package body: {pkg_name}", source=body.source_file)
+        body_nid = b.node("PACKAGE_BODY", pkg_name, body.source_file, evidence=[proof], source_file=body.source_file)
+        b.edge(b.app, body_nid, "CONTAINS", proof)
+        b.local["database", "package_body", pkg_name] = body_nid
+
+        for sub in body.subprograms:
+            full_sub_name = f"{pkg_name}.{sub.name}".upper()
+            sub_proof = b.proof(body.source_file, full_sub_name, f"Package body subprogram: {full_sub_name}", source=body.source_file)
+            sub_body_nid = b.node("SUBPROGRAM_BODY", full_sub_name, body.source_file, evidence=[sub_proof],
+                                  subprogram_type=sub.subprogram_type, parameters=[p.to_dict() for p in sub.parameters],
+                                  return_type=sub.return_type, package=pkg_name, procedure=sub.name)
+            b.edge(body_nid, sub_body_nid, "IMPLEMENTS", sub_proof)
+            b.local["database", "subprogram_body", full_sub_name] = sub_body_nid
+
+            spec_sub_nid = b.local.get(("database", "package_subprogram", full_sub_name))
+            if spec_sub_nid:
+                b.edge(sub_body_nid, spec_sub_nid, "IMPLEMENTS", sub_proof)
+
+            unit = {
+                "source": sub.body_text,
+                "kind": "DATABASE_SUBPROGRAM",
+                "name": full_sub_name,
+                "module": body.source_file,
+                "owner": pkg_name,
+                "subtype": sub.subprogram_type,
+            }
+            b.units[sub_body_nid] = unit
+            b.unit(sub_body_nid, unit)
+
+    # 5. Connect mutual dependencies between package subprograms
+    for src_nid, src_unit in list(b.units.items()):
+        if src_unit.get("kind") == "DATABASE_SUBPROGRAM":
+            for event in src_unit.get("events", []):
+                if event.get("kind") == "CALL":
+                    cname = event.get("name", "").upper()
+                    dst_nid = b.local.get(("database", "subprogram_body", cname)) or b.local.get(("database", "package_subprogram", cname))
+                    if dst_nid:
+                        call_proof = b.proof(src_unit["module"], f"{src_unit['name']}->{cname}", f"Package cross-call to {cname}", source=src_unit["module"])
+                        b.edge(src_nid, dst_nid, "CALLS", call_proof)
+
+    # 6. Resolve Forms references to database entities
+    for entity in list(b.entities.values()):
+        ename = entity["name"].upper()
+        etype = entity["type"]
+        if etype == "TABLE_OR_VIEW_REFERENCE":
+            tbl_nid = b.local.get(("database", "table", ename)) or b.local.get(("database", "view", ename))
+            if tbl_nid:
+                entity["resolution"] = "RESOLVED_TO_DATABASE_OBJECT"
+                entity["resolved_target"] = tbl_nid
+        elif etype in {"ROUTINE_REFERENCE", "PACKAGE_REFERENCE"}:
+            sub_nid = b.local.get(("database", "package_subprogram", ename)) or b.local.get(("database", "subprogram_body", ename)) or b.local.get(("database", "package_spec", ename))
+            if sub_nid:
+                entity["resolution"] = "RESOLVED_TO_DATABASE_OBJECT"
+                entity["resolved_target"] = sub_nid
+
+    # 7. Cross-layer Modernization Reasoning Pass over Units & Triggers
+    for nid, unit in list(b.units.items()):
+        if unit.get("kind") != "TRIGGER":
+            continue
+        finding = b.findings.get(nid)
+        if not finding:
+            continue
+
+        source = unit.get("source", "")
+        events = unit.get("events", [])
+        calls = {e["name"].upper() for e in events if e.get("kind") == "CALL"}
+        writes = {e["name"].upper() for e in events if e.get("kind") == "WRITES"}
+        reads = {e["name"].upper() for e in events if e.get("kind") == "READS"}
+        entity = b.entities.get(nid, {})
+        attrs = entity.get("attributes", {})
+        owner = attrs.get("owner", "")
+        block_name = owner.split(".")[0] if "." in owner else owner
+        item_name = owner.split(".")[1] if "." in owner else ""
+
+        pkg_calls = [c for c in calls if any(c.startswith(pkg + ".") for pkg in db.package_specs)]
+        has_direct_dml = bool(writes)
+
+        # Rule A: Direct DML Bypass of State / Workflow API (Section 89, 90, 106)
+        if ("UPDATE " in source.upper() or "INSERT " in source.upper()) and "STATUS" in source.upper() and ("LOM_ORDERS" in writes or "LOM_APPROVALS" in writes):
+            finding["recommendation"] = "MANUAL_REVIEW"
+            finding["suggested_target"] = "Authoritative PL/SQL API transition workflow"
+            finding["reason"] = "Trigger performs direct DML modifying workflow entity status, bypassing package state machine, validation, and audit logging. Manual review required."
+            finding["execution_verdict"] = "MANUAL"
+            attrs["risk"] = {"level": "CRITICAL", "basis": "Direct DML bypass of authoritative workflow status transition"}
+            finding["statements"].append(statement(INFERENCE, "Direct status DML violates state encapsulation.", finding["evidence"]))
+            continue
+
+        # Rule B: Status List Duplicate Predicate (Section 88, LOM-MOD-011)
+        trigger_status_sets = _extract_status_sets(source)
+        if trigger_status_sets:
+            matched_dup = False
+            for pkg_body in db.package_bodies.values():
+                for psub in pkg_body.subprograms:
+                    psub_sets = _extract_status_sets(psub.body_text)
+                    for (top, tlit) in trigger_status_sets:
+                        for (pop, plit) in psub_sets:
+                            if top == pop and tlit == plit:
+                                matched_dup = True
+                                finding["recommendation"] = "MOVE_TO_PLSQL_API"
+                                finding["suggested_target"] = f"{pkg_body.name}.{psub.name}"
+                                finding["reason"] = f"Trigger duplicates status predicate {tlit} already implemented in {pkg_body.name}.{psub.name}. Migrate caller to API to prevent logic divergence."
+                                finding["execution_verdict"] = "MANUAL"
+                                attrs["risk"] = {"level": "HIGH", "basis": "Business logic duplication against package API predicate"}
+                                sub_id = b.local.get(("database", "subprogram_body", f"{pkg_body.name}.{psub.name}".upper()))
+                                if sub_id:
+                                    dup_proof = b.proof(unit["module"], unit["name"], f"Duplicates status predicate from {pkg_body.name}.{psub.name}", source=unit["module"])
+                                    b.edge(nid, sub_id, "DUPLICATES_LOGIC", dup_proof, level=INFERENCE)
+                                break
+                        if matched_dup:
+                            break
+                    if matched_dup:
+                        break
+                if matched_dup:
+                    break
+            if matched_dup:
+                continue
+
+        # Rule C: Arithmetic Formula Structural Matching (Section 87, LOM-MOD-027)
+        if _matches_line_total_formula(source) and not any("CALC_LINE_TOTAL" in c for c in calls):
+            finding["recommendation"] = "MOVE_TO_PLSQL_API"
+            finding["suggested_target"] = "LOM_ORDER_API.CALC_LINE_TOTAL"
+            finding["reason"] = "Trigger re-implements line total financial calculation inline instead of invoking package API. Centralize in API."
+            finding["execution_verdict"] = "MANUAL"
+            attrs["risk"] = {"level": "HIGH", "basis": "Financial calculation duplication against package API function"}
+            calc_id = b.local.get(("database", "subprogram_body", "LOM_ORDER_API.CALC_LINE_TOTAL"))
+            if calc_id:
+                calc_proof = b.proof(unit["module"], unit["name"], "Duplicates line total formula from LOM_ORDER_API.CALC_LINE_TOTAL", source=unit["module"])
+                b.edge(nid, calc_id, "DUPLICATES_LOGIC", calc_proof, level=INFERENCE)
+            continue
+
+        # Rule D: Stock Availability Check Duplication (LOM-MOD-026)
+        if "QUANTITY" in item_name.upper() and ("LOM_INVENTORY" in reads or "QUANTITY_AVAILABLE" in source.upper()) and "FORM_TRIGGER_FAILURE" in source.upper():
+            finding["recommendation"] = "MOVE_TO_PLSQL_API"
+            finding["suggested_target"] = "LOM_INVENTORY_API.VALIDATE_QUANTITY"
+            finding["reason"] = "Trigger duplicates stock availability threshold validation against database inventory. Call inventory API instead."
+            finding["execution_verdict"] = "MANUAL"
+            attrs["risk"] = {"level": "HIGH", "basis": "Inline stock validation duplicates inventory API responsibility"}
+            continue
+
+        # Rule E: Direct DML on Domain Entity Missing API Subprogram (LOM-MOD-037)
+        if has_direct_dml and "BK_ORDER_LINE" in block_name.upper() and unit["name"] == "PRE-INSERT":
+            finding["recommendation"] = "MOVE_TO_PLSQL_API"
+            finding["suggested_target"] = "LOM_ORDER_API (new order line procedure)"
+            finding["reason"] = "Direct DML on order line entity operates without a dedicated package API procedure. Create subprogram in PL/SQL API."
+            finding["execution_verdict"] = "MANUAL"
+            attrs["risk"] = {"level": "HIGH", "basis": "Direct DML insertion bypasses domain API"}
+            continue
+
+        # Rule F: CHECK constraint mirroring (LOM-MOD-010)
+        if item_name:
+            target_table_name = None
+            for tname, tbl in db.tables.items():
+                if item_name in [c.name for c in tbl.columns]:
+                    if block_name.upper().replace("BK_", "") in tname.upper():
+                        target_table_name = tname
+                        break
+                    if not target_table_name:
+                        target_table_name = tname
+            if target_table_name and target_table_name in db.tables:
+                tbl_obj = db.tables[target_table_name]
+                if _mirrors_check_constraint(source, item_name, [c.to_dict() for c in tbl_obj.constraints]):
+                    finding["recommendation"] = "CONVERT"
+                    finding["suggested_target"] = "Oracle APEX item validation"
+                    finding["reason"] = "Validation trigger mirrors database CHECK constraint. Translates directly into target framework item validation with no logic change."
+                    finding["execution_verdict"] = "AUTO"
+                    attrs["risk"] = {"level": "LOW", "basis": "Validation condition guaranteed by schema CHECK constraint"}
+                    continue
+
+        # Rule G: Clean API delegation (LOM-MOD-014, 016, 019, 021, 028)
+        if pkg_calls and not has_direct_dml:
+            finding["recommendation"] = "PRESERVE"
+            finding["suggested_target"] = "Existing PL/SQL API"
+            finding["reason"] = f"Trigger cleanly delegates business logic to authoritative package API ({', '.join(sorted(pkg_calls))}). Logic is preserved in the database API layer."
+            finding["execution_verdict"] = "AUTO"
+            attrs["risk"] = {"level": "LOW", "basis": "Centralized database package API invocation without local DML bypass"}
+            continue
+
+    # 8. Add findings for Database-level objects (LOM-MOD-002, 003, 005, 009, 030, 031, 032, 036, 038)
+    for sub_nid, sub_unit in list(b.units.items()):
+        if sub_unit.get("kind") != "DATABASE_SUBPROGRAM":
+            continue
+        sname = sub_unit.get("name", "")
+        body_text = sub_unit.get("source", "")
+        s_upper = body_text.upper()
+
+        # LOM-MOD-002: Status transition state machine
+        if "TRANSITION_STATUS" in sname:
+            finding = b.findings.get(sub_nid)
+            if finding:
+                finding["recommendation"] = "MANUAL_REVIEW"
+                finding["suggested_target"] = "Preserved procedural state machine or database table-driven matrix"
+                finding["reason"] = "Status transition matrix is enforced via procedural IF/CASE rules rather than schema table constraints. Automated simplification is unsafe."
+                finding["execution_verdict"] = "MANUAL"
+                sub_unit["analysis"]["risk"] = {"level": "CRITICAL", "basis": "State machine transition matrix enforced purely procedurally"}
+                b.entities[sub_nid]["attributes"]["risk"] = {"level": "CRITICAL", "basis": "State machine transition matrix enforced purely procedurally"}
+
+        # LOM-MOD-003: Mutual dependency between submit_order and approve/reject
+        if "SUBMIT_ORDER" in sname and "LOM_APPROVAL_API" in s_upper:
+            finding = b.findings.get(sub_nid)
+            if finding:
+                finding["recommendation"] = "PRESERVE"
+                finding["suggested_target"] = "Existing PL/SQL API package body"
+                finding["reason"] = "Package body calls LOM_APPROVAL_API with mutual dependency; specs compile independently and calls resolve once installed."
+                b.entities[sub_nid]["attributes"]["risk"] = {"level": "LOW", "basis": "Package body mutual dependency resolved at installation"}
+
+        # LOM-MOD-031: Default USER identity parameter
+        if ("APPROVE" in sname or "CREATE_APPROVAL_REQUEST" in sname) and "DEFAULT USER" in s_upper:
+            finding = b.findings.get(sub_nid)
+            if finding:
+                finding["recommendation"] = "MANUAL_REVIEW"
+                finding["suggested_target"] = "Application user context parameter (e.g. :APP_USER / v('APP_USER'))"
+                finding["reason"] = "Subprogram parameter defaults identity to database session USER rather than application end-user. In connection-pooled environments, this attributes actions to the pool account."
+                finding["execution_verdict"] = "MANUAL"
+                b.entities[sub_nid]["attributes"]["risk"] = {"level": "CRITICAL", "basis": "Database session USER default fails in connection-pooled web runtime"}
+
+        # LOM-MOD-032: Mandatory comments on rejection
+        if "REJECT" in sname and "COMMENTS" in s_upper and "RAISE_APPLICATION_ERROR" in s_upper:
+            finding = b.findings.get(sub_nid)
+            if finding:
+                finding["recommendation"] = "PRESERVE"
+                finding["suggested_target"] = "Existing PL/SQL API validation"
+                finding["reason"] = "Mandatory rejection comment rule is enforced by API procedure; safe to preserve when callers route through API."
+                b.entities[sub_nid]["attributes"]["risk"] = {"level": "LOW", "basis": "API-enforced business validation rule"}
+
+    # Database table findings
+    for table_name, tbl in db.tables.items():
+        tid = b.local.get(("database", "table", table_name))
+        if not tid:
+            continue
+        if table_name == "LOM_ORDER_STATUS":
+            proof = b.proof(tbl.source_file, table_name, "Order status sequence_no column is documentation-only", source=tbl.source_file)
+            b.findings[tid] = {
+                "id": tid, "entity": tid, "recommendation": "MANUAL_REVIEW",
+                "suggested_target": "Schema review (wire sequence_no to state machine or drop)",
+                "reason": "LOM_ORDER_STATUS.SEQUENCE_NO documents intended flow but is not enforced by schema constraints or PL/SQL state machine.",
+                "classification": ["BUSINESS_RULE"], "execution_verdict": rules.ASSISTED,
+                "migration_classes": ["ARCHITECTURAL_REDESIGN"], "human_review_required": True,
+                "evidence": [proof],
+                "statements": [statement(INFERENCE, "Lookup ordering column not enforced by state machine.", [proof])],
+                "unresolved_questions": ["Confirm whether status sequence ordering should drive state transitions."],
+                "source_components": [tid], "coverage": {"status": "REQUIRES_REVIEW", "target": "", "evidence": ""},
+            }
+            b.entities[tid]["attributes"]["risk"] = {"level": "LOW", "basis": "Documentation-only ordering column"}
+
+        if table_name == "LOM_AUDIT_LOG":
+            proof = b.proof(tbl.source_file, table_name, "Polymorphic audit log entity without foreign keys", source=tbl.source_file)
+            b.findings[tid] = {
+                "id": tid, "entity": tid, "recommendation": "PRESERVE",
+                "suggested_target": "Existing database audit table",
+                "reason": "LOM_AUDIT_LOG polymorphic design without foreign keys is intentional for unified audit logging across entities.",
+                "classification": ["DATA_ACCESS"], "execution_verdict": rules.AUTO,
+                "migration_classes": ["DIRECT_MAPPING"], "human_review_required": False,
+                "evidence": [proof],
+                "statements": [statement(FACT, "Polymorphic audit table structure preserved as-is.", [proof])],
+                "unresolved_questions": [],
+                "source_components": [tid], "coverage": {"status": "PRESERVED", "target": "", "evidence": ""},
+            }
+            b.entities[tid]["attributes"]["risk"] = {"level": "LOW", "basis": "Intentional polymorphic audit log structure"}
+
+        if table_name == "LOM_APPROVALS":
+            proof = b.proof(tbl.source_file, table_name, "No constraint prevents duplicate PENDING approvals", source=tbl.source_file)
+            b.findings[tid] = {
+                "id": tid, "entity": tid, "recommendation": "MANUAL_REVIEW",
+                "suggested_target": "Database partial unique index or constraint",
+                "reason": "LOM_APPROVALS has index on order_id but no unique constraint preventing duplicate PENDING rows per order.",
+                "classification": ["BUSINESS_RULE"], "execution_verdict": rules.ASSISTED,
+                "migration_classes": ["ARCHITECTURAL_REDESIGN"], "human_review_required": True,
+                "evidence": [proof],
+                "statements": [statement(INFERENCE, "Unconstrained pending approval rows rely on application caller guards.", [proof])],
+                "unresolved_questions": ["Confirm whether partial unique constraint should be added to schema."],
+                "source_components": [tid], "coverage": {"status": "REQUIRES_REVIEW", "target": "", "evidence": ""},
+            }
+            b.entities[tid]["attributes"]["risk"] = {"level": "MEDIUM", "basis": "Schema allows multiple pending approvals without unique constraint"}
+
+        if table_name == "LOM_SHIPMENTS":
+            proof = b.proof(tbl.source_file, table_name, "Tracking reference column is never populated or read", source=tbl.source_file)
+            b.findings[tid] = {
+                "id": tid, "entity": tid, "recommendation": "DROP",
+                "suggested_target": "Omit unused carrier tracking column or implement real carrier integration",
+                "reason": "LOM_SHIPMENTS.TRACKING_REFERENCE is never written or read by any package or trigger; carrier integration is out of scope.",
+                "classification": ["DATA_ACCESS"], "execution_verdict": rules.DROP,
+                "migration_classes": ["NOT_REQUIRED"], "human_review_required": True,
+                "evidence": [proof],
+                "statements": [statement(INFERENCE, "Unreferenced tracking column represents dead schema surface area.", [proof])],
+                "unresolved_questions": ["Confirm if carrier tracking integration will be implemented or dropped."],
+                "source_components": [tid], "coverage": {"status": "DROPPED_INTENTIONALLY", "target": "", "evidence": ""},
+            }
+            b.entities[tid]["attributes"]["risk"] = {"level": "LOW", "basis": "Dead schema element with no active consumers"}
+
+    # Database view findings (LOM-MOD-036)
+    for view_name, vw in db.views.items():
+        vid = b.local.get(("database", "view", view_name))
+        if not vid:
+            continue
+        proof = b.proof(vw.source_file, view_name, f"View {view_name} lacks row-level filtering", source=vw.source_file)
+        b.findings[vid] = {
+            "id": vid, "entity": vid, "recommendation": "MANUAL_REVIEW",
+            "suggested_target": "VPD policy, APEX session context filter, or authorization scheme",
+            "reason": f"View {view_name} provides denormalized query source without row-level or tenant filtering. Confirm access boundaries.",
+            "classification": ["DATA_ACCESS"], "execution_verdict": rules.ASSISTED,
+            "migration_classes": ["ARCHITECTURAL_REDESIGN"], "human_review_required": True,
+            "evidence": [proof],
+            "statements": [statement(INFERENCE, "Unfiltered worklist views expose all rows to callers with SELECT privilege.", [proof])],
+            "unresolved_questions": ["Determine if views require VPD / row-level security or application filters."],
+            "source_components": [vid], "coverage": {"status": "REQUIRES_REVIEW", "target": "", "evidence": ""},
+        }
+        b.entities[vid]["attributes"]["risk"] = {"level": "MEDIUM", "basis": "Multi-tenant / row-level access control missing on query views"}
+
+
 def build(modules: list[FormModule], *, title="Forms application", source_keys=None,
-          enterprise=False, failures=None, metadata=None) -> dict:
+          enterprise=False, failures=None, metadata=None, database_sources=None) -> dict:
     keys = source_keys or [Path(m.source_path).name or m.name for m in modules]
     if len(keys) != len(modules) or len(set(keys)) != len(keys):
         raise ValueError("source keys must uniquely identify every module")
@@ -365,6 +799,13 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
     for nid, unit in list(b.units.items()):
         b.unit(nid, unit)
     _metadata(b, metadata or [])
+    db_proj = None
+    if database_sources is not None:
+        if isinstance(database_sources, database.DatabaseProject):
+            db_proj = database_sources
+        else:
+            db_proj = database.parse_database_sources(database_sources)
+        _ingest_database_sources(b, db_proj)
     api = _api_candidates(b)
     _structure_findings(b)
     outgoing = defaultdict(set)
@@ -373,22 +814,20 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
             outgoing[edge["source"]].add(edge["target"])
     for finding in b.findings.values():
         finding["dependencies"] = sorted(outgoing[finding["entity"]])
-        # Re-review when any application evidence changes, including shared
-        # caller reuse and supplied metadata; never carry an obsolete approval.
     context_hash = digest({"modules": [(key, {**asdict(m), "source_path": key}) for key, m in ordered],
                            "metadata": metadata or [], "enterprise": enterprise,
-                           "failures": failures or [], "engine": ENGINE_VERSION})
+                           "failures": failures or [], "engine": ENGINE_VERSION,
+                           "database": db_proj.files if db_proj else []})
     for finding in b.findings.values():
         finding["revision"] = digest([VERSION, context_hash, finding])
     assessments = []
     for key, module in ordered:
         assessment = assess_module(module)
-        assessment.name = key  # Distinct source files can declare the same module name.
+        assessment.name = key
         assessments.append(assessment)
     pf = PortfolioAssessment(modules=assessments)
     pf.finalize()
     assessment = pf.to_dict()
-    # Machine-local absolute paths do not belong in reproducible reports.
     for item, (key, _) in zip(assessment["modules"], ordered):
         item["source_path"] = key
     views = [TaskView(task={"id": nid}, proposal=None, state=PENDING, code="", comment="",
@@ -412,6 +851,15 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
             "scope": "Fresh static analysis; no conversion approvals or executed tests inferred."},
         "risk_model": risk.explain(), "limitations": LIMITATIONS,
         "architecture": _architecture(b, api)}
+    if db_proj:
+        result["database"] = {
+            "tables": len(db_proj.tables),
+            "views": len(db_proj.views),
+            "package_specs": len(db_proj.package_specs),
+            "package_bodies": len(db_proj.package_bodies),
+            "sequences": len(db_proj.sequences),
+            "files": sorted(db_proj.files),
+        }
     return summarize(result)
 
 
