@@ -7,8 +7,9 @@ import os
 import re
 import sqlite3
 import tempfile
-from contextlib import closing
-from dataclasses import replace
+from contextlib import closing, contextmanager
+from dataclasses import asdict, replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .project_manifest import relative_source_path
@@ -20,6 +21,7 @@ from .project_model import (
     canonical_json,
     descriptor_from_dict,
     descriptor_to_dict,
+    validate_descriptor,
 )
 from .store import Store
 
@@ -41,6 +43,24 @@ CREATE TRIGGER IF NOT EXISTS project_blueprint_review_revision AFTER INSERT ON b
 BEGIN
  UPDATE modernization_project SET review_revision=review_revision+1 WHERE id=1;
 END;
+"""
+
+RUN_SCHEMA = """
+CREATE TABLE IF NOT EXISTS project_configuration (
+ id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO project_configuration VALUES (1,0);
+CREATE TABLE IF NOT EXISTS project_discovery_run (
+ run_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, inventory_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_discovery_entry (
+ run_id TEXT NOT NULL, source_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
+ payload_json TEXT NOT NULL, PRIMARY KEY(run_id,source_id), UNIQUE(run_id,ordinal)
+);
+CREATE TABLE IF NOT EXISTS project_discovery_diagnostic (
+ run_id TEXT NOT NULL, ordinal INTEGER NOT NULL, payload_json TEXT NOT NULL,
+ PRIMARY KEY(run_id,ordinal)
+);
 """
 
 
@@ -73,7 +93,7 @@ class ProjectStore:
             staged_db = Path(staging) / "project.session.db"
             session = Store(staged_db, reconcile_jobs=False)
             try:
-                session.db.executescript(SCHEMA)
+                session.db.executescript(SCHEMA + RUN_SCHEMA)
                 session.init_session(descriptor.name)
                 session.db.execute("INSERT INTO modernization_project VALUES (1,?,?,NULL,0)",
                                    ("formslang-project/1", canonical_json(payload)))
@@ -122,11 +142,100 @@ class ProjectStore:
                 raise ProjectError("Project descriptor identity does not match database")
         result = cls(root, Store(path, reconcile_jobs=False))
         try:
+            result._migrate_runs()
             result.sync_descriptor()
         except Exception:
             result.close()
             raise
         return result
+
+    def _migrate_runs(self) -> None:
+        db = self.session.db
+        required = {'project_configuration', 'project_discovery_run',
+                    'project_discovery_entry', 'project_discovery_diagnostic'}
+        present = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if required <= present:
+            return
+        try:
+            db.executescript('BEGIN IMMEDIATE;\n' + RUN_SCHEMA + '\nCOMMIT;')
+        except sqlite3.Error as exc:
+            db.rollback()
+            raise ProjectError('Project run schema could not be migrated; existing state is preserved') from exc
+
+    @contextmanager
+    def _write(self):
+        db = self.session.db
+        if db.in_transaction:
+            raise ProjectError('Project write requires its own transaction')
+        try:
+            db.execute('BEGIN IMMEDIATE')
+            yield db
+            db.commit()
+        except sqlite3.Error as exc:
+            db.rollback()
+            if 'locked' in str(exc).lower() or 'busy' in str(exc).lower():
+                raise ProjectBusy('Project is busy; retry after the current operation') from exc
+            raise ProjectError('Project update failed; previous state is preserved') from exc
+        except Exception:
+            db.rollback()
+            raise
+
+    def configuration_revision(self) -> int:
+        return self.session.db.execute('SELECT revision FROM project_configuration WHERE id=1').fetchone()[0]
+
+    def replace_roots(self, roots, *, expected_configuration: int) -> ProjectDescriptor:
+        if type(expected_configuration) is not int or expected_configuration < 0:
+            raise ProjectError('Invalid configuration precondition')
+        with self._write() as db:
+            if self.configuration_revision() != expected_configuration:
+                raise RevisionConflict('Project configuration changed; reload before relinking')
+            updated = replace(self.descriptor(), source_roots=roots)
+            validate_descriptor(updated)
+            db.execute('UPDATE modernization_project SET descriptor_json=? WHERE id=1',
+                       (canonical_json(descriptor_to_dict(updated)),))
+            db.execute('UPDATE project_configuration SET revision=revision+1 WHERE id=1')
+        self.sync_descriptor()
+        return updated
+
+    def record_discovery(self, result, *, run_id: str) -> None:
+        from .project_discovery import DiscoveryResult
+        from .project_manifest import source_id
+
+        if not isinstance(result, DiscoveryResult) or not isinstance(run_id, str) or not re.fullmatch('[a-f0-9]{32}', run_id):
+            raise ProjectError('Invalid discovery run')
+        with self._write() as db:
+            if db.execute('SELECT 1 FROM project_discovery_run WHERE run_id=?', (run_id,)).fetchone():
+                raise RevisionConflict('Discovery run is immutable; create a new run')
+            db.execute('INSERT INTO project_discovery_run VALUES (?,?,?)',
+                       (run_id, datetime.now(timezone.utc).isoformat(), canonical_json(result.inventory)))
+            for ordinal, entry in enumerate(result.entries):
+                identity = source_id(entry.candidate.root_id, entry.candidate.relative_path)
+                db.execute('INSERT INTO project_discovery_entry VALUES (?,?,?,?)',
+                           (run_id, identity, ordinal, canonical_json(asdict(entry))))
+            for ordinal, item in enumerate(result.diagnostics):
+                db.execute('INSERT INTO project_discovery_diagnostic VALUES (?,?,?)',
+                           (run_id, ordinal, canonical_json(asdict(item))))
+
+    def discovery(self, run_id: str | None, *, offset=0, limit=50) -> dict:
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 200:
+            raise ProjectError('Use a nonnegative offset and limit between 1 and 200')
+        db = self.session.db
+        row = (db.execute('SELECT * FROM project_discovery_run ORDER BY rowid DESC LIMIT 1').fetchone()
+               if run_id is None else db.execute('SELECT * FROM project_discovery_run WHERE run_id=?', (run_id,)).fetchone())
+        if row is None:
+            return {'available': False, 'entries': [], 'diagnostics': [], 'total': 0, 'diagnostics_total': 0}
+        identity = row['run_id']
+        entries = db.execute('SELECT payload_json FROM project_discovery_entry WHERE run_id=? ORDER BY ordinal LIMIT ? OFFSET ?',
+                             (identity, limit, offset)).fetchall()
+        diagnostics = db.execute('SELECT payload_json FROM project_discovery_diagnostic WHERE run_id=? ORDER BY ordinal LIMIT ? OFFSET ?',
+                                 (identity, limit, offset)).fetchall()
+        return {'available': True, 'run_id': identity, 'created_at': row['created_at'],
+                'inventory': json.loads(row['inventory_json']),
+                'entries': [json.loads(r[0]) for r in entries],
+                'diagnostics': [json.loads(r[0]) for r in diagnostics],
+                'total': db.execute('SELECT count(*) FROM project_discovery_entry WHERE run_id=?', (identity,)).fetchone()[0],
+                'diagnostics_total': db.execute('SELECT count(*) FROM project_discovery_diagnostic WHERE run_id=?', (identity,)).fetchone()[0],
+                'offset': offset, 'limit': limit}
 
     def descriptor(self) -> ProjectDescriptor:
         row = self.session.db.execute("SELECT descriptor_json FROM modernization_project WHERE id=1").fetchone()
