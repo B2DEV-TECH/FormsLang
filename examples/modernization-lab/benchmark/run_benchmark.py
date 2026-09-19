@@ -55,7 +55,7 @@ def get_file_sha256(path: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="FormsLang Modernization Prediction Benchmark Runner")
     parser.add_argument("--dry-run", action="store_true", help="Validate fixtures, schemas, and pipeline without baseline freeze")
-    parser.add_argument("--freeze", action="store_true", help="Freeze outputs to versioned baseline directory (v1)")
+    parser.add_argument("--freeze", action="store_true", help="Freeze outputs to versioned baseline directory (see --baseline-name)")
     parser.add_argument("--baseline-name", default="v1", help="Target baseline directory name (default: v1)")
     parser.add_argument("--force", action="store_true", help="Force overwrite of existing baseline directory")
     parser.add_argument("--predictions", type=str, help="Evaluate existing predictions file directly")

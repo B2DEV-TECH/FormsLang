@@ -356,4 +356,60 @@ def test_cross_layer_direct_dml_bypass_safety(tmp_path: Path):
     assert tf is not None
     assert tf["recommendation"] == "MANUAL_REVIEW"
     assert tf["execution_verdict"] == "MANUAL"
+    # Severity is measured, not assumed from the name of the column being written.
+    # This API guards nothing, so what the trigger bypasses is ownership plus the
+    # transaction boundary: serious, but short of the guarded case below.
+    assert entity["attributes"]["risk"]["level"] == "HIGH"
+
+
+def test_cross_layer_direct_dml_bypass_escalates_when_guards_are_lost(tmp_path: Path):
+    """The same bypass against a guarded API is worse, and is reported as worse."""
+    body_sql = """
+    create or replace package body approval_api as
+        procedure approve(p_id in number) is
+            v_status varchar2(30);
+        begin
+            select status into v_status from lom_orders
+             where order_id = p_id for update;
+            update lom_orders set status = 'APPROVED' where order_id = p_id;
+            if sql%rowcount = 0 then
+                raise_application_error(-20001, 'Order not found');
+            end if;
+        end approve;
+    end approval_api;
+    """
+    (tmp_path / "approval_api.pkb").write_text(body_sql, encoding="utf-8")
+
+    mod = FormModule(
+        name="APPROVALS",
+        blocks=[
+            Block(
+                name="BK_APPROVAL",
+                items=[
+                    Item(
+                        name="BT_APPROVE",
+                        triggers=[
+                            Trigger(
+                                name="WHEN-BUTTON-PRESSED",
+                                # No COMMIT here: the escalation must come from the
+                                # guards this statement skips, not from durability.
+                                text="""BEGIN
+                                    UPDATE lom_orders SET status = 'APPROVED' WHERE order_id = :bk_approval.order_id;
+                                END;""",
+                                scope="item",
+                                owner="BK_APPROVAL.BT_APPROVE",
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    bp = blueprint.build([mod], title="Approvals", database_sources=tmp_path)
+    tf, entity = _find_trigger_finding(bp, "WHEN-BUTTON-PRESSED", "BK_APPROVAL.BT_APPROVE")
+    assert tf is not None
+    assert tf["recommendation"] == "MANUAL_REVIEW"
+    assert tf["execution_verdict"] == "MANUAL"
     assert entity["attributes"]["risk"]["level"] == "CRITICAL"
+    assert tf["suggested_target"] == "APPROVAL_API.APPROVE"

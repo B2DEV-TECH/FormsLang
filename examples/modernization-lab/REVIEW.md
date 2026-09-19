@@ -6,10 +6,15 @@ Date: 2026-09-18. Scope: `examples/modernization-lab/**` (primary);
 
 This document records what was inspected, what was wrong, what was changed
 and what was verified. Every claim below is either quoted from a committed
-file or the output of a command listed in "Verification Performed". Nothing
-in this review was measured against a live Oracle database (see "SQL
-validation status") and no FormsLang prediction has been compared against
-the ground truth (see "Benchmark Readiness").
+file or the output of a command listed in "Verification Performed".
+
+Later work is appended rather than folded in, so the 2026-09-18 findings
+stay readable as they were written. **2026-09-19: the SQL scripts have now
+been executed against a live Oracle instance** in a disposable schema, which
+the original pass could not do -- see "SQL validation status", which replaces
+the "static validation only" statement that stood there, and R-21/R-22,
+two defects that execution exposed in the very scripts the original pass had
+hardened. Prediction results are in the "Prediction Benchmark" sections.
 
 ## Executive Summary
 
@@ -75,6 +80,9 @@ contained; LOW = hygiene with a credibility cost.
 | R-18 | LOW | `formslang/parser.py` | A malformed Forms2XML file raised a bare `xml.etree.ElementTree.ParseError` with no file name -- on a multi-module run the user could not tell which file failed. First reported in `HANDOFF.md`, unfixed. | `git diff formslang/parser.py` (`parse_xml`). | Fix in core. | `parse_xml` re-raises as `ValueError("<file>: invalid XML at line L, column C: ...")` chained from the original; `tests/test_parser.py::test_malformed_xml_names_the_file`. |
 | R-19 | LOW | `formslang/parser.py` docstring, root `README.md:1181` | Both said that after the XML unescape a trigger body "still contains the seven-character string `&#10;`"; the string is five characters, and the number is the whole point of the sentence (it explains the second decoding pass). | `git diff` of both files. | Fix the number. | Corrected to five; recorded in `CHANGELOG.md`. |
 | R-20 | LOW | `HANDOFF.md`, `docs/self-review.md`, lab `README.md` | Stated "complete and tested", "9/9 tests", "no stored credentials ... were found" as present-tense facts that this pass makes stale, and the README described test runs as a one-time event. | Text quoted in git diff. | Keep the historical documents historical; make them point here. | Each now says what was true at handoff and defers current counts/status to this file. |
+
+| R-21 | HIGH | `scripts/install.sql`, `scripts/seed.sql` | `@@` is not script-relative on this client. R-06 replaced 27 `@../database/...` paths with `@@` on the stated ground that "`@@` resolves relative to this file", and documented two working invocations. Measured on SQL*Plus 23.26.3.0.0, `@@` resolves against the **current directory**, exactly like `@`: only the invocation with `scripts/` as the current directory works. R-06's remediation was never executed and its premise is false. | From the lab root, `sqlplus ... @scripts/install.sql` -> 40x `SP2-0310: unable to open file "../database/..."`, 0 objects created. Identical result passing the absolute path to `install.sql` with the current directory elsewhere, which rules out "relative invocation" as the cause. | Document the one invocation that actually works and say on which client it was measured, rather than assert portable `@@` semantics a second time without running anything. | Both headers now say to run with `scripts/` as the current directory, name the client version the behaviour was measured on, and point at the new step-6 guard. Paths themselves are unchanged. |
+| R-22 | BLOCKER | `scripts/install.sql`, `scripts/seed.sql` | A completely failed install reported success. `SP2-0310` is a SQL\*Plus error, not a SQL error, so `whenever sqlerror exit failure` does not see it; and step 6's only guard was `count(*) ... where status != 'VALID'`, which is vacuously satisfied by an empty schema. An install in which all 40 nested scripts failed to open printed `Install complete: every object in the schema is VALID` and **exited 0**. `seed.sql` had the same hole: no inserts ran, nothing raised, `Seed complete` printed. This made install.sql's own header claim -- "a pipeline run cannot pass with a broken package" -- false, and R-06 had claimed that property was achieved. | Observed on the first live run, against an empty `LOM_LAB_TMP`: 40x SP2-0310, `select count(*) from user_objects` -> 0, SQL\*Plus exit code 0, success banner printed. | Make the guard assert that the install *happened*, not only that nothing is broken. Keep it derived from the script's own `@@` list so it stays honest when the lab grows. | Step 6 now compares `user_objects` counts per type against the 6 sequences / 11 tables / 2 views / 5 specs / 5 bodies the script installs and raises `-20002` naming the mismatch and the likely cause; the INVALID check follows unchanged. `seed.sql` raises `-20003` if `lom_orders` is empty after seeding. Both verified: the broken invocation now exits 1 with `ORA-20002` / `ORA-20003`, the correct one still exits 0. Indexes are deliberately not counted (most are created implicitly by constraints). |
 
 Issues considered and **not** changed (with reason):
 
@@ -179,7 +187,20 @@ Static SQL checks (no database): every `references` clause resolves to a
 table created earlier in `install.sql`; every `@@` target exists; each of
 the five `.pkb` files has a matching `.pks` installed before any body; the
 ten `(from, to)` pairs and the eight seed statuses were read from the
-package body and seed file by the test suite, not by hand.
+package body and seed file by the test suite, not by hand. Note that "every
+`@@` target exists" is a check on the *files*, and it passed while the
+*resolution* was broken -- see R-21.
+
+Live SQL execution (2026-09-19), against the schema described under "SQL
+validation status". The `cd` is load-bearing (R-21):
+
+```text
+cd examples/modernization-lab/scripts
+sqlplus -S <user>/<password>@//localhost:1521/freepdb1 @install.sql
+sqlplus -S <user>/<password>@//localhost:1521/freepdb1 @seed.sql
+sqlplus -S <user>/<password>@//localhost:1521/freepdb1 @verify.sql
+sqlplus -S <user>/<password>@//localhost:1521/freepdb1 @reset.sql
+```
 
 ## Test Results
 
@@ -229,27 +250,119 @@ The 31 lab tests by class (11 classes):
 
 ## SQL validation status
 
-**STATIC VALIDATION ONLY. The scripts were not executed in this pass.**
+**EXECUTED, 2026-09-19.** All four scripts were run against a live Oracle
+instance in a schema created for the run and dropped afterwards. This
+replaces the "static validation only" statement that stood here after the
+2026-09-18 pass.
 
-- An Oracle 26ai Free instance exists on the review machine, but the only
-  credentials available are for schemas that belong to other projects. The
-  lab's scripts drop and recreate objects and must run in a schema that can
-  be dropped afterwards; no credential able to create such a schema was
-  available, and none was invented.
-- What *was* done: `install.sql` / `seed.sql` / `verify.sql` were hardened
-  (R-06) and re-read end to end after the change; dependency order and every
-  path were checked statically as described under "Verification Performed".
-- What this means: a syntax error in a `.pkb`, a seed row violating a
-  constraint, or a `verify.sql` count mismatch would **not** have been
-  caught by this pass. The scripts now make such a failure visible on first
-  execution (non-zero exit) instead of silently continuing, which is the
-  most that can be claimed without running them.
+### Environment
+
+| | |
+|---|---|
+| Server | `Oracle AI Database 26ai Free Release 23.26.3.0.0` (`v$version.banner_full`) |
+| Container | `FREEPDB1`, `READ WRITE` |
+| Client | `SQL*Plus: Release 23.26.3.0.0 - Production` |
+| Schema | `LOM_LAB_TMP` -- created for this run, dropped with `drop user ... cascade` afterwards; `dba_users` then returns 0 rows for it |
+| Grants | `create session`, `create table`, `create view`, `create sequence`, `create procedure`, `quota unlimited on users`. No `dba`, no `resource`. |
+
+The schema password existed only for the duration of the run and is not
+stored in this repository or in any script in it.
+
+### Result
+
+Run from the `scripts/` directory, in the documented order:
+
+| Step | Exit code | Outcome |
+|---|---|---|
+| `@install.sql` | 0 | 54 objects created, every one `VALID` |
+| `@seed.sql` | 0 | seven seed files applied, sequences realigned |
+| `@verify.sql` | 0 | 11 row counts, no INVALID object, 6/6 fixture assertions `OK` |
+| `@reset.sql` | 0 | schema back to 0 objects; no error other than the expected "does not exist" noise |
+
+Object inventory after `install.sql` (`user_objects`, 54 rows, all `VALID`):
+
+| Object type | Count |
+|---|---:|
+| `INDEX` | 25 |
+| `TABLE` | 11 |
+| `SEQUENCE` | 6 |
+| `PACKAGE` | 5 |
+| `PACKAGE BODY` | 5 |
+| `VIEW` | 2 |
+
+The five package bodies compiled without warnings: every `show errors`
+after a body printed `No errors.`, and the step-6 listing of non-`VALID`
+objects returned `no rows selected`.
+
+Row counts reported by `verify.sql` after `seed.sql`:
+
+| Table | Rows |
+|---|---:|
+| `lom_approvals` | 3 |
+| `lom_audit_log` | 6 |
+| `lom_customer_types` | 3 |
+| `lom_customers` | 6 |
+| `lom_inventory` | 16 |
+| `lom_order_lines` | 12 |
+| `lom_order_status` | 8 |
+| `lom_orders` | 8 |
+| `lom_products` | 8 |
+| `lom_shipments` | 2 |
+| `lom_warehouses` | 2 |
+
+Fixture assertions, verbatim from `verify.sql`:
+
+```text
+=== Known-fixture business assertions ===
+OK   lom_customers is seeded
+OK   lom_orders is seeded
+OK   order 5004 fixture is still under-stocked at EAST (available=2, order needs 20)
+OK   quantity_available matches quantity_on_hand - quantity_reserved for every row
+OK   order 5006 reached SHIPPED
+OK   order 5008's rejection carries a non-null comment
+All checks passed.
+```
+
+### The showcase case, executed
+
+`verify.sql` deliberately does not call `LOM_ORDER_API.release_order(5004)`,
+because doing so consumes the under-stock fixture. It was called once, in
+its own block, and rolled back:
+
+```text
+EAST/2004 available before: 2
+ORA-20011: LOM_INVENTORY_API.reserve_quantity: insufficient stock for product 2004 in warehouse EAST
+```
+
+That is the exception the fixture exists to produce, raised by the package
+the registry names, with the product and warehouse the seed data sets up.
+The cross-package path `release_order -> reserve_quantity` therefore works
+against a real database, not only on paper -- which also means the
+body-level mutual dependency discussed in R-08 installs and executes.
+
+### What this run did and did not establish
+
+Established: the DDL compiles, the five package bodies compile clean against
+each other in the order `install.sql` uses, the seed data satisfies every
+constraint, the virtual column `LOM_INVENTORY.QUANTITY_AVAILABLE` computes
+as documented for all 16 rows, the documented business fixtures hold, the
+showcase exception fires, and `reset.sql` returns the schema to empty so the
+cycle is repeatable.
+
+Not established: behaviour on any client other than SQL*Plus 23.26.3.0.0 on
+Windows, on any database version other than 26ai Free 23.26.3.0.0, or in a
+schema that already contains unrelated objects -- step 6's new count check
+is written for a from-empty install and would report a mismatch in a shared
+schema, which is the intended reading of "run this in a disposable schema".
 
 ## Remaining Limitations
 
-1. **No live Oracle execution** (above). Until `install.sql`, `seed.sql` and
-   `verify.sql` have been run in a disposable schema, the DDL/packages/seed
-   are consistent by inspection, not proven to compile and load.
+1. **No live Oracle execution** -- **closed 2026-09-19.** `install.sql`,
+   `seed.sql`, `verify.sql` and `reset.sql` were run in a disposable schema
+   on Oracle 26ai Free; see "SQL validation status" for the environment, the
+   object inventory and the verbatim assertion output. What remains open is
+   narrower than the original limitation: one client, one database version,
+   and no run against a schema holding unrelated objects.
 2. **No FormsLang predictions exist for this lab.** The registry is a ground
    truth without a prediction set; no precision/recall/agreement figure has
    been computed and none is claimed anywhere in the lab.
@@ -273,25 +386,31 @@ The 31 lab tests by class (11 classes):
 
 ## Benchmark Readiness
 
-**STRUCTURALLY READY.**
+**READY, AND EXERCISED.** Both steps this section originally recommended
+have been carried out; the paragraphs below record what each one settled.
 
-Meaning: the fixtures parse, the registry is complete, unique, internally
-consistent and test-pinned against the source it describes, every
-narrative claim that was checked either matches the source or was
+Structurally: the fixtures parse, the registry is complete, unique,
+internally consistent and test-pinned against the source it describes,
+every narrative claim that was checked either matches the source or was
 corrected, and the numbers in the assessment are generated from the
 registry rather than typed in.
 
-Not meaning: the SQL has not been executed against Oracle (so it is not
-READY FOR LIVE ORACLE VALIDATION in the sense of "validated" -- it is ready
-to *be* validated), and no FormsLang prediction has been compared against
-the ground truth (so it is not READY FOR PREDICTION BENCHMARK until a
-prediction protocol -- including comment stripping, limitation 3 -- is
-defined and a first prediction set is produced and scored).
+Against Oracle (recommended step 1, done 2026-09-19): `install.sql`,
+`seed.sql`, `verify.sql` and `reset.sql` were executed in a disposable
+schema; 54 objects, all `VALID`, 6/6 fixture assertions `OK`, and the
+showcase exception raised by the package the registry names. See "SQL
+validation status".
 
-Recommended next step, in order: (1) run the three SQL scripts in a
-disposable schema and record the exact output here; (2) define the
-prediction protocol and produce the first FormsLang prediction set for the
-41 cases; only then compute and publish agreement metrics.
+Against the ground truth (recommended step 2, done 2026-09-18/19): the
+prediction protocol is `benchmark/protocol.md`, and three baselines have
+been produced and frozen -- v1 (Forms only), v2 (Forms + database) and v3
+(structural reasoning). See the three "Prediction Benchmark" sections
+below. The answer-key stripping that limitation 3 asked for is implemented
+in `benchmark/sanitize.py` and verified before every run.
+
+What is still not claimed: runtime validation against a real Oracle Forms
+or APEX instance, and any client or database version other than the single
+combination named under "SQL validation status".
 
 ## Prediction Benchmark v1
 
@@ -365,5 +484,59 @@ Date: 2026-09-18. Protocol version: 1.0. Runner version: 1.0.
   1. Non-XML library documentation (`OM_SHARED.md`, 3 cases) is un-ingested; native binary `.pll` or structured library format is required to reach 100% observability.
   2. PL/SQL analysis remains token/lexical evidence based; semantic type synthesis and live Oracle compiler feedback have not been added.
   3. False Automation Rate remains at 20.0% (2 cases: credit limit update ceiling policy and dynamic WHERE clause default warehouse constraint ambiguity).
+## Prediction Benchmark v3
 
+Date: 2026-09-19. Protocol version: 1.0. Runner version: 1.0.
 
+Read `baselines/v3/comparison-v1-v2-v3.md` before these numbers. Two facts
+outrank them and are stated there in full: **the v2 figure did not measure
+what it claimed to measure** (the v2 engine contained 30 references to this
+laboratory's own identifiers, so it could recognise the benchmark it was
+being scored on), and **v3 loses four cases that v2 answered correctly**.
+
+- **Baseline Status**: `V3_BASELINE_COMPLETE`
+- **Source Commit**: `af2d4ff977ba50ed4ff26ec3e4046d2a6129e8ff` (the commit
+  the run was based on; the v3 artifacts are committed after it)
+- **FormsLang Engine Path**: `formslang.parser.parse_xml -> formslang.blueprint.build` (Deterministic, AI: None, network: None)
+- **Observability Counts**: unchanged from v2 -- 38 observable (92.7%), 3 not observable (`OM_SHARED.md`)
+- **Measured Performance Metrics (Observable)**:
+  - Exact Classification Accuracy: **73.7%** (28/38) *(vs. 68.4% in v2, +5.3 pp)*
+  - Macro F1: **0.6418** *(vs. 0.6257 in v2, +0.0161)*
+  - Exact Risk Accuracy: **79.0%** (30/38) *(vs. 68.4% in v2, +10.6 pp)*
+  - Critical Risk Recall: **100.0%** (4/4) *(unchanged)*
+  - High+Critical Risk Recall: **87.5%** (7/8) *(unchanged)*
+  - Execution Verdict Exact Matches: **7/11** *(vs. 5/11 in v2)*
+- **Enterprise Safety Metrics**:
+  - Manual Review Recall: **80.0%** (8/10) *(unchanged from v2)*
+  - False Automation Rate: **20.0%** (2/10) *(unchanged from v2: `LOM-MOD-004`, `LOM-MOD-018`)*
+  - Critical Safety Misses: **0** *(unchanged)*
+- **Per-Class F1 (v2 -> v3)**: `PRESERVE` 0.9412 -> 0.7143; `CONVERT` 0.5000 -> 0.8000; `REFACTOR` 0.2500 -> 0.6667; `MOVE_TO_PLSQL_API` 0.8889 -> 0.8000; `REPLACE_WITH_APEX_NATIVE` 0.0000 -> 0.7500; `MANUAL_REVIEW` 0.8000 -> 0.7619; `DROP` 1.0000 -> 0.0000
+- **Regressions (must not be read past)**:
+  1. `LOM-MOD-003` `PRESERVE` -> `REFACTOR`: a body-level package cycle the architect judged deliberate. Nothing in the source distinguishes a contained cycle from an accidental one.
+  2. `LOM-MOD-019` `PRESERVE`/LOW -> `MOVE_TO_PLSQL_API`/HIGH: the trigger calls the API and re-reads one of its inputs; structural matching reads the re-read as duplication.
+  3. `LOM-MOD-032` `PRESERVE`/LOW -> `MANUAL_REVIEW`/CRITICAL: **the largest single over-escalation in the run**, a mandatory-comment rule enforced only in PL/SQL.
+  4. `LOM-MOD-038` `DROP` -> `MANUAL_REVIEW`: **accepted deliberately**. v2 answered `DROP` from a rule that named this fixture's table; the generic rule cannot prove that a column has no reader outside the analysed sources, so it asks instead of deleting.
+  5. `LOM-MOD-030` risk `MEDIUM` -> *(none emitted)*: a concurrency finding without a risk grade. This one is a defect, not a judgment call.
+- **Key Engineering Changes Delivered**:
+  1. New module `formslang/modernization.py`: 27 prioritized signals, all written against structure rather than names.
+  2. Structural signatures -- expression skeletons (identifiers and numbers erased), SELECT shapes (table, projection, filters), predicate literal sets, and leaf-name reduction that strips qualifiers and the conventional `P_`/`V_`/`G_`/`GC_`/`GV_`/`L_`/`C_` prefixes.
+  3. Measured guard strength: `FOR UPDATE`, `RAISE_APPLICATION_ERROR`, `SQL%ROWCOUNT` checks and cross-package delegation each count one, and a form-layer write is scored by how many guards it *loses* relative to the API that owns the table.
+  4. Native-equivalent recognition by shape for twelve idioms the target platform supplies declaratively -- the reason `REPLACE_WITH_APEX_NATIVE` goes from never predicted to 0.75 F1.
+  5. Priority ordering in which safety outranks convenience, and verdict escalation that only ever tightens.
+  6. **De-coupling**: every laboratory identifier removed from the product tree. `grep -rnE "LOM-MOD-|LOM_|CUSTOMERS\.xml|ORDERS\.xml|APPROVALS\.xml|INVENTORY\.xml|modernization-lab|baselines/v" formslang/` returned 30 matches against the v2 engine and returns none against v3.
+  7. `tests/test_modernization.py`, 37 tests, written against a synthetic library-lending corpus that shares no table, package, column or module name with this laboratory. One test runs identical structure through two unrelated vocabularies (library and clinic) and asserts both reach the same class, risk and verdict.
+- **Frozen Artifacts**:
+  - Location: `examples/modernization-lab/benchmark/baselines/v3/`
+  - Includes: `manifest.json`, `observability.json`, `raw-analysis.json`, `predictions.json`, `benchmark-report.json`, `benchmark-report.md`, `comparison-v1-v2-v3.md`, `failure-analysis.md`
+- **Method**: the prediction run was executed **once**, frozen in the same
+  command (`run_benchmark.py --freeze --baseline-name v3`), and no engine
+  code, heuristic, threshold or rule was changed afterwards. The mismatches
+  above are inputs to a future v4, not to this one.
+- **Historical integrity**: every file under `baselines/v1/`, `baselines/v2/`
+  and the ground truth was SHA256-hashed before and after the v3 work --
+  16/16 byte-identical, none added, none removed, none modified.
+- **Remaining Limitations**:
+  1. `OM_SHARED.md` (3 cases) is still un-ingested; `.pll` ingestion is deliberately deferred.
+  2. Four `ARCHITECTURAL_JUDGMENT` regressions and one missing risk grade, listed above, are open against v4.
+  3. Four ground-truth cases split one Forms construct across two case IDs while the engine emits one finding per construct, so the exact-classification ceiling for this engine shape is about **35/38 (92.1%)**, not 38/38.
+  4. The two false automations (`LOM-MOD-004`, `LOM-MOD-018`) are unchanged from v2; both turn on business intent the source does not carry.

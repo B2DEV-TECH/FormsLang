@@ -68,7 +68,12 @@ def normalize_findings(
             view = ename
 
         recommendation = f.get("recommendation", "UNKNOWN")
-        if recommendation in {"PRESERVE", "CONVERT", "REFACTOR", "DROP", "MANUAL_REVIEW"}:
+        # Every decision the ground truth can express counts as a prediction.
+        # MOVE_TO_PLSQL_API and REPLACE_WITH_APEX_NATIVE were missing here, so a
+        # correct answer in either class was being filed as PARTIAL.
+        if recommendation in {"PRESERVE", "CONVERT", "REFACTOR", "DROP",
+                              "MOVE_TO_PLSQL_API", "REPLACE_WITH_APEX_NATIVE",
+                              "MANUAL_REVIEW"}:
             status = "PREDICTED"
         elif recommendation == "UNKNOWN":
             status = "UNSUPPORTED"

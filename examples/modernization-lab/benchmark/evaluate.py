@@ -109,6 +109,33 @@ def find_matching_prediction(target: dict[str, Any], predictions: list[dict[str,
     return None
 
 
+def cases_sharing_a_finding(
+    cases: list[dict[str, Any]],
+    obs_map: dict[str, Any],
+    preds: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    """Cases that resolve to the very same engine finding.
+
+    Several ground-truth cases can describe different rules that live in one
+    trigger. The engine emits one finding per construct, so at most one of those
+    cases can be scored correct -- a limit of the case-to-construct mapping, not
+    of the reasoning. Naming it keeps those losses out of the pile of genuine
+    judgment errors.
+    """
+    owners: dict[str, list[str]] = {}
+    for c in cases:
+        cid = c["id"]
+        if obs_map.get(cid, {}).get("observability") == "NOT_OBSERVABLE":
+            continue
+        spec = CASE_SOURCE_TARGETS.get(cid)
+        match = find_matching_prediction(spec, preds) if spec else None
+        if match is not None:
+            owners.setdefault(match.get("raw_output_ref") or "", []).append(cid)
+    return {cid: [other for other in ids if other != cid]
+            for ids in owners.values() if len(ids) > 1
+            for cid in ids}
+
+
 def evaluate_run(
     predictions_payload: dict[str, Any],
     observability_payload: dict[str, Any],
@@ -126,6 +153,7 @@ def evaluate_run(
     fully_obs_cases = []
     partially_obs_cases = []
     not_obs_cases = []
+    shared_findings = cases_sharing_a_finding(cases, obs_map, preds)
 
     for c in cases:
         cid = c["id"]
@@ -197,8 +225,15 @@ def evaluate_run(
                     fail_cat = "RULE_MAPPING_GAP"
                     notes = f"Engine taxonomy produced {pred_class} instead of specific modernization class {t_class}."
                 elif t_class == "MANUAL_REVIEW" and pred_class != "MANUAL_REVIEW":
+                    # Checked before the mapping gap on purpose: a missed manual
+                    # review stays a safety miss whoever else shares the finding.
                     fail_cat = "VERDICT_GAP"
                     notes = f"Safety miss: case requiring human review was classified as {pred_class}."
+                elif cid in shared_findings:
+                    fail_cat = "CASE_MAPPING_GAP"
+                    notes = ("Ground truth splits one construct into several cases ("
+                             + ", ".join([cid] + shared_findings[cid])
+                             + f"); the engine emits a single finding for it, classified {pred_class}.")
                 else:
                     fail_cat = "ARCHITECTURAL_JUDGMENT"
                     notes = f"Engine recommended {pred_class} where human review determined {t_class}."

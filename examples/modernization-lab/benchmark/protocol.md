@@ -1,10 +1,16 @@
-# FormsLang Modernization Benchmark Protocol (v1)
+# FormsLang Modernization Benchmark Protocol
 
 **Version**: 1.0  
 **Target Repository**: `B2DEV-TECH/FormsLang`  
 **Primary Target Scenario**: `examples/modernization-lab`  
 **Ground Truth Version**: 1.0  
-**Runner Version**: 1.0  
+**Runner Version**: 1.0
+**Baselines Frozen Under This Protocol**: `v1`, `v2`, `v3`
+
+This protocol is versioned independently of the baselines it governs. All
+three baselines so far were produced under protocol 1.0, which is what makes
+them comparable; changing the protocol requires restating which baselines a
+given number can be compared against.
 
 ---
 
@@ -168,9 +174,14 @@ No loose free-text fuzzy matching is permitted.
 
 ## 17. Baseline Freeze
 Once a baseline is generated:
-- Outputs are frozen to an immutable version directory (`benchmark/baselines/v1/`).
+- Outputs are frozen to an immutable version directory, `benchmark/baselines/<name>/`.
 - Engine prediction heuristics are **frozen**. No tuning or tweaking is allowed after viewing baseline results.
-- Future engine runs must be stored under a new baseline directory (e.g. `v2/`).
+- Future engine runs must be stored under a new baseline directory. `v1`, `v2`
+  and `v3` are taken; the next is `v4`.
+- A frozen directory is never edited, re-run or overwritten -- not to correct a
+  number, not to re-render a report. The prediction that was made is the
+  prediction that stands, including its mistakes. Improvements are a later
+  baseline, and the comparison between the two is the deliverable.
 
 ---
 
@@ -185,14 +196,22 @@ Once a baseline is generated:
 The entire benchmark is runnable with standard Python without proprietary dependencies:
 ```bash
 python examples/modernization-lab/benchmark/run_benchmark.py --dry-run
-python examples/modernization-lab/benchmark/run_benchmark.py
+python examples/modernization-lab/benchmark/run_benchmark.py --freeze --baseline-name v4
 ```
-Outputs are verifiable by inspecting `benchmark/baselines/v1/`.
+Outputs are verifiable by inspecting `benchmark/baselines/<name>/`.
 
 ---
 
 ## 20. Known Limitations
-1. **No Standalone SQL Ingestion**: Current FormsLang does not ingest database DDL or package files.
+1. ~~**No Standalone SQL Ingestion**~~ -- **lifted for v2 onward.** FormsLang
+   ingests database DDL and package files via `--database-src`; the limitation
+   as written applies only to baseline `v1`. What remains un-ingested is
+   `OM_SHARED.md` (3 cases) and Forms `.pll` libraries.
 2. **Lexical PL/SQL Extraction**: FormsLang uses lexical extraction rather than a full semantic PL/SQL compiler.
-3. **No Live Oracle DB Execution**: Fixtures are structurally validated; live Oracle database compilation has not taken place.
+3. ~~**No Live Oracle DB Execution**~~ -- **lifted 2026-09-19.** The fixtures
+   were installed, seeded, verified and reset in a disposable schema on Oracle
+   26ai Free 23.26.3.0.0; 54 objects, all `VALID`, 6/6 fixture assertions `OK`.
+   See "SQL validation status" in `examples/modernization-lab/REVIEW.md`. This
+   validates the fixtures, not the predictions: no engine output is checked
+   against a running database.
 4. **Hand-Authored XML**: Forms2XML files were hand-crafted per ADR-001 rather than exported from Oracle Forms Builder.
