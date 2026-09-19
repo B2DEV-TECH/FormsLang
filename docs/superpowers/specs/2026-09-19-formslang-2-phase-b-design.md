@@ -1,7 +1,8 @@
 # FormsLang 2.0 Phase B: onboarding and project analysis
 
-Status: proposed implementation design, awaiting owner review. No Phase B
-implementation or acceptance is claimed. The owner's Phase B brief is authoritative.
+Status: design approved by the project owner on 2026-09-19. Implementation plan
+review is next; no Phase B implementation or acceptance is claimed. The owner's
+Phase B brief is authoritative.
 
 ## Intent and verified starting point
 
