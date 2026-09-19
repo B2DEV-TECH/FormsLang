@@ -46,6 +46,26 @@ def auth_store(tmp_path: Path):
     store.close()
 
 
+@pytest.fixture()
+def project_sources(tmp_path: Path, sample_xml):
+    """An ordinary static estate, never a customer source or benchmark lab."""
+    from formslang.project_model import ProjectDescriptor, SourceRoot
+    from formslang.projects import local_project_access
+
+    forms, database = tmp_path / 'forms', tmp_path / 'database'
+    forms.mkdir()
+    database.mkdir()
+    xml = forms / 'orders.xml'
+    xml.write_bytes(sample_xml.read_bytes())
+    (database / 'orders.sql').write_text('create table orders (id number);', encoding='utf-8')
+    access = local_project_access(tmp_path / 'project', approved_roots=(forms, database))
+    descriptor = ProjectDescriptor(id='a' * 32, name='Orders', source_roots=(
+        SourceRoot('forms', 'forms', str(forms)),
+        SourceRoot('database', 'database', str(database)),
+    ))
+    return access, descriptor, xml
+
+
 def setup_confirmed_mfa(auth_store, user_id: str) -> dict:
     """Enroll and confirm TOTP for a user, the way tests need it done.
 
