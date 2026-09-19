@@ -635,3 +635,89 @@ for validation and rendering; database actions require an authorized target.
 Release claims must name which layers passed. A green synthetic suite,
 successful ZIP validation or a working demo must not be described as full
 production or visual equivalence.
+
+## 2026-09-19 — FormsLang 2.0 Phase B development acceptance
+
+Branch `codex/formslang-2-phase-b`, based on merged Phase A
+`3f4d6914225a3a1df9e151d93e8669811261d753`. Application implementation tested at
+`e52ffda939c53c84e76ee1e585020807630a59c3`; the subsequent acceptance commit adds
+test harnesses and documentation, not production behavior. Version remains 1.6.0.
+This is not 2.0 release acceptance or permission to merge/publish.
+
+Platform: Windows 11 build 26200, Python 3.13.15, installed Node and headless Edge.
+All project inputs are disposable public-safe synthetic fixtures. Commands run from
+the repository root with Python `-B`; no Oracle credentials or AI provider used.
+
+### Real application and compatibility checks
+
+- `python -B -m pytest -q -rs -p no:cacheprovider`: **1,438 passed, 5 skipped in
+  238.88s**, including Phase A/B, auth/security, CLI/API and Node-driven tests.
+  Skips are Windows-account symlink permissions at `test_blueprint.py:388`,
+  `test_path_safety.py:92`, `test_project_discovery.py:248`,
+  `test_project_manifest.py:83`, `test_project_service.py:89`. Actual Windows NTFS
+  junction cases execute and pass; no missing-browser/Node skip is hidden.
+- `python -B examples/verify/project_browser_check.py --output scratch_tmp/phase-b-final-browser`:
+  **21/21**, five screenshots, no browser exceptions. Evidence
+  `run-16d83002bc1e/result.json`. Real HTTP/service/SQLite/engine, no fake assessment
+  responses. Browser onboarding, source picker/preview, default target, analysis,
+  persisted summary; server process replaced (PID 27616 → 35612), recent reopen
+  retains revision; altered source → Stale; missing source → Missing Source;
+  same-content relink → Current; malformed XML → Incomplete with valid input retained;
+  250-module cancellation publishes no assessment; project switch, normal demo,
+  tablet width, reduced-motion preference and loopback-only application requests.
+- `python -B examples/verify/workbench_browser_check.py --output scratch_tmp/phase-b-final-legacy-browser`:
+  **101/101**, 27 screenshots, evidence `run-0ff4263a6010/result.json`. Existing
+  Blueprint, conversion/review, source evidence, layout, theme, contrast and keyboard
+  regression checks remain green.
+- `python -B -m pytest -q -p no:cacheprovider tests/test_project_ui_behavior.py tests/test_blueprint_ui_behavior.py tests/test_review_ui_behavior.py`:
+  **44 passed in 3.02s**, including Node-driven UI behavior tests. New real-browser
+  checks verify labels/error association, keyboard Tab/focus, live status and
+  labelled progress. This is not a manual screen-reader audit or native Tauri UI test.
+- `python -B -m pytest -q -p no:cacheprovider tests/test_project_acceptance.py`:
+  **1 passed in 5.40s**. Review history, timestamp and findings survive a new service
+  instance. A trap proves reopen/freshness does not call Blueprint analysis.
+- `python -B -m ruff check . --no-cache` and `git diff --check`: clean.
+- Compared canonical Git blob hashes of all **24** frozen baseline/ground-truth
+  files against the Phase A base: **zero differences**. Version declarations are
+  unchanged; `pyproject.toml` only adds bundled demo package-data entries.
+
+### Packaged engine and deterministic content
+
+`python -B -m PyInstaller --noconfirm --distpath scratch_tmp/phase-b-engine-green/dist --workpath scratch_tmp/phase-b-engine-green/build packaging/formslang-engine.spec`
+then `python -B examples/verify/project_engine_check.py --engine scratch_tmp/phase-b-engine-green/dist/formslang-engine.exe --output scratch_tmp/phase-b-engine-green/acceptance`:
+**6/6** actual frozen-executable checks (`run-36ebe9f12637/result.json`). Includes
+normal demo, analysis, fresh reopen, bundled fingerprint resources and repeat
+determinism. EXE SHA-256
+`aa04f00a5fcce787b6c40aec555f9528c21d408be45e12dd0c74c7d6ad35fe54`.
+The pre-fix actual executable reproduced `ENGINE_IDENTITY_UNAVAILABLE`; including
+Python data resources fixed the fingerprint failure rather than bypassing it.
+
+`python -B -m pip wheel --no-deps --no-build-isolation --no-index --wheel-dir scratch_tmp/phase-b-wheel .`
+and isolated `--target scratch_tmp/phase-b-wheel/site` install also passed a normal
+demo/analysis with Python `-I` and an asserted installed-module path. Wheel SHA-256
+`b22422b29699e2304eccfcdd20fd99df000ec17d008b7fa0074527e551268028`.
+No network dependency installation or published binaries. Wheel and frozen engine
+both produced analysis revision
+`bc6c52ac8e7f02a3712553cdb567b9e5a81ed54553c05a780bc0a4c62a5d881c`.
+
+### Small-fixture timing baseline (not a scale claim)
+
+`python -B examples/verify/project_performance_check.py --output scratch_tmp/phase-b-performance`,
+evidence `run-df3425e81db5/result.json`: five files, two Forms, two tables, one package
+specification/body. Source revision
+`5519a4d9b6f3167335f1029991bed75a33cde7349c9721984ffc23f63e3a5dd4`.
+Discovery preview 1,011.600 ms. Traced analysis total 4,572.343 ms; measured phase
+times: discovery 1,923.608; Forms parsing 472.810; DB parsing 669.369; Blueprint
+213.682; assessment 151.976; persistence 1,013.168 ms. Phase times include safe-boundary
+checks. Python allocation peak 2,670,130 bytes (tracemalloc, not RSS). Repeated real
+analysis matched the frozen/wheel revision above. Tracing overhead and one tiny
+synthetic run preclude estate-scale or analyst-productivity conclusions.
+
+### Explicit boundaries
+
+No native installer/upgrade acceptance, new live Oracle/SQLcl/APEX validation,
+customer corpus, functional parity or human productivity experiment was performed
+for Phase B. Forms2XML tool execution is tested at a controlled mocked boundary,
+not an installed proprietary Oracle tool. Existing historical Oracle acceptance
+above is not new evidence for this phase. Full dashboard, inventory visualization,
+priority-review UI, project-level generation and reports remain Phase C+.

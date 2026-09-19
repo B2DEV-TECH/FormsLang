@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import os
 import shutil
 import socket
@@ -18,6 +19,54 @@ from pathlib import Path
 from workbench_browser_check import REPO, browser_path, stop
 
 
+def _serve(run, ready, stopped):
+    sys.path.insert(0, str(REPO))
+    from formslang.ai import EchoProvider
+    from formslang.store import Store
+    from formslang.workbench import Handler, Workbench
+
+    store = Store(run / 'shell.db')
+    wb = Workbench(store, EchoProvider(), run / 'exports', browse_root=run / 'sources')
+    handler = type('ProjectBrowserHandler', (Handler,), {'workbench': wb})
+    server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+    server.daemon_threads = True
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    ready.put(server.server_port)
+    try:
+        stopped.wait()
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+        wb.project_api.close()
+        store.close()
+
+
+def _stop_server(process, stopped):
+    stopped.set()
+    process.join(timeout=10)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=5)
+
+
+def _start_server(run):
+    context = multiprocessing.get_context('spawn')
+    ready, stopped = context.Queue(), context.Event()
+    process = context.Process(target=_serve, args=(run, ready, stopped))
+    process.start()
+    try:
+        port = ready.get(timeout=25)
+    except Exception:
+        _stop_server(process, stopped)
+        raise
+    finally:
+        ready.close()
+        ready.join_thread()
+    return process, stopped, port
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
@@ -28,27 +77,16 @@ def main():
     run.mkdir(parents=True)
     os.environ.update(FORMSLANG_CONFIG_DIR=str(run / 'config'), FORMSLANG_DATA_DIR=str(run / 'data'),
                       FORMSLANG_SECRET_BACKEND='memory', FORMSLANG_AUTH='0')
-    sys.path.insert(0, str(REPO))
-    from formslang.ai import EchoProvider
-    from formslang.store import Store
-    from formslang.workbench import Handler, Workbench
-
     forms, database = run / 'sources/forms', run / 'sources/database'
     forms.mkdir(parents=True)
     database.mkdir()
     shutil.copyfile(REPO / 'tests/fixtures/showcase/module.xml', forms / 'orders.xml')
     (database / 'orders.sql').write_text('create table orders (id number primary key);', encoding='utf-8')
-    store = Store(run / 'shell.db')
-    wb = Workbench(store, EchoProvider(), run / 'exports', browse_root=run / 'sources')
-    handler = type('ProjectBrowserHandler', (Handler,), {'workbench': wb})
-    server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
-    server.daemon_threads = True
-    worker = threading.Thread(target=server.serve_forever, daemon=True)
-    worker.start()
+    server_process, server_stop, server_port = _start_server(run)
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         debug_port = reservation.getsockname()[1]
-    (run / 'state.json').write_text(json.dumps({'url': f'http://127.0.0.1:{server.server_port}',
+    (run / 'state.json').write_text(json.dumps({'url': f'http://127.0.0.1:{server_port}',
         'debug_port': debug_port, 'forms': str(forms), 'database': str(database)}), encoding='utf-8')
     hidden = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     edge = node = None
@@ -62,21 +100,23 @@ def main():
                 creationflags=hidden, stdout=log, stderr=log)
             node = subprocess.Popen([args.node, str(Path(__file__).with_suffix('.mjs')), str(run)],
                                     creationflags=hidden, stdout=node_log, stderr=node_log)
-            deadline = time.monotonic() + 180
+            deadline = time.monotonic() + 240
             while node.poll() is None:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError('Project browser acceptance exceeded three minutes')
+                    raise TimeoutError('Project browser acceptance exceeded four minutes')
+                if (run / 'restart.request').exists() and not (run / 'restart.ready').exists():
+                    previous_pid = server_process.pid
+                    _stop_server(server_process, server_stop)
+                    server_process, server_stop, server_port = _start_server(run)
+                    (run / 'restart.ready').write_text(json.dumps({'url': f'http://127.0.0.1:{server_port}',
+                        'previous_pid': previous_pid, 'current_pid': server_process.pid}), encoding='utf-8')
                 time.sleep(.2)
             print((run / 'node.log').read_text(encoding='utf-8'), flush=True)
             return node.returncode
     finally:
         stop(node)
         stop(edge)
-        server.shutdown()
-        server.server_close()
-        worker.join(timeout=5)
-        wb.project_api.close()
-        store.close()
+        _stop_server(server_process, server_stop)
 
 
 if __name__ == '__main__':

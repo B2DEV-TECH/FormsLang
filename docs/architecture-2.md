@@ -1,7 +1,7 @@
 # FormsLang 2.0 implementation architecture
 
-This page describes the implemented Phase A foundation, not the complete planned
-2.0 product. For product scope and phases B-H see
+This page describes the unreleased Phase A foundation and Phase B workflow,
+not the complete 2.0 product. For product scope and phases C-H see
 [product architecture](formsLang-2-product-architecture.md). For storage and a
 runnable example see [project model](project-model.md).
 
@@ -15,10 +15,19 @@ runnable example see [project model](project-model.md).
 | `project_assessment` | Existing Blueprint provenance binding and consistent review projection |
 | `project_migration` | Read-only validation, WAL-safe backup, verified legacy copy and provenance |
 | `projects` | Existing registry and tenant/RBAC boundary; local/request-scoped access contexts |
-| `project_service` | One authorized project connection, create/open/assessment/import operations |
+| `project_service` | Shared façade: create/open/discover/analyze/freshness/relink/import |
+| `project_intake` | Source capabilities, locators, tenant boundary and normal demo copies |
+| `project_discovery`, `project_sources` | Bounded discovery, diagnostics, staged bytes and stable identities |
+| `project_jobs`, `project_lock` | Durable jobs, process lock, cancellation and publication fencing |
+| `project_analysis`, `project_freshness` | One analysis orchestrator and hash verification without reasoning |
+| `project_conversion` | Explicit staged Forms2XML and hash-bound derived representations |
+| `project_http`, `project_cli` | Versioned HTTP and local CLI adapters; no second pipeline |
+| `ui/modernization_project*` | Existing HTML/JS shell: onboarding, progress, summary and recovery |
 
-The service does not parse source, implement classifiers or call a provider.
-Phase B will add the single project analysis orchestrator and UI/API/CLI adapters.
+The service delegates analysis; it does not implement classifiers or call a provider.
+UI and CLI call the same service/orchestrator: discovery, staging/parsing, existing
+Blueprint reasoning, assessment binding and atomic persistence. Opaque engine stages
+are not presented as invented fine-grained progress.
 The existing Workbench, parser, database analysis, Blueprint reasoning, conversion
 review, APEXlang exporter, SQLcl adapter and desktop shell remain in place.
 No new frontend framework or runtime dependency is introduced.
@@ -36,8 +45,17 @@ boundary; checking only containment in the global data directory is insufficient
 
 Read projections use one SQLite read transaction. Assessment publication uses
 compare-and-swap inside a write transaction, preventing competing analyses from
-silently overwriting each other. Durable jobs, cancellation and process recovery
-are Phase B work; this foundation does not claim background continuation.
+silently overwriting each other. A process-level file lock plus in-process lock,
+SQLite ownership token and revision preconditions exclude competing CLI/UI writers.
+Workers own their connection and reauthorize at checkpoints. HTTP acknowledges 202
+after job claim. Recovery must acquire the OS lock: heartbeat age or PID alone
+never proves a worker dead. Orphans become `FAILED / PROCESS_INTERRUPTED`; work
+does not continue after process exit.
+
+Cancellation is cooperative between files/phases, preserving the previous assessment.
+Source and configuration are rechecked before publication. Run timings/job IDs stay
+outside deterministic content. UI response/write guards bind to project identity
+and view generation, preventing pending operations from targeting a new project.
 
 Existing Store defaults are preserved. A new keyword-only `reconcile_jobs=False`
 lets project readers and migration avoid marking a live legacy conversion job as
@@ -67,6 +85,10 @@ offline initialization and the existing tenant/RBAC boundary. Foundation accepta
 composes the real parser and Blueprint and exercises multiple processes.
 
 The full existing Python/JavaScript and browser suites remain compatibility gates.
-Installer/upgrade, frozen fingerprint resources, corporate onboarding E2E,
-accessibility of new screens and Oracle/APEX validation are subsequent phase gates,
-not evidence implied by these foundation tests.
+Phase B adds service/API/CLI lifecycle and real-browser onboarding, server-process
+restart, stale/missing/relink, partial failure and cancellation acceptance. Frozen
+executable and isolated-wheel checks exercise bundled demo and fingerprints.
+Scripted accessibility checks are not a manual screen-reader audit. Installer/upgrade
+and live Oracle/APEX validation remain release gates; a frozen engine is not a
+native-installer acceptance. See [workflows](project-workflows.md) and
+[acceptance evidence](quality-acceptance.md).
