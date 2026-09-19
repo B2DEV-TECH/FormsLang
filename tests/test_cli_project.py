@@ -120,3 +120,11 @@ def test_unexpected_failure_does_not_expose_source_or_credentials(tmp_path, samp
     result, output = run_json(capsys, ['analyze', destination], expected=1)
     assert 'retry' in result['error'].lower()
     assert 'secret-password' not in json.dumps(result) + output
+
+
+def test_demo_cli_creates_normal_offline_project(tmp_path, capsys):
+    destination = tmp_path / 'demo-project'
+    created, _ = run_json(capsys, ['demo', destination])
+    assert created['project']['name'] == 'Synthetic dispatch desk'
+    analyzed, _ = run_json(capsys, ['analyze', destination])
+    assert analyzed['status'] == 'COMPLETED'

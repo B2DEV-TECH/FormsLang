@@ -182,6 +182,8 @@ class ProjectHTTP:
             if intake.identity:
                 return 200, intake._summary(body.get('project_id'))
             return 200, intake.open_locator(body.get('locator', ''))
+        if parts == ['projects', 'demo'] and method == 'POST':
+            return 201, intake.create_demo()
         if len(parts) < 2 or parts[0] != 'projects' or not re.fullmatch('[a-f0-9]{32}', parts[1]):
             return 404, {'error': 'Project route not found'}
         pid = parts[1]

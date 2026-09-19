@@ -25,6 +25,8 @@ out/
 assessment.html
 assessment.json
 modernization/
+# Bundled, hand-authored synthetic demo (not generated modernization output).
+!/formslang/demo/modernization/
 
 # Conversion sessions hold the original code bodies verbatim. Never commit.
 *.session.db

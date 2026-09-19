@@ -37,6 +37,8 @@ def _operation(args):
         raise PermissionError('Authenticated mode requires the Workbench API and a normal authorized session; local project CLI is disabled')
     intake = ProjectIntake(config.data_dir(), config.config_dir())
     operation = args.project_command
+    if operation == 'demo':
+        return intake.create_demo(destination=args.project), 0
     if operation == 'create':
         sources = [intake.select_source(path, kind) for kind in ('forms', 'database', 'supporting')
                    for path in getattr(args, kind)]
@@ -101,7 +103,7 @@ def run_project(args):
 def add_project_parser(subparsers):
     parser = subparsers.add_parser('project', help='local modernization projects: create, analyze and reopen')
     commands = parser.add_subparsers(dest='project_command', required=True)
-    for name in ('create', 'discover', 'analyze', 'status', 'info', 'open', 'relink'):
+    for name in ('create', 'demo', 'discover', 'analyze', 'status', 'info', 'open', 'relink'):
         command = commands.add_parser(name)
         command.add_argument('project', help='project directory or .formslang/project.json descriptor')
         command.add_argument('--json', action='store_true', help='machine-readable stdout; progress goes to stderr')

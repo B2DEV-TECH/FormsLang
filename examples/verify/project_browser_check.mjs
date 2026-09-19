@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const root=path.resolve(process.argv[2]),config=JSON.parse(await fs.readFile(path.join(root,'state.json'),'utf8'));
-const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL',scope:'Phase B onboarding smoke; demo/restart acceptance follows'};
+const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo',scope:'Phase B onboarding and demo smoke; server-restart acceptance follows'};
 let socket,sequence=0;const pending=new Map();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(fn,name){const end=Date.now()+30000;while(Date.now()<end){if(await fn())return;await sleep(100);}throw Error('Timed out: '+name);}
@@ -45,6 +45,11 @@ try{
   await evaluate(`document.querySelector('[data-project-open="${id}"]').click()`);
   await wait(()=>evaluate(`projectUI.view==='summary'&&!projectUI.jobId&&projectUI.summary?.freshness.status==='CURRENT'&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'reopened assessment');
   check('same persisted assessment reopened',await evaluate('projectUI.summary.project.analysis_revision')===revision);
+  await click('project-home');await wait(()=>evaluate(`!!document.getElementById('project-demo')`),'demo action');
+  await click('project-demo');
+  await wait(()=>evaluate(`projectUI.view==='summary'&&projectUI.summary?.project.name==='Synthetic dispatch desk'&&!projectUI.jobId&&projectUI.summary.freshness.status==='CURRENT'&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'real demo assessment');
+  check('bundled demo follows real project path',await evaluate(`projectUI.summary.inventory.forms.analyzed===2&&projectUI.summary.inventory.database.package_bodies===1`));
+  await screenshot('demo-assessment.png');
   await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
   await sleep(300);check('tablet no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
   check('no browser exceptions',result.exceptions.length===0,result.exceptions);

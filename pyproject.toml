@@ -34,6 +34,11 @@ include = ["formslang*"]
 
 [tool.setuptools.package-data]
 formslang = [
+    "demo/modernization/README.md",
+    "demo/modernization/forms/*.xml",
+    "demo/modernization/database/*.sql",
+    "demo/modernization/database/*.pks",
+    "demo/modernization/database/*.pkb",
     "templates/apexlang26/*.apx",
     "templates/apexlang26/.apex/*.json",
     "templates/apexlang26/deployments/*.json",

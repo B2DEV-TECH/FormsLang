@@ -93,6 +93,18 @@ def test_onboarding_exposes_backend_target_profile(project_server):
     assert response.json['target_profile'] == {'platform': 'Oracle APEX', 'version': '26.1', 'representation': 'APEXlang'}
 
 
+def test_demo_endpoint_uses_normal_analysis_route(project_server):
+    client, _ = project_server
+    created = client.post('/api/v2/projects/demo', {})
+    assert created.status == 201
+    pid = created.json['project']['id']
+    job = client.post(f'/api/v2/projects/{pid}/analyze', {'expected_revision': None, 'expected_configuration': 0})
+    assert job.status == 202
+    assert client.wait_job(pid, job.json['job_id'])['status'] == 'COMPLETED'
+    saved = client.get(f'/api/v2/projects/{pid}/assessment').json['assessment']
+    assert saved['inventory']['forms']['analyzed'] == 2
+
+
 def test_cli_and_http_produce_same_revision(project_server, project_sources, capsys):
     from formslang.cli import main
 

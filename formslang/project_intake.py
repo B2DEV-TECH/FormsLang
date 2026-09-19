@@ -10,6 +10,7 @@ import tempfile
 import uuid
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path
 
 from . import authstore, rbac
@@ -105,21 +106,54 @@ class ProjectIntake:
     def _host_areas(self):
         with self._auth():
             path = _plain_path(self.config_dir / 'project-source-areas.json')
-            if not path.is_file():
-                return {}  # Saved evidence is still readable; no source access is granted.
-            if path.stat().st_size > 1024 * 1024:
+            if path.is_file() and path.stat().st_size > 1024 * 1024:
                 raise ProjectError('Host source-area configuration is too large')
             try:
-                configured = json.loads(path.read_text(encoding='utf-8'))['organizations'].get(self.identity.org_id, {})
+                configured = (json.loads(path.read_text(encoding='utf-8'))['organizations'].get(self.identity.org_id, {})
+                              if path.is_file() else {})
                 if not isinstance(configured, dict):
                     raise TypeError('invalid areas')
                 result = {key: _plain_path(value) for key, value in configured.items()
                           if isinstance(key, str) and isinstance(value, str) and Path(value).is_absolute()}
                 if len(result) != len(configured):
                     raise ValueError('invalid area path')
+                if 'built-in-demo' in result:
+                    raise ValueError('reserved source area')
+                demo = self._demo_area()
+                if demo.is_dir():
+                    result['built-in-demo'] = demo
                 return result
             except (ValueError, KeyError, TypeError) as exc:
                 raise ProjectError('Host source-area configuration is invalid') from exc
+
+    def _demo_area(self):
+        base = self.data_dir / 'orgs' / self.identity.org_id if self.identity else self.data_dir
+        return _plain_path(base / 'demo-sources')
+
+    def create_demo(self, *, destination=None):
+        """Explicitly copy bundled synthetic sources into an ordinary source area."""
+        with self._auth(rbac.CREATE_PROJECT) if self.identity else nullcontext(self._local()):
+            if self.identity is not None and destination is not None:
+                raise PermissionError('Authenticated projects use host-managed storage')
+            source_copy = _plain_path(self._demo_area() / uuid.uuid4().hex)
+            package = resources.files('formslang').joinpath('demo').joinpath('modernization')
+            selections = []
+            files = {'forms': ('shipments.xml', 'customers.xml'),
+                     'database': ('tables.sql', 'shipment_api.pks', 'shipment_api.pkb')}
+            for kind, names in files.items():
+                folder = _plain_path(source_copy / kind)
+                folder.mkdir(parents=True, exist_ok=False)
+                for name in names:
+                    contents = package.joinpath(kind).joinpath(name).read_bytes()
+                    with _plain_path(folder / name).open('xb') as target:
+                        target.write(contents)
+                selection = ({'root_id': kind, 'kind': kind, 'area_id': 'built-in-demo',
+                              'relative_path': source_copy.name + '/' + kind} if self.identity else
+                             {**self.select_source(folder, kind), 'root_id': kind})
+                selections.append(selection)
+            return self.create('Synthetic dispatch desk', selections,
+                               description='Public-safe synthetic demonstration; no runtime parity claim.',
+                               destination=destination)
 
     @contextmanager
     def _metadata(self, *, write=False):

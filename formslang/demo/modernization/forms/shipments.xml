@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored synthetic sources. No customer or proprietary Oracle module. -->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="SHIPMENTS" Title="Synthetic dispatch desk">
+    <Block Name="SHIPMENT" QueryDataSourceName="SHIPMENTS">
+      <Item Name="ID" ItemType="Text Item" DataType="Number"/>
+      <Item Name="STATE" ItemType="Text Item" DataType="Char">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN SELECT state INTO :shipment.state FROM shipments WHERE shipment_id = :shipment.id; END;"/>
+      </Item>
+      <Item Name="APPROVE" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN shipment_api.approve(:shipment.id); END;"/>
+      </Item>
+      <Item Name="CONFIRM" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN IF SHOW_ALERT('AL_CONFIRM') = ALERT_BUTTON1 THEN NULL; END IF; END;"/>
+      </Item>
+      <Item Name="CUSTOMER" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN CALL_FORM('CUSTOMERS'); END;"/>
+      </Item>
+      <Trigger Name="PRE-INSERT" TriggerText="BEGIN SELECT MAX(shipment_id) + 1 INTO :shipment.id FROM shipments; END;"/>
+    </Block>
+    <Alert Name="AL_CONFIRM" Title="Confirm dispatch" Message="Continue with this shipment?"/>
+  </FormModule>
+</Module>
