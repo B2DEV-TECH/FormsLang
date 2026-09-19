@@ -86,6 +86,28 @@ def create_project(client, source):
     return created.json['project']['id'], selected
 
 
+def test_cli_and_http_produce_same_revision(project_server, project_sources, capsys):
+    from formslang.cli import main
+
+    client, _ = project_server
+    _, _, xml = project_sources
+    pid, _ = create_project(client, xml.parent)
+    response = client.post(f'/api/v2/projects/{pid}/analyze', {
+        'expected_revision': None, 'expected_configuration': 0})
+    assert response.status == 202
+    first = client.wait_job(pid, response.json['job_id'])
+    assert first['status'] == 'COMPLETED'
+    saved = client.get(f'/api/v2/projects/{pid}/assessment').json['assessment']
+    destination = config.data_dir() / 'projects'
+    locators = list(destination.glob('*/.formslang/project.json'))
+    assert len(locators) == 1
+    capsys.readouterr()
+    assert main(['project', 'analyze', str(locators[0]), '--json']) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second['analysis_revision'] == saved['analysis_revision']
+    assert client.get(f'/api/v2/projects/{pid}/assessment').json['assessment']['analyzed_at'] == saved['analyzed_at']
+
+
 def test_analysis_is_accepted_then_persisted(project_server, project_sources):
     client, _ = project_server
     pid, _ = create_project(client, project_sources[2].parent)
