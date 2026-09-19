@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Compute structural metrics for the LOM modernization lab directly from the
 committed artifacts (forms/xml/*.xml via formslang.parser, database/**/*.sql

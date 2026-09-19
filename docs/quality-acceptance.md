@@ -18,11 +18,15 @@ documentation-only change.
 - [CI 35442199131](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35442199131):
   **11 of 12 jobs passed; `ruff` failed.** All eight Windows/Ubuntu and Python
   3.10-3.13 test combinations passed, as did deterministic export, SQLcl offline
-  APEX validation and the Edge browser acceptance. The lint job reported seven
-  errors -- three `SIM102`, one `SIM114`, one `PIE810`, one `I001` and one
-  `F841` for a variable assigned and never read inside a function that had no
-  caller -- introduced by the modernization-lab commits of 2026-09-18 and
-  inherited by the release commit; `main` had been red on this job since
+  APEX validation and the Edge browser acceptance. The lint job reported eight
+  errors -- three `SIM102`, one `SIM114`, one `PIE810`, one `I001`, one `F841`
+  for a variable assigned and never read inside a function that had no caller,
+  and one `EXE001` for a shebang on a file without the executable bit. The
+  eighth is invisible on Windows, where ruff cannot evaluate that bit, so a
+  clean local `ruff check` is not evidence that the lint job will pass; only
+  Linux CI settles it. All eight came from the modernization-lab commits of
+  2026-09-18 and were inherited by the release commit; `main` had been red on
+  this job since
   `feat(examples): add Legacy Order Management modernization lab`. They are
   fixed in a follow-up commit, not in the tagged one: the fixes are
   behaviour-preserving, and re-running the benchmark with them applied produced
