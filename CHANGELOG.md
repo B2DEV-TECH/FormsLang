@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-19
+
 ### Added
 
 - `formslang.database`: generic parser and data model for Oracle DDL (`CREATE TABLE`, constraints, lookup tables, `CREATE VIEW`), sequences, package specifications (`.pks`), and package bodies (`.pkb`) with token-level lexical evidence extraction.
@@ -29,6 +31,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `examples/modernization-lab`: hardening pass documented in its `REVIEW.md`
   (ground-truth reclassifications, doc/registry consistency tests, script
   hardening).
+- `formslang.modernization`: structural modernization reasoning. Twenty-seven
+  prioritized signals decide, for a Forms construct, whether the target
+  platform supplies it natively, whether it belongs in a PL/SQL API, whether
+  it races against a concurrent session, or whether nothing in the source
+  settles the question and a human must. Every signal is written against
+  structure -- expression skeletons with identifiers and literals erased,
+  `SELECT` shapes, predicate literal sets, and leaf names reduced past
+  qualifiers and the conventional `P_` / `V_` / `G_` / `L_` / `C_` prefixes --
+  so the same reasoning reaches the same verdict on an unrelated vocabulary.
+- Measured guard strength: `FOR UPDATE`, `RAISE_APPLICATION_ERROR`,
+  `SQL%ROWCOUNT` checks and cross-package delegation each count, and a
+  form-layer write is judged by how many guards it *loses* relative to the API
+  that owns the table, rather than by whether it writes at all.
+- Native-equivalent recognition by shape for twelve idioms the target platform
+  supplies declaratively, so they are reported as `REPLACE_WITH_APEX_NATIVE`
+  rather than as code to port.
+- Verdict escalation that only ever tightens: a construct whose evidence is
+  incomplete can move from `AUTO` toward `MANUAL`, never the other way.
+- Modernization prediction benchmark v3:
+  - Baseline v3 generated and frozen; 73.7% exact classification accuracy
+    (vs. 68.4% in v2), macro F1 0.6418 (vs. 0.6257), 79.0% exact risk accuracy
+    (vs. 68.4%), 7/11 exact verdict matches (vs. 5/11), and Critical Safety
+    Misses still 0.
+  - `REPLACE_WITH_APEX_NATIVE` goes from never predicted (F1 0.00) to F1 0.75;
+    `REFACTOR` from 0.25 to 0.6667; `CONVERT` from 0.50 to 0.80.
+  - Four cases v2 answered correctly are now wrong, all of them architectural
+    judgments the source does not settle, and one concurrency finding is
+    emitted without a risk grade. Both are recorded in
+    `baselines/v3/comparison-v1-v2-v3.md` and `REVIEW.md` rather than
+    averaged away.
+
+### Changed
+
+- The engine no longer contains any identifier belonging to the modernization
+  laboratory. The v2 engine held thirty references to that laboratory's own
+  table, package and case names, which meant the v2 accuracy figure partly
+  measured recognition of the benchmark rather than reasoning about Forms. The
+  rules are now generic and the benchmark scores generic behaviour.
 
 ### Fixed
 
@@ -37,6 +77,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bare `ParseError` that does not say which file failed.
 - README and the parser docstring called `&#10;` a seven-character string; it
   is five.
+- `examples/modernization-lab/scripts/install.sql` and `seed.sql` reported
+  success after doing nothing. `SP2-0310` (a nested script that cannot be
+  opened) is a SQL*Plus error and not a SQL error, so `whenever sqlerror exit
+  failure` does not see it, and the only post-install guard -- "no object is
+  `INVALID`" -- is vacuously true of an empty schema. An install in which all
+  forty nested scripts failed printed `Install complete` and exited 0. Both
+  scripts now assert that the objects and rows they install actually exist,
+  and name the likely cause when they do not.
+- The same two scripts documented an invocation that does not work. `@@` was
+  assumed to resolve relative to the running script; measured on SQL*Plus
+  23.26.3.0.0 it resolves against the current directory, exactly like `@`.
+  Both headers now document the one invocation that was executed successfully
+  and name the client it was measured on.
 
 ## [1.5.0] - 2026-09-12
 
@@ -1215,7 +1268,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.1...v1.3.2
