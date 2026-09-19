@@ -324,7 +324,7 @@ class ProjectStore:
             if existing:
                 previous = json.loads(existing[0])
                 # Keep the original analysis clock for repeated exports of a revision.
-                if {k: v for k, v in previous.items() if k != "analyzed_at"} != {k: v for k, v in assessment.items() if k != "analyzed_at"}:
+                if canonical_json({k: v for k, v in previous.items() if k != "analyzed_at"}) != canonical_json({k: v for k, v in assessment.items() if k != "analyzed_at"}):
                     raise RevisionConflict("Assessment content differs for the same revision")
                 assessment = previous
             else:

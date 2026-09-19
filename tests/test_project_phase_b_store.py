@@ -182,3 +182,13 @@ def test_incomplete_assessment_retains_structured_failure(project_store):
         'b'*64, 'bad.xml', 'FORMS_PARSING', 'INVALID_XML', 'Invalid XML.', 'Export the module again.'))])
     project_store.save_assessment(value, expected_revision=None)
     assert project_store.load_assessment()['diagnostics'][0]['error_code'] == 'INVALID_XML'
+
+
+def test_equivalent_json_tuples_do_not_create_revision_collision(project_store):
+    value = assessment(project_store)
+    value['blueprint']['assessment']['blockers_by_module'] = [('ORDERS', 1)]
+    project_store.save_assessment(value, expected_revision=None)
+    before = project_store.load_assessment()
+    value['analyzed_at'] = '2026-09-20T00:00:00Z'
+    project_store.save_assessment(value, expected_revision=value['analysis_revision'])
+    assert project_store.load_assessment() == before

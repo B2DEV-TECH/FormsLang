@@ -174,6 +174,7 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
     merged.files.sort()
     inventory = copy.deepcopy(discovery.inventory)
     inventory['forms']['analyzed'] = len(modules)
+    inventory['forms']['parseable'] = len(modules)
     inventory['database'] = {family: len(getattr(merged, family)) for family in DB_FAMILIES}
     inventory['database']['packages'] = len(set(merged.package_specs) | set(merged.package_bodies))
     # Deduplicate preview/parse diagnostics without changing immutable source content.

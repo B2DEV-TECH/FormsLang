@@ -17,12 +17,17 @@ from .projects import ProjectAccess
 class ProjectService:
     """One authorized project and one worker-owned connection per instance."""
 
-    def __init__(self, access: ProjectAccess):
+    def __init__(self, access: ProjectAccess, *, authorize=None):
         self.access = access
+        self._authorize_callback = authorize
         self._store: ProjectStore | None = None
 
     def _require(self, action: str) -> None:
-        if action not in self.access.actions:
+        fresh = self._authorize_callback() if self._authorize_callback else self.access
+        if (fresh.root != self.access.root or fresh.org_id != self.access.org_id
+                or fresh.actor != self.access.actor or fresh.source_roots != self.access.source_roots):
+            raise PermissionError('Project authorization changed; reopen the project')
+        if action not in fresh.actions:
             raise PermissionError("Project action is not permitted")
         if self.access.org_id is None and authstore.auth_enabled():
             raise PermissionError("Authenticated mode requires project membership")
@@ -63,6 +68,42 @@ class ProjectService:
     def assessment(self) -> dict | None:
         self.open()
         return current_assessment(self._store, expected_engines=engine_identity())
+
+    def _job_authority(self, action=rbac.RUN_CONVERSION):
+        self._require(action)
+        if self.access.org_id is not None and self._authorize_callback is None:
+            raise PermissionError('Project operations require fresh authorization')
+        return self._authorize_callback() if self._authorize_callback else self.access
+
+    def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None):
+        from .project_analysis import analyze_project
+
+        self.open()
+        return analyze_project(self._job_authority(), expected_revision=expected_revision,
+            expected_configuration=expected_configuration, authorize=self._job_authority,
+            progress=progress, cancellation=cancellation)
+
+    def discover(self):
+        from .project_discovery import discover_sources
+        from .project_jobs import ProjectJobManager
+
+        descriptor = self.open()
+        manager = ProjectJobManager(self._job_authority(), self._job_authority)
+        with manager.claim('DISCOVER', expected_revision=descriptor.analysis_revision,
+                           expected_configuration=self._store.configuration_revision()) as lease:
+            result = discover_sources(self.access, descriptor, checkpoint=lease.checkpoint, progress=lease.progress)
+            lease.store.record_discovery(result, run_id=lease.job_id)
+            lease.finish('COMPLETED_WITH_WARNINGS' if result.diagnostics else 'COMPLETED')
+            return lease.store.discovery(lease.job_id)
+
+    def job(self, job_id):
+        from .project_jobs import ProjectJobManager
+        authorize = lambda: self._job_authority(rbac.VIEW_PROJECT)
+        return ProjectJobManager(authorize(), authorize).get(job_id)
+
+    def cancel(self, job_id):
+        from .project_jobs import ProjectJobManager
+        return ProjectJobManager(self._job_authority(), self._job_authority).cancel(job_id)
 
     def import_session(self, source: Path, *, source_key: str) -> dict:
         self._require(rbac.ADOPT_PROJECT)
