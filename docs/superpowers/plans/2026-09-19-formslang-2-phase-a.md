@@ -10,7 +10,30 @@
 
 **Spec:** [Approved product architecture](../../formsLang-2-product-architecture.md), especially sections 3, 5, 6, 9, 16, 18 and 20. [Current-state audit](../../formsLang-2-current-state-audit.md) records the starting evidence.
 
-**Status:** Written plan awaiting owner review and execution-method selection. No task below has been implemented. Architecture approval was received on 2026-09-19. Approval of this plan starts Phase A, not release publication.
+**Status:** Approved for native execution on 2026-09-19. Tasks 1-6 are implemented;
+Task 7 acceptance and documentation are implemented, with final verification and
+independent branch review in progress. This is Phase A, not a 2.0 release.
+
+## Execution record
+
+| Task | Commit | Focused verification |
+|---|---|---|
+| 1: model | `ac668d5` | 26 passed |
+| 2: fingerprints | `8dff416` | 40 passed, 1 OS symlink skip (includes model) |
+| 3: persistence | `3b70ac8` | 54 passed |
+| 4: assessment binding | `2bb9b0f` | 138 passed, 1 skipped |
+| 5: migration | `0b6b406` | 96 passed, 1 skipped |
+| 6: service/access | `33e93d9` | 153 passed, 2 skipped |
+| 7: foundation acceptance | this milestone | 2 passed, including two-process publication |
+
+Execution rulings: engine identity also fingerprints assess/depgraph/behavior;
+source revision includes intake options while analysis revision includes all options
+and the reserved target; assessment publication landed with its validator in Task 4;
+exclusive directory reservation plus no-overwrite hardlink publication replaces
+POSIX directory rename, which can overwrite an empty destination. Hardlink support
+is therefore required for this foundation. Original sessions and benchmark history
+are unchanged. The original task checklists below retain the implementation recipe;
+the execution record is the completion/evidence index.
 
 ## Global Constraints
 
