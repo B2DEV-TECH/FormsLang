@@ -7,12 +7,16 @@ import os
 import re
 import sqlite3
 import tempfile
+from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 
 from .project_manifest import relative_source_path
 from .project_model import (
+    ProjectBusy,
     ProjectDescriptor,
     ProjectError,
+    RevisionConflict,
     canonical_json,
     descriptor_from_dict,
     descriptor_to_dict,
@@ -95,7 +99,7 @@ class ProjectStore:
         if not path.is_file():
             raise ProjectError("Project database is missing; select an existing project")
         try:
-            with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as check:
+            with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as check:
                 if check.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise ProjectError("Project database integrity check failed")
                 row = check.execute("SELECT schema_version,descriptor_json FROM modernization_project WHERE id=1").fetchone()
@@ -157,6 +161,48 @@ class ProjectStore:
     def load_assessment(self) -> dict | None:
         row = self.session.db.execute("SELECT a.payload_json FROM project_assessment a JOIN modernization_project p ON p.analysis_revision=a.revision WHERE p.id=1").fetchone()
         return json.loads(row[0]) if row else None
+
+    def save_assessment(self, assessment: dict, *, expected_revision: str | None) -> None:
+        from .project_assessment import validate_assessment
+
+        descriptor = self.descriptor()
+        validate_assessment(descriptor, assessment)
+        revision = assessment["analysis_revision"]
+        db = self.session.db
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute("SELECT analysis_revision FROM modernization_project WHERE id=1").fetchone()[0]
+            if current != expected_revision:
+                raise RevisionConflict("Assessment changed; reload before publishing")
+            existing = db.execute("SELECT payload_json FROM project_assessment WHERE revision=?", (revision,)).fetchone()
+            if existing:
+                previous = json.loads(existing[0])
+                # Keep the original analysis clock for repeated exports of a revision.
+                if {k: v for k, v in previous.items() if k != "analyzed_at"} != {k: v for k, v in assessment.items() if k != "analyzed_at"}:
+                    raise RevisionConflict("Assessment content differs for the same revision")
+                assessment = previous
+            else:
+                db.execute("INSERT INTO project_assessment VALUES (?,?,?,?)",
+                    (revision, assessment["source_revision"], assessment["analyzed_at"], canonical_json(assessment)))
+            updated = replace(descriptor, analysis_revision=revision,
+                              engine_version=assessment["blueprint"]["engine_version"])
+            db.execute("UPDATE modernization_project SET analysis_revision=?,descriptor_json=? WHERE id=1",
+                       (revision, canonical_json(descriptor_to_dict(updated))))
+            db.execute("INSERT OR REPLACE INTO blueprint_snapshot VALUES (1,?)",
+                       (canonical_json(assessment["blueprint"]),))
+            db.commit()
+        except sqlite3.OperationalError as exc:
+            db.rollback()
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise ProjectBusy("Project is busy; retry after the current operation") from exc
+            raise ProjectError("Assessment could not be published") from exc
+        except sqlite3.Error as exc:
+            db.rollback()
+            raise ProjectError("Assessment could not be published") from exc
+        except Exception:
+            db.rollback()
+            raise
+        self.sync_descriptor()
 
     def add_module_session(self, source_id: str, revision: str, relative_store: str,
                            provenance: dict) -> None:
