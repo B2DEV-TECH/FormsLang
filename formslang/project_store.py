@@ -61,6 +61,20 @@ CREATE TABLE IF NOT EXISTS project_discovery_diagnostic (
  run_id TEXT NOT NULL, ordinal INTEGER NOT NULL, payload_json TEXT NOT NULL,
  PRIMARY KEY(run_id,ordinal)
 );
+CREATE TABLE IF NOT EXISTS project_job (
+ job_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, operation TEXT NOT NULL,
+ requested_revision TEXT, requested_configuration INTEGER NOT NULL,
+ status TEXT NOT NULL, phase TEXT NOT NULL, processed INTEGER NOT NULL DEFAULT 0,
+ total INTEGER, warnings_count INTEGER NOT NULL DEFAULT 0, errors_count INTEGER NOT NULL DEFAULT 0,
+ started_at TEXT NOT NULL, finished_at TEXT, cancellation_requested INTEGER NOT NULL DEFAULT 0,
+ owner_token TEXT NOT NULL, owner_pid INTEGER NOT NULL, heartbeat TEXT NOT NULL,
+ safe_failure_json TEXT, outcome_json TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS project_job_active ON project_job(project_id)
+ WHERE status IN ('QUEUED','RUNNING');
+CREATE TABLE IF NOT EXISTS project_analysis_run (
+ job_id TEXT PRIMARY KEY, metadata_json TEXT NOT NULL
+);
 """
 
 
@@ -152,7 +166,8 @@ class ProjectStore:
     def _migrate_runs(self) -> None:
         db = self.session.db
         required = {'project_configuration', 'project_discovery_run',
-                    'project_discovery_entry', 'project_discovery_diagnostic'}
+                    'project_discovery_entry', 'project_discovery_diagnostic',
+                    'project_job', 'project_analysis_run'}
         present = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if required <= present:
             return
@@ -187,6 +202,8 @@ class ProjectStore:
         if type(expected_configuration) is not int or expected_configuration < 0:
             raise ProjectError('Invalid configuration precondition')
         with self._write() as db:
+            if db.execute("SELECT 1 FROM project_job WHERE status IN ('QUEUED','RUNNING')").fetchone():
+                raise ProjectBusy('Analysis is active; retry relink after it finishes')
             if self.configuration_revision() != expected_configuration:
                 raise RevisionConflict('Project configuration changed; reload before relinking')
             updated = replace(self.descriptor(), source_roots=roots)
@@ -271,15 +288,35 @@ class ProjectStore:
         row = self.session.db.execute("SELECT a.payload_json FROM project_assessment a JOIN modernization_project p ON p.analysis_revision=a.revision WHERE p.id=1").fetchone()
         return json.loads(row[0]) if row else None
 
-    def save_assessment(self, assessment: dict, *, expected_revision: str | None) -> None:
+    def save_assessment(self, assessment: dict, *, expected_revision: str | None,
+                        job_id: str | None = None, owner_token: str | None = None,
+                        expected_configuration: int | None = None) -> None:
         from .project_assessment import validate_assessment
 
+        fenced = any(v is not None for v in (job_id, owner_token, expected_configuration))
+        if fenced and (not job_id or not owner_token or type(expected_configuration) is not int):
+            raise ProjectError('Publication requires complete job ownership preconditions')
         descriptor = self.descriptor()
         validate_assessment(descriptor, assessment)
         revision = assessment["analysis_revision"]
         db = self.session.db
         try:
             db.execute("BEGIN IMMEDIATE")
+            descriptor = self.descriptor()
+            validate_assessment(descriptor, assessment)
+            if fenced:
+                job = db.execute('SELECT * FROM project_job WHERE job_id=? AND project_id=?',
+                                 (job_id, descriptor.id)).fetchone()
+                if (job is None or job['owner_token'] != owner_token or job['status'] != 'RUNNING'
+                        or job['operation'] != 'ANALYZE' or self.configuration_revision() != expected_configuration
+                        or job['requested_configuration'] != expected_configuration
+                        or job['requested_revision'] != expected_revision):
+                    raise RevisionConflict('Project job ownership or configuration changed')
+                if job['cancellation_requested']:
+                    from .project_jobs import AnalysisCancelled
+                    raise AnalysisCancelled('Analysis cancelled before publication')
+            elif db.execute("SELECT 1 FROM project_job WHERE status IN ('QUEUED','RUNNING')").fetchone():
+                raise ProjectBusy('A project job owns publication; wait for it to finish')
             current = db.execute("SELECT analysis_revision FROM modernization_project WHERE id=1").fetchone()[0]
             if current != expected_revision:
                 raise RevisionConflict("Assessment changed; reload before publishing")
@@ -299,6 +336,14 @@ class ProjectStore:
                        (revision, canonical_json(descriptor_to_dict(updated))))
             db.execute("INSERT OR REPLACE INTO blueprint_snapshot VALUES (1,?)",
                        (canonical_json(assessment["blueprint"]),))
+            if fenced:
+                completed = ('COMPLETED_WITH_WARNINGS' if assessment.get('completion_state') in
+                             {'INCOMPLETE', 'COMPLETE_WITH_WARNINGS'} or assessment['status'] == 'Incomplete'
+                             else 'COMPLETED')
+                outcome = {'analysis_revision': revision,
+                           'completion_state': assessment.get('completion_state', 'COMPLETE')}
+                db.execute('UPDATE project_job SET status=?,finished_at=?,outcome_json=? WHERE job_id=?',
+                           (completed, datetime.now(timezone.utc).isoformat(), canonical_json(outcome), job_id))
             db.commit()
         except sqlite3.OperationalError as exc:
             db.rollback()
