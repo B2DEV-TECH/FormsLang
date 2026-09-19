@@ -89,14 +89,15 @@ class ProjectService:
             progress=progress, cancellation=cancellation)
 
     def discover(self):
-        from .project_discovery import discover_sources
+        from .project_conversion import discover_project_sources
         from .project_jobs import ProjectJobManager
 
         descriptor = self.open()
         manager = ProjectJobManager(self._job_authority(), self._job_authority)
         with manager.claim('DISCOVER', expected_revision=descriptor.analysis_revision,
                            expected_configuration=self._store.configuration_revision()) as lease:
-            result = discover_sources(self.access, descriptor, checkpoint=lease.checkpoint, progress=lease.progress)
+            result = discover_project_sources(self.access, descriptor, lease.store,
+                                               checkpoint=lease.checkpoint, progress=lease.progress, preview=True)
             lease.store.record_discovery(result, run_id=lease.job_id)
             lease.finish('COMPLETED_WITH_WARNINGS' if result.diagnostics else 'COMPLETED')
             return lease.store.discovery(lease.job_id)
@@ -109,6 +110,12 @@ class ProjectService:
     def cancel(self, job_id):
         from .project_jobs import ProjectJobManager
         return ProjectJobManager(self._job_authority(), self._job_authority).cancel(job_id)
+
+    def convert_source(self, source_id, *, expected_configuration, confirmed=False):
+        from .project_conversion import convert_selected
+        self.open()
+        return convert_selected(self._job_authority(), source_id, expected_configuration=expected_configuration,
+                                confirmed=confirmed, authorize=self._job_authority)
 
     def freshness(self):
         from .project_freshness import check_freshness

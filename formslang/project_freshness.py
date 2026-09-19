@@ -1,9 +1,11 @@
 """Source freshness is a read projection, never a rewrite of saved evidence."""
 
-from .project_discovery import discover_sources
+from .project_conversion import discover_project_sources
 from .project_jobs import AnalysisCancelled, now
-from .project_manifest import engine_identity, fingerprint_sources, source_revision
+from .project_manifest import engine_identity, source_revision
 from .project_model import ProjectError
+from .project_sources import fingerprint_inputs
+from .project_store import ProjectStore
 
 
 def check_freshness(access, descriptor, assessment, *, checkpoint):
@@ -14,14 +16,19 @@ def check_freshness(access, descriptor, assessment, *, checkpoint):
         return {**result, 'status': 'INCOMPLETE', 'reasons': ['NOT_ANALYZED']}
     try:
         checkpoint()
-        discovery = discover_sources(access, descriptor, checkpoint=checkpoint,
-                                     progress=lambda event: None, preview=False)
-        entries = []
-        for entry in discovery.entries:
-            checkpoint()
-            entries.extend(fingerprint_sources(access.root, descriptor.source_roots, (entry.candidate,)))
+        store = ProjectStore.open(access.root)
+        try:
+            discovery = discover_project_sources(access, descriptor, store, checkpoint=checkpoint,
+                                                 progress=lambda event: None, preview=False)
+        finally:
+            store.close()
+        entries = fingerprint_inputs(access, descriptor, discovery, checkpoint=checkpoint)
         checkpoint()
-        revision = source_revision(tuple(entries), assessment['analysis_options'].get('intake', {}))
+        options = dict(assessment['analysis_options'].get('intake', {}))
+        options.pop('derived_sources', None)
+        if discovery.derived_provenance:
+            options['derived_sources'] = list(discovery.derived_provenance)
+        revision = source_revision(tuple(entries), options)
         result['source_revision'] = revision
         missing = {e['source_id'] for e in assessment['source_manifest']} - {e.source_id for e in entries}
         if missing or any(d.error_code == 'MISSING_ROOT' for d in discovery.diagnostics) or any(e.status == 'missing' for e in entries):

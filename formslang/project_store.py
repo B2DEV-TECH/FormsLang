@@ -75,6 +75,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS project_job_active ON project_job(project_id)
 CREATE TABLE IF NOT EXISTS project_analysis_run (
  job_id TEXT PRIMARY KEY, metadata_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_derived_source (
+ source_id TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, xml_sha256 TEXT NOT NULL,
+ relative_path TEXT NOT NULL, tool_identity_json TEXT NOT NULL
+);
 """
 
 
@@ -167,7 +171,7 @@ class ProjectStore:
         db = self.session.db
         required = {'project_configuration', 'project_discovery_run',
                     'project_discovery_entry', 'project_discovery_diagnostic',
-                    'project_job', 'project_analysis_run'}
+                    'project_job', 'project_analysis_run', 'project_derived_source'}
         present = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if required <= present:
             return

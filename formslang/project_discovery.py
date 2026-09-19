@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import database, parser
 from .project_manifest import SourceCandidate, relative_source_path, source_id
-from .project_model import ProjectDescriptor, ProjectError, validate_descriptor
+from .project_model import ProjectDescriptor, ProjectError, SourceRoot, validate_descriptor
 from .projects import ProjectAccess
 
 DISCOVERY_VERSION = 'project-discovery/1'
@@ -51,6 +51,8 @@ class DiscoveryResult:
     entries: tuple[DiscoveredSource, ...]
     diagnostics: tuple[SourceDiagnostic, ...]
     inventory: dict
+    derived_roots: tuple[SourceRoot, ...] = ()
+    derived_provenance: tuple[dict, ...] = ()
 
 
 def _redirected(path: Path) -> bool:

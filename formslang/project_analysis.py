@@ -7,11 +7,12 @@ from dataclasses import asdict
 
 from . import blueprint
 from .project_assessment import bind_assessment
-from .project_discovery import DB_FAMILIES, DISCOVERY_VERSION, discover_sources
+from .project_conversion import discover_project_sources, intake_options
+from .project_discovery import DB_FAMILIES
 from .project_jobs import AnalysisCancelled, ProjectJobManager, now
-from .project_manifest import engine_identity, fingerprint_sources, source_revision
+from .project_manifest import engine_identity, source_revision
 from .project_model import ProjectError, canonical_json
-from .project_sources import parse_staged, stage_sources
+from .project_sources import fingerprint_inputs, parse_staged, stage_sources
 
 PROJECT_ANALYSIS_VERSION = 'project-analysis/2'
 INFORMATIONAL_CODES = {'IDENTICAL_CONTENT', 'DUPLICATE_FILE', 'DUPLICATE_DIRECTORY'}
@@ -68,9 +69,9 @@ def analyze_project(access, *, expected_revision, expected_configuration, author
         try:
             descriptor = lease.store.descriptor()
             engines = engine_identity()
-            options = {'intake': {'discovery': DISCOVERY_VERSION}, 'enterprise': False}
             phase('DISCOVERY')
-            discovery = discover_sources(access, descriptor, checkpoint=checkpoint, progress=emit, preview=False)
+            discovery = discover_project_sources(access, descriptor, lease.store, checkpoint=checkpoint, progress=emit, preview=False)
+            options = {'intake': intake_options(discovery), 'enterprise': False}
             lease.store.record_discovery(discovery, run_id=job_id)
             with stage_sources(access, descriptor, discovery, checkpoint=checkpoint) as staged:
                 parsed = parse_staged(descriptor, discovery, staged, checkpoint=checkpoint, progress=emit)
@@ -95,10 +96,9 @@ def analyze_project(access, *, expected_revision, expected_configuration, author
                     assessment.update(inventory=parsed.inventory, diagnostics=[asdict(d) for d in parsed.diagnostics],
                         completion_state='INCOMPLETE' if incomplete else 'COMPLETE_WITH_WARNINGS' if parsed.diagnostics else 'COMPLETE')
                     phase('PERSISTING')
-                    latest = discover_sources(access, descriptor, checkpoint=checkpoint, progress=lambda e: None, preview=False)
-                    current_manifest = fingerprint_sources(access.root, descriptor.source_roots,
-                        tuple(e.candidate for e in latest.entries))
-                    if (source_revision(current_manifest, options['intake']) != assessment['source_revision']
+                    latest = discover_project_sources(access, descriptor, lease.store, checkpoint=checkpoint, progress=lambda e: None, preview=False)
+                    current_manifest = fingerprint_inputs(access, descriptor, latest, checkpoint=checkpoint)
+                    if (source_revision(current_manifest, intake_options(latest)) != assessment['source_revision']
                             or latest.diagnostics != discovery.diagnostics):
                         raise SourceChanged('Sources changed during analysis')
                     checkpoint()

@@ -121,7 +121,7 @@ def engine_identity() -> dict[str, str]:
     names = ("parser", "database", "analysis", "plsql", "plsql_evidence", "rules",
              "risk", "modernization", "blueprint", "assess", "depgraph", "behavior",
              "dashboard", "testspec", "sensitive", "model", "store", "convert",
-             "project_assessment", "project_manifest", "project_discovery", "project_sources", "project_analysis")
+             "project_assessment", "project_manifest", "project_discovery", "project_sources", "project_analysis", "project_conversion")
     result = {"project_analysis": "project-analysis/1"}
     try:
         package = resources.files("formslang")

@@ -41,9 +41,36 @@ class ParsedSources:
     inventory: dict
 
 
+def input_roots(access, descriptor, discovery):
+    """Only DB-selected derived artifacts extend input authority, never descriptor paths."""
+    from .project_conversion import derived_directory
+
+    locations = authorized_roots(access, descriptor)
+    provenance = {p['source_id']: p for p in discovery.derived_provenance}
+    for root in discovery.derived_roots:
+        sid = root.id.removeprefix('converted_')
+        record = provenance.get(sid)
+        if record is None or root.id != 'converted_' + sid or root.id in locations:
+            raise ProjectError('Invalid derived input identity')
+        expected = derived_directory(access, sid, record['xml_sha256'])
+        if Path(root.path) != expected:
+            raise ProjectError('Derived input escaped its registered storage')
+        locations[root.id] = expected
+    return locations, descriptor.source_roots + discovery.derived_roots
+
+
+def fingerprint_inputs(access, descriptor, discovery, *, checkpoint):
+    _, roots = input_roots(access, descriptor, discovery)
+    result = []
+    for entry in discovery.entries:
+        checkpoint()
+        result.extend(fingerprint_sources(access.root, roots, (entry.candidate,), max_bytes=MAX_SOURCE_BYTES))
+    return tuple(sorted(result, key=lambda e: e.source_id))
+
+
 @contextmanager
 def stage_sources(access, descriptor, discovery: DiscoveryResult, *, checkpoint):
-    locations = authorized_roots(access, descriptor)
+    locations, roots = input_roots(access, descriptor, discovery)
     directory = access.root / '.formslang' / 'runs'
     if directory.resolve() != directory:
         raise ProjectError('Project staging directory was redirected')
@@ -54,7 +81,7 @@ def stage_sources(access, descriptor, discovery: DiscoveryResult, *, checkpoint)
         for entry in discovery.entries:
             checkpoint()
             candidate = entry.candidate
-            fingerprint = fingerprint_sources(access.root, descriptor.source_roots,
+            fingerprint = fingerprint_sources(access.root, roots,
                 (candidate,), max_bytes=MAX_SOURCE_BYTES)[0]
             if candidate.selected and fingerprint.status == 'available':
                 source = locations[candidate.root_id] / candidate.relative_path
