@@ -114,10 +114,9 @@ def sanitize_sql_text(text: str) -> str:
     cleaned: list[str] = []
     for line in lines:
         stripped = line.strip()
-        # If line is a comment containing LOM-MOD or leakage
-        if stripped.startswith("--"):
-            if any(pat.search(line) for pat in LEAKAGE_PATTERNS):
-                continue
+        # If line is a comment containing a case ID or other leakage
+        if stripped.startswith("--") and any(pat.search(line) for pat in LEAKAGE_PATTERNS):
+            continue
         # Table comments e.g. comment on table ... is '...';
         if stripped.lower().startswith("comment on"):
             for pat in LEAKAGE_PATTERNS:

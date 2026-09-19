@@ -89,10 +89,13 @@ def find_matching_prediction(target: dict[str, Any], predictions: list[dict[str,
                 return p
             continue
         if target.get("package") and target.get("procedure"):
-            if src.get("package") == target.get("package") and src.get("procedure") == target.get("procedure"):
-                # Prefer findings with valid risk level or non-trivial classification
-                if p.get("risk") not in (None, "UNKNOWN"):
-                    return p
+            # Prefer findings with a valid risk level or a non-trivial classification
+            if (
+                src.get("package") == target.get("package")
+                and src.get("procedure") == target.get("procedure")
+                and p.get("risk") not in (None, "UNKNOWN")
+            ):
+                return p
             continue
 
         # Forms targets matching

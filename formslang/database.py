@@ -225,19 +225,6 @@ class DatabaseProject:
         }
 
 
-def _strip_comments_preserving_strings(text: str) -> str:
-    """Strip SQL/PLSQL comments while preserving string literals."""
-    tokens = plsql_evidence.tokens(text)
-    # Reconstruct text without comments
-    parts = []
-    last_idx = 0
-    for t in tokens:
-        # tokens() skips comments in its returned token stream
-        parts.append(text[t.start:t.end])
-    # For robust parsing, we can split into statements by semicolons and slash
-    return text
-
-
 def _extract_statements(text: str) -> list[tuple[str, int]]:
     """Extract top-level statements separated by ; or / with line numbers."""
     tokens = plsql_evidence.tokens(text)
@@ -275,16 +262,15 @@ def _extract_statements(text: str) -> list[tuple[str, int]]:
                 continue
             else:
                 # Inside package or type: check if this is the final END [name];
-                # A package ends with `END [name];`
-                if len(cur_tokens) >= 2 and cur_tokens[-1].kind == "word" and cur_tokens[-2].value.upper() == "END":
-                    start_offset = cur_tokens[0].start
-                    stmt_text = text[start_offset:t.end].strip()
-                    statements.append((stmt_text, cur_start_line))
-                    cur_tokens = []
-                    in_package_or_type = False
-                    i += 1
-                    continue
-                elif len(cur_tokens) >= 1 and cur_tokens[-1].value.upper() == "END":
+                # a package ends with `END [name];` or with a bare `END;`.
+                ends_unit = (
+                    len(cur_tokens) >= 2
+                    and cur_tokens[-1].kind == "word"
+                    and cur_tokens[-2].value.upper() == "END"
+                ) or (
+                    len(cur_tokens) >= 1 and cur_tokens[-1].value.upper() == "END"
+                )
+                if ends_unit:
                     start_offset = cur_tokens[0].start
                     stmt_text = text[start_offset:t.end].strip()
                     statements.append((stmt_text, cur_start_line))
@@ -681,7 +667,7 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
             table = parse_create_table(stmt_sql, source_file=rel_path)
             if table:
                 project.tables[table.name] = table
-        elif s_upper.startswith("CREATE OR REPLACE VIEW") or s_upper.startswith("CREATE VIEW"):
+        elif s_upper.startswith(("CREATE OR REPLACE VIEW", "CREATE VIEW")):
             view = parse_create_view(stmt_sql, source_file=rel_path)
             if view:
                 project.views[view.name] = view

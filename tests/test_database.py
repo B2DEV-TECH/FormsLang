@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from formslang import blueprint, database
 from formslang.model import Block, FormModule, Item, Trigger
 
@@ -11,9 +12,13 @@ def _find_trigger_finding(bp: dict, trigger_name: str, owner: str = ""):
     entities = {e["id"]: e for e in bp["entities"]}
     for f in bp["findings"]:
         ent = entities.get(f["entity"])
-        if ent and ent["type"] == "TRIGGER" and ent["name"] == trigger_name:
-            if not owner or ent.get("attributes", {}).get("owner") == owner:
-                return f, ent
+        if (
+            ent
+            and ent["type"] == "TRIGGER"
+            and ent["name"] == trigger_name
+            and (not owner or ent.get("attributes", {}).get("owner") == owner)
+        ):
+            return f, ent
     return None, None
 
 
