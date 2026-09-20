@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import copy
-from collections import Counter, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
+from threading import RLock
 
 from .project_model import ProjectError, RevisionConflict
 
@@ -47,6 +48,42 @@ class PreparedProjection:
     details: dict[tuple[str, str], dict]
 
 
+class ProjectionCache:
+    """Small process-local LRU; the assessment/store remain authoritative."""
+
+    def __init__(self, max_entries: int = 8):
+        if type(max_entries) is not int or max_entries < 1:
+            raise ValueError("Projection cache size must be positive")
+        self.max_entries = max_entries
+        self._lock = RLock()
+        self._values = OrderedDict()
+
+    def get_or_build(self, key: ProjectionKey, factory) -> PreparedProjection:
+        with self._lock:
+            cached = self._values.get(key)
+            if cached is not None:
+                self._values.move_to_end(key)
+                return cached
+        built = factory()
+        if not isinstance(built, PreparedProjection) or built.key != key:
+            raise ProjectError("Projection cache factory returned a different revision")
+        with self._lock:
+            cached = self._values.get(key)
+            if cached is not None:
+                self._values.move_to_end(key)
+                return cached
+            self._values[key] = built
+            while len(self._values) > self.max_entries:
+                self._values.popitem(last=False)
+            return built
+
+    def clear_project(self, store_scope: str, project_id: str) -> None:
+        with self._lock:
+            for key in tuple(self._values):
+                if key.store_scope == store_scope and key.project_id == project_id:
+                    self._values.pop(key)
+
+
 def _bucket(value, allowed):
     normalized = value.strip().upper() if isinstance(value, str) else ""
     return normalized if normalized in allowed else "UNKNOWN"
@@ -76,6 +113,22 @@ def _target(descriptor, assessment):
             target.get("representation") or descriptor.get("target_representation")
         ),
     }
+
+
+def projection_key(descriptor, assessment, freshness, *, store_scope):
+    target = _target(descriptor, assessment)
+    review_revision = assessment.get("review_revision", 0)
+    review_revision = review_revision if type(review_revision) is int and review_revision >= 0 else 0
+    return ProjectionKey(
+        store_scope=_text(store_scope, 2000),
+        project_id=_text(assessment.get("project_id") or descriptor.get("id"), 64),
+        analysis_revision=_text(assessment.get("analysis_revision"), 64),
+        review_revision=review_revision,
+        target=(target["platform"], target["version"], target["representation"]),
+        freshness=_bucket_freshness(
+            freshness.get("status") if isinstance(freshness, dict) else None
+        ),
+    )
 
 
 def _unique(values):
@@ -384,14 +437,7 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
     analysis_revision = _text(assessment.get("analysis_revision"), 64)
     review_revision = assessment.get("review_revision", 0)
     review_revision = review_revision if type(review_revision) is int and review_revision >= 0 else 0
-    key = ProjectionKey(
-        store_scope=_text(store_scope, 2000),
-        project_id=_text(assessment.get("project_id") or descriptor.get("id"), 64),
-        analysis_revision=analysis_revision,
-        review_revision=review_revision,
-        target=(target["platform"], target["version"], target["representation"]),
-        freshness=freshness_state,
-    )
+    key = projection_key(descriptor, assessment, freshness, store_scope=store_scope)
     risk_counts = Counter(row["risk"] for row in finding_rows)
     recommendation_counts = Counter(row["recommendation"] for row in finding_rows)
     intervention_counts = Counter(row["intervention"] for row in finding_rows)

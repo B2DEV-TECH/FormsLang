@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -10,7 +11,25 @@ from . import authstore, rbac
 from .project_assessment import current_assessment
 from .project_manifest import engine_identity
 from .project_migration import import_legacy_session
-from .project_model import ProjectDescriptor, ProjectError, SourceRoot, validate_descriptor
+from .project_model import (
+    ProjectDescriptor,
+    ProjectError,
+    SourceRoot,
+    descriptor_to_dict,
+    validate_descriptor,
+)
+from .project_projection import (
+    ProjectionCache,
+    inventory_page,
+    prepare_projection,
+    projection_key,
+)
+from .project_projection import (
+    inventory_detail as project_inventory_detail,
+)
+from .project_projection import (
+    overview as project_overview,
+)
 from .project_store import ProjectStore
 from .projects import ProjectAccess
 
@@ -18,10 +37,11 @@ from .projects import ProjectAccess
 class ProjectService:
     """One authorized project and one worker-owned connection per instance."""
 
-    def __init__(self, access: ProjectAccess, *, authorize=None):
+    def __init__(self, access: ProjectAccess, *, authorize=None, projection_cache=None):
         self.access = access
         self._authorize_callback = authorize
         self._store: ProjectStore | None = None
+        self._projection_cache = projection_cache if projection_cache is not None else ProjectionCache()
 
     def _require(self, action: str) -> None:
         fresh = self._authorize_callback() if self._authorize_callback else self.access
@@ -73,6 +93,42 @@ class ProjectService:
     def assessment(self, *, freshness=None) -> dict | None:
         self.open()
         return current_assessment(self._store, expected_engines=engine_identity(), freshness=freshness)
+
+    def _prepared_projection(self, freshness=None):
+        assessment = self.assessment(freshness=freshness)
+        if assessment is None:
+            return None
+        descriptor = descriptor_to_dict(self.open())
+        storage = str(self._store.session.path.resolve()).casefold().encode("utf-8")
+        store_scope = hashlib.sha256(storage).hexdigest()
+        key = projection_key(descriptor, assessment, freshness or {}, store_scope=store_scope)
+        return self._projection_cache.get_or_build(
+            key,
+            lambda: prepare_projection(
+                descriptor, assessment, freshness or {}, store_scope=store_scope,
+            ),
+        )
+
+    def overview(self, *, freshness=None) -> dict | None:
+        prepared = self._prepared_projection(freshness)
+        return project_overview(prepared) if prepared is not None else None
+
+    def inventory(self, category: str, *, query="", filters=None, sort="name",
+                  offset=0, limit=50, expected_revision=None, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening Inventory")
+        return inventory_page(prepared, category, query=query, filters=filters, sort=sort,
+                              offset=offset, limit=limit,
+                              expected_revision=expected_revision)
+
+    def inventory_detail(self, category: str, item_id: str, *, expected_revision=None,
+                         freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening Inventory")
+        return project_inventory_detail(prepared, category, item_id,
+                                        expected_revision=expected_revision)
 
     def _job_authority(self, action=rbac.RUN_CONVERSION):
         self._require(action)

@@ -5,7 +5,9 @@ from dataclasses import replace
 import pytest
 
 from formslang import ai, authstore, oracle, rbac
+from formslang.project_intake import ProjectIntake
 from formslang.project_model import ProjectError, SourceRoot
+from formslang.project_projection import ProjectionCache
 from formslang.project_service import ProjectService
 from formslang.projects import ProjectAccess, authorized_project_access, local_project_access
 
@@ -122,3 +124,48 @@ def test_tenant_resolution_and_revocation(auth_store, tmp_path, monkeypatch):
     auth_store.db.commit()
     with pytest.raises(authstore.ProjectNotFound):
         authorized_project_access(auth_store, registered["id"], **args)
+
+
+def test_overview_inventory_and_detail_reopen_without_reanalysis(tmp_path, monkeypatch):
+    intake = ProjectIntake(tmp_path / "data", tmp_path / "config")
+    created = intake.create_demo(destination=tmp_path / "demo")
+    project_id = created["project"]["id"]
+    authorize = lambda: intake.access(project_id, rbac.RUN_CONVERSION)
+    service = ProjectService(authorize(), authorize=authorize)
+    descriptor = service.open()
+    service.analyze(expected_revision=descriptor.analysis_revision,
+                    expected_configuration=service._store.configuration_revision())
+    service.close()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("saved projection must not run analysis or external providers")
+
+    from formslang import blueprint
+    monkeypatch.setattr(blueprint, "build", forbidden)
+    monkeypatch.setattr(ai, "build_provider", forbidden)
+    reopened = ProjectService(authorize(), authorize=authorize, projection_cache=ProjectionCache())
+    try:
+        fresh = reopened.freshness()
+        summary = reopened.overview(freshness=fresh)
+        page = reopened.inventory("forms", expected_revision=summary["assessment"]["analysis_revision"])
+        detail = reopened.inventory_detail(
+            "forms", page["rows"][0]["id"],
+            expected_revision=summary["assessment"]["analysis_revision"],
+        )
+        assert summary["inventory"]["forms_modules"] == page["total"] == 2
+        assert detail["item"]["id"] == page["rows"][0]["id"]
+    finally:
+        reopened.close()
+
+
+def test_inventory_requires_saved_assessment(tmp_path, monkeypatch):
+    monkeypatch.setenv("FORMSLANG_AUTH", "0")
+    access = local_project_access(tmp_path / "project", approved_roots=(tmp_path,))
+    service = ProjectService(access)
+    try:
+        service.create("Empty")
+        assert service.overview() is None
+        with pytest.raises(ProjectError, match="Analyze the project"):
+            service.inventory("forms")
+    finally:
+        service.close()
