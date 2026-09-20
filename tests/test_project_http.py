@@ -425,3 +425,27 @@ def test_overview_keeps_saved_metrics_and_reports_stale_source(project_server):
     assert after['assessment']['freshness'] == 'STALE'
     assert after['inventory'] == before['inventory']
     assert after['warnings'][0]['code'] == 'ASSESSMENT_STALE'
+
+
+def test_cli_summary_and_inventory_reconcile_with_http(project_server, capsys):
+    from formslang.cli import main
+
+    client, _ = project_server
+    pid = analyze_demo(client)
+    descriptor = next((config.data_dir() / 'projects').glob('*/.formslang/project.json'))
+
+    assert main(['project', 'summary', str(descriptor), '--json']) == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    http_summary = client.get(f'/api/v2/projects/{pid}/overview').json['overview']
+    assert cli_summary == http_summary
+
+    revision = cli_summary['assessment']['analysis_revision']
+    assert main([
+        'project', 'inventory', str(descriptor), '--category', 'findings',
+        '--risk', 'HIGH', '--revision', revision, '--json',
+    ]) == 0
+    cli_inventory = json.loads(capsys.readouterr().out)
+    http_inventory = client.get(
+        f'/api/v2/projects/{pid}/inventory?category=findings&risk=HIGH&revision={revision}'
+    ).json
+    assert cli_inventory == http_inventory
