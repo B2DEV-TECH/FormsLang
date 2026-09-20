@@ -163,10 +163,97 @@ function projectBindSectionNav() {
     else {$('project-status').textContent=`${section==='generate'?'Generation':'Reports'} is planned for a later FormsLang 2.0 phase.`;}
   });
 }
-function projectOpenInventory(options={}) {
-  projectUI.inventoryState={category:'forms',filters:{},...options};
-  projectLeave();browse('');
+const projectInventoryCategories={forms:'Forms',libraries:'Libraries',packages:'Packages',routines:'Routines',views:'Views',tables:'Tables',dependencies:'Dependencies',business_rules:'Business Rules',findings:'Findings'};
+const projectInventoryColumns={
+  forms:[['name','Module'],['module','Representation'],['dependencies','Dependencies'],['findings','Findings'],['highest_risk','Highest Risk'],['source_status','Source Status']],
+  libraries:[['name','Library'],['representation','Representation'],['semantic_support','Semantic Support'],['source_status','Source Status']],
+  packages:[['name','Package'],['spec','Spec'],['body','Body'],['subprograms','Subprograms'],['dependencies','Dependencies'],['findings','Findings'],['highest_risk','Highest Risk']],
+  routines:[['name','Procedure / Function'],['module','Module'],['dependencies','Dependencies'],['findings','Findings'],['highest_risk','Highest Risk']],
+  views:[['name','View'],['module','Source'],['dependencies','Dependencies'],['findings','Findings'],['highest_risk','Highest Risk']],
+  tables:[['name','Table'],['columns','Columns'],['constraints','Constraints'],['dependencies','References'],['findings','Findings'],['highest_risk','Highest Risk']],
+  dependencies:[['source','Source'],['relationship','Relationship'],['target','Target']],
+  business_rules:[['name','Candidate'],['module','Module'],['candidate_kind','Observed As'],['risk','Risk'],['recommendation','Recommendation'],['intervention','Intervention']],
+  findings:[['name','Finding'],['module','Module'],['risk','Risk'],['recommendation','Recommendation'],['intervention','Intervention'],['review_state','Review Status']],
+};
+function projectInventoryRevision(){return projectUI.overview?.assessment?.analysis_revision||projectUI.overview?.analysis_revision||null;}
+function projectInventoryLabel(field,value) {
+  if(value===null||value===undefined||value==='')return 'Not observed';
+  if(field==='recommendation')return projectRecommendationLabels[value]||value;
+  if(field==='risk')return projectRiskLabels[value]||value;
+  if(field==='intervention')return projectInterventionLabels[value]||value;
+  if(typeof value==='boolean')return value?'Available':'Not observed';
+  return ['review_state','source_status','semantic_support','relationship','candidate_kind'].includes(field)?String(value).replaceAll('_',' '):String(value);
 }
+function projectInventoryUrl(state) {
+  const params=new URLSearchParams({category:state.category,query:state.query||'',sort:state.sort||'name',offset:String(state.offset||0),limit:String(state.limit||50)});
+  if(state.revision)params.set('revision',state.revision);
+  for(const [key,value] of Object.entries(state.filters||{}))if(value)params.set(key,value);
+  return `/api/v2/projects/${projectUI.activeId}/inventory?${params}`;
+}
+function projectInventoryTable(state,page) {
+  const columns=projectInventoryColumns[state.category]||projectInventoryColumns.forms,label=projectInventoryCategories[state.category]||'Inventory',rows=page?.rows||[];
+  const body=rows.length?rows.map(row=>`<tr>${columns.map(([field],index)=>`<td>${index===0?`<button type="button" class="project-inventory-item" data-project-item="${esc(row.id)}">${esc(projectInventoryLabel(field,row[field]))}</button>`:esc(projectInventoryLabel(field,row[field]))}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${columns.length}"><p class="project-empty">No observed ${esc(label)} match the current search and filters.</p></td></tr>`;
+  return `<div class="project-table-wrap"><table class="project-table project-inventory-table"><caption>${esc(label)} from assessment revision ${esc(String(page?.analysis_revision||state.revision||'not loaded').slice(0,12))}</caption><thead><tr>${columns.map(([,heading])=>`<th scope="col">${esc(heading)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="project-pagination"><p>${page?.total?`${Number(page.offset)+1}–${Math.min(Number(page.offset)+Number(page.limit),Number(page.total))} of ${Number(page.total)}`:'No matching rows'}</p>${Number(page?.offset||0)>0?projectButton('project-inventory-prev','Previous'):''}${Number(page?.offset||0)+Number(page?.limit||50)<Number(page?.total||0)?projectButton('project-inventory-next','Next'):''}</div>`;
+}
+function projectRenderInventory(page=null) {
+  const state=projectUI.inventoryState,label=projectInventoryCategories[state.category];
+  const risk=state.filters.risk||'',recommendation=state.filters.recommendation||'';
+  const noDatabase=projectUI.overview?.source_coverage?.database?.sources===0;
+  $('project-content').innerHTML=`${projectSectionNav('inventory')}<header><h2 id="project-step-title" tabindex="-1">Inventory</h2><p>Browse observed application structure and modernization findings from the saved assessment.</p></header>${noDatabase?'<p class="project-state-warning">No database source was supplied. Cross-layer recommendations may have limited evidence.</p>':''}<div class="project-inventory-tabs" role="tablist" aria-label="Inventory categories">${Object.entries(projectInventoryCategories).map(([key,name])=>`<button type="button" class="btn" role="tab" data-project-category="${key}" aria-selected="${state.category===key}">${esc(name)}</button>`).join('')}</div><form id="project-inventory-filters" class="project-filter-bar"><label for="project-inventory-search">Search inventory</label><input id="project-inventory-search" type="search" maxlength="500" value="${esc(state.query||'')}"><label for="project-inventory-risk">Risk</label><select id="project-inventory-risk"><option value="">Any risk</option>${Object.entries(projectRiskLabels).map(([key,name])=>`<option value="${key}" ${risk===key?'selected':''}>${esc(name)}</option>`).join('')}</select><label for="project-inventory-recommendation">Recommendation</label><select id="project-inventory-recommendation"><option value="">Any recommendation</option>${Object.entries(projectRecommendationLabels).map(([key,name])=>`<option value="${key}" ${recommendation===key?'selected':''}>${esc(name)}</option>`).join('')}</select>${projectButton('project-inventory-apply','Apply Filters',true)}${projectButton('project-inventory-clear','Clear')}</form><p id="project-inventory-status" role="status" aria-live="polite">${page?`${Number(page.total||0)} ${esc(label)} found.`:'Loading inventory…'}</p><div id="project-inventory-results">${projectInventoryTable(state,page)}</div>`;
+  $('project-inventory-search').value=state.query||'';$('project-inventory-risk').value=risk;$('project-inventory-recommendation').value=recommendation;
+  projectBindSectionNav();
+  $('project-content').querySelectorAll('[data-project-category]').forEach(el=>el.onclick=()=>projectOpenInventory({category:el.dataset.projectCategory}));
+  $('project-content').querySelectorAll('[data-project-item]').forEach(el=>el.onclick=()=>projectInventoryDetail(el.dataset.projectItem,el));
+  $('project-inventory-filters').onsubmit=e=>{e.preventDefault();projectApplyInventoryFilters();};
+  $('project-inventory-apply').onclick=projectApplyInventoryFilters;$('project-inventory-clear').onclick=()=>projectOpenInventory({category:state.category});
+  if(page&&page.offset>0)$('project-inventory-prev').onclick=()=>projectInventoryPage(Math.max(0,page.offset-page.limit));
+  if(page&&page.offset+page.limit<page.total)$('project-inventory-next').onclick=()=>projectInventoryPage(page.offset+page.limit);
+}
+async function projectOpenInventory(options={}) {
+  const initial={category:'forms',query:'',filters:{},sort:'name',offset:0,limit:50,revision:projectInventoryRevision(),request:0,selectedId:null,returnFocus:null};
+  projectUI.inventoryState={...initial,...options,filters:{...(options.filters||{})}};
+  if(options.priority)projectUI.inventoryState.filters.priority='unresolved';
+  projectUI.view='inventory';projectRenderInventory();$('project-step-title').focus();
+  return projectLoadInventory();
+}
+async function projectLoadInventory(resetOnConflict=true) {
+  const c=projectContext(),state=projectUI.inventoryState,request=++state.request;
+  try {
+    const page=await api(projectInventoryUrl(state));
+    if(!projectCurrent(c)||projectUI.inventoryState!==state||request!==state.request)return;
+    state.offset=Number(page.offset||0);state.limit=Number(page.limit||50);state.revision=page.analysis_revision;state.page=page;
+    projectRenderInventory(page);$('project-status').textContent='';
+    return page;
+  }catch(e){
+    if(!projectCurrent(c)||projectUI.inventoryState!==state||request!==state.request)return;
+    const conflict=e.status===409||e.code==='PROJECT_CONFLICT'||/assessment changed|revision/i.test(e.message||'');
+    if(conflict&&resetOnConflict){state.offset=0;state.revision=null;state.page=null;projectRenderInventory();await projectLoadInventory(false);if(projectCurrent(c)&&projectUI.inventoryState===state)$('project-status').textContent='The assessment changed. Inventory was reloaded from the first page.';return;}
+    projectError((e.message||'Inventory could not be loaded')+' Retry Inventory.');
+  }
+}
+function projectApplyInventoryFilters() {
+  const state=projectUI.inventoryState;state.query=$('project-inventory-search').value.trim();state.filters={};
+  if($('project-inventory-risk').value)state.filters.risk=$('project-inventory-risk').value;
+  if($('project-inventory-recommendation').value)state.filters.recommendation=$('project-inventory-recommendation').value;
+  state.offset=0;state.page=null;projectRenderInventory();return projectLoadInventory();
+}
+function projectInventoryPage(offset) {const state=projectUI.inventoryState;state.offset=Math.max(0,Number(offset)||0);return projectLoadInventory();}
+function projectDetailList(items,kind) {
+  if(!items?.length)return '<p class="project-empty">No observed '+esc(kind)+'.</p>';
+  return `<ul>${items.map(row=>`<li><b>${esc(row.name||row.source||row.id||'Observed item')}</b>${row.relationship?` ${esc(row.relationship)} ${esc(row.target)}`:''}${row.risk?` · ${esc(projectRiskLabels[row.risk]||row.risk)}`:''}${row.reason?`<span>${esc(row.reason)}</span>`:''}</li>`).join('')}</ul>`;
+}
+async function projectInventoryDetail(itemId,trigger=null) {
+  const c=projectContext(),state=projectUI.inventoryState,category=state.category,revision=state.revision;state.selectedId=itemId;state.returnFocus=trigger;
+  try {
+    const detail=await api(`/api/v2/projects/${c.id}/inventory/${encodeURIComponent(category)}/${encodeURIComponent(itemId)}?revision=${encodeURIComponent(revision||'')}`);
+    if(!projectCurrent(c)||projectUI.inventoryState!==state||state.selectedId!==itemId)return;
+    openModal('Inventory detail');foot(null);
+    const item=detail.item||{};
+    $('modal-body').innerHTML=`<article class="project-inventory-detail"><h3>${esc(item.name||item.id||'Observed item')}</h3><dl><dt>Identity</dt><dd>${esc(item.id||'Not observed')}</dd><dt>Type</dt><dd>${esc(item.type||item.source_type||'Not observed')}</dd><dt>Source status</dt><dd>${esc(item.source_status||'Not observed')}</dd><dt>Risk</dt><dd>${esc(projectRiskLabels[item.risk||item.highest_risk]||item.risk||item.highest_risk||'Unknown')}</dd><dt>Recommendation</dt><dd>${esc(projectRecommendationLabels[item.recommendation]||item.recommendation||'Not observed')}</dd></dl><h4>Dependencies (${Number(detail.dependencies_total||0)})</h4>${projectDetailList(detail.dependencies,'dependencies')}<h4>Related findings (${Number(detail.related_findings_total||0)})</h4>${projectDetailList(detail.related_findings,'related findings')}${projectButton('project-detail-close','Back to Inventory')}</article>`;
+    $('project-detail-close').onclick=projectCloseInventoryDetail;
+  }catch(e){if(projectCurrent(c)&&projectUI.inventoryState===state)projectError(e.message+' Retry the inventory detail.');}
+}
+function projectCloseInventoryDetail(){const target=projectUI.inventoryState?.returnFocus;closeModal();projectUI.inventoryState.selectedId=null;if(target?.focus)target.focus();}
 function projectDistribution(title,values,labels,kind) {
   const entries=Object.entries(labels);
   return `<section class="project-panel" aria-label="${esc(title)} distribution"><h3>${esc(title)}</h3><dl class="project-distribution">${entries.map(([key,label])=>`<div><dt><button type="button" class="project-metric-link" data-project-filter="${esc(kind)}" data-project-value="${esc(key)}">${esc(label)}</button></dt><dd>${Number(values?.[key]||0)}</dd></div>`).join('')}</dl></section>`;

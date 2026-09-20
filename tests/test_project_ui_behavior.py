@@ -47,6 +47,11 @@ const overviewData={
   warnings:[{code:'UNSUPPORTED_REPRESENTATION',message:'One library needs a semantic representation.',remediation:'Supply XML.'}],
   review_progress:{reviewed:1,total:4,critical_resolved:0,critical_total:1}
 };
+const inventoryPage={category:'findings',query:'',filters:{},sort:'name',offset:0,limit:50,total:2,analysis_revision:'r',source_revision:'s',review_revision:2,assessment_timestamp:'2026-09-20T12:00:00Z',freshness:'CURRENT',rows:[
+  {id:'finding:critical',name:'WHEN-VALIDATE-ITEM',module:'orders.xml',source_type:'TRIGGER',risk:'CRITICAL',recommendation:'MANUAL_REVIEW',intervention:'MANUAL',review_state:'PENDING',reason:'Approval control.',priority_factors:['UNRESOLVED_CRITICAL']},
+  {id:'finding:high',name:'PRE-INSERT',module:'orders.xml',source_type:'TRIGGER',risk:'HIGH',recommendation:'MOVE_TO_PLSQL_API',intervention:'ASSISTED',review_state:'PENDING',reason:'Reuse ORDER_API.',priority_factors:['UNRESOLVED_HIGH']}
+]};
+const inventoryDetail={category:'findings',item:inventoryPage.rows[0],dependencies:[{id:'edge:1',source:'ORDERS',target:'ORDER_API',relationship:'CALLS'}],dependencies_total:1,related_findings:[inventoryPage.rows[0]],related_findings_total:1,analysis_revision:'r',source_revision:'s',review_revision:2,assessment_timestamp:'2026-09-20T12:00:00Z',freshness:'CURRENT'};
 '''
 
 
@@ -302,4 +307,76 @@ await openProject('a',false);
 assert.ok(calls.some(([path])=>path==='/api/v2/projects/a/overview'));
 assert.ok(!calls.some(([path])=>path.endsWith('/analyze')));
 assert.match($('project-content').innerHTML,/Application Inventory/);
+''')
+
+
+def test_inventory_sends_category_search_filters_and_revision_on_pages(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
+api=async(path)=>{calls.push(path);return {...inventoryPage,offset:path.includes('offset=50')?50:0};};
+await projectOpenInventory({category:'findings',filters:{risk:'HIGH',recommendation:'MOVE_TO_PLSQL_API'}});
+assert.match(calls[0],/category=findings/);assert.match(calls[0],/risk=HIGH/);assert.match(calls[0],/recommendation=MOVE_TO_PLSQL_API/);
+assert.match($('project-content').innerHTML,/Inventory/);assert.match($('project-content').innerHTML,/<table/);assert.match($('project-content').innerHTML,/PRE-INSERT/);
+$('project-inventory-search').value='order api';await projectApplyInventoryFilters();
+assert.match(calls[1],/query=order\+api/);
+await projectInventoryPage(50);assert.match(calls[2],/offset=50/);assert.match(calls[2],/revision=r/);
+''')
+
+
+def test_inventory_tabs_and_empty_state_use_safe_observed_language(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview={...overviewData,source_coverage:{...overviewData.source_coverage,database:{sources:0,analyzed:0}}};
+api=async(path)=>({...inventoryPage,category:'tables',rows:[],total:0});
+await projectOpenInventory({category:'tables'});const html=$('project-content').innerHTML;
+for(const label of ['Forms','Libraries','Packages','Routines','Views','Tables','Dependencies','Business Rules','Findings'])assert.match(html,new RegExp(label));
+assert.match(html,/No observed Tables match the current search and filters/);assert.match(html,/<caption>/);assert.match(html,/scope="col"/);
+assert.match(html,/No database source was supplied/);
+''')
+
+
+def test_inventory_detail_is_bounded_escaped_and_restores_focus(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;
+api=async(path)=>path.includes('/inventory/findings/')?{...inventoryDetail,item:{...inventoryDetail.item,name:'<img onerror=bad()>'}}:inventoryPage;
+await projectOpenInventory({category:'findings'});const trigger=$('detail-trigger');trigger.focus();
+projectUI.inventoryState.offset=50;projectUI.inventoryState.filters={risk:'CRITICAL'};
+await projectInventoryDetail('finding:critical',trigger);
+assert.match($('modal-body').innerHTML,/CALLS/);assert.match($('modal-body').innerHTML,/Approval control/);
+assert.ok(!$('modal-body').innerHTML.includes('<img'));assert.match($('modal-body').innerHTML,/&lt;img/);
+projectCloseInventoryDetail();assert.equal(trigger.focused,true);assert.equal(projectUI.inventoryState.offset,50);assert.deepEqual(projectUI.inventoryState.filters,{risk:'CRITICAL'});
+''')
+
+
+def test_priority_inventory_carries_transparent_filter_and_revision(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;let path;
+api=async(value)=>{path=value;return inventoryPage;};await projectOpenInventory({category:'findings',priority:true});
+assert.match(path,/priority=unresolved/);assert.match(path,/revision=r/);assert.equal(projectUI.inventoryState.category,'findings');
+''')
+
+
+def test_late_inventory_and_search_responses_cannot_overwrite_new_state(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;
+const old=deferred(),recent=deferred();let n=0;api=()=>++n===1?old.promise:recent.promise;
+const first=projectOpenInventory({category:'forms'});projectUI.activeId='b';projectUI.generation++;projectUI.summary={...summary,project:{...summary.project,id:'b',name:'Finance'}};projectUI.overview={...overviewData,project:{...overviewData.project,id:'b',name:'Finance'}};
+const second=projectOpenInventory({category:'packages'});recent.resolve({...inventoryPage,category:'packages',rows:[{id:'package:new',name:'FINANCE_API',spec:true,body:true}],total:1,analysis_revision:'b'.repeat(64)});await second;
+old.resolve({...inventoryPage,category:'forms',rows:[{id:'form:old',name:'ORDERS'}],total:1});await first;
+assert.equal(projectUI.activeId,'b');assert.equal(projectUI.inventoryState.category,'packages');assert.match($('project-content').innerHTML,/FINANCE_API/);assert.ok(!$('project-content').innerHTML.includes('ORDERS'));
+const searchOld=deferred(),searchNew=deferred();n=0;api=()=>++n===1?searchOld.promise:searchNew.promise;
+$('project-inventory-search').value='old';const oldSearch=projectApplyInventoryFilters();$('project-inventory-search').value='new';const newSearch=projectApplyInventoryFilters();
+searchNew.resolve({...inventoryPage,query:'new',rows:[{id:'new',name:'NEW RESULT'}],total:1,analysis_revision:'b'.repeat(64)});await newSearch;
+searchOld.resolve({...inventoryPage,query:'old',rows:[{id:'old',name:'OLD RESULT'}],total:1,analysis_revision:'b'.repeat(64)});await oldSearch;
+assert.match($('project-content').innerHTML,/NEW RESULT/);assert.ok(!$('project-content').innerHTML.includes('OLD RESULT'));
+''')
+
+
+def test_inventory_revision_conflict_resets_and_reloads_first_page(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
+api=async(path)=>{calls.push(path);if(path.includes('offset=50')){const e=new Error('Assessment changed; reload inventory from the first page');e.status=409;e.code='PROJECT_CONFLICT';throw e;}return inventoryPage;};
+await projectOpenInventory({category:'findings'});await projectInventoryPage(50);
+assert.equal(projectUI.inventoryState.offset,0);assert.equal(projectUI.inventoryState.revision,'r');
+assert.equal(calls.filter(path=>path.includes('offset=0')).length,2);
+assert.match($('project-status').textContent,/assessment changed/i);assert.ok(!$('project-content').innerHTML.includes('mixed'));
 ''')
