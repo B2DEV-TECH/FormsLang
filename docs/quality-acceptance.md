@@ -839,3 +839,144 @@ delay could false-pass the old implementation. Its observed RED is supplemented
 by real threaded/multiprocess stress; it is not claimed to be schedule-independent.
 The reviewer could not run Python in its tool environment and did not independently
 rerun the recorded acceptance; it inspected code/call paths and passed diff-check.
+
+## 2026-09-20 — FormsLang 2.0 Phase C development acceptance
+
+Branch `codex/formslang-2-phase-c`, based on merged Phase B
+`2c977ebe2d378e86028464399c85cde1335b8018`. The implementation and acceptance
+harnesses are present through `8d594d2b855b26f6134aee0fefa25e5d8a5001cf`; architecture
+semantics are recorded in `70c83130606521b9188530f9bc41523a6f7ac268`; review corrections
+are in `579048771cf96d99aeec86d7a0d21b0a69f4e2cd`,
+`727551762b1be95784d06b7615f01dcbeb2cc965` and
+`fd599c56c0415620fdaea8a5a0f4bfb07ddbcb0f`.
+Version remains 1.6.0. This closes only Phase C Overview + Inventory; it is not
+FormsLang 2.0 release acceptance and creates no tag, release or installer.
+
+Platform: Windows 11 build 26200, Python 3.12.10, Node 22.16.0 and headless Edge.
+Inputs are bundled/disposable public-safe synthetic fixtures. Static reads used no
+Oracle credentials, AI provider, external telemetry or customer source.
+
+### Read-model and application checks
+
+- `python -B -m pytest -q -rs -p no:cacheprovider`: **1,496 passed, 5 skipped in
+  350.93s**. The five skips are
+  the existing Windows-account symlink-permission cases; real NTFS junction coverage
+  remains active. This run includes Phase A/B regressions, projection reconciliation,
+  API/CLI parity, authorization, XSS/race behavior, Demo reopen/stale and scale tests.
+- Focused Phase C projection/service/HTTP/CLI/demo/UI/scale plus intake regressions:
+  **138 passed, 1 skipped in 167.16s**. Final Node-driven
+  project/Blueprint/review JavaScript behavior: **65 passed in 4.50s**. The
+  full-suite count above is authoritative.
+- `python -B examples/verify/project_browser_check.py --output scratch_tmp/phase-c-final-browser`:
+  **29/29**, no page exceptions or external requests, five screenshots; evidence
+  `run-9953d63c3ba0/result.json`. Real HTTP/service/SQLite/engine; no mocked assessment
+  response. It covers onboarding, real Overview, risk filtering, detail/focus,
+  dependency inventory, real server-process replacement, persisted reopen, Stale,
+  Missing Source/relink, partial failure, cancellation, project switch, Demo Critical,
+  package search, dependency detail, responsive layout and reduced motion.
+- `python -B examples/verify/workbench_browser_check.py --output scratch_tmp/phase-c-final-legacy-browser`:
+  **101/101**, 27 screenshots; evidence `run-ec037287a8ab/result.json`. Existing
+  Blueprint, conversion/review, source evidence, layout, theme, contrast and keyboard
+  workflows remain green.
+- `ruff check .` and `git diff --check`: clean at the implementation gate.
+
+Browser findings received focused RED/GREEN fixes rather than retries:
+
+1. A completed freshness job returned to the Phase B summary. The new transition
+   regression failed RED, then passed after polling explicitly reloaded the saved
+   Overview for terminal freshness jobs.
+2. Engine identities containing reserved path characters were percent-encoded by the
+   browser but compared before decoding, producing 404 detail reads. A real HTTP test
+   failed RED. The adapter now decodes the single opaque identity only after route
+   segmentation and after project authorization; malformed/NUL encodings fail safely.
+3. Dependency rows opened a generic detail that omitted the observed source,
+   relationship and target. A focused Node test failed RED; the detail now names all
+   three and the real-browser flow opens and verifies it.
+
+### Independent review and correction pass
+
+The first independent whole-branch review recommended **HOLD** with no Critical
+findings, eight Important findings and three Minor findings. Verified findings were
+  fixed in `5790487`, `7275517` and `fd599c5` with focused RED/GREEN coverage:
+
+- stale Overview refresh no longer dereferences a summary-only button;
+- Priority Review uses unresolved Critical/High/Manual counts consistently;
+- an Inventory `409` refreshes Overview and Inventory to the same revision before
+  page-one reload;
+- priority evidence factors derive from real statement codes and Blueprint edges,
+  rather than fabricated classifications;
+- selected Forms representations no longer count unsupported/unselected binaries;
+- package findings, highest risk and dependencies include package spec/body and
+  subprogram members without exposing internal membership IDs;
+- Overview warnings are capped at 50 with total/shown/truncated metadata;
+- priority filters survive search/filter changes;
+- the project-scoped priority bridge carries project/finding/filter/revision and
+  opens the first eligible evidence detail without writing into the unrelated legacy
+  Blueprint store;
+- pagination/filter focus, keyboard tab navigation and dependency detail were
+  tightened without starting the Phase D decision workflow.
+
+The first full-suite rerun also reproduced a pre-existing Windows locator-index
+race twice in 20 fresh processes: `PermissionError: [Errno 13]` while a reader
+opened `locators.json` during atomic publication. The regression was not hidden by
+retry. A deterministic RED proved that readers were outside the publication lock;
+`fd599c5` serializes locator readers and writers while preserving same-thread nested
+reads of the last committed snapshot. The original multiprocess test then passed
+**50/50** fresh-process repetitions, and committed tests cover the cross-thread wait
+and reentrant snapshot contract.
+
+The original reviewer suggestion to route project review directly into the legacy
+session Blueprint was not applied: that workspace does not consume the persisted
+`ProjectAssessment` or its authorization context. Adopting project data there would
+create unsafe split state and Phase D scope. The formal design now documents the
+read-only revision-bound bridge and the Phase D boundary.
+
+Follow-up reviews found the package-subprogram aggregation omission and a same-thread
+deadlock in the first locator-lock correction. Both were reproduced before repair.
+The final independent review of `fd599c5` reports **MERGE**, with no Critical or
+Important findings, and independently confirms clean diff-check plus the absence of
+persisted projection tables and Phase D/E/F scope creep. The reviewer could not run
+Python in its tool environment; the execution results in this section are therefore
+executor evidence, not an independently repeated Python run.
+
+### 500-Form projection scale gate
+
+`python -B examples/verify/project_overview_performance_check.py --output
+scratch_tmp/phase-c-final-performance-verified`, evidence
+`run-cba12adc2afe/result.json`.
+The deterministic fixture contains **500 Forms, 5,000 findings and 5,000
+non-structural dependencies**. All summary/detail denominators reconcile.
+
+| Operation | Iterations | Median | Maximum |
+|---|---:|---:|---:|
+| Cold Overview (with tracemalloc) | 5 | 4,185.630 ms | 4,298.243 ms |
+| Inventory first page | 5 | 1.229 ms | 1.297 ms |
+| Combined filter | 5 | 7.708 ms | 8.563 ms |
+| Search | 5 | 6.268 ms | 6.977 ms |
+| Persisted JSON reopen + Overview | 5 | 3,367.683 ms | 3,411.294 ms |
+| Warm cache Overview | 5 | 0.010 ms | 0.026 ms |
+
+Tracemalloc peak: **11,350,347 bytes** (Python allocations, not RSS). This is a
+synthetic read-model gate, not engine throughput, browser-rendering, estate or ROI
+evidence. The result supports the approved bounded in-memory projection/cache. **No
+persisted projection tables were added.** A future storage optimization requires a
+new failing scale gate rather than architectural speculation.
+
+### Immutability, security and explicit boundaries
+
+Canonical Git blob IDs for all **24** frozen v1/v2/v3 baseline and ground-truth
+artifacts match the Phase B base: zero changes. Version/packaging declarations are
+unchanged. No push, merge, tag, release, installer build, live Oracle/APEX validation
+or customer corpus was used for Phase C.
+
+Overview returns no source bodies or unrestricted absolute paths. Inventory/detail
+reauthorize the opaque project on every request, keep rows bounded, carry assessment
+revision and do not combine mismatched pages. Hostile project/warning/item text has
+an XSS regression. Local source paths remain governed by Phase A/B capabilities.
+
+Known limitations: the first uncached read can take a few seconds at the named
+synthetic scale; browser accessibility is automated keyboard/semantics/contrast and
+reduced-motion evidence, not a manual screen-reader audit; source coverage reports
+observed counts, not estate completeness; static analysis cannot infer undocumented
+business intent or runtime parity. Phase D review redesign, Phase E project-level
+APEXlang generation and Phase F reports/packages remain explicitly deferred.
