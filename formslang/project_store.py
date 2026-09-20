@@ -150,27 +150,35 @@ class ProjectStore:
         if not path.is_file():
             raise ProjectError("Project database is missing; select an existing project")
         try:
-            with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as check:
+            with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as check:
+                # Share the database's cross-process writer lock with mirror
+                # publication. Windows can deny opens during atomic replacement.
+                # No database mutation is performed by this validation transaction.
+                check.execute("BEGIN IMMEDIATE")
                 if check.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise ProjectError("Project database integrity check failed")
                 row = check.execute("SELECT schema_version,descriptor_json FROM modernization_project WHERE id=1").fetchone()
                 if not row or row[0] != "formslang-project/1":
                     raise ProjectError("Unsupported project database schema")
                 authoritative = descriptor_from_dict(json.loads(row[1]))
+                mirror = contained_path(directory, "project.json")
+                if mirror.exists():
+                    try:
+                        if mirror.stat().st_size > 1024 * 1024:
+                            raise ProjectError("Project descriptor exceeds size limit")
+                        raw = json.loads(mirror.read_text(encoding="utf-8"))
+                    except (json.JSONDecodeError, UnicodeError):
+                        raw = None
+                    except OSError as exc:
+                        raise ProjectError("Project descriptor cannot be read") from exc
+                    if raw is not None and descriptor_from_dict(raw).id != authoritative.id:
+                        raise ProjectError("Project descriptor identity does not match database")
+        except sqlite3.OperationalError as exc:
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise ProjectBusy("Project is busy; retry after the current operation") from exc
+            raise ProjectError("Not a valid FormsLang project database") from exc
         except (sqlite3.Error, json.JSONDecodeError) as exc:
             raise ProjectError("Not a valid FormsLang project database") from exc
-        mirror = contained_path(directory, "project.json")
-        if mirror.exists():
-            try:
-                if mirror.stat().st_size > 1024 * 1024:
-                    raise ProjectError("Project descriptor exceeds size limit")
-                raw = json.loads(mirror.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, UnicodeError):
-                raw = None
-            except OSError as exc:
-                raise ProjectError("Project descriptor cannot be read") from exc
-            if raw is not None and descriptor_from_dict(raw).id != authoritative.id:
-                raise ProjectError("Project descriptor identity does not match database")
         result = cls(root, Store(path, reconcile_jobs=False))
         try:
             result._migrate_runs()
@@ -278,6 +286,12 @@ class ProjectStore:
         return descriptor_from_dict(json.loads(row[0]))
 
     def sync_descriptor(self) -> None:
+        # Fetch the authoritative payload under the same lock as the filesystem
+        # operation: otherwise a delayed reader can republish an older descriptor.
+        with self._write():
+            self._sync_descriptor_locked()
+
+    def _sync_descriptor_locked(self) -> None:
         destination = contained_path(self.directory, "project.json")
         payload = canonical_json(descriptor_to_dict(self.descriptor())) + "\n"
         try:

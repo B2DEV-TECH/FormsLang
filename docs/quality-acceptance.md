@@ -770,3 +770,72 @@ self-referential commit hash. No second reviewer was used; each material fix has
 RED/GREEN coverage and the full suite was rerun. There are no deferred Minor review
 findings. The explicit Oracle/runtime, scale, installer and later-phase limitations
 above remain unchanged; this closes Phase B only, not FormsLang 2.0.
+
+### PR #7 polling blocker investigation (2026-09-19, Windows)
+
+Starting head: `426e4e2d27ff109e5055d3febc7ad87e9d5355af`. All **12/12** remote
+checks in run `35480445618` completed successfully before local stress began.
+This entry records the subsequent descriptor synchronization patch; it does not
+claim that the original head was free of the intermittent polling defect.
+
+Environment: Windows 11 build 26200, CPython 3.13.15. Synthetic sources only.
+The original `test_analysis_is_accepted_then_persisted` passed **50/50** fresh
+Python processes before the fix. A separate concurrent-read/publication stress
+then reproduced the same `Project descriptor cannot be read` failure at
+`ProjectStore.open` / `Path.read_text(project.json)`. The preserved original cause
+was **`PermissionError: [Errno 13] Permission denied`**. Its `winerror` attribute
+was absent; no specific Win32 error, antivirus involvement, or environmental cause
+is claimed. The earlier full-suite occurrence did not retain its OS exception.
+
+Root cause demonstrated: descriptor validation/read and atomic mirror replacement
+were not mutually synchronized. Separate connections could read during replacement
+and independently reconcile the same mirror. The controlled regression
+`test_open_does_not_read_descriptor_during_replacement` failed RED on the original
+implementation. The initial real concurrency pilot reported **1 failed, 2 passed**.
+Diagnostics retained both read-path and sync-path PermissionError tracebacks in
+`scratch_tmp/polling-concurrency-pilot/001-exceptions.jsonl`.
+
+The minimal production patch is confined to `project_store.py`: use the existing
+SQLite `BEGIN IMMEDIATE` ownership for descriptor validation/read and mirror
+reconciliation/publication, obtaining the authoritative payload inside the lock.
+The initial validation transaction does not modify database contents. Lock
+contention is reported as ProjectBusy. Identity/path validation and corrupt/missing
+mirror recovery remain enforced. No new persistence layer, read retry, HTTP retry,
+or swallowed exception was added. The pre-existing bounded Windows replace retry
+for external file readers is unchanged; it is not the synchronization mechanism.
+
+Post-fix verification:
+
+- Controlled RED to GREEN plus Store/jobs/HTTP: **55 passed in 46.20s**.
+- Original HTTP test: another **50/50** fresh processes passed; **100 explicit
+  repetitions total**, excluding ordinary suite runs and the previous investigation.
+- Concurrent descriptor/Store and HTTP completion/cancellation stress: **10/10**
+  fresh processes, **30/30 test cases**, no descriptor exception. These exercised
+  4,000 concurrent Store opens against 500 descriptor publications, plus 1,000 job
+  status GETs and 1,000 additional Store reopens across completion/cancellation.
+- Cancellation before publication, completion before cancellation, analysis phase
+  boundaries and freshness/reopen: **10/10** processes, **70/70 cases**.
+- Committed regression coverage additionally includes two spawned reader processes
+  against descriptor publication, not just threads in one interpreter.
+- `python -B -m pytest -q -rs -p no:cacheprovider`: **1,449 passed, 5 skipped,
+  268.12s**. Same five Windows symlink-permission skips above.
+- `python -B -m ruff check . --no-cache` and `git diff --check`: clean.
+- `python -B examples/verify/project_browser_check.py --output scratch_tmp/polling-fix-browser`:
+  **21/21**, zero browser exceptions, five screenshots; `run-08c75ddf523f/result.json`.
+- `python -B examples/verify/workbench_browser_check.py --output scratch_tmp/polling-fix-legacy-browser`:
+  **101/101**, 27 screenshots; `run-74a6e56aeeca/result.json`.
+- All **24** baseline/ground-truth canonical Git blob hashes match `3f4d691`.
+
+Detailed repetition logs and results are retained in `scratch_tmp/polling-original-50`,
+`polling-fixed-50`, `polling-concurrency-green`, and `polling-boundaries-10`.
+The diagnostic wrapper only records and rethrows exceptions; it never retries.
+Stress is finite evidence, not a guarantee against arbitrary external filesystem
+interference. No Phase C work, version change, tag, release or automatic merge.
+
+Independent read-only patch review found no Critical or Important issues and
+recommended merge. One Minor test limitation remains explicit: the controlled
+overlap regression uses a 250 ms observation window, so extreme reader scheduling
+delay could false-pass the old implementation. Its observed RED is supplemented
+by real threaded/multiprocess stress; it is not claimed to be schedule-independent.
+The reviewer could not run Python in its tool environment and did not independently
+rerun the recorded acceptance; it inspected code/call paths and passed diff-check.
