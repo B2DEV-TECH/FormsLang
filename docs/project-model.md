@@ -1,8 +1,8 @@
 # Modernization project model (2.0 foundation)
 
-Status: Phase A application-library foundation. This is not yet the 2.0 wizard,
-project CLI, project HTTP API or generation workflow. Existing 1.x interfaces
-continue to use their current contracts. See the approved
+Status: unreleased Phases A/B. The project wizard, local CLI and versioned HTTP
+API share this model; project generation and full Overview remain later phases.
+Existing 1.x interfaces retain their contracts. See the approved
 [product architecture](formsLang-2-product-architecture.md).
 
 ## Storage and portability
@@ -26,8 +26,9 @@ fields. Unknown fields are rejected, not passed to another configuration layer.
 Source paths are relative to the project directory, not `.formslang`. External
 paths can be explicitly authorized; moving such a project may require relinking.
 Metadata is not filesystem authority. The caller supplies host-approved roots.
-Missing source does not prevent reading a saved assessment, but Phase A does not
-yet implement refresh or live source freshness checking.
+Missing source does not prevent reading a saved assessment. Reopen loads saved
+evidence first, then hashes current source through a local freshness job. It does
+not rerun the reasoning engine or contact an external provider.
 
 SQLite is authoritative. A stale, missing or syntactically broken descriptor is
 repaired from the valid database on open. A descriptor that names another project,
@@ -45,6 +46,20 @@ snapshot is one `BEGIN IMMEDIATE` transaction with an expected-revision check.
 Another writer with an outdated expected revision receives `RevisionConflict`.
 Contention is bounded and returns `ProjectBusy`.
 
+Phase B adds configuration revisions, discovery runs/entries/diagnostics, durable
+jobs, run metadata and explicitly selected derived XML through additive schema
+migrations. The descriptor is not a job database. Recent-project metadata stores
+locators and host-local source capabilities, never a second assessment copy.
+Assessment publication and the successful job transition share one transaction.
+Cancellation, lost authority or changed source leaves the previous pointer intact.
+Repeated identical input retains the original assessment timestamp.
+
+Both managed and local creation reserve locator metadata and an initialization
+owner marker before publication. Retry must match actor/request/descriptor; it can
+repair a committed DB's mirror without adopting an unrelated directory. Explicit
+same-user relocation can replace a missing local locator, never a live clone, and
+does not inherit source capabilities from the relocated descriptor.
+
 ## Revisions and review
 
 Source IDs hash root ID plus normalized relative path, so equal module names in
@@ -54,9 +69,9 @@ File timestamp alone never establishes freshness. A hash is not parse support.
 
 Analysis revision includes source revision, engine identity and options, including
 the server-owned target. Engine identity includes rule versions and module-content
-digests. The frozen distribution must retain the fingerprint resources before
-project workflows are exposed there; absence fails explicitly rather than giving
-an unverifiable revision. No benchmark baseline or legacy Blueprint protocol is
+digests. The frozen distribution includes Python fingerprint resources and the
+synthetic demo; absence fails explicitly rather than giving an unverifiable revision.
+No benchmark baseline or legacy Blueprint protocol is
 rewritten to achieve this stronger project contract.
 
 `project-assessment/1` wraps the existing Blueprint with source manifest, target,
@@ -68,11 +83,18 @@ project finding revision against the current analysis revision before writing.
 A project-local trigger increments the review revision for each committed review;
 rolled-back reviews do not advance it. Conversion approval remains separate.
 
-Current means the published run was complete for its supplied manifest. Incomplete
-retains explicit failed inputs. A changed engine projects Stale and removes
-applicable approval overlays without deleting history. Until Phase B provides
-live source checks, Current is not a claim that files were checked on every open.
-Reanalysis against changed source conservatively invalidates project-wide review.
+Assessment completion is `COMPLETE`, `COMPLETE_WITH_WARNINGS` or `INCOMPLETE`.
+Freshness is separate: `CURRENT`, `STALE`, `MISSING_SOURCE`, `INCOMPLETE` or
+`UNVERIFIED` before a check. Current is evidence as of the last hash check, not a
+filesystem watch. Failed material inputs remain explicit. Changed source/engine
+suppresses applicable review overlays without deleting history. Reanalysis against
+changed source conservatively invalidates project-wide review.
+
+Relink preserves the logical root ID and validates content, not the directory
+name. Same-content relocation can retain a current assessment; different content
+requires refresh. Raw bytes are staged and hashed before parsing, then checked
+again before publication; source-change failures never publish mixed evidence as
+Current. Matching FMB/XML names do not prove XML freshness.
 
 ## Importing 1.x sessions
 

@@ -1,17 +1,35 @@
 """Project state survives interrupted mirrors and rejects foreign/corrupt inputs."""
 
 import json
+import os
 import sqlite3
+import threading
 
 import pytest
 
-from formslang.project_model import ProjectDescriptor, ProjectError
+from formslang.project_model import ProjectDescriptor, ProjectError, SourceRoot
 from formslang.project_store import ProjectStore
 from formslang.store import Store
 
 
 def create(tmp_path):
     return ProjectStore.create(tmp_path, ProjectDescriptor(id="b" * 32, name="Orders"))
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows sharing violation regression')
+def test_descriptor_publication_tolerates_short_lived_windows_reader(tmp_path):
+    store = create(tmp_path)
+    mirror = tmp_path / '.formslang/project.json'
+    reader = mirror.open('rb')
+    release = threading.Timer(.08, reader.close)
+    release.start()
+    try:
+        store.replace_roots((SourceRoot('f', 'forms', 'sources'),), expected_configuration=0)
+        assert json.loads(mirror.read_text())['source_roots'][0]['id'] == 'f'
+    finally:
+        release.join(timeout=2)
+        reader.close()
+        store.close()
 
 
 @pytest.mark.parametrize("corruption", ["stale", "broken", "missing"])

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import asdict
 
 from . import blueprint
-from .project_manifest import ManifestEntry, analysis_revision, source_id, source_revision
+from .project_manifest import (
+    ManifestEntry,
+    analysis_revision,
+    relative_source_path,
+    source_id,
+    source_revision,
+)
 from .project_model import ProjectDescriptor, ProjectError, canonical_json, validate_descriptor
 
 
@@ -56,6 +63,7 @@ def validate_assessment(descriptor: ProjectDescriptor, value: dict) -> None:
             raise ProjectError("Assessment revision mismatch")
         if value["status"] not in {"Current", "Incomplete"}:
             raise ProjectError("Invalid assessment status")
+        _validate_completion(value)
         if not isinstance(value["analyzed_at"], str) or not value["analyzed_at"].strip():
             raise ProjectError("Assessment timestamp is required")
         bp = value["blueprint"]
@@ -76,7 +84,34 @@ def validate_assessment(descriptor: ProjectDescriptor, value: dict) -> None:
         raise ProjectError("Malformed project assessment") from exc
 
 
-def current_assessment(store, *, expected_engines: dict[str, str]) -> dict | None:
+def _validate_completion(value: dict) -> None:
+    added = {'inventory', 'diagnostics', 'completion_state'}
+    if not added.intersection(value):
+        return  # Phase A snapshots remain readable without synthetic new fields.
+    if not added <= value.keys() or not isinstance(value['inventory'], dict):
+        raise ProjectError('Incomplete assessment coverage fields')
+    completion = value['completion_state']
+    diagnostics = value['diagnostics']
+    if completion not in {'COMPLETE', 'COMPLETE_WITH_WARNINGS', 'INCOMPLETE'} or not isinstance(diagnostics, list):
+        raise ProjectError('Invalid assessment completion or diagnostics')
+    if ((completion == 'INCOMPLETE') != (value['status'] == 'Incomplete')
+            or (completion == 'COMPLETE' and diagnostics)
+            or (completion == 'COMPLETE_WITH_WARNINGS' and not diagnostics)):
+        raise ProjectError('Assessment completion disagrees with evidence status')
+    required = {'source_id', 'relative_path', 'stage', 'error_code', 'safe_message', 'remediation'}
+    for item in diagnostics:
+        if not isinstance(item, dict) or set(item) != required or any(not isinstance(v, str) for v in item.values()):
+            raise ProjectError('Malformed source diagnostic')
+        if not re.fullmatch('[a-f0-9]{64}', item['source_id']):
+            raise ProjectError('Invalid diagnostic source identity')
+        relative_source_path(item['relative_path'])
+        if (any(not re.fullmatch('[A-Z][A-Z0-9_]{0,79}', item[k]) for k in ('stage', 'error_code'))
+                or any(not item[k].strip() or len(item[k]) > 2000 or '\0' in item[k]
+                       for k in ('safe_message', 'remediation'))):
+            raise ProjectError('Invalid diagnostic code or remediation')
+
+
+def current_assessment(store, *, expected_engines: dict[str, str], freshness=None) -> dict | None:
     # All projections must refer to one read snapshot, including external writers.
     db = store.session.db
     if db.in_transaction:
@@ -90,8 +125,12 @@ def current_assessment(store, *, expected_engines: dict[str, str]) -> dict | Non
         reviewed = store.session.blueprint()
         result["blueprint"] = reviewed
         result["review_revision"] = db.execute("SELECT review_revision FROM modernization_project WHERE id=1").fetchone()[0]
-        if saved["engine_identity"] != expected_engines:
-            result["status"] = "Stale"
+        if (saved["engine_identity"] != expected_engines or
+                (freshness is not None and (freshness.get('status') != 'CURRENT' or
+                 freshness.get('analysis_revision') != saved['analysis_revision']))):
+            result["status"] = ("Incomplete" if freshness is not None and freshness.get('status') == 'INCOMPLETE'
+                                and freshness.get('analysis_revision') == saved['analysis_revision']
+                                and saved['engine_identity'] == expected_engines else "Stale")
             for finding in reviewed["findings"]:
                 if finding.get("review_history"):
                     finding["review_state"] = "STALE"

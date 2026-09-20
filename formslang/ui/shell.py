@@ -15,6 +15,7 @@ BODY_OPEN_HTML = r"""<body>
   <div class="module-switcher"><span class="nav-kicker">Current module</span><button class="btn" id="btn-module" aria-label="Open or switch Forms module" title="Open or switch Forms module">Open a module…</button></div>
   <div class="nav-sections">
     <div class="nav-group"><span class="nav-kicker">Workspace</span>
+      <button class="nav-item" id="btn-modernization" title="Modernization projects"><span>Modernization Projects</span></button>
       <button class="nav-item" id="btn-review" aria-current="page" title="Conversion review"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16M14 9h3M14 13h3"/></svg><span>Review</span></button>
       <button class="nav-item" id="btn-dash" title="Project overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10m8 10V4m8 16v-7"/></svg><span>Project</span></button>
       <button class="nav-item" id="btn-blueprint" title="Modernization blueprint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="5" rx="1"/><rect x="2" y="16" width="7" height="5" rx="1"/><rect x="15" y="16" width="7" height="5" rx="1"/><path d="M12 8v4M5.5 16v-4h13v4"/></svg><span>Blueprint</span></button>
@@ -163,8 +164,8 @@ window.addEventListener("formslang:modalchange", () => {
   document.querySelectorAll("body > header, body > main, #working, #setup-banner").forEach((element) => { element.inert = stageInert; });
   if (!open) setShellSection();
 });
-$("btn-review").onclick = () => { setNavigationOpen(false); closeModal(); setShellSection(); $("workspace-title").focus(); };
-$("btn-module").onclick = () => openShellSection("btn-review", () => browse(""));
+$("btn-review").onclick = () => { projectLeave(); setNavigationOpen(false); closeModal(); setShellSection(); $("workspace-title").focus(); };
+$("btn-module").onclick = () => { projectLeave(); return openShellSection("btn-review", () => browse("")); };
 $("btn-blueprint").onclick = () => openShellSection("btn-blueprint", showBlueprint);
 $("welcome-open").onclick = () => browse("");
 $("provider").onclick = () => openShellSection("btn-settings", openSettings);
@@ -229,6 +230,7 @@ document.addEventListener("keydown", (e) => {
   }
   // With the overlay up, every other shortcut belongs to the overlay.
   if ($("modal").classList.contains("show")) return;
+  if (projectUI.view !== 'legacy') return;
   if (e.key === "/" && !typing) {
     e.preventDefault();
     setUnitsVisible(true);
@@ -250,6 +252,7 @@ PROPOSE_LABEL = $("btn-propose").innerHTML;
 initReviewWorkspace();
 initWorkspaceLayout();
 refresh(false)
+  .then(initProjects)
   /* A run started before this window opened still owns the screen. */
   .then(() => api("/api/job"))
   .then((j) => { if (j.running) { job = j; jobStart = Date.now(); paintWorking(); poll(); } })

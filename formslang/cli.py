@@ -812,6 +812,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--version", action="version", version=f"FormsLang {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
+    from .project_cli import add_project_parser
+
+    add_project_parser(sub)
 
     bp = sub.add_parser("blueprint", help="evidence-first application modernization blueprint")
     bp.add_argument("path", help="Forms .fmb/.xml, application directory or Blueprint session.db")

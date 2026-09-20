@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Public-safe synthetic companion module. -->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="CUSTOMERS" Title="Synthetic customer desk">
+    <Block Name="CUSTOMER" QueryDataSourceName="CUSTOMERS">
+      <Item Name="ID" ItemType="Text Item" DataType="Number"/>
+      <Item Name="NAME" ItemType="Text Item" DataType="Char"/>
+      <Item Name="SHIPMENTS" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN OPEN_FORM('SHIPMENTS'); END;"/>
+      </Item>
+    </Block>
+  </FormModule>
+</Module>

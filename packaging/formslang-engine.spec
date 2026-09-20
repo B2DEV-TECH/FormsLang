@@ -13,7 +13,9 @@ if version('formslang') != expected:
                        'the editable package before building the engine.')
 
 datas = []
-datas += collect_data_files('formslang')
+# Project revision identity hashes the shipped source resources, even in a
+# frozen engine. PYZ bytecode alone does not satisfy importlib.resources reads.
+datas += collect_data_files('formslang', include_py_files=True)
 datas += copy_metadata('formslang')
 
 

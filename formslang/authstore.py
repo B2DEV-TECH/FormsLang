@@ -1585,6 +1585,43 @@ class AuthStore:
             )
         return self.get_project(project_id)
 
+    def register_modernization_project(self, org_id: str, project_id: str, *,
+                                       data_dir: Path, created_by: str) -> dict:
+        """Publish an already initialized managed project under its descriptor ID."""
+        from . import rbac
+        from .project_store import ProjectStore
+
+        if any(not isinstance(value, str) or len(value) != 32 or
+               any(c not in '0123456789abcdef' for c in value) for value in (org_id, project_id)):
+            raise ValueError('Invalid managed project identity')
+        root = Path(data_dir).absolute() / 'orgs' / org_id / 'projects' / project_id
+        path = root / '.formslang/project.session.db'
+        if root.resolve() != root or path.resolve() != path or not path.is_file():
+            raise ValueError('Managed project must be initialized before registration')
+        with self._immediate():
+            member = self.get_membership(org_id, created_by)
+            if member is None or not rbac.has_permission(member['role'], rbac.CREATE_PROJECT):
+                raise PermissionError('Project creation is not permitted')
+            store = ProjectStore.open(root)
+            try:
+                descriptor = store.descriptor()
+            finally:
+                store.close()
+            if descriptor.id != project_id:
+                raise ValueError('Managed descriptor identity mismatch')
+            existing = self.get_project(project_id)
+            if existing:
+                if (existing['org_id'] != org_id or existing['created_by'] != created_by or
+                        existing['storage_mode'] != ADOPTED or Path(existing['session_db_path']) != path or existing['deleted_at']):
+                    raise PermissionError('Project identity is already registered')
+                return existing
+            self.db.execute('''INSERT INTO project (id,org_id,name,storage_mode,session_db_path,created_by,created_at)
+                               VALUES (?,?,?,?,?,?,?)''',
+                            (project_id, org_id, descriptor.name, ADOPTED, str(path), created_by, _now()))
+            self.record_audit(event_type='PROJECT_CREATED', org_id=org_id, user_id=created_by,
+                              target_type='project', target_id=project_id)
+        return self.get_project(project_id)
+
     def mark_project_adopted(self, project_id: str, session_db_path: str | Path) -> None:
         """Flip a project from EXTERNAL_LEGACY to ADOPTED. Called once, by
         :func:`formslang.projects.adopt_project`, after the copy is installed."""
