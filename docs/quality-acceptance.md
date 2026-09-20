@@ -848,7 +848,8 @@ harnesses are present through `8d594d2b855b26f6134aee0fefa25e5d8a5001cf`; archit
 semantics are recorded in `70c83130606521b9188530f9bc41523a6f7ac268`; review corrections
 are in `579048771cf96d99aeec86d7a0d21b0a69f4e2cd`,
 `727551762b1be95784d06b7615f01dcbeb2cc965` and
-`fd599c56c0415620fdaea8a5a0f4bfb07ddbcb0f`.
+`fd599c56c0415620fdaea8a5a0f4bfb07ddbcb0f`. PR #8 CI follow-up is in
+`7c9868f`.
 Version remains 1.6.0. This closes only Phase C Overview + Inventory; it is not
 FormsLang 2.0 release acceptance and creates no tag, release or installer.
 
@@ -858,24 +859,25 @@ Oracle credentials, AI provider, external telemetry or customer source.
 
 ### Read-model and application checks
 
-- `python -B -m pytest -q -rs -p no:cacheprovider`: **1,496 passed, 5 skipped in
-  350.93s**. The five skips are
+- `python -B -m pytest -q -rs -p no:cacheprovider`: **1,497 passed, 5 skipped in
+  327.06s** after the PR #8 CI regression was added. The originally requested
+  `903724f` head recorded **1,496 passed, 5 skipped**. The five skips are
   the existing Windows-account symlink-permission cases; real NTFS junction coverage
   remains active. This run includes Phase A/B regressions, projection reconciliation,
   API/CLI parity, authorization, XSS/race behavior, Demo reopen/stale and scale tests.
 - Focused Phase C projection/service/HTTP/CLI/demo/UI/scale plus intake regressions:
   **138 passed, 1 skipped in 167.16s**. Final Node-driven
-  project/Blueprint/review JavaScript behavior: **65 passed in 4.50s**. The
+  project/Blueprint/review JavaScript behavior: **65 passed in 4.37s**. The
   full-suite count above is authoritative.
-- `python -B examples/verify/project_browser_check.py --output scratch_tmp/phase-c-final-browser`:
+- `python -B examples/verify/project_browser_check.py --output scratch_tmp/phase-c-pr8-ci-fix-browser-green`:
   **29/29**, no page exceptions or external requests, five screenshots; evidence
-  `run-9953d63c3ba0/result.json`. Real HTTP/service/SQLite/engine; no mocked assessment
+  `run-60ba829978ca/result.json`. Real HTTP/service/SQLite/engine; no mocked assessment
   response. It covers onboarding, real Overview, risk filtering, detail/focus,
   dependency inventory, real server-process replacement, persisted reopen, Stale,
   Missing Source/relink, partial failure, cancellation, project switch, Demo Critical,
   package search, dependency detail, responsive layout and reduced motion.
-- `python -B examples/verify/workbench_browser_check.py --output scratch_tmp/phase-c-final-legacy-browser`:
-  **101/101**, 27 screenshots; evidence `run-ec037287a8ab/result.json`. Existing
+- `python -B examples/verify/workbench_browser_check.py --output scratch_tmp/phase-c-pr8-ci-fix-legacy-browser`:
+  **101/101**, 27 screenshots; evidence `run-52a7f0f23035/result.json`. Existing
   Blueprint, conversion/review, source evidence, layout, theme, contrast and keyboard
   workflows remain green.
 - `ruff check .` and `git diff --check`: clean at the implementation gate.
@@ -924,6 +926,22 @@ retry. A deterministic RED proved that readers were outside the publication lock
 reads of the last committed snapshot. The original multiprocess test then passed
 **50/50** fresh-process repetitions, and committed tests cover the cross-thread wait
 and reentrant snapshot contract.
+
+The first PR #8 CI run (`35539796294`) then exposed a separate descriptor Store
+contention on Windows Python 3.10: one process opened an already-current project,
+entered a redundant second `BEGIN IMMEDIATE` in `sync_descriptor()` and was starved
+by 50 legitimate publications until SQLite returned `database is locked`, surfaced
+as `ProjectBusy`. The job recorded **1 failed / 1,500 passed**. A deterministic RED
+proved that an already-current mirror requested the second writer transaction.
+`7c9868f` now records canonical DB+mirror equality during the existing locked
+validation and skips only that redundant publication; missing, corrupt and stale
+mirrors still repair under the writer lock. The exact failing multiprocess test then
+passed **50/50** clean-process repetitions. No automatic product retry was added.
+
+One post-fix browser run also exposed that the acceptance harness compared a raw
+underscore relationship enum against intentionally humanized UI text. The harness
+now derives the same user-facing label as the product; the focused relationship test,
+Phase C browser and legacy browser all pass with no product-behavior relaxation.
 
 The original reviewer suggestion to route project review directly into the legacy
 session Blueprint was not applied: that workspace does not consume the persisted
