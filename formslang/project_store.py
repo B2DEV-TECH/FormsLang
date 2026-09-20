@@ -149,6 +149,7 @@ class ProjectStore:
         path = contained_path(directory, "project.session.db")
         if not path.is_file():
             raise ProjectError("Project database is missing; select an existing project")
+        mirror_current = False
         try:
             with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as check:
                 # Share the database's cross-process writer lock with mirror
@@ -166,13 +167,17 @@ class ProjectStore:
                     try:
                         if mirror.stat().st_size > 1024 * 1024:
                             raise ProjectError("Project descriptor exceeds size limit")
-                        raw = json.loads(mirror.read_text(encoding="utf-8"))
+                        mirror_text = mirror.read_text(encoding="utf-8")
+                        raw = json.loads(mirror_text)
                     except (json.JSONDecodeError, UnicodeError):
                         raw = None
                     except OSError as exc:
                         raise ProjectError("Project descriptor cannot be read") from exc
-                    if raw is not None and descriptor_from_dict(raw).id != authoritative.id:
-                        raise ProjectError("Project descriptor identity does not match database")
+                    if raw is not None:
+                        if descriptor_from_dict(raw).id != authoritative.id:
+                            raise ProjectError("Project descriptor identity does not match database")
+                        payload = canonical_json(descriptor_to_dict(authoritative)) + "\n"
+                        mirror_current = mirror_text == payload
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():
                 raise ProjectBusy("Project is busy; retry after the current operation") from exc
@@ -182,7 +187,8 @@ class ProjectStore:
         result = cls(root, Store(path, reconcile_jobs=False))
         try:
             result._migrate_runs()
-            result.sync_descriptor()
+            if not mirror_current:
+                result.sync_descriptor()
         except Exception:
             result.close()
             raise

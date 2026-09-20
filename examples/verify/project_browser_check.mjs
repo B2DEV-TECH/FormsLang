@@ -66,7 +66,7 @@ try{
     const dependency=await evaluate(`projectUI.inventoryState.page.rows[0]`);
     await clickSelector('[data-project-item]');
     await wait(()=>evaluate(`document.getElementById('modal').classList.contains('show')&&!!document.getElementById('project-detail-close')`),'dependency detail');
-    check('dependency detail names both ends and relationship',await evaluate(`(()=>{const text=document.getElementById('modal-body').textContent;return text.includes(${JSON.stringify(dependency.source)})&&text.includes(${JSON.stringify(dependency.relationship)})&&text.includes(${JSON.stringify(dependency.target)});})()`),dependency);
+    check('dependency detail names both ends and relationship',await evaluate(`(()=>{const text=document.getElementById('modal-body').textContent;const relationship=projectInventoryLabel('relationship',${JSON.stringify(dependency.relationship)});return text.includes(${JSON.stringify(dependency.source)})&&text.includes(relationship)&&text.includes(${JSON.stringify(dependency.target)});})()`),dependency);
     await click('project-detail-close');
   }
   await clickSelector('[data-project-section="overview"]');await wait(()=>evaluate(`projectUI.view==='overview'`),'return to Overview');

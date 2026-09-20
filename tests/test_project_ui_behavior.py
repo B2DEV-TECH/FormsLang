@@ -405,9 +405,9 @@ def test_dependency_detail_names_source_relationship_and_target(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;
 projectUI.inventoryState={category:'dependencies',revision:'r',selectedId:null,returnFocus:null};
-api=async()=>({category:'dependencies',item:{id:'edge:1',source:'ORDERS',relationship:'CALLS',target:'ORDER_API'},dependencies:[],dependencies_total:0,related_findings:[],related_findings_total:0,analysis_revision:'r'});
+api=async()=>({category:'dependencies',item:{id:'edge:1',source:'ORDERS',relationship:'NAVIGATES_TO',target:'ORDER_API'},dependencies:[],dependencies_total:0,related_findings:[],related_findings_total:0,analysis_revision:'r'});
 await projectInventoryDetail('edge:1');const html=$('modal-body').innerHTML;
-assert.match(html,/ORDERS/);assert.match(html,/CALLS/);assert.match(html,/ORDER_API/);
+assert.match(html,/ORDERS/);assert.match(html,/NAVIGATES TO/);assert.ok(!html.includes('NAVIGATES_TO'));assert.match(html,/ORDER_API/);
 ''')
 
 
