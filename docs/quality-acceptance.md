@@ -721,3 +721,52 @@ for Phase B. Forms2XML tool execution is tested at a controlled mocked boundary,
 not an installed proprietary Oracle tool. Existing historical Oracle acceptance
 above is not new evidence for this phase. Full dashboard, inventory visualization,
 priority-review UI, project-level generation and reports remain Phase C+.
+
+### Final independent review and corrected acceptance
+
+The independent whole-branch review of `3f4d691..c90899f` identified three Important
+issues, no Critical or Minor issues. It independently ran eight focused safety
+tests; the complete suite/browser/build evidence remains the implementer's record.
+One fix pass was completed in **`bff32f06db6688b06b9c0009fdaf1517603ca417`**:
+
+1. Demo continuation is bound to the successfully opened project and view generation.
+   A deferred response can no longer start analysis of another project after navigation.
+   `test_demo_pending_open_cannot_start_analysis_of_switched_project` reproduced RED
+   (an unwanted `/projects/b/analyze` request), then passed.
+2. Explicit same-user open recovers a moved project's locator only when the old
+   directory is missing, without carrying source authority. The relocation test
+   reproduced RED; live-clone replacement and another-actor adoption remain rejected.
+3. Local creation now reserves the locator and initialization owner before SQLite
+   publication. Mirror and final locator-write failures resume the same DB on retry.
+   Four cases (default/explicit destination × mirror/locator failure) reproduced RED
+   and passed after the fix. No second persistence model was introduced.
+
+Final commands against that implementation (before its unchanged commit):
+
+- `python -B -m pytest -q -rs -p no:cacheprovider`: **1,446 passed, 5 skipped,
+  245.29s**. Same five Windows symlink-permission skips listed above. This supersedes
+  the pre-review count; all Phase A/B, API/CLI, authorization and regression tests pass.
+- Focused intake/UI/HTTP/CLI/demo: **85 passed in 75.29s**. UI/Blueprint/review JS
+  scope: **45 passed in 3.01s**. Ruff and `git diff --check`: clean.
+- Project browser: **21/21**, zero exceptions, five screenshots,
+  `scratch_tmp/phase-b-review-browser/run-2dbcf9509616/result.json`.
+- Legacy browser: **101/101**, 27 screenshots,
+  `scratch_tmp/phase-b-reviewed-legacy-browser/run-0df4354113a3/result.json`.
+- Rebuilt actual frozen executable: **6/6**,
+  `scratch_tmp/phase-b-review-engine/acceptance/run-fa483cbca4e2/result.json`.
+  Build/acceptance commands are the same as above with `phase-b-review-engine` paths.
+  Final EXE SHA-256:
+  `dfb892e9438aa4ec5f28fd60493dd376e0c35a328bddeef353931030df18fda7`.
+- Rebuilt wheel using the same offline pip commands under
+  `scratch_tmp/phase-b-reviewed-wheel`: isolated installed-module demo/analyze passed
+  with Python `-I`, two Forms and the same deterministic analysis revision as above.
+  Final wheel SHA-256:
+  `8be5b4d0a21274dbc76eb93c600531587bcae3aa29fa0511bbdd5cffea6d27a0`.
+- All **24** frozen baseline/ground-truth blob hashes rechecked: unchanged. Version
+  declarations remain **1.6.0**. No push, merge, tag, release or installer publication.
+
+The final documentation commit records this tested parent, avoiding a fictitious
+self-referential commit hash. No second reviewer was used; each material fix has
+RED/GREEN coverage and the full suite was rerun. There are no deferred Minor review
+findings. The explicit Oracle/runtime, scale, installer and later-phase limitations
+above remain unchanged; this closes Phase B only, not FormsLang 2.0.
