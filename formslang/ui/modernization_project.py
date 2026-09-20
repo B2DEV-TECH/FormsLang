@@ -294,7 +294,7 @@ function projectCoverage(coverage={}) {
 }
 function projectOverviewWarnings(items=[],summary={}) {
   if(!items.length)return '<p class="project-empty">No analysis limitations were recorded for this assessment.</p>';
-  const bounded=summary.truncated?`<p class="project-muted">Showing ${Number(summary.shown||items.length)} of ${Number(summary.total||items.length)} warnings. Open Inventory diagnostics for the complete list.</p>`:'';
+  const bounded=summary.truncated?`<p class="project-muted">Showing ${Number(summary.shown||items.length)} of ${Number(summary.total||items.length)} warnings. Open Project Settings and View Saved Assessment for the complete list.</p>`:'';
   return `<ul class="project-warnings">${items.map(item=>`<li><b>${esc(item.message||item.code||'Assessment warning')}</b>${item.remediation?`<span>${esc(item.remediation)}</span>`:''}</li>`).join('')}</ul>${bounded}`;
 }
 function renderProjectOverview(data) {

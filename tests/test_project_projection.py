@@ -292,6 +292,35 @@ def test_package_highest_risk_comes_from_related_findings(assessment_fixture):
     assert package["highest_risk"] == "MEDIUM"
 
 
+def test_package_aggregates_subprogram_findings_without_leaking_member_ids(assessment_fixture):
+    assessment_fixture["blueprint"]["entities"][7]["attributes"]["risk"] = {
+        "level": "CRITICAL", "basis": "Package subprogram requires review",
+    }
+    assessment_fixture["blueprint"]["findings"].append({
+        "id": "finding:package-save", "entity": "package_subprogram:save",
+        "recommendation": "MANUAL_REVIEW", "execution_verdict": "MANUAL",
+        "reason": "SAVE requires an explicit architectural decision.",
+        "classification": ["BUSINESS_RULE"], "review_state": "PENDING",
+        "dependencies": [], "evidence": [], "unresolved_questions": [],
+    })
+    prepared = prepare_projection(DESCRIPTOR, assessment_fixture, CURRENT,
+                                  store_scope="store-a")
+
+    page = inventory_page(prepared, "packages")
+    package = next(row for row in page["rows"] if row["id"] == "package:db:order_api")
+    detail = inventory_detail(prepared, "packages", package["id"])
+
+    assert package["findings"] == 2
+    assert package["highest_risk"] == "CRITICAL"
+    assert {row["id"] for row in detail["related_findings"]} == {
+        "finding:package-save", "finding:unknown",
+    }
+    public_membership_payload = json.dumps({"page": page, "item": detail["item"]})
+    assert "_member_ids" not in public_membership_payload
+    assert "package_spec:api" not in public_membership_payload
+    assert "package_subprogram:save" not in public_membership_payload
+
+
 def test_overview_warnings_are_bounded_with_total(assessment_fixture):
     assessment_fixture["diagnostics"] = [
         {

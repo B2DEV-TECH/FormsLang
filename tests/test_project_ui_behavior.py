@@ -311,6 +311,16 @@ assert.match(html,/&lt;img/);assert.match(html,/&lt;script/);
 ''')
 
 
+def test_truncated_warnings_point_to_available_saved_assessment_diagnostics(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;
+renderProjectOverview({...overviewData,warning_summary:{total:75,shown:50,truncated:true}});
+const html=$('project-content').innerHTML;
+assert.match(html,/Project Settings/);assert.match(html,/View Saved Assessment/);
+assert.ok(!html.includes('Inventory diagnostics'));
+''')
+
+
 def test_overview_navigation_and_status_are_accessible(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;renderProjectOverview(overviewData);

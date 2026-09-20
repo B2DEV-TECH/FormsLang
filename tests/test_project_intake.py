@@ -6,6 +6,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from formslang import authstore, rbac
+from formslang.project_lock import project_worker_lock
 from formslang.project_model import ProjectBusy, ProjectError
 from formslang.project_service import ProjectService
 
@@ -390,6 +392,32 @@ def test_concurrent_locator_updates_do_not_lose_projects(intake, project_sources
             if worker.is_alive():
                 worker.terminate()
                 worker.join(timeout=5)
+
+
+def test_locator_reads_wait_for_atomic_metadata_publication(intake):
+    (intake.metadata_root / '.formslang').mkdir(parents=True)
+    started = threading.Event()
+    completed = threading.Event()
+    failures = []
+
+    def read_recent():
+        started.set()
+        try:
+            intake.list_recent()
+        except (OSError, ProjectError) as exc:  # pragma: no cover - asserted below
+            failures.append(exc)
+        finally:
+            completed.set()
+
+    with project_worker_lock(intake.metadata_root):
+        worker = threading.Thread(target=read_recent)
+        worker.start()
+        assert started.wait(timeout=1)
+        assert not completed.wait(timeout=.25)
+    worker.join(timeout=2)
+
+    assert completed.is_set()
+    assert failures == []
 
 
 def test_local_relink_uses_new_explicit_capability(intake, project_sources):

@@ -278,6 +278,7 @@ def _package_rows(entities, findings_by_entity, edges):
             "spec": False,
             "body": False,
             "entity_ids": [],
+            "_member_ids": [],
             "subprograms": 0,
             "findings": 0,
             "highest_risk": "UNKNOWN",
@@ -286,6 +287,7 @@ def _package_rows(entities, findings_by_entity, edges):
         row["spec"] |= node.get("type") == "PACKAGE_SPEC"
         row["body"] |= node.get("type") == "PACKAGE_BODY"
         row["entity_ids"].append(node["id"])
+        row["_member_ids"].append(node["id"])
     routine_counts = Counter()
     for node in entities.values():
         if node.get("type") in ROUTINE_TYPES:
@@ -293,17 +295,21 @@ def _package_rows(entities, findings_by_entity, edges):
             package = _text(attributes.get("package"), 500)
             module = _logical_name(node.get("module"))
             root_scope = module.split("/", 1)[0].casefold() if "/" in module else ""
-            routine_counts[(root_scope, package.casefold())] += 1
+            key = (root_scope, package.casefold())
+            routine_counts[key] += 1
+            if key in packages:
+                packages[key]["_member_ids"].append(node["id"])
     for key, row in packages.items():
         row["entity_ids"] = tuple(sorted(row["entity_ids"]))
+        row["_member_ids"] = tuple(sorted(row["_member_ids"]))
         row["subprograms"] = routine_counts[key]
-        related = [finding for entity_id in row["entity_ids"]
+        related = [finding for entity_id in row["_member_ids"]
                    for finding in findings_by_entity.get(entity_id, ())]
         row["findings"] = len(related)
         risks = [finding["risk"] for finding in related]
         row["highest_risk"] = min(risks, key=RISK_RANK.__getitem__) if risks else "UNKNOWN"
         row["dependencies"] = sum(
-            edge.get("source") in row["entity_ids"] or edge.get("target") in row["entity_ids"]
+            edge.get("source") in row["_member_ids"] or edge.get("target") in row["_member_ids"]
             for edge in edges
         )
     return tuple(sorted(packages.values(), key=lambda row: (row["name"].casefold(), row["id"])))
@@ -666,6 +672,13 @@ def _page_meta(prepared):
     }
 
 
+def _public_row(row):
+    return copy.deepcopy({
+        key: value for key, value in row.items()
+        if not key.startswith("_") and key != "entity_ids"
+    })
+
+
 def inventory_page(prepared: PreparedProjection, category: str, *, query: str = "",
                    filters: dict | None = None, sort: str = "name", offset: int = 0,
                    limit: int = 50, expected_revision: str | None = None) -> dict:
@@ -681,7 +694,7 @@ def inventory_page(prepared: PreparedProjection, category: str, *, query: str = 
         "offset": offset,
         "limit": limit,
         "total": len(values),
-        "rows": copy.deepcopy(values[offset:offset + limit]),
+        "rows": [_public_row(row) for row in values[offset:offset + limit]],
         **_page_meta(prepared),
     }
 
@@ -695,7 +708,9 @@ def inventory_detail(prepared: PreparedProjection, category: str, item_id: str, 
     item = next((row for row in prepared.rows[category] if row["id"] == item_id), None)
     if item is None:
         raise LookupError(item_id)
-    entity_ids = set(item.get("entity_ids", ())) | {item.get("id"), item.get("entity_id")}
+    entity_ids = set(item.get("_member_ids", item.get("entity_ids", ()))) | {
+        item.get("id"), item.get("entity_id"),
+    }
     entity_ids.discard(None)
     dependencies = [row for row in prepared.rows["dependencies"]
                     if row.get("source_id") in entity_ids or row.get("target_id") in entity_ids]
@@ -703,7 +718,7 @@ def inventory_detail(prepared: PreparedProjection, category: str, item_id: str, 
                if row.get("entity_id") in entity_ids or row.get("id") == item_id]
     return {
         "category": category,
-        "item": copy.deepcopy(item),
+        "item": _public_row(item),
         "dependencies": copy.deepcopy(dependencies[:100]),
         "dependencies_total": len(dependencies),
         "related_findings": copy.deepcopy(related[:100]),
