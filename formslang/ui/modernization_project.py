@@ -211,13 +211,15 @@ function projectRenderInventory(page=null,focusId='') {
   if(page&&page.offset+page.limit<page.total)$('project-inventory-next').onclick=()=>projectInventoryPage(page.offset+page.limit,'project-inventory-prev');
   if(focusId)$(focusId)?.focus();
 }
-function projectInventoryTabKey(event) {
+async function projectInventoryTabKey(event) {
   if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
   const tabs=Array.from($('project-content').querySelectorAll('[data-project-category]'));
   const current=tabs.indexOf(event.currentTarget);if(current<0||!tabs.length)return;
   event.preventDefault();
   const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(current+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
-  tabs[next].focus();projectOpenInventory({category:tabs[next].dataset.projectCategory});
+  const category=tabs[next].dataset.projectCategory;
+  await projectOpenInventory({category});
+  if(projectUI.inventoryState?.category===category)$('project-content').querySelector(`[data-project-category="${category}"]`)?.focus();
 }
 async function projectOpenInventory(options={}) {
   const initial={category:'forms',query:'',filters:{},sort:'name',offset:0,limit:50,revision:projectInventoryRevision(),request:0,selectedId:null,returnFocus:null};

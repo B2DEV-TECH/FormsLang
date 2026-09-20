@@ -20,7 +20,7 @@ function $(id) {
     attrs:{},classList:{toggle(){},add(){},remove(){},contains(){return false;}},
     setAttribute(k,v){this.attrs[k]=v;},removeAttribute(k){delete this.attrs[k];},
     insertAdjacentHTML(position,html){this.innerHTML+=html;},
-    focus(){this.focused=true;},querySelectorAll(){return [];},addEventListener(){},
+    focus(){this.focused=true;},querySelector(){return null;},querySelectorAll(){return [];},addEventListener(){},
   });
   return elements.get(id);
 }
@@ -363,6 +363,18 @@ await projectOpenInventory({category:'tables'});const html=$('project-content').
 for(const label of ['Forms','Libraries','Packages','Routines','Views','Tables','Dependencies','Business Rules','Findings'])assert.match(html,new RegExp(label));
 assert.match(html,/No observed Tables match the current search and filters/);assert.match(html,/<caption>/);assert.match(html,/scope="col"/);
 assert.match(html,/No database source was supplied/);
+''')
+
+
+def test_inventory_tab_arrow_keys_activate_and_focus_adjacent_category(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;
+const content=$('project-content'),tabs=['forms','libraries','packages'].map(category=>({dataset:{projectCategory:category},focused:false,focus(){this.focused=true;}}));
+content.querySelectorAll=selector=>selector==='[data-project-category]'?tabs:[];
+content.querySelector=selector=>tabs.find(tab=>selector.includes(tab.dataset.projectCategory))||null;
+api=async()=>({...inventoryPage,category:'libraries',rows:[],total:0});
+let prevented=false;await projectInventoryTabKey({key:'ArrowRight',currentTarget:tabs[0],preventDefault(){prevented=true;}});
+assert.equal(prevented,true);assert.equal(projectUI.inventoryState.category,'libraries');assert.equal(tabs[1].focused,true);
 ''')
 
 
