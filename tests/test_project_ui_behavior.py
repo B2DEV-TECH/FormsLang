@@ -33,6 +33,20 @@ function openModal(){} function foot(){} function toast(){}
 let state={session:{},tasks:[]},modalGeneration=0;
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};}
 const summary={project:{id:'a',name:'Orders',target_platform:'Oracle APEX',target_version:'26.1',target_representation:'APEXlang',source_roots:[],analysis_revision:'r'},configuration_revision:3,inventory:{forms:{analyzed:2}},freshness:{status:'UNVERIFIED'},last_job:null};
+const overviewData={
+  project:{id:'a',name:'Orders',client_label:'Example Corp',target:{platform:'Oracle APEX',version:'26.1',representation:'APEXlang'}},
+  assessment:{status:'Current',completion_state:'COMPLETE'},freshness:{status:'CURRENT',reasons:[]},
+  analysis_revision:'r',source_revision:'s',review_revision:2,assessment_timestamp:'2026-09-20T12:00:00Z',
+  inventory:{forms_modules:2,plsql_libraries:1,database_packages:1,views:1,tables:1,triggers:4,program_units:3,dependencies:7,modernization_findings:4,business_rule_candidates:2},
+  risk_distribution:{CRITICAL:1,HIGH:1,MEDIUM:0,LOW:0,UNKNOWN:2},
+  recommendation_distribution:{PRESERVE:1,CONVERT:0,REPLACE_WITH_APEX_NATIVE:1,REFACTOR:0,MOVE_TO_PLSQL_API:1,MANUAL_REVIEW:1,DROP:0,UNKNOWN:0},
+  intervention_distribution:{AUTO:1,ASSISTED:2,MANUAL:1,UNKNOWN:0},
+  automation_potential:{total:4,categories:{AUTO:{count:1,percent:25},ASSISTED:{count:2,percent:50},MANUAL:{count:1,percent:25},UNKNOWN:{count:0,percent:0}}},
+  priority:{total:3,critical:1,high:1,manual:1,stale:0,first_finding_id:'finding:critical'},
+  source_coverage:{forms:{discovered:3,analyzed:2,failed:1},database:{discovered:2,analyzed:2,failed:0},libraries:{discovered:1,without_semantic_representation:1}},
+  warnings:[{code:'UNSUPPORTED_REPRESENTATION',message:'One library needs a semantic representation.',remediation:'Supply XML.'}],
+  review_progress:{reviewed:1,total:4,critical_resolved:0,critical_total:1}
+};
 '''
 
 
@@ -107,7 +121,7 @@ def test_saved_summary_precedes_freshness_completion(tmp_path):
 const check=deferred();let reads=0;
 api=(path)=>{if(path.endsWith('/freshness'))return check.promise;reads++;return Promise.resolve(summary);};
 const pending=openProject('a');await Promise.resolve();await Promise.resolve();
-assert.match($('project-content').innerHTML,/Orders/);assert.equal(reads,1);
+assert.match($('project-content').innerHTML,/Orders/);assert.equal(reads,2);
 projectLeave();check.resolve({job_id:'freshness-a'});await pending;
 assert.equal(projectUI.jobId,null);
 ''')
@@ -232,4 +246,60 @@ projectEnter('summary');projectUI.activeId='b';projectUI.summary={...summary,pro
 opening.resolve({...summary,project:{...summary.project,id:'demo'}});await pending;
 assert.ok(!calls.some(([path])=>path.endsWith('/analyze')),JSON.stringify(calls));
 assert.equal(projectUI.activeId,'b');
+''')
+
+
+def test_overview_renders_real_distributions_priority_and_coverage(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;
+renderProjectOverview(overviewData);
+const html=$('project-content').innerHTML;
+assert.match(html,/Application Inventory/);assert.match(html,/Forms Modules/);
+assert.match(html,/Critical/);assert.match(html,/Unknown/);
+assert.match(html,/Use Native APEX/);assert.match(html,/Move to PL\/SQL API/);
+assert.match(html,/Mechanical \/ AUTO/);assert.match(html,/Start Priority Review/);
+assert.match(html,/Forms representations/);assert.match(html,/2 \/ 3 analyzed/);
+assert.match(html,/One library needs a semantic representation/);
+assert.match(html,/2026-09-20T12:00:00Z/);assert.match(html,/Oracle APEX 26.1 \/ APEXlang/);
+assert.equal(projectUI.overview.analysis_revision,'r');
+''')
+
+
+def test_overview_zero_critical_has_explanatory_empty_state(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;
+renderProjectOverview({...overviewData,risk_distribution:{...overviewData.risk_distribution,CRITICAL:0},priority:{...overviewData.priority,critical:0}});
+assert.match($('project-content').innerHTML,/No CRITICAL risks detected in the current analyzed source/);
+''')
+
+
+def test_overview_escapes_hostile_project_and_warning_text(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;
+renderProjectOverview({...overviewData,project:{...overviewData.project,name:'<img src=x onerror=alert(1)>'},warnings:[{message:'<script>bad()</script>',remediation:'<b>unsafe</b>'}]});
+const html=$('project-content').innerHTML;
+assert.ok(!html.includes('<img'));assert.ok(!html.includes('<script>'));assert.ok(!html.includes('<b>unsafe'));
+assert.match(html,/&lt;img/);assert.match(html,/&lt;script/);
+''')
+
+
+def test_overview_navigation_and_status_are_accessible(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;renderProjectOverview(overviewData);
+const html=$('project-content').innerHTML;
+assert.match(html,/<nav[^>]+aria-label="Project sections"/);
+assert.match(html,/aria-current="page"[^>]*>Overview/);
+assert.match(html,/<h2[^>]*>Orders<\/h2>/);assert.match(html,/Assessment status/);
+assert.match(html,/aria-label="Risk distribution"/);assert.match(html,/project-priority/);
+assert.equal($('project-status').attrs['aria-live'],'polite');
+''')
+
+
+def test_open_project_loads_saved_overview_without_reanalysis(tmp_path):
+    run_js(tmp_path, r'''
+const calls=[];api=async(path,body)=>{calls.push([path,body]);if(path.endsWith('/overview'))return overviewData;if(path.endsWith('/freshness'))return {job_id:'freshness-a'};return summary;};
+await openProject('a',false);
+assert.ok(calls.some(([path])=>path==='/api/v2/projects/a/overview'));
+assert.ok(!calls.some(([path])=>path.endsWith('/analyze')));
+assert.match($('project-content').innerHTML,/Application Inventory/);
 ''')

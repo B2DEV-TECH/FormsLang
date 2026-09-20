@@ -9,7 +9,7 @@ PROJECT_HTML = r'''<section id="project-workspace" aria-label="Modernization pro
 '''
 
 PROJECT_JS = r'''
-const projectUI = {view:'legacy',draft:null,activeId:null,generation:0,jobId:null,timer:null,summary:null,areas:null,previewRequest:0,busy:false};
+const projectUI = {view:'legacy',draft:null,activeId:null,generation:0,jobId:null,timer:null,summary:null,overview:null,areas:null,previewRequest:0,busy:false,inventoryState:null};
 const projectSteps = ['Project','Sources','Target','Analyze'];
 function projectError(message, field) {
   $('project-error').textContent=message;
@@ -128,6 +128,8 @@ async function openProject(id,check=true) {
     const summary=await api('/api/v2/projects/'+id);if(!projectCurrent(c))return;
     projectUI.summary=summary;renderProjectSummary(summary);
     if(summary.last_job && ['QUEUED','RUNNING'].includes(summary.last_job.status)){projectUI.jobId=summary.last_job.job_id;projectUI.operation=summary.last_job.operation;if(projectUI.operation==='ANALYZE')renderProjectProgress(summary);await pollProjectJob();return;}
+    if(summary.project.analysis_revision)await projectLoadOverview(c);
+    if(!projectCurrent(c))return;
     if(check && summary.project.analysis_revision){
       $('project-status').textContent='Saved assessment loaded. Checking source freshness…';
       const job=await api(`/api/v2/projects/${id}/freshness`,{});if(!projectCurrent(c))return;
@@ -135,6 +137,69 @@ async function openProject(id,check=true) {
     }
     return projectCurrent(c)?c:undefined;
   }catch(e){if(projectCurrent(c))projectError(e.message+' Reload the project to retry.');}
+}
+async function projectLoadOverview(c=projectContext()) {
+  try {
+    const payload=await api(`/api/v2/projects/${c.id}/overview`);if(!projectCurrent(c))return;
+    const data=payload?.overview||payload;
+    if(data?.assessment&&data?.inventory)renderProjectOverview(data);
+  }catch(e){if(projectCurrent(c))projectError(e.message+' The saved project remains available; retry Overview.');}
+}
+const projectRiskLabels={CRITICAL:'Critical',HIGH:'High',MEDIUM:'Medium',LOW:'Low',UNKNOWN:'Unknown'};
+const projectRecommendationLabels={PRESERVE:'Preserve',CONVERT:'Convert',REPLACE_WITH_APEX_NATIVE:'Use Native APEX',REFACTOR:'Refactor',MOVE_TO_PLSQL_API:'Move to PL/SQL API',MANUAL_REVIEW:'Human Review',DROP:'Drop',UNKNOWN:'Unresolved'};
+const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MANUAL:'Human decision',UNKNOWN:'Unknown'};
+function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
+function projectSectionNav(active='overview') {
+  const links=[['overview','Overview'],['inventory','Inventory'],['review','Review'],['blueprint','Blueprint'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
+  return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''} ${['generate','reports'].includes(id)?'title="Planned for a later FormsLang 2.0 phase"':''}>${label}</button>`).join('')}</nav>`;
+}
+function projectBindSectionNav() {
+  $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
+    const section=el.dataset.projectSection;
+    if(section==='overview')renderProjectOverview(projectUI.overview);
+    else if(section==='inventory'||section==='review')projectOpenInventory({category:section==='review'?'findings':'forms',priority:section==='review'});
+    else if(section==='blueprint'){projectLeave();browse('');}
+    else if(section==='settings')renderProjectSummary(projectUI.summary);
+    else {$('project-status').textContent=`${section==='generate'?'Generation':'Reports'} is planned for a later FormsLang 2.0 phase.`;}
+  });
+}
+function projectOpenInventory(options={}) {
+  projectUI.inventoryState={category:'forms',filters:{},...options};
+  projectLeave();browse('');
+}
+function projectDistribution(title,values,labels,kind) {
+  const entries=Object.entries(labels);
+  return `<section class="project-panel" aria-label="${esc(title)} distribution"><h3>${esc(title)}</h3><dl class="project-distribution">${entries.map(([key,label])=>`<div><dt><button type="button" class="project-metric-link" data-project-filter="${esc(kind)}" data-project-value="${esc(key)}">${esc(label)}</button></dt><dd>${Number(values?.[key]||0)}</dd></div>`).join('')}</dl></section>`;
+}
+function projectInventorySummary(values={}) {
+  const rows=[['Forms Modules',values.forms_modules],['PL/SQL Libraries',values.libraries],['Database Packages',values.database_packages],['Views',values.views],['Tables',values.tables],['Triggers',values.triggers],['Program Units',values.program_units],['Dependencies',values.dependencies],['Modernization Findings',values.modernization_findings]];
+  return `<section class="project-panel project-panel-wide"><h3>Application Inventory</h3><dl class="project-overview-inventory">${rows.map(([label,count])=>`<div><dt>${esc(label)}</dt><dd>${Number(count||0)}</dd></div>`).join('')}</dl></section>`;
+}
+function projectCoverage(coverage={}) {
+  const forms=coverage.forms||{},database=coverage.database||{},libraries=coverage.libraries||{};
+  const amount=(value)=>Number.isInteger(value)?value:'Not observed';
+  return `<section class="project-panel"><h3>Source Coverage</h3><dl class="project-coverage"><div><dt>Forms representations</dt><dd>${amount(forms.analyzed)} / ${amount(forms.discovered)} analyzed${Number.isInteger(forms.parseable)?` · ${forms.parseable} parseable`:''}</dd></div><div><dt>Database sources</dt><dd>${amount(database.analyzed)} analyzed${Number.isInteger(database.sources)?` from ${database.sources} supplied sources`:''}</dd></div><div><dt>Libraries</dt><dd>${amount(libraries.discovered)} discovered · ${amount(libraries.without_semantic_representation)} without semantic representation</dd></div></dl></section>`;
+}
+function projectOverviewWarnings(items=[]) {
+  if(!items.length)return '<p class="project-empty">No analysis limitations were recorded for this assessment.</p>';
+  return `<ul class="project-warnings">${items.map(item=>`<li><b>${esc(item.message||item.code||'Assessment warning')}</b>${item.remediation?`<span>${esc(item.remediation)}</span>`:''}</li>`).join('')}</ul>`;
+}
+function renderProjectOverview(data) {
+  if(!data)return;projectUI.view='overview';projectUI.overview=data;
+  $('project-status').setAttribute('aria-live','polite');
+  const p=data.project||{},assessment=data.assessment||{},target=p.target||{},freshness=assessment.freshness||data.freshness?.status||'UNVERIFIED';
+  const state=projectStatusLabel(freshness),priority=data.priority||{},coverage=data.source_coverage||{},review=data.review_progress||{};
+  const timestamp=assessment.assessment_timestamp||data.assessment_timestamp||'Not analyzed';
+  const critical=Number(data.risk_distribution?.CRITICAL||0);
+  const stateMessage=state==='Stale'?'Source changed since this assessment. Saved metrics remain visible; refresh analysis before treating them as current.':state==='Missing Source'?'A source folder cannot be found. Relink it or continue viewing the saved assessment.':state==='Incomplete'?'This assessment is incomplete. Review source warnings and failed inputs.':state==='Unverified'?'Source freshness has not been verified.':'';
+  $('workspace-title').textContent=p.name||projectUI.summary?.project?.name||'Modernization Project';
+  $('project-content').innerHTML=`${projectSectionNav('overview')}<header class="project-overview-header"><div><h2 id="project-step-title" tabindex="-1">${esc(p.name||'Modernization Project')}</h2><p>${esc(target.platform||'Oracle APEX')} ${esc(target.version||'')} / ${esc(target.representation||'')}</p></div><p class="project-assessment-state"><span>Assessment status</span><b data-status="${esc(String(freshness).toUpperCase())}">${esc(state)}</b></p></header>${stateMessage?`<aside class="project-state-warning" role="status"><p>${esc(stateMessage)}</p><div class="project-actions">${projectButton('project-refresh','Refresh Analysis',true)}${state==='Missing Source'?projectButton('project-relink-missing','Relink Source'):''}</div></aside>`:''}<div class="project-overview-grid">${projectInventorySummary(data.inventory)}${projectDistribution('Risk',data.risk_distribution,projectRiskLabels,'risk')}${projectDistribution('Recommended Direction',data.recommendation_distribution,projectRecommendationLabels,'recommendation')}${projectDistribution('Intervention',data.intervention_distribution,projectInterventionLabels,'intervention')}<section class="project-panel" id="project-priority"><h3>Priority Review</h3>${critical?`<p><b>${critical}</b> Critical · <b>${Number(priority.high||0)}</b> High · <b>${Number(priority.manual||0)}</b> Human Decisions</p>`:'<p class="project-empty">No CRITICAL risks detected in the current analyzed source.</p>'}<p>${Number(priority.total||0)} unresolved findings ordered by transparent evidence factors.</p>${projectButton('project-start-priority','Start Priority Review',true)}</section><section class="project-panel"><h3>Automation Potential</h3><dl class="project-distribution">${Object.entries(projectInterventionLabels).map(([key,label])=>`<div><dt>${esc(label)}</dt><dd>${Number(data.automation_potential?.[key]?.percent??data.automation_potential?.categories?.[key]?.percent??0)}%</dd></div>`).join('')}</dl><p class="project-muted">Based on modernization decision categories, not effort or project-duration estimation. AUTO does not mean generation-ready.</p></section>${projectCoverage(coverage)}<section class="project-panel"><h3>Assessment Warnings</h3>${projectOverviewWarnings(data.warnings)}</section><section class="project-panel project-panel-wide"><h3>Assessment Record</h3><p>Assessed ${esc(timestamp)} · Analysis revision ${esc(String(assessment.analysis_revision||data.analysis_revision||'Unavailable').slice(0,12))}</p><p>Reviewed ${Number(review.reviewed||0)} / ${Number(review.total||0)} findings. Generation and validation readiness are not assessed in Phase C.</p></section></div>`;
+  projectBindSectionNav();
+  $('project-content').querySelectorAll('[data-project-filter]').forEach(el=>el.onclick=()=>projectOpenInventory({category:'findings',filters:{[el.dataset.projectFilter]:el.dataset.projectValue}}));
+  $('project-start-priority').onclick=()=>projectOpenInventory({category:'findings',priority:true});
+  if(stateMessage)$('project-refresh').onclick=startProjectAnalysis;
+  if(state==='Missing Source')$('project-relink-missing').onclick=()=>renderProjectSummary(projectUI.summary);
+  $('project-step-title').focus();
 }
 function renderProjectSummary(data) {
   const p=data.project,f=data.freshness||{status:'UNVERIFIED'};projectUI.summary=data;
