@@ -10,6 +10,7 @@ import threading
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict
+from urllib.parse import unquote
 
 from . import authstore, config, rbac
 from .project_intake import ProjectIdentity, ProjectIntake
@@ -257,9 +258,15 @@ class ProjectHTTP:
                     raise ProjectError('Inventory category conflicts with the route')
                 if values['offset'] or values['limit'] != 50 or values['query'] or values['filters'] or values['sort'] != 'name':
                     raise ProjectError('Inventory detail accepts only an assessment revision')
+                try:
+                    item_id = unquote(tail[2], errors='strict')
+                except UnicodeError as exc:
+                    raise ProjectError('Invalid inventory identity encoding') from exc
+                if '\0' in item_id:
+                    raise ProjectError('Invalid inventory identity encoding')
                 freshness = self._freshness(service)
                 return 200, service.inventory_detail(
-                    tail[1], tail[2], expected_revision=values['expected_revision'],
+                    tail[1], item_id, expected_revision=values['expected_revision'],
                     freshness=freshness,
                 )
             if tail == ['discover'] and method == 'POST':

@@ -35,7 +35,7 @@ function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve
 const summary={project:{id:'a',name:'Orders',target_platform:'Oracle APEX',target_version:'26.1',target_representation:'APEXlang',source_roots:[],analysis_revision:'r'},configuration_revision:3,inventory:{forms:{analyzed:2}},freshness:{status:'UNVERIFIED'},last_job:null};
 const overviewData={
   project:{id:'a',name:'Orders',client_label:'Example Corp',target:{platform:'Oracle APEX',version:'26.1',representation:'APEXlang'}},
-  assessment:{status:'Current',completion_state:'COMPLETE'},freshness:{status:'CURRENT',reasons:[]},
+  assessment:{status:'Current',completion_state:'COMPLETE',freshness:'CURRENT',analysis_revision:'r',source_revision:'s',review_revision:2,assessment_timestamp:'2026-09-20T12:00:00Z'},freshness:{status:'CURRENT',reasons:[]},
   analysis_revision:'r',source_revision:'s',review_revision:2,assessment_timestamp:'2026-09-20T12:00:00Z',
   inventory:{forms_modules:2,plsql_libraries:1,database_packages:1,views:1,tables:1,triggers:4,program_units:3,dependencies:7,modernization_findings:4,business_rule_candidates:2},
   risk_distribution:{CRITICAL:1,HIGH:1,MEDIUM:0,LOW:0,UNKNOWN:2},
@@ -306,6 +306,15 @@ const calls=[];api=async(path,body)=>{calls.push([path,body]);if(path.endsWith('
 await openProject('a',false);
 assert.ok(calls.some(([path])=>path==='/api/v2/projects/a/overview'));
 assert.ok(!calls.some(([path])=>path.endsWith('/analyze')));
+assert.match($('project-content').innerHTML,/Application Inventory/);
+''')
+
+
+def test_completed_freshness_poll_returns_to_saved_overview(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.jobId='freshness-a';projectUI.operation='FRESHNESS';projectUI.summary=summary;projectUI.view='summary';
+api=async(path)=>path.includes('/jobs/')?{job_id:'freshness-a',status:'COMPLETED',phase:'FRESHNESS',processed:0,total:null}:path.endsWith('/overview')?{overview:overviewData}:summary;
+await pollProjectJob();assert.equal(projectUI.view,'overview');assert.equal(projectUI.overview.assessment.freshness,'CURRENT');
 assert.match($('project-content').innerHTML,/Application Inventory/);
 ''')
 

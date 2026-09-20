@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const root=path.resolve(process.argv[2]),config=JSON.parse(await fs.readFile(path.join(root,'state.json'),'utf8'));
-const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + 250 cancellation modules',scope:'Phase B real process restart, source lifecycle, partial failure, cancellation and demo'};
+const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + 250 cancellation modules',scope:'Phase C real Overview, Inventory, detail, reopen, stale source, cancellation and demo'};
 const allowedOrigins=new Set([new URL(config.url).origin]),requests=[];
 let socket,sequence=0;const pending=new Map();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -22,7 +22,7 @@ async function pick(folder){
   await value('project-folder-path',folder);await click('project-folder-browse');
   await wait(()=>evaluate(`!!document.getElementById('project-folder-select')`),'folder inventory');await click('project-folder-select');
 }
-async function settled(status){await wait(()=>evaluate(`projectUI.view==='summary'&&!projectUI.jobId&&projectUI.summary?.freshness.status===${JSON.stringify(status)}&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'source status '+status);}
+async function settled(status){await wait(()=>evaluate(`projectUI.view==='overview'&&!projectUI.jobId&&projectUI.summary?.freshness.status===${JSON.stringify(status)}&&projectUI.overview?.assessment.freshness===${JSON.stringify(status)}&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'source status '+status);}
 function owned(file){const target=path.resolve(file),relative=path.relative(root,target);if(!relative||relative.startsWith('..')||path.isAbsolute(relative))throw Error('Fixture path outside owned run');return target;}
 async function screenshot(name){const image=await send('Page.captureScreenshot',{format:'png'});await fs.writeFile(path.join(root,name),Buffer.from(image.data,'base64'));result.screenshots.push(name);}
 try{
@@ -47,11 +47,22 @@ try{
   check('real preview inventory',await evaluate(`projectUI.draft.preview.inventory.forms.parseable===1&&projectUI.draft.preview.inventory.database.tables===1`),await evaluate('projectUI.draft.preview.inventory'));
   await click('project-next');check('target from backend',await evaluate(`document.getElementById('project-content').textContent.includes('26.1')&&document.getElementById('project-content').textContent.includes('APEXlang')`));
   await screenshot('target.png');await click('project-next');await click('project-next');
-  await wait(()=>evaluate(`projectUI.view==='summary'&&projectUI.summary?.project.analysis_revision&&!projectUI.jobId&&projectUI.summary?.freshness.status==='CURRENT'`),'saved assessment and freshness');
-  check('assessment current',await evaluate(`projectUI.summary.freshness.status==='CURRENT'`));
+  await wait(()=>evaluate(`projectUI.view==='overview'&&projectUI.summary?.project.analysis_revision&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'`),'saved assessment Overview and freshness');
+  check('assessment current',await evaluate(`projectUI.summary.freshness.status==='CURRENT'&&projectUI.overview.assessment.freshness==='CURRENT'`));
+  check('real Overview metrics',await evaluate(`projectUI.overview.inventory.forms_modules===1&&projectUI.overview.inventory.tables===1&&projectUI.overview.inventory.modernization_findings>0`),await evaluate('projectUI.overview.inventory'));
   const id=await evaluate('projectUI.activeId'),revision=await evaluate('projectUI.summary.project.analysis_revision');
-  await screenshot('saved-assessment.png');await click('project-saved');
-  await wait(()=>evaluate(`document.getElementById('project-saved-content').textContent.includes('Findings:')`),'saved evidence');
+  await screenshot('project-overview.png');
+  const selectedRisk=await evaluate(`Object.entries(projectUI.overview.risk_distribution).find(([,count])=>count>0)?.[0]`);
+  await clickSelector(`[data-project-filter="risk"][data-project-value="${selectedRisk}"]`);
+  await wait(()=>evaluate(`projectUI.view==='inventory'&&projectUI.inventoryState?.filters.risk===${JSON.stringify(selectedRisk)}&&projectUI.inventoryState?.page?.rows.length>0`),'risk-filtered findings inventory');
+  check('risk card opens reconciled findings',await evaluate(`projectUI.inventoryState.page.rows.every(row=>row.risk===${JSON.stringify(selectedRisk)})`));
+  const detailTrigger=await evaluate(`document.querySelector('[data-project-item]')?.dataset.projectItem||''`);check('detail row has stable identity',!!detailTrigger,detailTrigger);
+  await clickSelector('[data-project-item]');await wait(()=>evaluate(`document.getElementById('modal').classList.contains('show')&&!!document.getElementById('project-detail-close')`),'inventory detail');
+  await click('project-detail-close');check('detail close restores row focus',await evaluate(`document.activeElement?.dataset.projectItem===${JSON.stringify(detailTrigger)}`));
+  await clickSelector('[data-project-category="dependencies"]');
+  await wait(()=>evaluate(`projectUI.inventoryState?.category==='dependencies'&&!!projectUI.inventoryState.page`),'dependency inventory');
+  check('dependency category uses real projection',await evaluate(`projectUI.inventoryState.page.total>=0`));
+  await clickSelector('[data-project-section="overview"]');await wait(()=>evaluate(`projectUI.view==='overview'`),'return to Overview');
   const previousDocument=await evaluate('performance.timeOrigin');
   await fs.writeFile(path.join(root,'restart.request'),'restart');let restarted;
   await wait(async()=>{try{restarted=JSON.parse(await fs.readFile(path.join(root,'restart.ready'),'utf8'));return true;}catch{return false;}},'fresh server process');
@@ -61,15 +72,16 @@ try{
   check('same persisted assessment reopened',await evaluate('projectUI.summary.project.analysis_revision')===revision);
   const original=await fs.readFile(owned(path.join(config.forms,'orders.xml')));
   await fs.appendFile(owned(path.join(config.forms,'orders.xml')),'\n<!-- changed synthetic source -->');
-  await click('project-reload');await settled('STALE');
-  check('stale source keeps saved assessment',await evaluate('projectUI.summary.project.analysis_revision')===revision);await screenshot('stale.png');
+  await click('project-home');await wait(()=>evaluate(`!!document.querySelector('[data-project-open="${id}"]')`),'stale recent project');await clickSelector(`[data-project-open="${id}"]`);await settled('STALE');
+  check('stale source keeps saved assessment',await evaluate(`projectUI.summary.project.analysis_revision===${JSON.stringify(revision)}&&projectUI.overview.inventory.forms_modules===1&&document.getElementById('project-content').textContent.includes('Stale')`));await screenshot('stale-overview.png');
   await fs.writeFile(owned(path.join(config.forms,'orders.xml')),original);
   const moved=owned(path.join(root,'sources/forms-relocated'));await fs.rename(owned(config.forms),moved);
-  await click('project-reload');await settled('MISSING_SOURCE');check('missing source offers relink',await evaluate(`!!document.querySelector('[data-project-relink]')`));
+  await click('project-home');await wait(()=>evaluate(`!!document.querySelector('[data-project-open="${id}"]')`),'missing-source recent project');await clickSelector(`[data-project-open="${id}"]`);await settled('MISSING_SOURCE');
+  await click('project-relink-missing');check('missing source offers relink',await evaluate(`!!document.querySelector('[data-project-relink]')`));
   const formsRoot=await evaluate(`projectUI.summary.project.source_roots.find(r=>r.kind==='forms').id`);
   await clickSelector(`[data-project-relink="${formsRoot}"]`);await pick(moved);await settled('CURRENT');
   check('same-content relink preserves assessment',await evaluate('projectUI.summary.project.analysis_revision')===revision);
-  await fs.writeFile(owned(path.join(moved,'bad.xml')),'<FormModule><broken>');await click('project-analyze');await settled('INCOMPLETE');await click('project-saved');
+  await fs.writeFile(owned(path.join(moved,'bad.xml')),'<FormModule><broken>');await clickSelector('[data-project-section="settings"]');await click('project-analyze');await settled('INCOMPLETE');await clickSelector('[data-project-section="settings"]');await click('project-saved');
   await wait(()=>evaluate(`document.getElementById('project-saved-content').textContent.includes('bad.xml')`),'malformed source remediation');
   check('partial failure retains valid form',await evaluate(`projectUI.summary.inventory.forms.analyzed===1&&document.getElementById('project-saved-content').textContent.includes('bad.xml')`));await screenshot('partial-failure.png');
   const cancelFolder=owned(path.join(root,'sources/cancel-forms'));await fs.mkdir(cancelFolder);
@@ -84,9 +96,14 @@ try{
   check('project switch isolates cancellation',await evaluate(`projectUI.activeId===${JSON.stringify(id)}&&projectUI.summary.project.name==='Corporate synthetic assessment'&&!!projectUI.summary.project.analysis_revision`));
   await click('project-home');await wait(()=>evaluate(`!!document.getElementById('project-demo')`),'demo action');
   await click('project-demo');
-  await wait(()=>evaluate(`projectUI.view==='summary'&&projectUI.summary?.project.name==='Synthetic dispatch desk'&&!projectUI.jobId&&projectUI.summary.freshness.status==='CURRENT'&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'real demo assessment');
-  check('bundled demo follows real project path',await evaluate(`projectUI.summary.inventory.forms.analyzed===2&&projectUI.summary.inventory.database.package_bodies===1`));
-  await screenshot('demo-assessment.png');
+  await wait(()=>evaluate(`projectUI.view==='overview'&&projectUI.summary?.project.name==='Synthetic dispatch desk'&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'real demo Overview');
+  check('bundled demo follows real project path',await evaluate(`projectUI.summary.inventory.forms.analyzed===2&&projectUI.summary.inventory.database.package_bodies===1&&projectUI.overview.inventory.forms_modules===2&&projectUI.overview.risk_distribution.CRITICAL>0`));
+  await clickSelector('[data-project-filter="risk"][data-project-value="CRITICAL"]');await wait(()=>evaluate(`projectUI.inventoryState?.filters.risk==='CRITICAL'&&projectUI.inventoryState.page?.rows.length>0`),'demo Critical inventory');
+  check('demo Critical card is evidence-backed',await evaluate(`projectUI.inventoryState.page.rows.every(row=>row.risk==='CRITICAL')`));
+  await clickSelector('[data-project-category="packages"]');await wait(()=>evaluate(`projectUI.inventoryState?.category==='packages'&&!!projectUI.inventoryState.page`),'package inventory');
+  await value('project-inventory-search','SHIPMENT_API');await click('project-inventory-apply');await wait(()=>evaluate(`projectUI.inventoryState?.query==='SHIPMENT_API'&&projectUI.inventoryState.page?.total===1`),'package search');
+  check('package search uses persisted projection',await evaluate(`projectUI.inventoryState.page.rows[0].name==='SHIPMENT_API'`));
+  await screenshot('demo-inventory.png');
   await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
   await sleep(300);check('tablet no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
   check('reduced motion preference retained',await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`));

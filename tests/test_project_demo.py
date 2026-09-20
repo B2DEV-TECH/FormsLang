@@ -99,3 +99,43 @@ def test_viewer_cannot_allocate_demo_sources(tmp_path, auth_store, monkeypatch):
     with pytest.raises(PermissionError):
         intake.create_demo()
     assert not (tmp_path / 'orgs' / owner['organization_id'] / 'demo-sources').exists()
+
+
+def test_demo_overview_reopens_without_analysis_and_keeps_stale_metrics(tmp_path, monkeypatch):
+    intake = ProjectIntake(tmp_path / 'data', tmp_path / 'config')
+    created = intake.create_demo()
+    pid = created['project']['id']
+    assessment = analyze(intake, created)
+    authorize = lambda: intake.access(pid, rbac.RUN_CONVERSION)
+
+    service = ProjectService(authorize(), authorize=authorize)
+    try:
+        current = service.freshness()
+        before = service.overview(freshness=current)
+    finally:
+        service.close()
+    assert before['inventory']['forms_modules'] == 2
+    assert before['inventory']['database_packages'] >= 1
+    assert before['risk_distribution']['CRITICAL'] >= 1
+    assert {'AUTO', 'ASSISTED', 'MANUAL', 'UNKNOWN'} == set(before['intervention_distribution'])
+    assert len([value for value in before['recommendation_distribution'].values() if value]) >= 5
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Opening Overview must not reanalyze source')
+
+    monkeypatch.setattr('formslang.project_analysis.analyze_project', forbidden)
+    reopened = ProjectService(authorize(), authorize=authorize)
+    try:
+        assert reopened.overview(freshness=current) == before
+        descriptor = reopened.open()
+        forms = next(root for root in descriptor.source_roots if root.kind == 'forms')
+        source = next((reopened.access.root / forms.path).glob('*.xml'))
+        source.write_bytes(source.read_bytes() + b'\n<!-- stale overview fixture -->\n')
+        stale = reopened.freshness()
+        after = reopened.overview(freshness=stale)
+    finally:
+        reopened.close()
+    assert stale['status'] == 'STALE'
+    assert after['assessment']['freshness'] == 'STALE'
+    assert after['inventory'] == before['inventory']
+    assert assessment['analysis_revision'] == after['assessment']['analysis_revision']

@@ -363,6 +363,9 @@ async function pollProjectJob() {
     $('project-status').textContent=job.status==='CANCELLED'?'Analysis cancelled. The last committed assessment is preserved.':job.status==='FAILED'?'Analysis failed. The last committed assessment is preserved.':projectUI.operation==='FRESHNESS'?'Source freshness checked.':'Assessment created and saved.';
     if(job.safe_failure)projectError(`${job.safe_failure.safe_message} ${job.safe_failure.remediation}`);
     $('project-saved-content').innerHTML=projectDiagnostics(job.diagnostics||[],true);projectBindConversions();
+    if(projectUI.operation==='FRESHNESS'&&summary.project.analysis_revision&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status)){
+      await projectLoadOverview(c);if(projectCurrent(c))$('project-status').textContent='Source freshness checked.';
+    }
     if(projectUI.operation==='ANALYZE'&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status))await openProject(c.id);
   }catch(e){if(projectCurrent(c)){projectError(e.message+' Reload Project to reconnect to its durable job.');projectUI.busy=false;}}
 }

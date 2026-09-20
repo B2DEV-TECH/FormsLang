@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
+from urllib.parse import quote
 
 import pytest
 
@@ -401,6 +402,25 @@ def test_inventory_http_filters_pages_details_and_rejects_revision_mix(project_s
         f'&revision={"0" * 64}'
     )
     assert conflict.status == 409 and conflict.json['code'] == 'PROJECT_CONFLICT'
+
+
+def test_inventory_detail_accepts_opaque_percent_encoded_engine_identity(project_server):
+    client, _ = project_server
+    pid = analyze_demo(client)
+    overview = client.get(f'/api/v2/projects/{pid}/overview').json['overview']
+    revision = overview['assessment']['analysis_revision']
+    page = client.get(
+        f'/api/v2/projects/{pid}/inventory?category=findings&limit=50&revision={revision}'
+    )
+    item_id = next(row['id'] for row in page.json['rows'] if ':' in row['id'])
+
+    detail = client.get(
+        f'/api/v2/projects/{pid}/inventory/findings/{quote(item_id, safe="")}'
+        f'?revision={revision}'
+    )
+
+    assert detail.status == 200
+    assert detail.json['item']['id'] == item_id
 
 
 def test_overview_keeps_saved_metrics_and_reports_stale_source(project_server):
