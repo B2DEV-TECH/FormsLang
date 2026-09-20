@@ -1,7 +1,7 @@
 # FormsLang 2.0 implementation architecture
 
-This page describes the unreleased Phase A foundation and Phase B workflow,
-not the complete 2.0 product. For product scope and phases C-H see
+This page describes the unreleased Phase A-C foundation and assessment workflow,
+not the complete 2.0 product. For product scope and phases D-H see
 [product architecture](formsLang-2-product-architecture.md). For storage and a
 runnable example see [project model](project-model.md).
 
@@ -21,8 +21,9 @@ runnable example see [project model](project-model.md).
 | `project_jobs`, `project_lock` | Durable jobs, process lock, cancellation and publication fencing |
 | `project_analysis`, `project_freshness` | One analysis orchestrator and hash verification without reasoning |
 | `project_conversion` | Explicit staged Forms2XML and hash-bound derived representations |
+| `project_projection` | Deterministic, bounded Overview/Inventory read models and an in-memory revision cache |
 | `project_http`, `project_cli` | Versioned HTTP and local CLI adapters; no second pipeline |
-| `ui/modernization_project*` | Existing HTML/JS shell: onboarding, progress, summary and recovery |
+| `ui/modernization_project*` | Existing HTML/JS shell: onboarding, Overview, Inventory, progress and recovery |
 
 The service delegates analysis; it does not implement classifiers or call a provider.
 UI and CLI call the same service/orchestrator: discovery, staging/parsing, existing
@@ -31,6 +32,28 @@ are not presented as invented fine-grained progress.
 The existing Workbench, parser, database analysis, Blueprint reasoning, conversion
 review, APEXlang exporter, SQLcl adapter and desktop shell remain in place.
 No new frontend framework or runtime dependency is introduced.
+
+## Phase C read boundary
+
+Phase C projects the current persisted `ProjectAssessment`; it never parses source,
+runs Blueprint, calls AI, connects to Oracle or classifies findings on a read. The
+server prepares one safe read model containing normalized rows and bounded summaries.
+Overview, Inventory, CLI and HTTP use those same functions. Modernization units are
+Blueprint findings/recommendations, not every entity or graph node.
+
+Prepared projections are not persisted. A bounded, process-local LRU caches them by
+store scope, opaque project id, analysis revision, review revision, target tuple and
+freshness. Analysis publication, review revision, target changes or freshness changes
+therefore select a different cache key; closing/restarting simply rebuilds from the
+saved assessment. No projection table, search index or second source of truth exists.
+
+The scale gate uses 500 synthetic Forms, 5,000 findings and 5,000 non-structural
+dependencies. It reconciles all counts before timing. The measured cold/reopen cost
+is a few seconds, while bounded pages, filters/search and warm-cache Overview are
+small enough to retain the simpler architecture. See [project overview](project-overview.md)
+and [acceptance evidence](quality-acceptance.md). A future optimization must rerun
+that gate; evidence, not feature count, decides whether a persisted projection is
+needed.
 
 ## Ownership and concurrency
 
@@ -86,7 +109,9 @@ composes the real parser and Blueprint and exercises multiple processes.
 
 The full existing Python/JavaScript and browser suites remain compatibility gates.
 Phase B adds service/API/CLI lifecycle and real-browser onboarding, server-process
-restart, stale/missing/relink, partial failure and cancellation acceptance. Frozen
+restart, stale/missing/relink, partial failure and cancellation acceptance. Phase C
+adds deterministic count reconciliation, revision-safe paginated reads, XSS-safe
+Overview/Inventory rendering, response-race tests and 500-Form read-scale evidence. Frozen
 executable and isolated-wheel checks exercise bundled demo and fingerprints.
 Scripted accessibility checks are not a manual screen-reader audit. Installer/upgrade
 and live Oracle/APEX validation remain release gates; a frozen engine is not a
