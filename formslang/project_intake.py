@@ -23,6 +23,7 @@ from .project_model import (
     SourceRoot,
     canonical_json,
     descriptor_to_dict,
+    validate_descriptor,
 )
 from .project_service import ProjectService
 from .project_store import ProjectStore, replace_mirror
@@ -267,16 +268,62 @@ class ProjectIntake:
             return self._create_managed(name, selections, description, client_label)
         actor = self._local()
         roots = self._selections(selections)
-        destination = _plain_path(destination if destination is not None else self.data_dir / 'projects' / uuid.uuid4().hex)
-        access = local_project_access(destination, approved_roots=tuple(Path(r.path) for r in roots))
-        authorized_roots(access, ProjectDescriptor(uuid.uuid4().hex, name, source_roots=roots))
-        service = ProjectService(access)
-        try:
-            descriptor = service.create(name, roots=roots, description=description, client_label=client_label)
-        finally:
-            service.close()
-        self._remember(descriptor.id, destination / '.formslang/project.json', actor, selections)
-        return self._summary(descriptor.id)
+        pid = uuid.uuid4().hex
+        requested_destination = _plain_path(destination) if destination is not None else None
+        root = requested_destination or _plain_path(self.data_dir / 'projects' / pid)
+        descriptor = ProjectDescriptor(pid, name, source_roots=roots, description=description, client_label=client_label)
+        validate_descriptor(descriptor)
+        approved = tuple(Path(r.path) for r in roots)
+        authorized_roots(local_project_access(root, approved_roots=approved), descriptor)
+        pending_key = hashlib.sha256(canonical_json([actor, str(requested_destination) if requested_destination else None,
+            name, selections, description, client_label]).encode()).hexdigest()
+        # A locator reservation survives DB publication followed by mirror/index failure.
+        # It contains no assessment state and does not authorize a different request.
+        with self._metadata(write=True) as metadata:
+            reserved = next(((key, row) for key, row in metadata['projects'].items()
+                             if row.get('pending_local') == pending_key and row['actor'] == actor), None)
+            if reserved:
+                pid, row = reserved
+                root = _plain_path(Path(row['locator']).parent.parent)
+                if root != (requested_destination or _plain_path(self.data_dir / 'projects' / pid)):
+                    raise ProjectError('Project initialization location changed')
+            else:
+                metadata['projects'][pid] = {'locator': str(root / '.formslang/project.json'),
+                    'actor': actor, 'selections': selections, 'pending_local': pending_key}
+        descriptor = ProjectDescriptor(pid, name, source_roots=roots, description=description, client_label=client_label)
+        access = local_project_access(root, approved_roots=approved)
+        authorized_roots(access, descriptor)
+        root.mkdir(parents=True, exist_ok=True)
+        lock_root = _plain_path(root / '.initialization')
+        (lock_root / '.formslang').mkdir(parents=True, exist_ok=True)
+        with project_worker_lock(lock_root):
+            marker_path = _plain_path(root / '.initialization/owner.json')
+            marker = {'project_id': pid, 'actor': actor, 'request': pending_key}
+            if marker_path.exists():
+                if json.loads(marker_path.read_text(encoding='utf-8')) != marker:
+                    raise PermissionError('Project initialization belongs to another request')
+            else:
+                if (root / '.formslang').exists():
+                    raise ProjectError('Project already exists; open it instead')
+                _atomic_json(marker_path, marker)
+            def authorize_initialization():
+                if self._local() != actor or self._selections(selections) != roots:
+                    raise PermissionError('Source authority changed during project initialization')
+                return access
+            authorize_initialization()
+            service = ProjectService(access, authorize=authorize_initialization)
+            try:
+                if (root / '.formslang/project.session.db').exists():
+                    if service.open() != descriptor:
+                        raise ProjectError('Initialized project differs from the creation request')
+                else:
+                    service.create(name, roots=roots, description=description,
+                                   client_label=client_label, project_id=pid)
+            finally:
+                service.close()
+            with self._metadata(write=True) as metadata:
+                metadata['projects'][pid].pop('pending_local', None)
+        return self._summary(pid)
 
     def _create_managed(self, name, selections, description, client_label):
         with self._auth(rbac.CREATE_PROJECT):
@@ -335,13 +382,24 @@ class ProjectIntake:
                 metadata['projects'][pid].pop('pending_key', None)
         return self._summary(pid)
 
-    def _remember(self, project_id, locator, actor, selections):
+    def _remember(self, project_id, locator, actor, selections, *, relocate=False):
         with self._metadata(write=True) as metadata:
             previous = metadata['projects'].get(project_id)
-            if previous and (previous['actor'] != actor or Path(previous['locator']) != locator):
+            if previous and previous['actor'] != actor:
                 raise ProjectError('Project identity already belongs to another locator')
+            moved = previous and Path(previous['locator']) != locator
+            if moved:
+                if not relocate:
+                    raise ProjectError('Project identity already belongs to another locator')
+                old_root = _plain_path(Path(previous['locator']).parent.parent)
+                try:
+                    old_root.stat()
+                except FileNotFoundError:
+                    pass  # Explicit same-user open, with no live location to replace.
+                else:
+                    raise ProjectError('Project identity already belongs to another locator')
             metadata['projects'][project_id] = {'locator': str(locator), 'actor': actor,
-                'selections': selections if selections else (previous['selections'] if previous else [])}
+                'selections': selections if selections else (previous['selections'] if previous and not moved else [])}
 
     def open_locator(self, locator):
         actor = self._local()
@@ -353,7 +411,7 @@ class ProjectIntake:
             descriptor = service.open()
         finally:
             service.close()
-        self._remember(descriptor.id, path, actor, [])
+        self._remember(descriptor.id, path, actor, [], relocate=True)
         return self._summary(descriptor.id)
 
     def access(self, project_id, action):

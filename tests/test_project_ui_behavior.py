@@ -215,3 +215,21 @@ def test_unavailable_recent_locator_shows_remediation(tmp_path):
 api=async()=>({projects:[{project:{id:'missing'},warning:'Project is unavailable. Open its descriptor or restore its location.'}]});
 await showProjectHome();assert.match($('project-recents').innerHTML,/restore its location/);
 ''')
+
+
+def test_demo_pending_open_cannot_start_analysis_of_switched_project(tmp_path):
+    run_js(tmp_path, r'''
+projectEnter('home');projectUI.activeId=null;
+const opening=deferred(),calls=[];
+// Distinguish demo creation POST from the subsequent project GET.
+api=(path,body)=>{calls.push([path,body]);
+  if(path==='/api/v2/projects/demo')return body===undefined?opening.promise:Promise.resolve({project:{id:'demo'}});
+  return Promise.reject(new Error('Unexpected request '+path));
+};
+const pending=projectDemo();await Promise.resolve();await Promise.resolve();
+assert.equal(projectUI.activeId,'demo');
+projectEnter('summary');projectUI.activeId='b';projectUI.summary={...summary,project:{...summary.project,id:'b'}};
+opening.resolve({...summary,project:{...summary.project,id:'demo'}});await pending;
+assert.ok(!calls.some(([path])=>path.endsWith('/analyze')),JSON.stringify(calls));
+assert.equal(projectUI.activeId,'b');
+''')

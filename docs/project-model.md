@@ -54,6 +54,12 @@ Assessment publication and the successful job transition share one transaction.
 Cancellation, lost authority or changed source leaves the previous pointer intact.
 Repeated identical input retains the original assessment timestamp.
 
+Both managed and local creation reserve locator metadata and an initialization
+owner marker before publication. Retry must match actor/request/descriptor; it can
+repair a committed DB's mirror without adopting an unrelated directory. Explicit
+same-user relocation can replace a missing local locator, never a live clone, and
+does not inherit source capabilities from the relocated descriptor.
+
 ## Revisions and review
 
 Source IDs hash root ID plus normalized relative path, so equal module names in

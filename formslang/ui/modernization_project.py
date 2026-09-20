@@ -133,6 +133,7 @@ async function openProject(id,check=true) {
       const job=await api(`/api/v2/projects/${id}/freshness`,{});if(!projectCurrent(c))return;
       projectUI.jobId=job.job_id;projectUI.operation='FRESHNESS';await pollProjectJob();
     }
+    return projectCurrent(c)?c:undefined;
   }catch(e){if(projectCurrent(c))projectError(e.message+' Reload the project to retry.');}
 }
 function renderProjectSummary(data) {
@@ -258,7 +259,7 @@ function projectOpenLocator() {
 }
 async function projectDemo() {
   const c=projectContext();if(projectUI.busy)return;projectUI.busy=true;$('project-demo').disabled=true;
-  try{const result=await api('/api/v2/projects/demo',{});if(projectCurrent(c)){projectUI.busy=false;await openProject(result.project.id,false);await startProjectAnalysis();}}
+  try{const result=await api('/api/v2/projects/demo',{});if(projectCurrent(c)){projectUI.busy=false;const opened=await openProject(result.project.id,false);if(opened&&projectCurrent(opened))await startProjectAnalysis();}}
   catch(e){if(projectCurrent(c)){projectUI.busy=false;$('project-demo').disabled=false;projectError(e.message);}}
 }
 function initProjects(){

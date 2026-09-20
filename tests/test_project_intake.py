@@ -3,9 +3,12 @@
 import json
 import multiprocessing
 import os
+import shutil
+import sqlite3
 import subprocess
 import time
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -83,6 +86,89 @@ def test_open_descriptor_requires_explicit_source_grant(intake, project_sources)
         assert service.freshness()['status'] == 'UNVERIFIED'
     finally:
         service.close()
+
+
+def test_explicit_open_relocates_missing_project_without_inheriting_source_authority(intake, tmp_path):
+    created = intake.create_demo()
+    pid = created['project']['id']
+    access = intake.access(pid, rbac.RUN_CONVERSION)
+    service = ProjectService(access)
+    try:
+        service.analyze(expected_revision=None, expected_configuration=0)
+        revision = service.assessment()['analysis_revision']
+    finally:
+        service.close()
+    moved = tmp_path / 'relocated-assessment'
+    access.root.rename(moved)
+    reopened = intake.open_locator(moved / '.formslang/project.json')
+    assert reopened['project']['id'] == pid
+    relocated_access = intake.access(pid, rbac.VIEW_PROJECT)
+    assert relocated_access.root == moved
+    assert relocated_access.source_roots == ()
+    service = ProjectService(relocated_access)
+    try:
+        assert service.assessment()['analysis_revision'] == revision
+        assert service.freshness()['status'] == 'UNVERIFIED'
+    finally:
+        service.close()
+    assert [row['project']['id'] for row in intake.list_recent()] == [pid]
+
+
+def test_open_copy_cannot_replace_live_project_locator(intake, tmp_path):
+    pid = intake.create_demo()['project']['id']
+    original = intake.access(pid, rbac.VIEW_PROJECT).root
+    copied = tmp_path / 'copied-assessment'
+    shutil.copytree(original, copied)
+    with pytest.raises(ProjectError, match='another locator'):
+        intake.open_locator(copied / '.formslang/project.json')
+    assert intake.access(pid, rbac.VIEW_PROJECT).root == original
+
+
+def test_missing_locator_cannot_be_adopted_by_another_os_user(intake, tmp_path, monkeypatch):
+    pid = intake.create_demo()['project']['id']
+    original = intake.access(pid, rbac.VIEW_PROJECT).root
+    moved = tmp_path / 'relocated-assessment'
+    original.rename(moved)
+    monkeypatch.setattr('getpass.getuser', lambda: 'other-os-user')
+    with pytest.raises(ProjectError, match='another locator'):
+        intake.open_locator(moved / '.formslang/project.json')
+    with intake._metadata() as metadata:
+        assert Path(metadata['projects'][pid]['locator']).parent.parent == original
+
+
+@pytest.mark.parametrize('failure', ['mirror', 'locator'])
+@pytest.mark.parametrize('explicit', [False, True])
+def test_local_creation_resumes_published_database(intake, project_sources, tmp_path, monkeypatch, failure, explicit):
+    from formslang import project_intake
+    from formslang.project_store import ProjectStore
+    selected = intake.select_source(project_sources[2].parent, 'forms')
+    destination = tmp_path / 'explicit-project' if explicit else None
+    def databases():
+        return list((destination or intake.data_dir / 'projects').rglob('project.session.db'))
+    atomic_json = project_intake._atomic_json
+    def fail_locator(path, payload):
+        if path.name == 'locators.json' and databases():
+            raise OSError('simulated locator publication failure')
+        return atomic_json(path, payload)
+    def fail_mirror(self):
+        raise OSError('simulated mirror publication failure')
+    with monkeypatch.context() as patch:
+        if failure == 'mirror':
+            patch.setattr(ProjectStore, 'sync_descriptor', fail_mirror)
+        else:
+            patch.setattr(project_intake, '_atomic_json', fail_locator)
+        with pytest.raises(OSError):
+            intake.create('Recover local', [selected], destination=destination)
+    assert len(databases()) == 1
+    connection = sqlite3.connect(databases()[0])
+    try:
+        original = json.loads(connection.execute('SELECT descriptor_json FROM modernization_project').fetchone()[0])
+    finally:
+        connection.close()
+    recovered = intake.create('Recover local', [selected], destination=destination)
+    assert recovered['project']['id'] == original['id']
+    assert len(databases()) == 1
+    assert [row['project']['id'] for row in intake.list_recent()] == [original['id']]
 
 
 def test_local_metadata_does_not_cross_os_user(intake, project_sources, monkeypatch):

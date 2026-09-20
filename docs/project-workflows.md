@@ -34,6 +34,13 @@ works with stale/missing sources; **Refresh Analysis** is explicit. **Relink** c
 the replacement tree's fingerprint, not its directory name. Changed source removes
 current approval overlays, never review history. See [project model](project-model.md).
 
+If the project directory itself moved, use **Open Project** on its new descriptor.
+For the same local OS user, this updates a known locator only when its old directory
+is missing; a live copy or another user's locator cannot be replaced. Source grants
+are cleared on relocation, so explicitly relink before treating evidence as Current.
+Creation reserves its locator before SQLite publication. Retrying the same request
+after mirror/index failure resumes the same project instead of creating a duplicate.
+
 Windows defaults to `%APPDATA%/FormsLang`; other systems follow
 `XDG_CONFIG_HOME/formslang` or `~/.config/formslang`. Existing `FORMSLANG_CONFIG_DIR`
 and `FORMSLANG_DATA_DIR` overrides are optional. UI projects live under
