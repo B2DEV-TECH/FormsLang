@@ -64,7 +64,12 @@ def assessment_fixture():
             "id": "finding:critical", "entity": "trigger:critical",
             "recommendation": "MANUAL_REVIEW", "execution_verdict": "MANUAL",
             "reason": "Approval control requires a human decision.",
-            "classification": ["BUSINESS_RULE", "API_BYPASS"],
+            "classification": ["BUSINESS_RULE"],
+            "statements": [{
+                "level": "INFERENCE",
+                "text": "[DIRECT_DML_BYPASSES_API] Form DML bypasses ORDER_API.",
+                "evidence": [],
+            }],
             "review_state": "PENDING", "dependencies": [], "evidence": [],
             "unresolved_questions": ["Confirm approval ownership."],
         },
@@ -133,6 +138,9 @@ def assessment_fixture():
                  "type": "CONTAINS", "evidence": []},
                 {"id": "edge:calls", "source": "trigger:critical", "target": "package_subprogram:save",
                  "type": "CALLS", "evidence": []},
+                {"id": "edge:duplicates", "source": "trigger:critical",
+                 "target": "subprogram_body:save", "type": "DUPLICATES_LOGIC",
+                 "evidence": []},
                 {"id": "edge:writes", "source": "subprogram_body:save", "target": "table:orders",
                  "type": "WRITES", "evidence": []},
             ],
@@ -167,7 +175,7 @@ def test_overview_counts_reconcile_with_projected_rows(assessment_fixture):
     assert summary["database_packages"] == len(prepared.rows["packages"]) == 2
     assert summary["package_specs"] == 2
     assert summary["package_bodies"] == 1
-    assert summary["dependencies"] == len(prepared.rows["dependencies"]) == 2
+    assert summary["dependencies"] == len(prepared.rows["dependencies"]) == 3
     assert summary["business_rule_candidates"] == len(prepared.rows["business_rules"]) == 2
     assert [row["id"] for row in prepared.rows["forms"]] == ["form:one", "form:two"]
 
@@ -256,6 +264,50 @@ def test_priority_queue_exposes_factors_and_reconciles_with_overview(assessment_
     assert queue["rows"][0]["priority_factors"][0] == "UNRESOLVED_CRITICAL"
     assert "MANUAL_INTERVENTION" in queue["rows"][0]["priority_factors"]
     assert "API_BYPASS" in queue["rows"][0]["priority_factors"]
+    assert "DUPLICATED_LOGIC" in queue["rows"][0]["priority_factors"]
+    assert "CROSS_MODULE_IMPACT" in queue["rows"][0]["priority_factors"]
+
+
+def test_selected_forms_representations_exclude_unselected_binaries(assessment_fixture):
+    prepared = prepare_projection(DESCRIPTOR, assessment_fixture, CURRENT,
+                                  store_scope="store-a")
+
+    result = overview(prepared)
+
+    assert result["inventory"]["forms_representations"] == 2
+    assert result["source_coverage"]["forms"]["representations"] == 2
+
+
+def test_package_highest_risk_comes_from_related_findings(assessment_fixture):
+    assessment_fixture["blueprint"]["entities"][4]["attributes"]["risk"] = {
+        "level": "MEDIUM", "basis": "Package ownership requires review",
+    }
+    prepared = prepare_projection(DESCRIPTOR, assessment_fixture, CURRENT,
+                                  store_scope="store-a")
+
+    package = next(row for row in prepared.rows["packages"]
+                   if row["id"] == "package:db:order_api")
+
+    assert package["findings"] == 1
+    assert package["highest_risk"] == "MEDIUM"
+
+
+def test_overview_warnings_are_bounded_with_total(assessment_fixture):
+    assessment_fixture["diagnostics"] = [
+        {
+            "source_id": f"source:{index}", "relative_path": f"bad-{index}.xml",
+            "stage": "FORMS_PARSING", "error_code": "INVALID_XML",
+            "safe_message": f"Source {index} could not be parsed.",
+            "remediation": "Repair or exclude the source.",
+        }
+        for index in range(75)
+    ]
+    result = overview(prepare_projection(
+        DESCRIPTOR, assessment_fixture, CURRENT, store_scope="store-a",
+    ))
+
+    assert len(result["warnings"]) == 50
+    assert result["warning_summary"] == {"total": 75, "shown": 50, "truncated": True}
 
 
 def test_inventory_detail_is_bounded_and_excludes_source_body(assessment_fixture):

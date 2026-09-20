@@ -62,6 +62,13 @@ try{
   await clickSelector('[data-project-category="dependencies"]');
   await wait(()=>evaluate(`projectUI.inventoryState?.category==='dependencies'&&!!projectUI.inventoryState.page`),'dependency inventory');
   check('dependency category uses real projection',await evaluate(`projectUI.inventoryState.page.total>=0`));
+  if(await evaluate(`projectUI.inventoryState.page.rows.length>0`)){
+    const dependency=await evaluate(`projectUI.inventoryState.page.rows[0]`);
+    await clickSelector('[data-project-item]');
+    await wait(()=>evaluate(`document.getElementById('modal').classList.contains('show')&&!!document.getElementById('project-detail-close')`),'dependency detail');
+    check('dependency detail names both ends and relationship',await evaluate(`(()=>{const text=document.getElementById('modal-body').textContent;return text.includes(${JSON.stringify(dependency.source)})&&text.includes(${JSON.stringify(dependency.relationship)})&&text.includes(${JSON.stringify(dependency.target)});})()`),dependency);
+    await click('project-detail-close');
+  }
   await clickSelector('[data-project-section="overview"]');await wait(()=>evaluate(`projectUI.view==='overview'`),'return to Overview');
   const previousDocument=await evaluate('performance.timeOrigin');
   await fs.writeFile(path.join(root,'restart.request'),'restart');let restarted;

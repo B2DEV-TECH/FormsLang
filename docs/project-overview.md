@@ -30,7 +30,7 @@ announces the change and reloads page one.
 | Overview value | Exact meaning |
 |---|---|
 | Forms Modules | Unique projected Blueprint entities whose type is `FORM`; same names in different roots remain distinct |
-| Forms representations | Discovered Forms-related manifest representations; not synonymous with parsed modules |
+| Forms representations | Selected manifest entries representing Forms source; unsupported/unselected binaries remain visible in source coverage but do not inflate this count |
 | PL/SQL Libraries | Manifest `.pll`/library rows; semantic support is reported separately |
 | Database Packages | Unique package name within a source-root scope, combining spec/body without merging same-name packages across roots |
 | Package specs / bodies | Presence counts on the unique package rows |
@@ -94,11 +94,23 @@ Coverage reports observable counts, not an estate-completeness percentage:
 - database source files supplied and database inputs analyzed where known;
 - libraries discovered and those without a semantic representation.
 
-Diagnostics become bounded safe warnings with remediation. Freshness adds an explicit
+Diagnostics become deduplicated safe warnings with remediation. Overview returns at
+most 50 warning rows plus `warning_summary` (`total`, `shown`, `truncated`); the full
+diagnostic record remains available through the saved assessment. Freshness adds an explicit
 warning for `STALE`, `INCOMPLETE`, `MISSING_SOURCE` or `UNVERIFIED`. Saved counts remain
 visible but are labelled as prior evidence. Overview never contains source bodies or
 unrestricted absolute paths. Inventory/detail are authorized per request and return
 only bounded technical fields.
+
+## Priority Review bridge
+
+**Start Priority Review** opens the unresolved Findings queue in deterministic order
+and immediately opens the first eligible finding. The bridge carries the opaque
+project ID in the route, the finding ID, `priority=unresolved`, and the exact analysis
+revision. It is deliberately read-only in Phase C. The legacy session Blueprint does
+not consume a project assessment safely, so Phase C does not adopt project data into
+that separate session or add decision writes. Phase D owns the project-scoped decision
+workspace and persistence actions.
 
 ## HTTP and CLI
 

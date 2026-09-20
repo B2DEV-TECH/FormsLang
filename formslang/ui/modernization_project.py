@@ -9,7 +9,7 @@ PROJECT_HTML = r'''<section id="project-workspace" aria-label="Modernization pro
 '''
 
 PROJECT_JS = r'''
-const projectUI = {view:'legacy',draft:null,activeId:null,generation:0,jobId:null,timer:null,summary:null,overview:null,areas:null,previewRequest:0,busy:false,inventoryState:null};
+const projectUI = {view:'legacy',draft:null,activeId:null,generation:0,jobId:null,timer:null,summary:null,overview:null,areas:null,previewRequest:0,busy:false,inventoryState:null,reviewContext:null};
 const projectSteps = ['Project','Sources','Target','Analyze'];
 function projectError(message, field) {
   $('project-error').textContent=message;
@@ -138,11 +138,11 @@ async function openProject(id,check=true) {
     return projectCurrent(c)?c:undefined;
   }catch(e){if(projectCurrent(c))projectError(e.message+' Reload the project to retry.');}
 }
-async function projectLoadOverview(c=projectContext()) {
+async function projectLoadOverview(c=projectContext(),render=true) {
   try {
     const payload=await api(`/api/v2/projects/${c.id}/overview`);if(!projectCurrent(c))return;
     const data=payload?.overview||payload;
-    if(data?.assessment&&data?.inventory)renderProjectOverview(data);
+    if(data?.assessment&&data?.inventory){projectUI.overview=data;if(render)renderProjectOverview(data);return data;}
   }catch(e){if(projectCurrent(c))projectError(e.message+' The saved project remains available; retry Overview.');}
 }
 const projectRiskLabels={CRITICAL:'Critical',HIGH:'High',MEDIUM:'Medium',LOW:'Low',UNKNOWN:'Unknown'};
@@ -157,7 +157,8 @@ function projectBindSectionNav() {
   $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
     const section=el.dataset.projectSection;
     if(section==='overview')renderProjectOverview(projectUI.overview);
-    else if(section==='inventory'||section==='review')projectOpenInventory({category:section==='review'?'findings':'forms',priority:section==='review'});
+    else if(section==='inventory')projectOpenInventory({category:'forms'});
+    else if(section==='review')projectOpenPriorityReview();
     else if(section==='blueprint'){projectLeave();browse('');}
     else if(section==='settings')renderProjectSummary(projectUI.summary);
     else {$('project-status').textContent=`${section==='generate'?'Generation':'Reports'} is planned for a later FormsLang 2.0 phase.`;}
@@ -195,19 +196,28 @@ function projectInventoryTable(state,page) {
   const body=rows.length?rows.map(row=>`<tr>${columns.map(([field],index)=>`<td>${index===0?`<button type="button" class="project-inventory-item" data-project-item="${esc(row.id)}">${esc(projectInventoryLabel(field,row[field]))}</button>`:esc(projectInventoryLabel(field,row[field]))}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${columns.length}"><p class="project-empty">No observed ${esc(label)} match the current search and filters.</p></td></tr>`;
   return `<div class="project-table-wrap"><table class="project-table project-inventory-table"><caption>${esc(label)} from assessment revision ${esc(String(page?.analysis_revision||state.revision||'not loaded').slice(0,12))}</caption><thead><tr>${columns.map(([,heading])=>`<th scope="col">${esc(heading)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="project-pagination"><p>${page?.total?`${Number(page.offset)+1}–${Math.min(Number(page.offset)+Number(page.limit),Number(page.total))} of ${Number(page.total)}`:'No matching rows'}</p>${Number(page?.offset||0)>0?projectButton('project-inventory-prev','Previous'):''}${Number(page?.offset||0)+Number(page?.limit||50)<Number(page?.total||0)?projectButton('project-inventory-next','Next'):''}</div>`;
 }
-function projectRenderInventory(page=null) {
+function projectRenderInventory(page=null,focusId='') {
   const state=projectUI.inventoryState,label=projectInventoryCategories[state.category];
   const risk=state.filters.risk||'',recommendation=state.filters.recommendation||'';
   const noDatabase=projectUI.overview?.source_coverage?.database?.sources===0;
   $('project-content').innerHTML=`${projectSectionNav('inventory')}<header><h2 id="project-step-title" tabindex="-1">Inventory</h2><p>Browse observed application structure and modernization findings from the saved assessment.</p></header>${noDatabase?'<p class="project-state-warning">No database source was supplied. Cross-layer recommendations may have limited evidence.</p>':''}<div class="project-inventory-tabs" role="tablist" aria-label="Inventory categories">${Object.entries(projectInventoryCategories).map(([key,name])=>`<button type="button" class="btn" role="tab" data-project-category="${key}" aria-selected="${state.category===key}">${esc(name)}</button>`).join('')}</div><form id="project-inventory-filters" class="project-filter-bar"><label for="project-inventory-search">Search inventory</label><input id="project-inventory-search" type="search" maxlength="500" value="${esc(state.query||'')}"><label for="project-inventory-risk">Risk</label><select id="project-inventory-risk"><option value="">Any risk</option>${Object.entries(projectRiskLabels).map(([key,name])=>`<option value="${key}" ${risk===key?'selected':''}>${esc(name)}</option>`).join('')}</select><label for="project-inventory-recommendation">Recommendation</label><select id="project-inventory-recommendation"><option value="">Any recommendation</option>${Object.entries(projectRecommendationLabels).map(([key,name])=>`<option value="${key}" ${recommendation===key?'selected':''}>${esc(name)}</option>`).join('')}</select>${projectButton('project-inventory-apply','Apply Filters',true)}${projectButton('project-inventory-clear','Clear')}</form><p id="project-inventory-status" role="status" aria-live="polite">${page?`${Number(page.total||0)} ${esc(label)} found.`:'Loading inventory…'}</p><div id="project-inventory-results">${projectInventoryTable(state,page)}</div>`;
   $('project-inventory-search').value=state.query||'';$('project-inventory-risk').value=risk;$('project-inventory-recommendation').value=recommendation;
   projectBindSectionNav();
-  $('project-content').querySelectorAll('[data-project-category]').forEach(el=>el.onclick=()=>projectOpenInventory({category:el.dataset.projectCategory}));
+  $('project-content').querySelectorAll('[data-project-category]').forEach(el=>{el.onclick=()=>projectOpenInventory({category:el.dataset.projectCategory});el.onkeydown=projectInventoryTabKey;});
   $('project-content').querySelectorAll('[data-project-item]').forEach(el=>el.onclick=()=>projectInventoryDetail(el.dataset.projectItem,el));
   $('project-inventory-filters').onsubmit=e=>{e.preventDefault();projectApplyInventoryFilters();};
   $('project-inventory-apply').onclick=projectApplyInventoryFilters;$('project-inventory-clear').onclick=()=>projectOpenInventory({category:state.category});
-  if(page&&page.offset>0)$('project-inventory-prev').onclick=()=>projectInventoryPage(Math.max(0,page.offset-page.limit));
-  if(page&&page.offset+page.limit<page.total)$('project-inventory-next').onclick=()=>projectInventoryPage(page.offset+page.limit);
+  if(page&&page.offset>0)$('project-inventory-prev').onclick=()=>projectInventoryPage(Math.max(0,page.offset-page.limit),'project-inventory-next');
+  if(page&&page.offset+page.limit<page.total)$('project-inventory-next').onclick=()=>projectInventoryPage(page.offset+page.limit,'project-inventory-prev');
+  if(focusId)$(focusId)?.focus();
+}
+function projectInventoryTabKey(event) {
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  const tabs=Array.from($('project-content').querySelectorAll('[data-project-category]'));
+  const current=tabs.indexOf(event.currentTarget);if(current<0||!tabs.length)return;
+  event.preventDefault();
+  const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(current+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+  tabs[next].focus();projectOpenInventory({category:tabs[next].dataset.projectCategory});
 }
 async function projectOpenInventory(options={}) {
   const initial={category:'forms',query:'',filters:{},sort:'name',offset:0,limit:50,revision:projectInventoryRevision(),request:0,selectedId:null,returnFocus:null};
@@ -216,28 +226,40 @@ async function projectOpenInventory(options={}) {
   projectUI.view='inventory';projectRenderInventory();$('project-step-title').focus();
   return projectLoadInventory();
 }
-async function projectLoadInventory(resetOnConflict=true) {
+async function projectLoadInventory(resetOnConflict=true,focusId='') {
   const c=projectContext(),state=projectUI.inventoryState,request=++state.request;
   try {
     const page=await api(projectInventoryUrl(state));
     if(!projectCurrent(c)||projectUI.inventoryState!==state||request!==state.request)return;
     state.offset=Number(page.offset||0);state.limit=Number(page.limit||50);state.revision=page.analysis_revision;state.page=page;
-    projectRenderInventory(page);$('project-status').textContent='';
+    projectRenderInventory(page,focusId);$('project-status').textContent='';
     return page;
   }catch(e){
     if(!projectCurrent(c)||projectUI.inventoryState!==state||request!==state.request)return;
     const conflict=e.status===409||e.code==='PROJECT_CONFLICT'||/assessment changed|revision/i.test(e.message||'');
-    if(conflict&&resetOnConflict){state.offset=0;state.revision=null;state.page=null;projectRenderInventory();await projectLoadInventory(false);if(projectCurrent(c)&&projectUI.inventoryState===state)$('project-status').textContent='The assessment changed. Inventory was reloaded from the first page.';return;}
+    if(conflict&&resetOnConflict){
+      const refreshed=await projectLoadOverview(c,false);if(!refreshed||!projectCurrent(c)||projectUI.inventoryState!==state)return;
+      state.offset=0;state.revision=projectInventoryRevision();state.page=null;projectUI.view='inventory';projectRenderInventory();
+      await projectLoadInventory(false,focusId);if(projectCurrent(c)&&projectUI.inventoryState===state)$('project-status').textContent='The assessment changed. Overview and Inventory were reloaded from the first page.';return;
+    }
     projectError((e.message||'Inventory could not be loaded')+' Retry Inventory.');
   }
 }
 function projectApplyInventoryFilters() {
-  const state=projectUI.inventoryState;state.query=$('project-inventory-search').value.trim();state.filters={};
+  const state=projectUI.inventoryState,priority=state.filters.priority;state.query=$('project-inventory-search').value.trim();state.filters={};
+  if(priority)state.filters.priority=priority;
   if($('project-inventory-risk').value)state.filters.risk=$('project-inventory-risk').value;
   if($('project-inventory-recommendation').value)state.filters.recommendation=$('project-inventory-recommendation').value;
-  state.offset=0;state.page=null;projectRenderInventory();return projectLoadInventory();
+  state.offset=0;state.page=null;projectRenderInventory();return projectLoadInventory(true,'project-inventory-search');
 }
-function projectInventoryPage(offset) {const state=projectUI.inventoryState;state.offset=Math.max(0,Number(offset)||0);return projectLoadInventory();}
+function projectInventoryPage(offset,focusId='') {const state=projectUI.inventoryState;state.offset=Math.max(0,Number(offset)||0);return projectLoadInventory(true,focusId);}
+async function projectOpenPriorityReview() {
+  const findingId=projectUI.overview?.priority?.first_finding_id||null;
+  projectUI.reviewContext={project_id:projectUI.activeId,finding_id:findingId,filters:{priority:'unresolved'},analysis_revision:projectInventoryRevision()};
+  const page=await projectOpenInventory({category:'findings',priority:true});
+  if(findingId&&page?.rows?.some(row=>row.id===findingId))await projectInventoryDetail(findingId);
+  return page;
+}
 function projectDetailList(items,kind) {
   if(!items?.length)return '<p class="project-empty">No observed '+esc(kind)+'.</p>';
   return `<ul>${items.map(row=>`<li><b>${esc(row.name||row.source||row.id||'Observed item')}</b>${row.relationship?` ${esc(row.relationship)} ${esc(row.target)}`:''}${row.risk?` · ${esc(projectRiskLabels[row.risk]||row.risk)}`:''}${row.reason?`<span>${esc(row.reason)}</span>`:''}</li>`).join('')}</ul>`;
@@ -249,7 +271,8 @@ async function projectInventoryDetail(itemId,trigger=null) {
     if(!projectCurrent(c)||projectUI.inventoryState!==state||state.selectedId!==itemId)return;
     openModal('Inventory detail');foot(null);
     const item=detail.item||{};
-    $('modal-body').innerHTML=`<article class="project-inventory-detail"><h3>${esc(item.name||item.id||'Observed item')}</h3><dl><dt>Identity</dt><dd>${esc(item.id||'Not observed')}</dd><dt>Type</dt><dd>${esc(item.type||item.source_type||'Not observed')}</dd><dt>Source status</dt><dd>${esc(item.source_status||'Not observed')}</dd><dt>Risk</dt><dd>${esc(projectRiskLabels[item.risk||item.highest_risk]||item.risk||item.highest_risk||'Unknown')}</dd><dt>Recommendation</dt><dd>${esc(projectRecommendationLabels[item.recommendation]||item.recommendation||'Not observed')}</dd></dl><h4>Dependencies (${Number(detail.dependencies_total||0)})</h4>${projectDetailList(detail.dependencies,'dependencies')}<h4>Related findings (${Number(detail.related_findings_total||0)})</h4>${projectDetailList(detail.related_findings,'related findings')}${projectButton('project-detail-close','Back to Inventory')}</article>`;
+    const relationship=item.relationship?`<dt>Observed relationship</dt><dd>${esc(item.source||'Unknown source')} ${esc(projectInventoryLabel('relationship',item.relationship))} ${esc(item.target||'Unknown target')}</dd>`:'';
+    $('modal-body').innerHTML=`<article class="project-inventory-detail"><h3>${esc(item.name||item.id||'Observed item')}</h3><dl><dt>Identity</dt><dd>${esc(item.id||'Not observed')}</dd><dt>Type</dt><dd>${esc(item.type||item.source_type||'Not observed')}</dd><dt>Source status</dt><dd>${esc(item.source_status||'Not observed')}</dd><dt>Risk</dt><dd>${esc(projectRiskLabels[item.risk||item.highest_risk]||item.risk||item.highest_risk||'Unknown')}</dd><dt>Recommendation</dt><dd>${esc(projectRecommendationLabels[item.recommendation]||item.recommendation||'Not observed')}</dd>${relationship}</dl><h4>Dependencies (${Number(detail.dependencies_total||0)})</h4>${projectDetailList(detail.dependencies,'dependencies')}<h4>Related findings (${Number(detail.related_findings_total||0)})</h4>${projectDetailList(detail.related_findings,'related findings')}${projectButton('project-detail-close','Back to Inventory')}</article>`;
     $('project-detail-close').onclick=projectCloseInventoryDetail;
   }catch(e){if(projectCurrent(c)&&projectUI.inventoryState===state)projectError(e.message+' Retry the inventory detail.');}
 }
@@ -267,9 +290,10 @@ function projectCoverage(coverage={}) {
   const amount=(value)=>Number.isInteger(value)?value:'Not observed';
   return `<section class="project-panel"><h3>Source Coverage</h3><dl class="project-coverage"><div><dt>Forms representations</dt><dd>${amount(forms.analyzed)} / ${amount(forms.discovered)} analyzed${Number.isInteger(forms.parseable)?` · ${forms.parseable} parseable`:''}</dd></div><div><dt>Database sources</dt><dd>${amount(database.analyzed)} analyzed${Number.isInteger(database.sources)?` from ${database.sources} supplied sources`:''}</dd></div><div><dt>Libraries</dt><dd>${amount(libraries.discovered)} discovered · ${amount(libraries.without_semantic_representation)} without semantic representation</dd></div></dl></section>`;
 }
-function projectOverviewWarnings(items=[]) {
+function projectOverviewWarnings(items=[],summary={}) {
   if(!items.length)return '<p class="project-empty">No analysis limitations were recorded for this assessment.</p>';
-  return `<ul class="project-warnings">${items.map(item=>`<li><b>${esc(item.message||item.code||'Assessment warning')}</b>${item.remediation?`<span>${esc(item.remediation)}</span>`:''}</li>`).join('')}</ul>`;
+  const bounded=summary.truncated?`<p class="project-muted">Showing ${Number(summary.shown||items.length)} of ${Number(summary.total||items.length)} warnings. Open Inventory diagnostics for the complete list.</p>`:'';
+  return `<ul class="project-warnings">${items.map(item=>`<li><b>${esc(item.message||item.code||'Assessment warning')}</b>${item.remediation?`<span>${esc(item.remediation)}</span>`:''}</li>`).join('')}</ul>${bounded}`;
 }
 function renderProjectOverview(data) {
   if(!data)return;projectUI.view='overview';projectUI.overview=data;
@@ -277,13 +301,13 @@ function renderProjectOverview(data) {
   const p=data.project||{},assessment=data.assessment||{},target=p.target||{},freshness=assessment.freshness||data.freshness?.status||'UNVERIFIED';
   const state=projectStatusLabel(freshness),priority=data.priority||{},coverage=data.source_coverage||{},review=data.review_progress||{};
   const timestamp=assessment.assessment_timestamp||data.assessment_timestamp||'Not analyzed';
-  const critical=Number(data.risk_distribution?.CRITICAL||0);
+  const critical=Number(priority.critical||0);
   const stateMessage=state==='Stale'?'Source changed since this assessment. Saved metrics remain visible; refresh analysis before treating them as current.':state==='Missing Source'?'A source folder cannot be found. Relink it or continue viewing the saved assessment.':state==='Incomplete'?'This assessment is incomplete. Review source warnings and failed inputs.':state==='Unverified'?'Source freshness has not been verified.':'';
   $('workspace-title').textContent=p.name||projectUI.summary?.project?.name||'Modernization Project';
-  $('project-content').innerHTML=`${projectSectionNav('overview')}<header class="project-overview-header"><div><h2 id="project-step-title" tabindex="-1">${esc(p.name||'Modernization Project')}</h2><p>${esc(target.platform||'Oracle APEX')} ${esc(target.version||'')} / ${esc(target.representation||'')}</p></div><p class="project-assessment-state"><span>Assessment status</span><b data-status="${esc(String(freshness).toUpperCase())}">${esc(state)}</b></p></header>${stateMessage?`<aside class="project-state-warning" role="status"><p>${esc(stateMessage)}</p><div class="project-actions">${projectButton('project-refresh','Refresh Analysis',true)}${state==='Missing Source'?projectButton('project-relink-missing','Relink Source'):''}</div></aside>`:''}<div class="project-overview-grid">${projectInventorySummary(data.inventory)}${projectDistribution('Risk',data.risk_distribution,projectRiskLabels,'risk')}${projectDistribution('Recommended Direction',data.recommendation_distribution,projectRecommendationLabels,'recommendation')}${projectDistribution('Intervention',data.intervention_distribution,projectInterventionLabels,'intervention')}<section class="project-panel" id="project-priority"><h3>Priority Review</h3>${critical?`<p><b>${critical}</b> Critical · <b>${Number(priority.high||0)}</b> High · <b>${Number(priority.manual||0)}</b> Human Decisions</p>`:'<p class="project-empty">No CRITICAL risks detected in the current analyzed source.</p>'}<p>${Number(priority.total||0)} unresolved findings ordered by transparent evidence factors.</p>${projectButton('project-start-priority','Start Priority Review',true)}</section><section class="project-panel"><h3>Automation Potential</h3><dl class="project-distribution">${Object.entries(projectInterventionLabels).map(([key,label])=>`<div><dt>${esc(label)}</dt><dd>${Number(data.automation_potential?.[key]?.percent??data.automation_potential?.categories?.[key]?.percent??0)}%</dd></div>`).join('')}</dl><p class="project-muted">Based on modernization decision categories, not effort or project-duration estimation. AUTO does not mean generation-ready.</p></section>${projectCoverage(coverage)}<section class="project-panel"><h3>Assessment Warnings</h3>${projectOverviewWarnings(data.warnings)}</section><section class="project-panel project-panel-wide"><h3>Assessment Record</h3><p>Assessed ${esc(timestamp)} · Analysis revision ${esc(String(assessment.analysis_revision||data.analysis_revision||'Unavailable').slice(0,12))}</p><p>Reviewed ${Number(review.reviewed||0)} / ${Number(review.total||0)} findings. Generation and validation readiness are not assessed in Phase C.</p></section></div>`;
+  $('project-content').innerHTML=`${projectSectionNav('overview')}<header class="project-overview-header"><div><h2 id="project-step-title" tabindex="-1">${esc(p.name||'Modernization Project')}</h2><p>${esc(target.platform||'Oracle APEX')} ${esc(target.version||'')} / ${esc(target.representation||'')}</p></div><p class="project-assessment-state"><span>Assessment status</span><b data-status="${esc(String(freshness).toUpperCase())}">${esc(state)}</b></p></header>${stateMessage?`<aside class="project-state-warning" role="status"><p>${esc(stateMessage)}</p><div class="project-actions">${projectButton('project-refresh','Refresh Analysis',true)}${state==='Missing Source'?projectButton('project-relink-missing','Relink Source'):''}</div></aside>`:''}<div class="project-overview-grid">${projectInventorySummary(data.inventory)}${projectDistribution('Risk',data.risk_distribution,projectRiskLabels,'risk')}${projectDistribution('Recommended Direction',data.recommendation_distribution,projectRecommendationLabels,'recommendation')}${projectDistribution('Intervention',data.intervention_distribution,projectInterventionLabels,'intervention')}<section class="project-panel" id="project-priority"><h3>Priority Review</h3>${critical?`<p><b>${critical}</b> Critical · <b>${Number(priority.high||0)}</b> High · <b>${Number(priority.manual||0)}</b> Human Decisions</p>`:'<p class="project-empty">No unresolved CRITICAL findings in the current assessment.</p>'}<p>${Number(priority.total||0)} unresolved findings ordered by transparent evidence factors.</p>${projectButton('project-start-priority','Start Priority Review',true)}</section><section class="project-panel"><h3>Automation Potential</h3><dl class="project-distribution">${Object.entries(projectInterventionLabels).map(([key,label])=>`<div><dt>${esc(label)}</dt><dd>${Number(data.automation_potential?.[key]?.percent??data.automation_potential?.categories?.[key]?.percent??0)}%</dd></div>`).join('')}</dl><p class="project-muted">Based on modernization decision categories, not effort or project-duration estimation. AUTO does not mean generation-ready.</p></section>${projectCoverage(coverage)}<section class="project-panel"><h3>Assessment Warnings</h3>${projectOverviewWarnings(data.warnings,data.warning_summary)}</section><section class="project-panel project-panel-wide"><h3>Assessment Record</h3><p>Assessed ${esc(timestamp)} · Analysis revision ${esc(String(assessment.analysis_revision||data.analysis_revision||'Unavailable').slice(0,12))}</p><p>Reviewed ${Number(review.reviewed||0)} / ${Number(review.total||0)} findings. Generation and validation readiness are not assessed in Phase C.</p></section></div>`;
   projectBindSectionNav();
   $('project-content').querySelectorAll('[data-project-filter]').forEach(el=>el.onclick=()=>projectOpenInventory({category:'findings',filters:{[el.dataset.projectFilter]:el.dataset.projectValue}}));
-  $('project-start-priority').onclick=()=>projectOpenInventory({category:'findings',priority:true});
+  $('project-start-priority').onclick=projectOpenPriorityReview;
   if(stateMessage)$('project-refresh').onclick=startProjectAnalysis;
   if(state==='Missing Source')$('project-relink-missing').onclick=()=>renderProjectSummary(projectUI.summary);
   $('project-step-title').focus();
@@ -321,8 +345,8 @@ async function startProjectAnalysis() {
   if(projectUI.busy)return;
   const draft=projectUI.draft;
   if(projectUI.view==='wizard' && (!draft?.name.trim()||!draft.sources.length||draft.step!==4)){projectError('Complete project details and source selection before analysis.');return;}
-  const c=projectContext();projectUI.busy=true;$('project-error').textContent='';
-  if(projectUI.view==='wizard')$('project-next').disabled=true;else $('project-analyze').disabled=true;
+  const origin=projectUI.view,c=projectContext();projectUI.busy=true;$('project-error').textContent='';
+  const startButton=origin==='wizard'?$('project-next'):$('project-analyze')||$('project-refresh');if(startButton)startButton.disabled=true;
   try {
     let summary=projectUI.summary;
     if(projectUI.view==='wizard'){
@@ -335,7 +359,7 @@ async function startProjectAnalysis() {
     if(!projectCurrent(c))return;
     projectUI.jobId=job.job_id;projectUI.operation='ANALYZE';projectUI.busy=false;
     renderProjectProgress(summary);await pollProjectJob();
-  }catch(e){if(projectCurrent(c)){projectUI.busy=false;projectError(e.message+' Reload Project before retrying if its revision changed.');if(projectUI.activeId){projectUI.view='summary';renderProjectSummary(projectUI.summary);}else $('project-next').disabled=false;}}
+  }catch(e){if(projectCurrent(c)){projectUI.busy=false;projectError(e.message+' Reload Project before retrying if its revision changed.');if(projectUI.activeId){if(origin==='overview'&&projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='summary';renderProjectSummary(projectUI.summary);}}else if($('project-next'))$('project-next').disabled=false;}}
 }
 function renderProjectProgress(summary){
   projectUI.view='progress';

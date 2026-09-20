@@ -12,7 +12,9 @@ pytestmark = pytest.mark.skipif(NODE is None, reason='Node needed for JavaScript
 DOM = r'''
 const assert = require('node:assert/strict');
 const elements = new Map();
+const missingElements = new Set();
 function $(id) {
+  if (missingElements.has(id)) return null;
   if (!elements.has(id)) elements.set(id, {
     value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,dataset:{},style:{},
     attrs:{},classList:{toggle(){},add(){},remove(){},contains(){return false;}},
@@ -274,7 +276,28 @@ def test_overview_zero_critical_has_explanatory_empty_state(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;
 renderProjectOverview({...overviewData,risk_distribution:{...overviewData.risk_distribution,CRITICAL:0},priority:{...overviewData.priority,critical:0}});
-assert.match($('project-content').innerHTML,/No CRITICAL risks detected in the current analyzed source/);
+assert.match($('project-content').innerHTML,/No unresolved CRITICAL findings/);
+''')
+
+
+def test_overview_priority_uses_unresolved_counts_not_raw_risk_total(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;
+renderProjectOverview({...overviewData,risk_distribution:{...overviewData.risk_distribution,CRITICAL:2},priority:{...overviewData.priority,critical:1}});
+const priority=$('project-content').innerHTML.split('id="project-priority"')[1];
+assert.match(priority,/<b>1<\/b> Critical/);assert.ok(!priority.includes('<b>2</b> Critical'));
+''')
+
+
+def test_stale_overview_refresh_does_not_require_summary_button(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;
+renderProjectOverview({...overviewData,assessment:{...overviewData.assessment,freshness:'STALE'}});
+missingElements.add('project-analyze');
+let calls=[];api=async(path,body)=>{calls.push([path,body]);if(path.endsWith('/analyze'))return {job_id:'job-refresh'};if(path.includes('/jobs/'))return {job_id:'job-refresh',status:'RUNNING',phase:'DISCOVERY',processed:0,total:null};return {...summary,last_job:{job_id:'job-refresh',operation:'ANALYZE',status:'RUNNING'}};};
+await $('project-refresh').onclick();
+assert.equal(projectUI.jobId,'job-refresh');assert.match(calls[0][0],/\/analyze$/);
+assert.equal(projectUI.view,'progress');
 ''')
 
 
@@ -356,11 +379,42 @@ projectCloseInventoryDetail();assert.equal(trigger.focused,true);assert.equal(pr
 ''')
 
 
+def test_dependency_detail_names_source_relationship_and_target(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;
+projectUI.inventoryState={category:'dependencies',revision:'r',selectedId:null,returnFocus:null};
+api=async()=>({category:'dependencies',item:{id:'edge:1',source:'ORDERS',relationship:'CALLS',target:'ORDER_API'},dependencies:[],dependencies_total:0,related_findings:[],related_findings_total:0,analysis_revision:'r'});
+await projectInventoryDetail('edge:1');const html=$('modal-body').innerHTML;
+assert.match(html,/ORDERS/);assert.match(html,/CALLS/);assert.match(html,/ORDER_API/);
+''')
+
+
 def test_priority_inventory_carries_transparent_filter_and_revision(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;let path;
 api=async(value)=>{path=value;return inventoryPage;};await projectOpenInventory({category:'findings',priority:true});
 assert.match(path,/priority=unresolved/);assert.match(path,/revision=r/);assert.equal(projectUI.inventoryState.category,'findings');
+''')
+
+
+def test_priority_review_deep_link_carries_project_finding_filter_and_revision(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
+api=async(path)=>{calls.push(path);return path.includes('/inventory/findings/')?inventoryDetail:inventoryPage;};
+await projectOpenPriorityReview();
+assert.deepEqual(projectUI.reviewContext,{project_id:'a',finding_id:'finding:critical',filters:{priority:'unresolved'},analysis_revision:'r'});
+assert.match(calls[0],/priority=unresolved/);assert.match(calls[0],/revision=r/);
+assert.match(calls[1],/inventory\/findings\/finding%3Acritical\?revision=r/);
+assert.match($('modal-body').innerHTML,/Approval control/);
+''')
+
+
+def test_priority_filter_survives_search_and_filter_changes(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;let path;
+api=async(value)=>{path=value;return inventoryPage;};await projectOpenInventory({category:'findings',priority:true});
+$('project-inventory-search').value='approval';await projectApplyInventoryFilters();
+assert.match(path,/priority=unresolved/);assert.match(path,/query=approval/);
 ''')
 
 
@@ -383,9 +437,21 @@ assert.match($('project-content').innerHTML,/NEW RESULT/);assert.ok(!$('project-
 def test_inventory_revision_conflict_resets_and_reloads_first_page(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
-api=async(path)=>{calls.push(path);if(path.includes('offset=50')){const e=new Error('Assessment changed; reload inventory from the first page');e.status=409;e.code='PROJECT_CONFLICT';throw e;}return inventoryPage;};
+api=async(path)=>{calls.push(path);if(path.includes('offset=50')){const e=new Error('Assessment changed; reload inventory from the first page');e.status=409;e.code='PROJECT_CONFLICT';throw e;}if(path.endsWith('/overview'))return {overview:overviewData};return inventoryPage;};
 await projectOpenInventory({category:'findings'});await projectInventoryPage(50);
 assert.equal(projectUI.inventoryState.offset,0);assert.equal(projectUI.inventoryState.revision,'r');
 assert.equal(calls.filter(path=>path.includes('offset=0')).length,2);
 assert.match($('project-status').textContent,/assessment changed/i);assert.ok(!$('project-content').innerHTML.includes('mixed'));
+''')
+
+
+def test_inventory_revision_conflict_refreshes_overview_before_reloading_page(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
+const newer={...overviewData,assessment:{...overviewData.assessment,analysis_revision:'n'},inventory:{...overviewData.inventory,forms_modules:9}};
+api=async(path)=>{calls.push(path);if(path.includes('offset=50')){const e=new Error('Assessment changed');e.status=409;throw e;}if(path.endsWith('/overview'))return {overview:newer};return {...inventoryPage,analysis_revision:'n'};};
+await projectOpenInventory({category:'findings'});await projectInventoryPage(50);
+assert.equal(projectUI.overview.assessment.analysis_revision,'n');assert.equal(projectUI.inventoryState.revision,'n');
+renderProjectOverview(projectUI.overview);assert.match($('project-content').innerHTML,/Forms Modules<\/dt><dd>9/);
+assert.ok(calls.some(path=>path.endsWith('/overview')));
 ''')

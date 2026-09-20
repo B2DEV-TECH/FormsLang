@@ -98,6 +98,7 @@ the public service output is bounded JSON-compatible data.
   "priority": {},
   "source_coverage": {},
   "warnings": [],
+  "warning_summary": {"total": 0, "shown": 0, "truncated": false},
   "review_progress": {},
   "analysis_metadata": {}
 }
@@ -237,8 +238,10 @@ Phase D status redesign occurs.
 
 The summary includes unresolved Critical, High, Manual and stale counts plus the
 first eligible finding ID. `Start Priority Review` deep-links to the existing
-Blueprint/review capability with project ID, finding ID, filters and analysis
-revision. The filtered queue count and Overview count must reconcile.
+project Findings/evidence read path with project ID, finding ID, filters and analysis
+revision. The filtered queue count and Overview count must reconcile. This bridge is
+read-only: the legacy session Blueprint cannot safely consume a persisted project
+assessment, and adding project decision writes belongs to Phase D.
 
 ## Source coverage, warnings and state
 
@@ -256,8 +259,8 @@ Warnings combine bounded, deduplicated safe diagnostics and derived project-stat
 warnings. Material examples are failed sources, unsupported representations,
 incomplete completion state, stale/missing source and unresolved database
 references when actually present. Each warning has code, severity, safe message,
-count and a safe Inventory/Diagnostics target. Source bodies and absolute paths are
-excluded.
+count and a safe Inventory/Diagnostics target. Overview returns no more than 50 rows
+and a total/shown/truncated summary. Source bodies and absolute paths are excluded.
 
 Display current project truth prominently:
 
@@ -352,8 +355,9 @@ Project navigation is compact:
 Overview | Inventory | Review | Blueprint | Generate | Reports | Project Settings
 ```
 
-Overview and Inventory are implemented in Phase C. Review and Blueprint deep-link
-to existing capabilities. Generate and Reports are explicitly marked not yet
+Overview and Inventory are implemented in Phase C. Review deep-links to the
+revision-bound project Findings/evidence read path; the separate legacy Blueprint
+remains available but is not treated as a project decision store. Generate and Reports are explicitly marked not yet
 available at project level, without mock results. Project Settings retains current
 source/refresh/relink actions.
 

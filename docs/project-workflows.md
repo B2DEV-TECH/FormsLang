@@ -29,7 +29,9 @@ projections. Counts are not reconstructed in JavaScript. `UNKNOWN` remains visib
 
 Risk and recommendation metrics open the server-filtered Findings inventory. **Start
 Priority Review** opens unresolved findings in the documented deterministic priority
-order; Phase D will extend the decision workspace, not replace this read path.
+order and focuses the first eligible finding with project/filter/revision context.
+This Phase C bridge is read-only; Phase D adds the project decision workspace rather
+than writing project decisions into the unrelated legacy session Blueprint.
 Inventory categories are Forms, Libraries, Packages, Routines, Views, Tables,
 Dependencies, Business Rules and Findings. Search/filter changes replace page state.
 Every later page carries the assessment revision; a 409 resets to page one rather

@@ -26,6 +26,7 @@ CATEGORIES = (
     "dependencies", "business_rules", "findings",
 )
 SORTS = {"name", "risk", "recommendation", "intervention", "module", "type"}
+MAX_OVERVIEW_WARNINGS = 50
 
 
 @dataclass(frozen=True)
@@ -164,12 +165,32 @@ def _safe_entity(node, findings_by_entity, edges):
     }
 
 
-def _finding_rows(findings, entities, centrality):
+def _statement_codes(item):
+    codes = set()
+    statements = item.get("statements") if isinstance(item.get("statements"), list) else []
+    for statement in statements:
+        text = statement.get("text") if isinstance(statement, dict) else None
+        if not isinstance(text, str) or not text.startswith("[") or "]" not in text:
+            continue
+        code = text[1:text.index("]")]
+        if code and all(character.isupper() or character.isdigit() or character == "_"
+                        for character in code):
+            codes.add(code)
+    return codes
+
+
+def _finding_rows(findings, entities, centrality, evidence_by_entity):
     rows = []
     for item in sorted(findings.values(), key=lambda value: value["id"]):
         entity = entities.get(item.get("entity"), {})
         attributes = entity.get("attributes") if isinstance(entity.get("attributes"), dict) else {}
         risk = attributes.get("risk") if isinstance(attributes.get("risk"), dict) else {}
+        signal_codes = _statement_codes(item)
+        evidence_factors = set(evidence_by_entity.get(item.get("entity"), ()))
+        if "DIRECT_DML_BYPASSES_API" in signal_codes:
+            evidence_factors.add("API_BYPASS")
+        if any(code.startswith("LOGIC_DUPLICATED_") for code in signal_codes):
+            evidence_factors.add("DUPLICATED_LOGIC")
         rows.append({
             "id": item["id"],
             "entity_id": _text(item.get("entity"), 500),
@@ -185,6 +206,7 @@ def _finding_rows(findings, entities, centrality):
                 _text(value, 100) for value in item.get("classification", [])
                 if isinstance(value, str)
             )),
+            "evidence_factors": tuple(sorted(evidence_factors)),
             "dependency_centrality": centrality.get(item.get("entity"), 0),
         })
     return tuple(rows)
@@ -207,13 +229,7 @@ def _priority_factors(row):
         factors.append("MANUAL_INTERVENTION")
     if row["review_state"] == "STALE":
         factors.append("STALE_DECISION")
-    classifications = set(row.get("classification", ()))
-    if "API_BYPASS" in classifications:
-        factors.append("API_BYPASS")
-    if any("DUPLICAT" in value for value in classifications):
-        factors.append("DUPLICATED_LOGIC")
-    if any("CROSS_MODULE" in value for value in classifications):
-        factors.append("CROSS_MODULE_IMPACT")
+    factors.extend(row.get("evidence_factors", ()))
     if row.get("dependency_centrality", 0):
         factors.append("DEPENDENCY_CENTRALITY")
     return tuple(factors)
@@ -233,11 +249,7 @@ def _priority_key(row):
         group = 4
     else:
         group = 5
-    classifications = row.get("classification", ())
-    evidenced = any(
-        value == "API_BYPASS" or "DUPLICAT" in value or "CROSS_MODULE" in value
-        for value in classifications
-    )
+    evidenced = bool(row.get("evidence_factors"))
     return (
         group,
         RISK_RANK[row["risk"]],
@@ -288,6 +300,8 @@ def _package_rows(entities, findings_by_entity, edges):
         related = [finding for entity_id in row["entity_ids"]
                    for finding in findings_by_entity.get(entity_id, ())]
         row["findings"] = len(related)
+        risks = [finding["risk"] for finding in related]
+        row["highest_risk"] = min(risks, key=RISK_RANK.__getitem__) if risks else "UNKNOWN"
         row["dependencies"] = sum(
             edge.get("source") in row["entity_ids"] or edge.get("target") in row["entity_ids"]
             for edge in edges
@@ -305,9 +319,9 @@ def _manifest_rows(assessment):
             continue
         path = _logical_name(entry.get("relative_path"))
         suffix = PurePosixPath(path).suffix.casefold()
-        if suffix in FORM_SUFFIXES:
+        if suffix in FORM_SUFFIXES and entry.get("selected") is True:
             form_representations += 1
-        if entry.get("representation") == "database":
+        if entry.get("representation") == "database" and entry.get("selected") is True:
             database_sources += 1
         if suffix in LIBRARY_SUFFIXES:
             libraries.append({
@@ -352,7 +366,13 @@ def _warnings(assessment, freshness):
             "remediation": "Refresh source status or continue viewing the saved assessment.",
             "source_id": "", "target": "overview",
         })
-    return warnings
+    total = len(warnings)
+    bounded = warnings[:MAX_OVERVIEW_WARNINGS]
+    return bounded, {
+        "total": total,
+        "shown": len(bounded),
+        "truncated": total > len(bounded),
+    }
 
 
 def _bucket_freshness(value):
@@ -372,10 +392,20 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         key=lambda edge: edge["id"],
     ))
     centrality = Counter()
+    evidence_by_entity = defaultdict(set)
     for edge in edges:
-        centrality[edge.get("source")] += 1
-        centrality[edge.get("target")] += 1
-    finding_rows = _finding_rows(findings, entities, centrality)
+        source = edge.get("source")
+        target = edge.get("target")
+        centrality[source] += 1
+        centrality[target] += 1
+        if edge.get("type") == "DUPLICATES_LOGIC":
+            evidence_by_entity[source].add("DUPLICATED_LOGIC")
+        source_module = _logical_name(entities.get(source, {}).get("module"))
+        target_module = _logical_name(entities.get(target, {}).get("module"))
+        if source_module and target_module and source_module != target_module:
+            evidence_by_entity[source].add("CROSS_MODULE_IMPACT")
+            evidence_by_entity[target].add("CROSS_MODULE_IMPACT")
+    finding_rows = _finding_rows(findings, entities, centrality, evidence_by_entity)
     finding_rows = tuple({**row, "priority_factors": _priority_factors(row)}
                          for row in finding_rows)
     findings_by_entity = defaultdict(list)
@@ -457,6 +487,7 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
                 if total else 0.0}
         for value in INTERVENTIONS
     }
+    warning_rows, warning_summary = _warnings(assessment, freshness)
     overview_data = {
         "project": {
             "id": _text(descriptor.get("id"), 64),
@@ -510,7 +541,8 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
                 ),
             },
         },
-        "warnings": _warnings(assessment, freshness),
+        "warnings": warning_rows,
+        "warning_summary": warning_summary,
         "review_progress": {
             "total": total,
             "reviewed": sum(row["review_state"] in {"APPROVE", "MODIFY"}
