@@ -1,8 +1,15 @@
+import copy
 import json
 
 import pytest
 
-from formslang.project_projection import overview, prepare_projection
+from formslang.project_model import ProjectError, RevisionConflict
+from formslang.project_projection import (
+    inventory_detail,
+    inventory_page,
+    overview,
+    prepare_projection,
+)
 
 DESCRIPTOR = {
     "id": "a" * 32,
@@ -180,3 +187,90 @@ def test_overview_excludes_source_bodies_absolute_paths_and_credentials(assessme
     assert "TOP_SECRET" not in payload
     assert "2026-09-20T12:00:00Z" in payload
     assert "\"review_revision\": 7" in payload
+
+
+def test_inventory_paginates_stably_and_rejects_revision_mixing(assessment_fixture):
+    assessment = copy.deepcopy(assessment_fixture)
+    template_entity = assessment["blueprint"]["entities"][2]
+    template_finding = assessment["blueprint"]["findings"][0]
+    assessment["blueprint"]["entities"] = []
+    assessment["blueprint"]["findings"] = []
+    for index in range(205):
+        node = copy.deepcopy(template_entity)
+        node.update(id=f"trigger:{index:03d}", name=f"TRIGGER {index:03d}")
+        finding = copy.deepcopy(template_finding)
+        finding.update(id=f"finding:{index:03d}", entity=node["id"])
+        assessment["blueprint"]["entities"].append(node)
+        assessment["blueprint"]["findings"].append(finding)
+    prepared = prepare_projection(DESCRIPTOR, assessment, CURRENT, store_scope="store-a")
+
+    first = inventory_page(prepared, "findings")
+    second = inventory_page(prepared, "findings", offset=50,
+                            expected_revision="1" * 64)
+
+    assert len(first["rows"]) == len(second["rows"]) == 50
+    assert first["total"] == second["total"] == 205
+    assert {row["id"] for row in first["rows"]}.isdisjoint(
+        row["id"] for row in second["rows"]
+    )
+    with pytest.raises(RevisionConflict):
+        inventory_page(prepared, "findings", offset=50,
+                       expected_revision="0" * 64)
+    with pytest.raises(ProjectError):
+        inventory_page(prepared, "findings", limit=201)
+    with pytest.raises(ProjectError):
+        inventory_page(prepared, "findings", offset=True)
+
+
+def test_inventory_search_filters_and_sort_are_composable(assessment_fixture):
+    prepared = prepare_projection(DESCRIPTOR, assessment_fixture, CURRENT,
+                                  store_scope="store-a")
+
+    result = inventory_page(
+        prepared, "findings", query="approval",
+        filters={"risk": "CRITICAL", "recommendation": "MANUAL_REVIEW",
+                 "module": "forms-a", "intervention": "MANUAL"},
+        sort="risk",
+    )
+
+    assert result["total"] == 1
+    assert result["rows"][0]["id"] == "finding:critical"
+    assert result["analysis_revision"] == "1" * 64
+    assert result["source_revision"] == "2" * 64
+    assert result["review_revision"] == 7
+    with pytest.raises(ProjectError):
+        inventory_page(prepared, "findings", filters={"risk": "IMPOSSIBLE"})
+    with pytest.raises(ProjectError):
+        inventory_page(prepared, "unknown-category")
+
+
+def test_priority_queue_exposes_factors_and_reconciles_with_overview(assessment_fixture):
+    prepared = prepare_projection(DESCRIPTOR, assessment_fixture, CURRENT,
+                                  store_scope="store-a")
+
+    queue = inventory_page(prepared, "findings", filters={"priority": "unresolved"})
+    summary = overview(prepared)["priority"]
+
+    assert summary["total"] == queue["total"] == 3
+    assert summary["first_finding_id"] == queue["rows"][0]["id"] == "finding:critical"
+    assert queue["rows"][0]["priority_factors"][0] == "UNRESOLVED_CRITICAL"
+    assert "MANUAL_INTERVENTION" in queue["rows"][0]["priority_factors"]
+    assert "API_BYPASS" in queue["rows"][0]["priority_factors"]
+
+
+def test_inventory_detail_is_bounded_and_excludes_source_body(assessment_fixture):
+    prepared = prepare_projection(DESCRIPTOR, assessment_fixture, CURRENT,
+                                  store_scope="store-a")
+
+    result = inventory_detail(prepared, "forms", "form:one",
+                              expected_revision="1" * 64)
+    payload = json.dumps(result)
+
+    assert result["item"]["id"] == "form:one"
+    assert result["dependencies_total"] == 0
+    assert result["related_findings_total"] == 0
+    assert "source_text" not in payload
+    with pytest.raises(LookupError):
+        inventory_detail(prepared, "forms", "form:missing")
+    with pytest.raises(RevisionConflict):
+        inventory_detail(prepared, "forms", "form:one", expected_revision="0" * 64)

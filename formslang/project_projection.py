@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
+
+from .project_model import ProjectError, RevisionConflict
 
 RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 RECOMMENDATIONS = (
@@ -15,6 +18,13 @@ INTERVENTIONS = ("AUTO", "ASSISTED", "MANUAL", "UNKNOWN")
 LIBRARY_SUFFIXES = {".pll", ".mmb", ".olb"}
 FORM_SUFFIXES = {".xml", ".fmb", ".pll", ".mmb", ".olb"}
 ROUTINE_TYPES = {"PACKAGE_SUBPROGRAM", "SUBPROGRAM_BODY", "PROGRAM_UNIT"}
+RESOLVED_REVIEWS = {"APPROVE", "MODIFY"}
+RISK_RANK = {value: index for index, value in enumerate(RISK_LEVELS)}
+CATEGORIES = (
+    "forms", "libraries", "packages", "routines", "views", "tables",
+    "dependencies", "business_rules", "findings",
+)
+SORTS = {"name", "risk", "recommendation", "intervention", "module", "type"}
 
 
 @dataclass(frozen=True)
@@ -129,6 +139,61 @@ def _finding_rows(findings, entities, centrality):
 
 def _bucket_review(value):
     return value.strip().upper() if isinstance(value, str) and value.strip() else "PENDING"
+
+
+def _priority_factors(row):
+    unresolved = row["review_state"] not in RESOLVED_REVIEWS
+    factors = []
+    if unresolved and row["risk"] == "CRITICAL":
+        factors.append("UNRESOLVED_CRITICAL")
+    elif unresolved and row["risk"] == "HIGH":
+        factors.append("UNRESOLVED_HIGH")
+    elif unresolved:
+        factors.append("UNRESOLVED_FINDING")
+    if row["intervention"] == "MANUAL":
+        factors.append("MANUAL_INTERVENTION")
+    if row["review_state"] == "STALE":
+        factors.append("STALE_DECISION")
+    classifications = set(row.get("classification", ()))
+    if "API_BYPASS" in classifications:
+        factors.append("API_BYPASS")
+    if any("DUPLICAT" in value for value in classifications):
+        factors.append("DUPLICATED_LOGIC")
+    if any("CROSS_MODULE" in value for value in classifications):
+        factors.append("CROSS_MODULE_IMPACT")
+    if row.get("dependency_centrality", 0):
+        factors.append("DEPENDENCY_CENTRALITY")
+    return tuple(factors)
+
+
+def _priority_key(row):
+    unresolved = row["review_state"] not in RESOLVED_REVIEWS
+    if unresolved and row["risk"] == "CRITICAL":
+        group = 0
+    elif unresolved and row["risk"] == "HIGH":
+        group = 1
+    elif unresolved:
+        group = 2
+    elif row["intervention"] == "MANUAL":
+        group = 3
+    elif row["review_state"] == "STALE":
+        group = 4
+    else:
+        group = 5
+    classifications = row.get("classification", ())
+    evidenced = any(
+        value == "API_BYPASS" or "DUPLICAT" in value or "CROSS_MODULE" in value
+        for value in classifications
+    )
+    return (
+        group,
+        RISK_RANK[row["risk"]],
+        row["intervention"] != "MANUAL",
+        row["review_state"] != "STALE",
+        not evidenced,
+        -row.get("dependency_centrality", 0),
+        row["id"],
+    )
 
 
 def _package_rows(entities, findings_by_entity, edges):
@@ -258,6 +323,8 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         centrality[edge.get("source")] += 1
         centrality[edge.get("target")] += 1
     finding_rows = _finding_rows(findings, entities, centrality)
+    finding_rows = tuple({**row, "priority_factors": _priority_factors(row)}
+                         for row in finding_rows)
     findings_by_entity = defaultdict(list)
     for row in finding_rows:
         findings_by_entity[row["entity_id"]].append(row)
@@ -378,13 +445,7 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         },
         **distributions,
         "automation_potential": automation,
-        "priority": {
-            "critical": distributions["risk_distribution"]["CRITICAL"],
-            "high": distributions["risk_distribution"]["HIGH"],
-            "manual": distributions["intervention_distribution"]["MANUAL"],
-            "total": sum(row["review_state"] not in {"APPROVE", "MODIFY"}
-                         for row in finding_rows),
-        },
+        "priority": _priority_summary(finding_rows),
         "source_coverage": {
             "forms": {
                 "discovered": inventory_forms.get("discovered"),
@@ -432,3 +493,142 @@ def overview(prepared: PreparedProjection) -> dict:
         else:
             result[key] = value
     return result
+
+
+def _priority_summary(finding_rows):
+    unresolved = [row for row in finding_rows if row["review_state"] not in RESOLVED_REVIEWS]
+    ordered = sorted(unresolved, key=_priority_key)
+    return {
+        "critical": sum(row["risk"] == "CRITICAL" for row in unresolved),
+        "high": sum(row["risk"] == "HIGH" for row in unresolved),
+        "manual": sum(row["intervention"] == "MANUAL" for row in unresolved),
+        "stale": sum(row["review_state"] == "STALE" for row in unresolved),
+        "total": len(unresolved),
+        "first_finding_id": ordered[0]["id"] if ordered else None,
+    }
+
+
+def _validate_page(category, offset, limit, expected_revision, prepared):
+    if category not in CATEGORIES:
+        raise ProjectError("Unknown inventory category")
+    if type(offset) is not int or type(limit) is not int or offset < 0 or not 1 <= limit <= 200:
+        raise ProjectError("Use a nonnegative offset and limit between 1 and 200")
+    if expected_revision is not None and expected_revision != prepared.key.analysis_revision:
+        raise RevisionConflict("Assessment changed; reload inventory from the first page")
+
+
+def _filtered(rows, *, query, filters):
+    if not isinstance(query, str) or len(query) > 500:
+        raise ProjectError("Inventory search must be bounded text")
+    if filters is None:
+        filters = {}
+    if not isinstance(filters, dict) or set(filters) - {
+        "risk", "recommendation", "intervention", "module", "source_type", "review",
+        "priority",
+    }:
+        raise ProjectError("Unknown inventory filter")
+    if any(not isinstance(value, str) or len(value) > 500 for value in filters.values()):
+        raise ProjectError("Inventory filters must be bounded text")
+    if "risk" in filters and filters["risk"] not in RISK_LEVELS:
+        raise ProjectError("Unknown risk filter")
+    if "recommendation" in filters and filters["recommendation"] not in RECOMMENDATIONS:
+        raise ProjectError("Unknown recommendation filter")
+    if "intervention" in filters and filters["intervention"] not in INTERVENTIONS:
+        raise ProjectError("Unknown intervention filter")
+    if "priority" in filters and filters["priority"] != "unresolved":
+        raise ProjectError("Unknown priority filter")
+    needle = query.casefold().strip()
+    result = []
+    for row in rows:
+        searchable = " ".join(_text(row.get(field), 2000) for field in (
+            "name", "module", "reason", "source", "target", "relationship",
+        )).casefold()
+        if needle and needle not in searchable:
+            continue
+        if filters.get("risk") and row.get("risk", row.get("highest_risk")) != filters["risk"]:
+            continue
+        if filters.get("recommendation") and row.get("recommendation") != filters["recommendation"]:
+            continue
+        if filters.get("intervention") and row.get("intervention") != filters["intervention"]:
+            continue
+        if filters.get("module") and filters["module"].casefold() not in _text(row.get("module")).casefold():
+            continue
+        if filters.get("source_type") and row.get("source_type", row.get("type")) != filters["source_type"]:
+            continue
+        if filters.get("review") and row.get("review_state") != filters["review"]:
+            continue
+        if filters.get("priority") == "unresolved" and row.get("review_state") in RESOLVED_REVIEWS:
+            continue
+        result.append(row)
+    return result, dict(filters)
+
+
+def _sort_rows(rows, sort, *, priority=False):
+    if sort not in SORTS:
+        raise ProjectError("Unknown inventory sort")
+    if priority:
+        return sorted(rows, key=_priority_key)
+    if sort == "risk":
+        return sorted(rows, key=lambda row: (
+            RISK_RANK.get(row.get("risk", row.get("highest_risk", "UNKNOWN")), 4), row["id"],
+        ))
+    field = {"type": "source_type"}.get(sort, sort)
+    return sorted(rows, key=lambda row: (
+        _text(row.get(field, row.get("type"))).casefold(), row["id"],
+    ))
+
+
+def _page_meta(prepared):
+    return {
+        "analysis_revision": prepared.key.analysis_revision,
+        "source_revision": prepared.assessment_meta["source_revision"],
+        "review_revision": prepared.key.review_revision,
+        "assessment_timestamp": prepared.assessment_meta["assessment_timestamp"],
+        "freshness": prepared.key.freshness,
+    }
+
+
+def inventory_page(prepared: PreparedProjection, category: str, *, query: str = "",
+                   filters: dict | None = None, sort: str = "name", offset: int = 0,
+                   limit: int = 50, expected_revision: str | None = None) -> dict:
+    """Return one stable, filtered inventory page for a single assessment revision."""
+    _validate_page(category, offset, limit, expected_revision, prepared)
+    values, applied = _filtered(prepared.rows[category], query=query, filters=filters)
+    values = _sort_rows(values, sort, priority=applied.get("priority") == "unresolved")
+    return {
+        "category": category,
+        "query": query,
+        "filters": applied,
+        "sort": "priority" if applied.get("priority") == "unresolved" else sort,
+        "offset": offset,
+        "limit": limit,
+        "total": len(values),
+        "rows": copy.deepcopy(values[offset:offset + limit]),
+        **_page_meta(prepared),
+    }
+
+
+def inventory_detail(prepared: PreparedProjection, category: str, item_id: str, *,
+                     expected_revision: str | None = None) -> dict:
+    """Return bounded technical context without source bodies or filesystem authority."""
+    _validate_page(category, 0, 50, expected_revision, prepared)
+    if not isinstance(item_id, str) or len(item_id) > 500:
+        raise LookupError(item_id)
+    item = next((row for row in prepared.rows[category] if row["id"] == item_id), None)
+    if item is None:
+        raise LookupError(item_id)
+    entity_ids = set(item.get("entity_ids", ())) | {item.get("id"), item.get("entity_id")}
+    entity_ids.discard(None)
+    dependencies = [row for row in prepared.rows["dependencies"]
+                    if row.get("source_id") in entity_ids or row.get("target_id") in entity_ids]
+    related = [row for row in prepared.rows["findings"]
+               if row.get("entity_id") in entity_ids or row.get("id") == item_id]
+    return {
+        "category": category,
+        "item": copy.deepcopy(item),
+        "dependencies": copy.deepcopy(dependencies[:100]),
+        "dependencies_total": len(dependencies),
+        "related_findings": copy.deepcopy(related[:100]),
+        "related_findings_total": len(related),
+        **_page_meta(prepared),
+    }
