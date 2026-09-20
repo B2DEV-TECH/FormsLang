@@ -10,7 +10,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from formslang import authstore, config
+from formslang import authstore, config, rbac
 from formslang.ai import EchoProvider
 from formslang.project_service import ProjectService
 from formslang.store import Store
@@ -84,6 +84,18 @@ def create_project(client, source):
     created = client.post('/api/v2/projects', {'name': 'Orders', 'sources': [selected]})
     assert created.status == 201, created.json
     return created.json['project']['id'], selected
+
+
+def analyze_demo(client):
+    created = client.post('/api/v2/projects/demo', {})
+    assert created.status == 201, created.json
+    project_id = created.json['project']['id']
+    job = client.post(f'/api/v2/projects/{project_id}/analyze', {
+        'expected_revision': None, 'expected_configuration': 0,
+    })
+    assert job.status == 202, job.json
+    assert client.wait_job(project_id, job.json['job_id'])['status'] == 'COMPLETED'
+    return project_id
 
 
 def test_onboarding_exposes_backend_target_profile(project_server):
@@ -334,3 +346,82 @@ def test_http_foreign_project_hidden_and_viewer_mutation_denied(authenticated_se
     assert foreign.get('/api/v2/projects').json['projects'] == []
     assert foreign.get(f'/api/v2/projects/{pid}').status == 404
     assert foreign.post(f'/api/v2/projects/{pid}/analyze', {'expected_revision': None, 'expected_configuration': 0}).status == 404
+
+
+def test_overview_is_empty_before_analysis_and_real_afterward(project_server):
+    client, _ = project_server
+    created = client.post('/api/v2/projects/demo', {})
+    pid = created.json['project']['id']
+
+    empty = client.get(f'/api/v2/projects/{pid}/overview')
+    assert empty.status == 200 and empty.json == {'overview': None}
+
+    job = client.post(f'/api/v2/projects/{pid}/analyze', {
+        'expected_revision': None, 'expected_configuration': 0,
+    })
+    assert client.wait_job(pid, job.json['job_id'])['status'] == 'COMPLETED'
+    response = client.get(f'/api/v2/projects/{pid}/overview')
+
+    assert response.status == 200
+    result = response.json['overview']
+    assert result['inventory']['forms_modules'] == 2
+    assert result['inventory']['modernization_findings'] == sum(
+        result['risk_distribution'].values()
+    )
+    assert result['assessment']['analysis_revision']
+    assert 'source_text' not in json.dumps(response.json)
+    assert str(config.data_dir()) not in json.dumps(response.json)
+
+
+def test_inventory_http_filters_pages_details_and_rejects_revision_mix(project_server):
+    client, _ = project_server
+    pid = analyze_demo(client)
+    overview = client.get(f'/api/v2/projects/{pid}/overview').json['overview']
+    revision = overview['assessment']['analysis_revision']
+
+    page = client.get(
+        f'/api/v2/projects/{pid}/inventory?category=findings&risk=CRITICAL&limit=50'
+        f'&revision={revision}'
+    )
+    assert page.status == 200, page.json
+    assert page.json['category'] == 'findings'
+    assert page.json['total'] >= 1
+    assert all(row['risk'] == 'CRITICAL' for row in page.json['rows'])
+    item_id = page.json['rows'][0]['id']
+    detail = client.get(
+        f'/api/v2/projects/{pid}/inventory/findings/{item_id}?revision={revision}'
+    )
+    assert detail.status == 200 and detail.json['item']['id'] == item_id
+    assert 'source_text' not in json.dumps(detail.json)
+    assert client.get(
+        f'/api/v2/projects/{pid}/inventory?category=findings&limit=201'
+    ).status == 400
+    conflict = client.get(
+        f'/api/v2/projects/{pid}/inventory?category=findings&offset=1'
+        f'&revision={"0" * 64}'
+    )
+    assert conflict.status == 409 and conflict.json['code'] == 'PROJECT_CONFLICT'
+
+
+def test_overview_keeps_saved_metrics_and_reports_stale_source(project_server):
+    client, workbench = project_server
+    pid = analyze_demo(client)
+    before = client.get(f'/api/v2/projects/{pid}/overview').json['overview']
+    intake = workbench.project_api._intake(None)
+    access = intake.access(pid, rbac.VIEW_PROJECT)
+    service = ProjectService(access)
+    try:
+        descriptor = service.open()
+        forms_root = next(root for root in descriptor.source_roots if root.kind == 'forms')
+        source = next((access.root / forms_root.path).glob('*.xml'))
+    finally:
+        service.close()
+    source.write_bytes(source.read_bytes() + b'\n<!-- stale -->\n')
+    job = client.post(f'/api/v2/projects/{pid}/freshness', {})
+    assert client.wait_job(pid, job.json['job_id'])['status'] == 'COMPLETED_WITH_WARNINGS'
+
+    after = client.get(f'/api/v2/projects/{pid}/overview').json['overview']
+
+    assert after['assessment']['freshness'] == 'STALE'
+    assert after['inventory'] == before['inventory']
+    assert after['warnings'][0]['code'] == 'ASSESSMENT_STALE'

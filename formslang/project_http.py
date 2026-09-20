@@ -14,6 +14,7 @@ from dataclasses import asdict
 from . import authstore, config, rbac
 from .project_intake import ProjectIdentity, ProjectIntake
 from .project_model import ProjectBusy, ProjectError, RevisionConflict, TargetProfile
+from .project_projection import ProjectionCache
 from .project_service import ProjectService
 
 logger = logging.getLogger(__name__)
@@ -41,12 +42,40 @@ def _preconditions(body):
     return {'expected_revision': revision, 'expected_configuration': configuration}
 
 
+def _inventory_query(query):
+    if not isinstance(query, dict) or any(not isinstance(value, str) for value in query.values()):
+        raise ProjectError('Inventory query values must be text')
+    allowed = {'category', 'query', 'sort', 'revision', 'offset', 'limit', 'risk',
+               'recommendation', 'intervention', 'module', 'source_type', 'review',
+               'priority'}
+    if set(query) - allowed:
+        raise ProjectError('Unknown inventory query parameter')
+    offset, limit = _page(query)
+    revision = query.get('revision') or None
+    if revision is not None and not re.fullmatch('[a-f0-9]{64}', revision):
+        raise ProjectError('Invalid assessment revision')
+    filters = {key: query[key] for key in (
+        'risk', 'recommendation', 'intervention', 'module', 'source_type', 'review',
+        'priority',
+    ) if key in query}
+    return {
+        'category': query.get('category', 'forms'),
+        'query': query.get('query', ''),
+        'filters': filters,
+        'sort': query.get('sort', 'name'),
+        'offset': offset,
+        'limit': limit,
+        'expected_revision': revision,
+    }
+
+
 class ProjectHTTP:
     def __init__(self, workbench):
         self.workbench = workbench
         self._lock = threading.Lock()
         self._workers = {}
         self._closed = False
+        self._projection_cache = ProjectionCache()
 
     def _intake(self, auth):
         identity = ProjectIdentity(auth[0], auth[1]['user_id'], auth[1]['active_org_id']) if auth else None
@@ -56,7 +85,8 @@ class ProjectHTTP:
     @contextmanager
     def _service(self, intake, pid, action=rbac.VIEW_PROJECT):
         authorize = lambda: intake.access(pid, action)
-        service = ProjectService(authorize(), authorize=authorize)
+        service = ProjectService(authorize(), authorize=authorize,
+                                 projection_cache=self._projection_cache)
         try:
             service.open()
             yield service
@@ -215,6 +245,23 @@ class ProjectHTTP:
                 return 200, self._freshness(service)
             if tail == ['assessment'] and method == 'GET':
                 return 200, {'assessment': service.assessment(freshness=self._freshness(service))}
+            if tail == ['overview'] and method == 'GET':
+                freshness = self._freshness(service)
+                return 200, {'overview': service.overview(freshness=freshness)}
+            if tail == ['inventory'] and method == 'GET':
+                freshness = self._freshness(service)
+                return 200, service.inventory(**_inventory_query(query), freshness=freshness)
+            if len(tail) == 3 and tail[0] == 'inventory' and method == 'GET':
+                values = _inventory_query(query)
+                if 'category' in query and query['category'] != tail[1]:
+                    raise ProjectError('Inventory category conflicts with the route')
+                if values['offset'] or values['limit'] != 50 or values['query'] or values['filters'] or values['sort'] != 'name':
+                    raise ProjectError('Inventory detail accepts only an assessment revision')
+                freshness = self._freshness(service)
+                return 200, service.inventory_detail(
+                    tail[1], tail[2], expected_revision=values['expected_revision'],
+                    freshness=freshness,
+                )
             if tail == ['discover'] and method == 'POST':
                 return 200, service.discover(**_preconditions(body))
             if tail == ['discovery'] and method == 'GET':
