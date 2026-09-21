@@ -104,4 +104,4 @@ assert after['blueprint']['findings'][0]['recommendation'] == before['blueprint'
 
 - Initial focused baseline: 42 passed / 1 symlink skip (Python 3.12, Windows); full base previously verified 1,497 passed / 5 skipped.
 - Initial frozen artifact check: 24 files, zero Git object hash mismatches against base.
-- No implementation gate has passed yet.
+- Phase D checkpoint: `8aa534b574bbc868e6b2a119de1051ede1cea9d8`; full Python 1,531 passed / 5 skipped, focused 70, JS/DOM 71, project browser 41/41, legacy 101/101; Ruff/diff clean and 24 frozen hashes unchanged. Independent final review: no Critical/Important findings. See quality-acceptance.md for exact evidence and limits. D1/D2 complete; E-H remain.

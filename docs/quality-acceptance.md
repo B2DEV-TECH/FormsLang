@@ -998,3 +998,97 @@ reduced-motion evidence, not a manual screen-reader audit; source coverage repor
 observed counts, not estate completeness; static analysis cannot infer undocumented
 business intent or runtime parity. Phase D review redesign, Phase E project-level
 APEXlang generation and Phase F reports/packages remain explicitly deferred.
+
+## FormsLang 2.0 Phase D — modernization review (2026-09-20)
+
+Implementation: `8aa534b574bbc868e6b2a119de1051ede1cea9d8`, branch
+`codex/formslang-2-phase-d`, base `262361e263ec3b3c4b74b607f3e2f8a7c7a1fa09`.
+This closes the review phase, not FormsLang 2.0 or its release gates. Version remains
+1.6.0. No release, tag, deployment, main integration or installer acceptance occurred.
+
+### Verification
+
+Windows 11 Pro 10.0.26200 x64, Intel Core i7-9700KF 3.60 GHz, Python 3.12.
+
+- `python -B -m pytest -q -p no:cacheprovider`: **1,531 passed / 5 skipped**, 518.90s.
+  The existing five Windows symlink-permission skips remain; junction coverage runs.
+- Focused `tests/test_project_review.py tests/test_project_review_scale.py
+  tests/test_project_review_ui.py tests/test_project_http.py tests/test_cli_project.py`
+  with the same pytest flags: **70 passed**, 287.89s.
+- Node/DOM `test_blueprint_ui_behavior.py test_project_ui_behavior.py
+  test_review_ui_behavior.py test_project_review_ui.py`: **71 passed**, 4.97s.
+- `python -B -m ruff check .`: clean. `git diff --check`: clean.
+- `python -B examples/verify/project_browser_check.py --output
+  out/phase-d-browser-accessibility`: **41/41**, including 29 prior project checks
+  and 12 Phase D checks. Evidence `run-2a4a92a2c79e/result.json`, six screenshots.
+  Real API/SQLite/demo; critical confirmation keyboard focus, return context,
+  approval/override, inert annotation, stale-client conflict, bulk and reopen.
+- `python -B examples/verify/workbench_browser_check.py --output
+  out/phase-d-legacy-browser`: **101/101**, 27 screenshots, evidence
+  `run-be050250c6bb/result.json`.
+
+The first full run found the structural DOM test did not include new dynamic
+templates: 1 failed / 1,520 passed / 5 skipped. Its declaration inspection now
+includes actual Review templates/factory IDs, not an exempted ID prefix. Real
+browser testing also found stale client Overview counts after review; mutation
+invalidates that cache and navigation fetches the current shared projection.
+
+### Independent review and concurrency
+
+Separate-context high-reasoning reviews found and drove RED→GREEN repairs for:
+unsupported recommendation approval; excessive bulk exclusions; unsafe co-occurring
+LOCK_RECORD despite LOW/AUTO; missing annotation provenance/context; annotation
+snapshot races; unsafe string/comment redaction; incoming cross-module bulk impact;
+and queue state lost on return navigation. Structural excerpts now use existing
+lexical tokens, never regex comment stripping as a privacy mechanism. UI conflicts
+preserve the typed draft and require a new submission, not an automatic replay.
+
+The final independent code-review verdict is **MERGE**, with no Critical/Important
+findings, conditional on execution gates. Those gates passed above. The reviewer
+independently probed redaction, cross-module policy, navigation and history paging;
+it did not independently rerun the complete Python/browser suites.
+
+Regression evidence covers simultaneous reviewers (one winner), stale clients,
+analysis-worker exclusion, changed source during a review (rollback), exact bulk
+preview revisions, injected second-append failure (whole transaction rollback),
+foreign project bindings, viewer/revoked authorization, reopen and retained history.
+No product retry or sleep was added to conceal a race.
+
+### Synthetic review scale
+
+Fixture: **500 synthetic Forms nodes, 5,000 findings, 5,000 dependencies, 5,001
+review events** before the measured bulk commit. This is persisted read-model scale,
+not a 500-source-file engine/freshness benchmark; the authorized source manifest is
+the compact demo. A 50-item commit finishes with 5,051 events. Single samples from
+the focused run, alongside other acceptance processes:
+
+| Operation | Time |
+|---|---:|
+| Queue first page | 1,534.524 ms |
+| Detail | 1,529.275 ms |
+| Queue with 5,001 reviews | 2,158.670 ms |
+| Priority filter | 2,365.178 ms |
+| History/detail | 2,084.166 ms |
+| Single mutation | 1,089.871 ms |
+| Bulk preview, 50 items | 1,376.392 ms |
+| Bulk commit, 50 items | 1,320.637 ms |
+
+An initial entity-by-edge scan measured roughly 4.5–5.4 seconds per read. Replacing
+it with one dependency counter reduced the measured cost without changing counts,
+classification or persistence. No projection tables were introduced. These are local
+synthetic observations, not customer performance or measured analyst savings.
+
+### Boundaries and limitations
+
+All **24 frozen baseline/ground-truth Git blob hashes** match the phase base.
+Engine classification and version declarations are untouched. Critical overrides
+require rationale/explicit confirmation; AUTO is insufficient for bulk acceptance.
+Accepted/Changed resolve review only, not code approval or generation authorization.
+
+Known limitations: conservative bulk policy; UI defaults to priority (other sorting
+is available through API/CLI); excerpts start at the first 80 lines and exact source
+values require authorized local inspection; critical confirmation uses a generic
+control-risk explanation. Non-current assessments reject mutations until refresh.
+Automated keyboard/semantics/responsive checks are not a manual screen-reader audit
+or human productivity study. Phase E generation and Phase F deliverables are next,
+not implied by Phase D acceptance. No live Oracle/APEX validation was performed here.
