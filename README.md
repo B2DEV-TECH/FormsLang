@@ -12,37 +12,43 @@
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-2E7D32" alt="PRs welcome"></a>
 </p>
 
-## Oracle Forms → Oracle APEX Modernization Workbench
+## Oracle Forms Modernization Intelligence Platform
 
-Understand legacy Oracle Forms applications, assess modernization risk, review
-architectural decisions, and generate reviewable Oracle APEX 26.1 / APEXlang
-artifacts where safe. Open source, Apache-2.0 licensed — see [LICENSE](LICENSE).
+> **Before you migrate Oracle Forms, understand what you're actually migrating.**
+
+FormsLang maps Oracle Forms and database source together to reveal dependencies, duplicated business-rule candidates, API ownership, architecture risk, modernization hotspots, and reviewable modernization decisions before implementation begins.
+
+**Understand first. Modernize second.**
 
 **Automate what is safe. Assist what is complex. Escalate what requires human judgment.**
 
 ![Real project Overview using synthetic source](assets/screenshots/project-overview-2.png)
 
-Actual FormsLang 2.0 Workbench capture using synthetic source, not a mockup
+Actual FormsLang Workbench capture using synthetic source, not a mockup
 or customer application.
 
-**FormsLang 2.0.0 is the current stable release.** The corporate project workflow
-below is the supported path, and the installers are on the
-[releases page](https://github.com/B2DEV-TECH/FormsLang/releases/latest). Exact accepted
-versions, test results and limitations are in [quality acceptance](docs/quality-acceptance.md).
+**FormsLang evolves beyond Forms-to-APEX into a target-neutral Modernization Intelligence Platform.**
+Whether your eventual destination is Oracle APEX, Java / Spring, .NET, React with modern APIs, or database-centric refactoring, FormsLang provides deep discovery and architectural review before a single line of code is rewritten.
+
+### The Five Questions of Modernization Intelligence
+
+| Dimension | Question | FormsLang Intelligence Capability |
+|---|---|---|
+| **UNDERSTAND** | *What do I have?* | Estate Inventory, cross-layer dependency mapping, and interactive 4-tier SVG System Map |
+| **ASSESS** | *What matters?* | The 4 Architectural Hotspots (API bypass, duplicated rules, global state, ownership conflict) and logarithmic *Start Here* priority ranking |
+| **DECIDE** | *What should happen?* | 6-Layer Modernization Model (Facts → Signals → Intent → Target Recommendation → Human Decision → Generation Eligibility), 4-tier finding review, and Architecture Policy Engine |
+| **PLAN** | *How do we modernize it?* | Sequenced 3-Wave Migration Strategy (Foundations → Core Domain Services → Coupled Redesign) and Architecture Decision Records (ADRs) |
+| **DELIVER** | *What can safely move forward?* | Pluggable Target Adapters (Oracle APEX 26.1 with offline SQLcl syntax verification, Generic Modernization neutral backlogs & deliverables, or fail-closed UNSELECTED safety) |
 
 ### Try the project workflow
 
-1. Install FormsLang 2.0.0 from the [latest release](https://github.com/B2DEV-TECH/FormsLang/releases/latest) (Windows MSI or setup `.exe`) and launch it. For development or source use, run this checkout with `pip install -e .` then `formslang workbench`.
+1. Install FormsLang from the [latest release](https://github.com/B2DEV-TECH/FormsLang/releases/latest) (Windows MSI or setup `.exe`) and launch it. For development or source use, run this checkout with `pip install -e .` then `formslang workbench`.
 2. Choose **Explore Demo Project**, or **New Project** for your own estate.
-3. Select Forms2XML and related database source folders.
+3. Select Forms2XML and related database source folders, choosing your Target Strategy (**Oracle APEX 26.1**, **Generic Modernization**, or **UNSELECTED** for discovery-only).
 4. **Analyze** without AI, database credentials or mandatory account setup in local mode.
-5. Read **Overview** and **Inventory**, then **Start Priority Review**.
-6. Review architecture, prerequisites and executable code separately; **Generate** eligible scope.
-7. Explicitly **Validate** with supported SQLcl tooling and **Export** reports/a modernization package.
-
-| Understand | Modernize | Generate |
-|---|---|---|
-| Inventory Forms/database source and correlate dependencies | Prioritize evidence-backed risks and capture auditable human decisions | Produce eligible, reviewed APEXlang and self-contained delivery artifacts |
+5. Explore **Overview Cockpit**, the interactive **System Map**, and **Estate Inventory**; use `Ctrl+K` / `⌘K` Omnibox for instant global search.
+6. Open **Modernization Review** to sign off on architectural findings (Facts, Inference, Intent, and Decisions); configure **Architecture Policies** to enforce organizational standards.
+7. Generate target-specific deliverables (APEXlang 26.1 application packages or Generic Backlogs, Wave Schedules & ADRs), validate offline with SQLcl, and export executive modernization dossiers and pitch decks.
 
 The machine handles repetitive discovery and triage; Oracle specialists retain
 architecture, business intent, security and UAT responsibilities. No hours/cost
