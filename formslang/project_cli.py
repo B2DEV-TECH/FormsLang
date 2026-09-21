@@ -12,6 +12,7 @@ from pathlib import Path
 from . import authstore, config, rbac
 from .project_intake import ProjectIntake
 from .project_model import ProjectError, TargetProfile
+from .project_projection import CATEGORIES, INTERVENTIONS, RECOMMENDATIONS, RISK_LEVELS, SORTS
 from .project_service import ProjectService
 
 
@@ -56,7 +57,7 @@ def _operation(args):
             raise ProjectError('Unknown source root; use project info to list root IDs')
         selection = intake.select_source(args.path, root['kind'])
         return intake.relink(pid, args.root, selection, expected_configuration=summary['configuration_revision']), 0
-    action = rbac.VIEW_PROJECT if operation == 'status' else rbac.RUN_CONVERSION
+    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory'} else rbac.RUN_CONVERSION
     authorize = lambda: intake.access(pid, action)
     service = ProjectService(authorize(), authorize=authorize)
     try:
@@ -68,6 +69,22 @@ def _operation(args):
             row = service._store.session.db.execute('SELECT job_id FROM project_job ORDER BY rowid DESC LIMIT 1').fetchone()
             return {**summary, 'freshness': freshness, 'assessment': service.assessment(freshness=freshness),
                     'last_job': service.job(row[0]) if row else None}, 0
+        if operation == 'summary':
+            result = service.overview(freshness=service.freshness())
+            if result is None:
+                raise ProjectError('Analyze the project before requesting its summary')
+            return result, 0
+        if operation == 'inventory':
+            filters = {key: value for key, value in {
+                'risk': args.risk, 'recommendation': args.recommendation,
+                'intervention': args.intervention, 'module': args.module,
+                'source_type': args.source_type, 'review': args.review,
+            }.items() if value}
+            return service.inventory(
+                args.category, query=args.query, filters=filters, sort=args.sort,
+                offset=args.offset, limit=args.limit, expected_revision=args.revision,
+                freshness=service.freshness(),
+            ), 0
         if operation == 'discover':
             return service.discover(**preconditions), 0
         with _cancellation() as cancellation:
@@ -103,7 +120,8 @@ def run_project(args):
 def add_project_parser(subparsers):
     parser = subparsers.add_parser('project', help='local modernization projects: create, analyze and reopen')
     commands = parser.add_subparsers(dest='project_command', required=True)
-    for name in ('create', 'demo', 'discover', 'analyze', 'status', 'info', 'open', 'relink'):
+    for name in ('create', 'demo', 'discover', 'analyze', 'status', 'summary',
+                 'inventory', 'info', 'open', 'relink'):
         command = commands.add_parser(name)
         command.add_argument('project', help='project directory or .formslang/project.json descriptor')
         command.add_argument('--json', action='store_true', help='machine-readable stdout; progress goes to stderr')
@@ -118,3 +136,16 @@ def add_project_parser(subparsers):
         elif name == 'relink':
             command.add_argument('--root', required=True, help='stable source root ID from project info')
             command.add_argument('--path', required=True, help='explicitly authorize the replacement source folder')
+        elif name == 'inventory':
+            command.add_argument('--category', choices=CATEGORIES, default='forms')
+            command.add_argument('--query', default='')
+            command.add_argument('--risk', choices=RISK_LEVELS)
+            command.add_argument('--recommendation', choices=RECOMMENDATIONS)
+            command.add_argument('--intervention', choices=INTERVENTIONS)
+            command.add_argument('--module')
+            command.add_argument('--source-type')
+            command.add_argument('--review')
+            command.add_argument('--sort', choices=SORTS, default='name')
+            command.add_argument('--offset', type=int, default=0)
+            command.add_argument('--limit', type=int, choices=range(1, 201), default=50)
+            command.add_argument('--revision')

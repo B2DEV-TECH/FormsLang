@@ -128,3 +128,35 @@ def test_demo_cli_creates_normal_offline_project(tmp_path, capsys):
     assert created['project']['name'] == 'Synthetic dispatch desk'
     analyzed, _ = run_json(capsys, ['analyze', destination])
     assert analyzed['status'] == 'COMPLETED'
+
+
+def test_summary_and_inventory_read_saved_projection(tmp_path, capsys):
+    destination = tmp_path / 'demo-project'
+    run_json(capsys, ['demo', destination])
+    analyzed, _ = run_json(capsys, ['analyze', destination])
+
+    summary, progress = run_json(capsys, ['summary', destination])
+    inventory, inventory_progress = run_json(capsys, [
+        'inventory', destination, '--category', 'findings', '--risk', 'CRITICAL',
+        '--limit', '50', '--revision', analyzed['analysis_revision'],
+    ])
+
+    assert progress == inventory_progress == ''
+    assert summary['assessment']['analysis_revision'] == analyzed['analysis_revision']
+    assert summary['inventory']['modernization_findings'] > 0
+    assert inventory['analysis_revision'] == analyzed['analysis_revision']
+    assert inventory['total'] >= 1
+    assert all(row['risk'] == 'CRITICAL' for row in inventory['rows'])
+
+
+def test_inventory_cli_rejects_invalid_category_and_limit(tmp_path, capsys):
+    destination = tmp_path / 'demo-project'
+    run_json(capsys, ['demo', destination])
+    run_json(capsys, ['analyze', destination])
+
+    with pytest.raises(SystemExit) as category:
+        main(['project', 'inventory', str(destination), '--category', 'unknown', '--json'])
+    with pytest.raises(SystemExit) as limit:
+        main(['project', 'inventory', str(destination), '--limit', '201', '--json'])
+
+    assert category.value.code == limit.value.code == 2

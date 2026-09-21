@@ -1,8 +1,8 @@
-# Modernization project workflows — Phase B development
+# Modernization project workflows — Phase C development
 
-Unreleased 2.0 development, still versioned 1.6.0 until release acceptance. Phase B
-adds onboarding and persistent assessment, not the Phase C dashboard or later
-project-level generation/review UI.
+Unreleased 2.0 development, still versioned 1.6.0 until release acceptance. Phase C
+adds Overview and Inventory on the persisted Phase B assessment. It does not add the
+Phase D decision workflow, Phase E project generation or Phase F reports.
 
 ## First assessment
 
@@ -17,7 +17,30 @@ remain accessible through **Open Existing Session**.
 3. Confirm Oracle APEX / 26.1 / APEXlang. No credentials, local account, AI provider,
    API key or YAML configuration is required for static analysis.
 4. Select **Analyze Project**. Observe phases/counts, warnings and elapsed time, or
-   cancel. The completion summary uses real persisted counts.
+   cancel. Completion opens the real persisted Overview.
+
+## Overview and Inventory
+
+Opening an analyzed project loads its saved assessment immediately and checks source
+freshness without rerunning analysis. Overview answers scope, risk, recommendation,
+intervention, priority and source-coverage questions using deterministic server-side
+projections. Counts are not reconstructed in JavaScript. `UNKNOWN` remains visible;
+`AUTO` means a mechanical intervention category, not generation readiness.
+
+Risk and recommendation metrics open the server-filtered Findings inventory. **Start
+Priority Review** opens unresolved findings in the documented deterministic priority
+order and focuses the first eligible finding with project/filter/revision context.
+This Phase C bridge is read-only; Phase D adds the project decision workspace rather
+than writing project decisions into the unrelated legacy session Blueprint.
+Inventory categories are Forms, Libraries, Packages, Routines, Views, Tables,
+Dependencies, Business Rules and Findings. Search/filter changes replace page state.
+Every later page carries the assessment revision; a 409 resets to page one rather
+than mixing revisions. Detail is bounded and restores focus to its originating row.
+
+Stale, Incomplete, Missing Source and Unverified remain prominent while saved metrics
+stay viewable. A missing root links to Phase B relink. No DB source produces an honest
+cross-layer-evidence limitation instead of fabricated completeness. See
+[Overview semantics](project-overview.md).
 
 Malformed files produce source-relative diagnostics and remediation. Failed
 material inputs make coverage Incomplete; successful files still contribute. If
@@ -82,6 +105,8 @@ formslang project discover ./assessment --json
 formslang project analyze ./assessment --json
 formslang project status ./assessment --json
 formslang project info ./assessment
+formslang project summary ./assessment --json
+formslang project inventory ./assessment --category findings --risk HIGH --json
 formslang project relink ./assessment --root ROOT_ID --path ./moved-forms
 formslang project demo ./demo-assessment
 formslang project analyze ./demo-assessment
@@ -122,6 +147,9 @@ unchanged.
 | `/projects/:id/jobs/:job` | GET scoped progress/status/diagnostics |
 | `/projects/:id/jobs/:job/cancel` | POST cancellation |
 | `/projects/:id/assessment` | GET saved assessment |
+| `/projects/:id/overview` | GET bounded persisted-assessment summary |
+| `/projects/:id/inventory` | GET revision-safe filtered/paginated rows |
+| `/projects/:id/inventory/:category/:item` | GET bounded authorized detail |
 | `/projects/:id/freshness` | POST check job / GET latest check |
 | `/projects/:id/relink`, `/projects/:id/convert` | POST explicit source operations |
 
@@ -138,8 +166,9 @@ evidence may contain sensitive source: protect storage with OS permissions; no n
 project-specific encryption layer is claimed. Credentials stay in the existing
 secret-store mechanism, never project metadata.
 
-The demo creates a normal project from compact bundled synthetic files and runs
-the unchanged engine, not a frontend simulation or the Modernization Lab benchmark.
-Full Overview/inventory visualization, priority-review UI, project generation gates,
-reports and delivery packages are later phases. Phase B does not claim 2.0 release
+The demo creates a normal project from compact bundled synthetic files, runs the
+unchanged engine and opens the same Overview/Inventory used by other projects. It is
+not a frontend simulation or the Modernization Lab benchmark. Phase D review changes,
+Phase E generation gates and Phase F reports/delivery packages remain later phases.
+Phase C does not claim 2.0 release
 acceptance, runtime parity, automatic deployment or completed migration.

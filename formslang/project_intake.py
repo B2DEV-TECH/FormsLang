@@ -160,7 +160,7 @@ class ProjectIntake:
     def _metadata(self, *, write=False):
         directory = _plain_path(self.metadata_root / '.formslang')
         directory.mkdir(parents=True, exist_ok=True)
-        with project_worker_lock(self.metadata_root) if write else nullcontext():
+        with project_worker_lock(self.metadata_root, blocking=True):
             path = _plain_path(directory / 'locators.json')
             try:
                 if path.exists():

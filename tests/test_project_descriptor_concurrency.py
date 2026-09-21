@@ -12,6 +12,20 @@ from formslang.project_model import ProjectDescriptor, SourceRoot
 from formslang.project_store import ProjectStore
 
 
+def test_open_does_not_republish_an_already_current_descriptor(tmp_path, monkeypatch):
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+
+    def unexpected_publication(_store):
+        raise AssertionError('a current descriptor must not request a second writer transaction')
+
+    monkeypatch.setattr(ProjectStore, 'sync_descriptor', unexpected_publication)
+    reopened = ProjectStore.open(tmp_path)
+    try:
+        assert reopened.descriptor().id == 'd' * 32
+    finally:
+        reopened.close()
+
+
 def test_open_does_not_read_descriptor_during_replacement(tmp_path, monkeypatch):
     ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
     publishing, release, attempting, overlapping = (threading.Event() for _ in range(4))
