@@ -1,9 +1,10 @@
 # FormsLang — Authentication & Multi-Tenant Isolation (Design Proposal)
 
-**Status: architecture conceptually approved (2026-08-31), revised per
-review, awaiting re-approval before implementation.** Nothing in this
-document is implemented. It is the contract to review before Phase 1
-(§11) starts. No code, no commit, no push.
+**Historical design proposal (2026-08-31).** Statements below about what was
+unimplemented describe that date, not the current product. Current access boundaries
+are documented in [architecture-2](architecture-2.md), [project model](project-model.md)
+and the [security/privacy guide](user-guide/12-security-and-privacy.md). Preserve this
+document as design history, not an operational status page.
 
 This proposal is independent of, and does not replace, the in-flight
 Security & Compliance work (`formslang/sensitive.py`, the sensitive-data

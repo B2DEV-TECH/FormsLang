@@ -1,6 +1,6 @@
-# Assessment reports and delivery — Phase F development
+# Assessment reports and delivery
 
-Unreleased development, still version 1.6.0. **Reports** exports a persisted
+The FormsLang 2.0 candidate **Reports** workspace exports a persisted
 assessment without reanalysis, AI calls, database connections or code generation.
 It shares ProjectService, ProjectAssessment, review history and artifact records
 with the other interfaces. There are no report/projection persistence tables.

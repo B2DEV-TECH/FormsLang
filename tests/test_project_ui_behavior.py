@@ -397,6 +397,14 @@ projectEnter('home');await Promise.resolve();assert.equal(settled,true);
 ''')
 
 
+def test_product_copy_does_not_present_implemented_sections_as_future(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;renderProjectOverview(overviewData);
+assert.match($('project-content').innerHTML,/Inspect Generate for scope-specific readiness and validation/);
+renderProjectSummary(summary);assert.ok(!$('project-content').innerHTML.includes('follows in Phase C'));
+''')
+
+
 def test_inventory_sends_category_search_filters_and_revision_on_pages(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];

@@ -1,6 +1,6 @@
-# Modernization project workflows — Phase F development
+# Modernization project workflows
 
-Unreleased 2.0 development, still versioned 1.6.0 until release acceptance. Overview
+FormsLang 2.0 candidate; see quality-acceptance.md for release acceptance. Overview
 and Inventory read the persisted assessment. Phase D adds project-scoped human
 review. Phase E adds gated, selected-module APEXlang generation. Phase F adds
 snapshot-bound reports and modernization delivery packages.

@@ -1,8 +1,8 @@
-# Modernization Review (2.0 development)
+# Modernization Review
 
 Open **Start Priority Review** from Overview or **Review** in project navigation.
 Static review needs neither AI nor a database connection. This documents the
-unreleased Phase D implementation, still versioned 1.6.0 pending release gates.
+2.0 candidate implementation; release gates are recorded in quality-acceptance.md.
 
 ## States and evidence
 

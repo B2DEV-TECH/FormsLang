@@ -1,7 +1,7 @@
 # Modernization project model (2.0 foundation)
 
-Status: unreleased Phases A/B. The project wizard, local CLI and versioned HTTP
-API share this model; project generation and full Overview remain later phases.
+Status: 2.0 candidate. The project wizard, local CLI and versioned HTTP
+API share this model, including persisted assessment, review and gated generation.
 Existing 1.x interfaces retain their contracts. See the approved
 [product architecture](formsLang-2-product-architecture.md).
 

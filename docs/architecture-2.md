@@ -1,7 +1,7 @@
 # FormsLang 2.0 implementation architecture
 
-This page describes the unreleased Phase A-E foundation, assessment, review and gated generation,
-not the complete 2.0 product. For product scope and phases F-H see
+This page describes the 2.0 candidate foundation, assessment, review, gated generation
+and snapshot delivery. Release acceptance remains separately recorded. For product scope see
 [product architecture](formsLang-2-product-architecture.md). For storage and a
 runnable example see [project model](project-model.md).
 
