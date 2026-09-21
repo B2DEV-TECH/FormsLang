@@ -231,6 +231,12 @@ def test_csv_formula_prefixes(prefix):
     assert next(iter(csv.DictReader(io.StringIO(output))))['Value'] == "'" + value
 
 
+def test_csv_uses_portable_record_terminators_and_quotes_embedded_cr():
+    from formslang.project_report_render import csv_bytes
+    output = csv_bytes([{'Value': '\r=1+1'}], ['Value']).decode('utf-8-sig')
+    assert output == 'Value\r\n"\'\r=1+1"\r\n'
+
+
 def test_report_metadata_does_not_disclose_host_paths(generation_project):
     service = generation_project
     rename_fixture(service, r'Client C:\private\customer-passwords')

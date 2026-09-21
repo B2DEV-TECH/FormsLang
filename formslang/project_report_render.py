@@ -92,7 +92,9 @@ def page(title, snapshot, sections):
 
 def csv_bytes(rows, columns):
     stream = io.StringIO(newline='')
-    writer = csv.writer(stream, lineterminator='\n')
+    # csv.writer only quotes characters present in the lineterminator: with LF
+    # alone Python 3.10 emits an embedded CR raw and the file stops being CSV.
+    writer = csv.writer(stream, lineterminator='\r\n')
     writer.writerow(columns)
     for row in rows:
         values = []
