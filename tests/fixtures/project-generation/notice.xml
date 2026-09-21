@@ -3,6 +3,7 @@
   <FormModule Name="NOTICE" Title="Synthetic public notice">
     <Block Name="INFO" DatabaseBlock="false">
       <Item Name="MESSAGE" ItemType="Display Item" Prompt="Message" Width="100" Height="16"/>
+      <Trigger Name="WHEN-VALIDATE-RECORD" TriggerText="BEGIN IF :INFO.MESSAGE IS NULL THEN RAISE FORM_TRIGGER_FAILURE; END IF; END;"/>
     </Block>
   </FormModule>
 </Module>

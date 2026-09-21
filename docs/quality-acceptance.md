@@ -1243,3 +1243,96 @@ the legacy importer; this remains an explicit Phase G UX acceptance fix, not a
 claim of completed release acceptance. Reports now warns on screen that default
 exports retain technical identifiers and are not anonymous. Native installer,
 1.6 upgrade, broader scale and release CI remain pending G/H gates.
+
+## 2.0 Phase G candidate acceptance (2026-09-21, not a release)
+
+Base `4636af2cc1dc706eccbbdca14f72a5c33fa37f5c`; candidate changes on
+`codex/formslang-2-phase-g`, version 1.6.0 until release preparation. Windows 11 Pro
+10.0.26200 x64, Intel i7-9700KF, Python 3.12.10. Isolated editable acceptance env.
+
+Independent security review found a prepared-generation-session loss bypass in F;
+it was fixed before the F commit. G adds persisted corruption/race probes. Independent
+five-persona inspection (not user research) identified misleading Blueprint navigation,
+generation re-selection and prerequisite ordering, report privacy wording, and review
+filter density. Current-project Dependencies now stays in project inventory; legacy
+Blueprint remains a separate existing-session capability. Generation retains scoped
+module selection and explains target-plan-before-code approval. Report disclosure is
+explicit; filters wrap responsively.
+
+Real browser exposed a background freshness callback replacing Reports and cancelling
+its guarded download. RED/GREEN preserves the selected workspace. A second failure
+showed Reports racing the reopen freshness lock. It now awaits the existing operation,
+not retrying requests. Independent review reproduced a resolver-ownership bug across
+analysis/reopen and project switch; captured per-job completion ownership fixed it.
+Independent probes for both races, cancellation and failure passed. No Critical or
+Important issue remains from that focused review. Report DOM tests require a COMPLETE
+marker, avoiding false green from an unresolved Node promise.
+
+Corporate browser: **59/59**, zero exceptions/egress, eight screenshots,
+`out/phase-g-browser-final/run-ceff3549248d/result.json`. It includes actual reviewed
+PL/SQL, explicit generation, SQLcl offline validation, delivery downloads and reopen.
+Legacy browser: **101/101**, 27 screenshots,
+`out/phase-g-legacy-final/run-f7c9b744b050/result.json`. Shared JS/DOM: **87 passed**,
+7.18s. Automated focus/keyboard/labels/tablet/reduced-motion checks are not a manual
+screen-reader audit. SQLcl 26.2.2.0 (26.2.2.233.1901), grammar 26.1.0+3102; no live
+Oracle/APEX runtime, customer database, UAT or production deployment was exercised.
+
+Concurrency: five fresh-process groups, **22 passed each / 110 total** (15.34,
+16.17, 16.31, 16.93, 14.76s). Selection across descriptor, job, review, generation
+and report tests: `-k 'concurrent or process or cancel or changed_during or
+change_during or race or lock or corruption'`. Descriptor tests include threaded
+and separate-process readers. F's separate 50/50 Windows HTTP polling invocations
+also remain recorded above. No product sleep/retry was introduced as a race fix.
+
+Actual synthetic estate measurements use `examples/verify/project_corporate_scale.py`.
+Unlike Phase C cache-only timings, these include end-to-end service/persistence work.
+They are single local runs, not customer SLA or productivity claims.
+
+| Measurement (ms) | 100 Forms | 500 Forms |
+|---|---:|---:|
+| Discovery | 5985.746 | 31994.143 |
+| Analysis | 3982.290 | 22179.149 |
+| Cold Overview | 457.794 | 2809.774 |
+| Warm Overview | 279.989 | 2289.481 |
+| Inventory first page | 297.082 | 1999.287 |
+| Inventory filter | 312.200 | 2437.135 |
+| Inventory search | 304.088 | 2313.375 |
+| Review queue | 812.684 | 5586.982 |
+| Review detail | 804.207 | 5674.637 |
+| Bulk preview / apply (50 Defer) | 896.293 / 864.292 | 5469.068 / 5089.309 |
+| Generation prepare | 2769.741 | 15276.896 |
+| Generate one eligible display module | 1889.247 | 10066.136 |
+| Package report | 2033.122 | 10394.151 |
+| Reopen summary | 1046.043 | 5942.196 |
+
+100 Forms: 2,586 findings, 2,480 dependencies, peak process 305,467,392 bytes.
+500 Forms: 12,986 findings, 12,480 dependencies, peak process 636,481,536 bytes.
+Evidence: `out/phase-g-scale-final/run-83ad5960847b/result.json` and
+`run-a088b97da381/result.json`. Full-estate generation was not measured: one safe
+display module is the generation control; remaining modules contain 12 validations
+each calling a shared synthetic package. Large-project review reads take seconds;
+no persistent projection tables were added or invented latency guarantees published.
+
+Frozen engine smoke from an isolated directory passed ordinary demo creation,
+deterministic analysis/reopen, review history, report package and exact generated
+artifact hash (`out/phase-g-frozen-project/run-0107d635b86a`). Upgraded harness also
+checks full manifest membership. Same-binary seed/verify harness smoke preserves
+settings, Blueprint decision, approved code/export bytes and a separate confirmed
+row-key session (`out/phase-g-engine-upgrade-harness-key-final`). This is harness
+validation, **not** a 1.6-to-2.0 installer result.
+
+CI now includes the corporate browser journey. Disposable installer acceptance adds
+packaged project/review/generation/report workflow, uninstall and reinstall with
+legacy state preservation. Exact 2.0 candidate EXE/MSI/upgrade and remote matrix
+remain release gates, pending versioned candidate preparation.
+
+All **24** frozen baseline/ground-truth Git blob hashes match `262361e`; Ruff and
+`git diff --check` clean. Final full regression:
+`out/acceptance-env/Scripts/python.exe -B -m pytest -q -p no:cacheprovider`:
+**1,643 passed / 5 skipped**, 602.14s. Skips remain unavailable Windows symlink
+privileges, not hidden product failures. An earlier run found a duplicated trigger
+in a test after the shared fixture gained its real validation; removing the redundant
+test insertion restored its authenticated code-generation roundtrip (1 passed, 5.47s).
+Focused final report/corruption selection: **14 passed**, 9.55s. Independent final
+persona/documentation review: no Critical/Important findings; candidate/release limits
+remain explicit. Actual versioned installer and upgrade acceptance remain pending.

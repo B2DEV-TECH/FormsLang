@@ -153,11 +153,11 @@ render exported HTML inside the privileged application origin.
 
 **Files:** corporate browser/upgrade/scale/stress tests, CI/installer harness only as needed, `docs/quality-acceptance.md`.
 
-- [ ] Run complete real corporate journey and synthetic 100/500-Form scale measurements.
-- [ ] Stress descriptor/locator reads, analysis/review/generation/report concurrency without sleep/retry fixes.
-- [ ] Run independent security and five-persona product review. Add RED regressions for material findings and fix.
+- [x] Run complete real corporate journey and synthetic 100/500-Form scale measurements.
+- [x] Stress descriptor/locator reads, analysis/review/generation/report concurrency without sleep/retry fixes.
+- [x] Run independent security and five-persona product review. Add RED regressions for material findings and fix.
 - [ ] Test 1.6.0 saved state migration and actual candidate EXE/MSI install/upgrade/reopen/uninstall/reinstall via existing CI conventions.
-- [ ] Run strongest available offline/disposable Oracle/APEX validation and distinguish unavailable runtime evidence.
+- [x] Run strongest available offline/disposable Oracle/APEX validation and distinguish unavailable runtime evidence.
 - [ ] Record exact hardware, fixture, commit, test and installer evidence; commit G fixes/acceptance.
 
 ## H: Documentation and release

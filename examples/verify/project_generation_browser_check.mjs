@@ -10,7 +10,7 @@ export async function generationChecks({evaluate,click,clickSelector,value,wait,
   await clickSelector('[data-generation-module]');await wait(()=>evaluate(`!!document.getElementById('project-generation-prepare')`),'source-bound preparation');
   check('E unreviewed scope is blocked',await evaluate(`projectUI.generationState.detail.blockers.length>0&&!projectUI.generationState.detail.ready`));
   await click('project-generation-prepare');await wait(()=>evaluate(`!!document.getElementById('project-generation-plan')&&!projectUI.generationState.busy`),'prepared code session');
-  // Exercise normal review controls; this fixture has only structural findings.
+  // Exercise real architectural review separately from executable code approval.
   await click('project-generation-review');await wait(()=>evaluate(`!!projectUI.reviewState?.page`),'module review queue');
   const findings=await evaluate(`projectUI.reviewState.page.rows.map(r=>r.id)`);
   for(const finding of findings){
@@ -21,8 +21,15 @@ export async function generationChecks({evaluate,click,clickSelector,value,wait,
   await clickSelector('[data-project-section="generate"]');await wait(()=>evaluate(`!!projectUI.generationState?.data`),'reviewed generation');
   await clickSelector('[data-generation-module]');await wait(()=>evaluate(`!!document.getElementById('generation-security')`),'target prerequisite controls');
   for(const id of ['generation-security','generation-database','generation-mapping'])await click(id);
-  await value('generation-rationale','Synthetic display-only application; APEX authentication and absence of database writes reviewed.');
-  await click('project-generation-plan');await wait(()=>evaluate(`projectUI.generationState.detail?.ready&&!projectUI.generationState.busy`),'eligible target plan');
+  await value('generation-rationale','Synthetic notice validation; APEX authentication and absence of database writes reviewed.');
+  await click('project-generation-plan');await wait(()=>evaluate(`!!projectUI.generationState.detail?.target_revision&&!projectUI.generationState.busy`),'saved target plan');
+  check('G architecture approval does not approve executable code',await evaluate(`!projectUI.generationState.detail.ready&&projectUI.generationState.detail.tasks.length===1`));
+  await clickSelector('[data-generation-task]');await wait(()=>evaluate(`!!document.getElementById('generation-code')`),'code approval evidence');
+  await value('generation-code',"BEGIN IF :P0_MESSAGE IS NULL THEN raise_application_error(-20001, 'Required'); END IF; END;");
+  await value('generation-code-rationale','Reviewed synthetic validation against the saved target plan and Forms evidence.');
+  await click('generation-code-confirm');await click('generation-code-approve');
+  await wait(()=>evaluate(`projectUI.generationState.detail?.ready&&!projectUI.generationState.busy`),'code-approved eligible scope');
+  check('G explicit code approval recorded independently',await evaluate(`projectUI.generationState.detail.tasks[0].state==='approved'`));
   check('E eligible scope uses explicit target confirmations',await evaluate(`!document.getElementById('project-generation-run').disabled`));
   await click('project-generation-run');await wait(()=>evaluate(`projectUI.generationState?.data?.artifacts.length===1`),'generated immutable artifact');
   const first=await evaluate('projectUI.generationState.data.artifacts[0]');

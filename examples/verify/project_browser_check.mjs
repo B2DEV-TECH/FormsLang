@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const root=path.resolve(process.argv[2]),config=JSON.parse(await fs.readFile(path.join(root,'state.json'),'utf8'));
-const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + notice generation + 250 cancellation modules',scope:'Phase C+D+E real assessment, inventory, review governance, generation/validation, reopen, stale source and demo'};
+const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + code-reviewed notice generation + 250 cancellation modules',scope:'Phase C/D/E/F/G real assessment, review/code governance, generation/validation, delivery, reopen, stale source and demo'};
 const allowedOrigins=new Set([new URL(config.url).origin]),requests=[];
 let socket,sequence=0;const pending=new Map();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -52,6 +52,10 @@ try{
   check('real Overview metrics',await evaluate(`projectUI.overview.inventory.forms_modules===1&&projectUI.overview.inventory.tables===1&&projectUI.overview.inventory.modernization_findings>0`),await evaluate('projectUI.overview.inventory'));
   const id=await evaluate('projectUI.activeId'),revision=await evaluate('projectUI.summary.project.analysis_revision');
   await screenshot('project-overview.png');
+  await clickSelector('[data-project-section="dependencies"]');
+  await wait(()=>evaluate(`projectUI.view==='inventory'&&projectUI.inventoryState?.category==='dependencies'&&!!projectUI.inventoryState.page`),'project dependency navigation');
+  check('G Dependencies retains current project',await evaluate('projectUI.activeId')===id);
+  await clickSelector('[data-project-section="overview"]');await wait(()=>evaluate(`projectUI.view==='overview'`),'Overview after Dependencies');
   const selectedRisk=await evaluate(`Object.entries(projectUI.overview.risk_distribution).find(([,count])=>count>0)?.[0]`);
   await clickSelector(`[data-project-filter="risk"][data-project-value="${selectedRisk}"]`);
   await wait(()=>evaluate(`projectUI.view==='inventory'&&projectUI.inventoryState?.filters.risk===${JSON.stringify(selectedRisk)}&&projectUI.inventoryState?.page?.rows.length>0`),'risk-filtered findings inventory');

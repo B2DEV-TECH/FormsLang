@@ -11,6 +11,9 @@ REVIEW_PROJECT_STYLE = r"""
 .project-review-detail textarea{width:100%;min-height:80px}
 .project-review-detail label{display:block;margin-top:8px}
 .project-review-detail details{margin:12px 0}
+#project-review-filters{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end}
+#project-review-filters label{min-width:0;display:grid;gap:4px}
+#project-review-filters input,#project-review-filters select{width:100%;min-width:0}
 @media(max-width:900px){.project-review-split{grid-template-columns:1fr}.project-review-queue{resize:none;max-height:320px}}
 """
 

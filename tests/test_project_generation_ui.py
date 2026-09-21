@@ -49,3 +49,13 @@ await projectGenerationWrite('/generation',{},()=>{});
 assert.equal(writes,1);assert.equal(s.busy,false);
 assert.match($('project-generation-status').textContent,/reload/i);
 ''')
+
+
+def test_generation_restores_selected_module_only_for_same_project(tmp_path):
+    run(tmp_path, r'''
+projectUI.activeId='a';projectUI.generationState={projectId:'a',selected:'module-a'};
+api=async()=>({target:{},modules:[{source_id:'module-a',module:'A'}],artifacts:[]});
+let selected=[];projectGenerationModule=async id=>selected.push(id);
+await projectGenerationOpen();assert.deepEqual(selected,['module-a']);
+projectUI.activeId='b';await projectGenerationOpen();assert.deepEqual(selected,['module-a']);
+''')

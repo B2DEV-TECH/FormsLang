@@ -60,7 +60,7 @@ def test_prepare_does_not_approve_code_or_architecture(generation_project):
     assert service.overview(freshness=service.freshness())['review_progress']['reviewed'] == 0
 
 
-@pytest.mark.parametrize('damage', ['missing', 'empty', 'deleted_task'])
+@pytest.mark.parametrize('damage', ['missing', 'empty', 'deleted_task', 'source', 'owner'])
 def test_lost_prepared_code_cannot_become_zero_task_eligible(generation_project, damage):
     from contextlib import closing
 
@@ -80,6 +80,10 @@ def test_lost_prepared_code_cannot_become_zero_task_eligible(generation_project,
     if damage == 'deleted_task':
         with closing(Store(path)) as session:
             session.db.execute('DELETE FROM task')
+            session.db.commit()
+    if damage in {'source', 'owner'}:
+        with closing(Store(path)) as session:
+            session.db.execute('UPDATE task SET ' + damage + '=?', ('SYNTHETIC_ALTERATION',))
             session.db.commit()
     with pytest.raises(ProjectError, match='session|tasks'):
         service.generation_module(sid)

@@ -99,8 +99,6 @@ def test_authenticated_generation_rechecks_roles_csrf_and_revocation(authenticat
 def test_authenticated_generation_code_and_download_roundtrip(authenticated_server, project_sources):
     client, _, _, selected, _ = authenticated_server
     xml = Path('tests/fixtures/project-generation/notice.xml').read_text(encoding='utf-8')
-    xml = xml.replace('</Block>', '''<Trigger Name="WHEN-VALIDATE-RECORD"
-        TriggerText="BEGIN IF :INFO.MESSAGE IS NULL THEN RAISE FORM_TRIGGER_FAILURE; END IF; END;"/></Block>''')
     project_sources[2].write_text(xml, encoding='utf-8')
     created = client.post('/api/v2/projects', {'name': 'Authenticated generation', 'sources': [selected]})
     pid = created.json['project']['id']

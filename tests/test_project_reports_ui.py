@@ -14,9 +14,10 @@ def run(tmp_path, script):
     from formslang.ui.modernization_reports import REPORTS_PROJECT_JS
     path = tmp_path / 'reports.cjs'
     path.write_text(DOM + PROJECT_JS + REPORTS_PROJECT_JS + '\n(async()=>{' + script +
-                    '\n})().catch(e=>{console.error(e);process.exitCode=1;});', encoding='utf-8')
+                    "\n})().then(()=>console.log('COMPLETE')).catch(e=>{console.error(e);process.exitCode=1;});", encoding='utf-8')
     result = subprocess.run([NODE, str(path)], capture_output=True, text=True, timeout=30, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert 'COMPLETE' in result.stdout.splitlines(), result.stdout + result.stderr
 
 
 def test_reports_disclosure_defaults_and_escaped_filename(tmp_path):
@@ -57,4 +58,14 @@ let downloaded;document.createElement=()=>({click(){downloaded=this.download;},r
 URL.createObjectURL=()=> 'blob:report';URL.revokeObjectURL=()=>{};
 global.fetch=async()=>({ok:true,headers:{get:()=> 'attachment; filename="decisions-sensitive.json"'},blob:async()=>({})});
 await projectReportsDownload('decisions');assert.equal(downloaded,'decisions-sensitive.json');
+''')
+
+
+def test_reports_wait_for_existing_project_open_freshness_operation(tmp_path):
+    run(tmp_path, r'''
+projectUI.activeId='a';const opening=deferred();projectUI.opening=opening.promise;
+let calls=0;api=async()=>{calls++;return {formats:[],binding:{},freshness:'CURRENT'};};
+const pending=projectReportsOpen();await Promise.resolve();
+assert.equal(calls,0,'Snapshot must not race the already-running freshness operation');
+opening.resolve();await pending;assert.equal(calls,1);assert.ok(projectUI.reportsState.data);
 ''')

@@ -18,6 +18,7 @@ function projectError(message, field) {
 function projectContext(){return {generation:projectUI.generation,id:projectUI.activeId};}
 function projectCurrent(c){return c.generation===projectUI.generation && c.id===projectUI.activeId;}
 function projectEnter(view) {
+  projectUI.finishOpeningJob?.();projectUI.finishOpeningJob=null;
   clearTimeout(projectUI.timer);projectUI.timer=null;projectUI.generation++;projectUI.view=view;
   projectUI.busy=false;projectUI.jobId=null;
   document.body.classList.add('project-mode');$('project-workspace').hidden=false;
@@ -26,6 +27,7 @@ function projectEnter(view) {
   setNavigationOpen(false);setShellSection('btn-modernization');
 }
 function projectLeave() {
+  projectUI.finishOpeningJob?.();projectUI.finishOpeningJob=null;
   projectSaveDraft();clearTimeout(projectUI.timer);projectUI.generation++;projectUI.view='legacy';projectUI.busy=false;
   document.body.classList.remove('project-mode');$('project-workspace').hidden=true;
   $('workspace-title').textContent=state.session.title || 'Welcome to FormsLang';
@@ -121,28 +123,36 @@ async function showProjectHome() {
     $('project-recents').querySelectorAll('[data-project-open]').forEach(el=>el.onclick=()=>openProject(el.dataset.projectOpen));
   }catch(e){if(projectCurrent(c))projectError(e.message+' Retry Recent Projects.');}
 }
-async function openProject(id,check=true) {
+function openProject(id,check=true) {
+  const opening=projectOpenSaved(id,check);projectUI.opening=opening;return opening;
+}
+async function projectAwaitOpeningJob() {
+  projectUI.openingJob=new Promise(resolve=>{projectUI.finishOpeningJob=resolve;});
+  await pollProjectJob();
+}
+async function projectOpenSaved(id,check=true) {
   projectSaveDraft();projectEnter('summary');projectUI.activeId=id;const c=projectContext();
   $('project-content').innerHTML='<p>Opening saved project…</p>';
   try {
     const summary=await api('/api/v2/projects/'+id);if(!projectCurrent(c))return;
     projectUI.summary=summary;renderProjectSummary(summary);
-    if(summary.last_job && ['QUEUED','RUNNING'].includes(summary.last_job.status)){projectUI.jobId=summary.last_job.job_id;projectUI.operation=summary.last_job.operation;if(projectUI.operation==='ANALYZE')renderProjectProgress(summary);await pollProjectJob();return;}
+    if(summary.last_job && ['QUEUED','RUNNING'].includes(summary.last_job.status)){projectUI.jobId=summary.last_job.job_id;projectUI.operation=summary.last_job.operation;if(projectUI.operation==='ANALYZE')renderProjectProgress(summary);await projectAwaitOpeningJob();return;}
     if(summary.project.analysis_revision)await projectLoadOverview(c);
     if(!projectCurrent(c))return;
     if(check && summary.project.analysis_revision){
       $('project-status').textContent='Saved assessment loaded. Checking source freshness…';
       const job=await api(`/api/v2/projects/${id}/freshness`,{});if(!projectCurrent(c))return;
-      projectUI.jobId=job.job_id;projectUI.operation='FRESHNESS';await pollProjectJob();
+      projectUI.jobId=job.job_id;projectUI.operation='FRESHNESS';await projectAwaitOpeningJob();
     }
     return projectCurrent(c)?c:undefined;
   }catch(e){if(projectCurrent(c))projectError(e.message+' Reload the project to retry.');}
 }
 async function projectLoadOverview(c=projectContext(),render=true) {
+  const requestedView=projectUI.view;
   try {
     const payload=await api(`/api/v2/projects/${c.id}/overview`);if(!projectCurrent(c))return;
     const data=payload?.overview||payload;
-    if(data?.assessment&&data?.inventory){projectUI.overview=data;if(render)renderProjectOverview(data);return data;}
+    if(data?.assessment&&data?.inventory){projectUI.overview=data;if(render&&projectUI.view===requestedView)renderProjectOverview(data);return data;}
   }catch(e){if(projectCurrent(c))projectError(e.message+' The saved project remains available; retry Overview.');}
 }
 const projectRiskLabels={CRITICAL:'Critical',HIGH:'High',MEDIUM:'Medium',LOW:'Low',UNKNOWN:'Unknown'};
@@ -150,7 +160,7 @@ const projectRecommendationLabels={PRESERVE:'Preserve',CONVERT:'Convert',REPLACE
 const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MANUAL:'Human decision',UNKNOWN:'Unknown'};
 function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
 function projectSectionNav(active='overview') {
-  const links=[['overview','Overview'],['inventory','Inventory'],['review','Review'],['blueprint','Blueprint'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
+  const links=[['overview','Overview'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
   return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`;
 }
 function projectBindSectionNav() {
@@ -161,7 +171,7 @@ function projectBindSectionNav() {
     else if(section==='review')projectReviewOpen();
     else if(section==='generate')projectGenerationOpen();
     else if(section==='reports')projectReportsOpen();
-    else if(section==='blueprint'){projectLeave();browse('');}
+    else if(section==='dependencies')projectOpenInventory({category:'dependencies'});
     else if(section==='settings')renderProjectSummary(projectUI.summary);
     else {$('project-status').textContent=`${section==='generate'?'Generation':'Reports'} is planned for a later FormsLang 2.0 phase.`;}
   });
@@ -373,6 +383,8 @@ function renderProjectProgress(summary){
 }
 async function pollProjectJob() {
   const c=projectContext(),jobId=projectUI.jobId;if(!jobId)return;
+  const operation=projectUI.operation,finish=projectUI.finishOpeningJob;
+  const settle=()=>{finish?.();if(projectUI.finishOpeningJob===finish)projectUI.finishOpeningJob=null;};
   try {
     const job=await api(`/api/v2/projects/${c.id}/jobs/${jobId}`);
     if(!projectCurrent(c)||projectUI.jobId!==jobId)return;
@@ -387,16 +399,18 @@ async function pollProjectJob() {
     }
     if(running){projectUI.timer=setTimeout(pollProjectJob,600);return;}
     projectUI.jobId=null;
-    const summary=await api(`/api/v2/projects/${c.id}`);if(!projectCurrent(c))return;
-    projectUI.view='summary';renderProjectSummary(summary);
+    const summary=await api(`/api/v2/projects/${c.id}`);if(!projectCurrent(c)||projectUI.jobId){settle();return;}
+    const background=operation==='FRESHNESS'&&!['overview','summary'].includes(projectUI.view);
+    projectUI.summary=summary;if(!background){projectUI.view='summary';renderProjectSummary(summary);}
     $('project-status').textContent=job.status==='CANCELLED'?'Analysis cancelled. The last committed assessment is preserved.':job.status==='FAILED'?'Analysis failed. The last committed assessment is preserved.':projectUI.operation==='FRESHNESS'?'Source freshness checked.':'Assessment created and saved.';
     if(job.safe_failure)projectError(`${job.safe_failure.safe_message} ${job.safe_failure.remediation}`);
-    $('project-saved-content').innerHTML=projectDiagnostics(job.diagnostics||[],true);projectBindConversions();
-    if(projectUI.operation==='FRESHNESS'&&summary.project.analysis_revision&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status)){
-      await projectLoadOverview(c);if(projectCurrent(c))$('project-status').textContent='Source freshness checked.';
+    if(!background){$('project-saved-content').innerHTML=projectDiagnostics(job.diagnostics||[],true);projectBindConversions();}
+    if(operation==='FRESHNESS'&&summary.project.analysis_revision&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status)){
+      await projectLoadOverview(c,!background);if(projectCurrent(c))$('project-status').textContent='Source freshness checked.';
     }
-    if(projectUI.operation==='ANALYZE'&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status))await openProject(c.id);
-  }catch(e){if(projectCurrent(c)){projectError(e.message+' Reload Project to reconnect to its durable job.');projectUI.busy=false;}}
+    settle();
+    if(operation==='ANALYZE'&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status))await openProject(c.id);
+  }catch(e){settle();if(projectCurrent(c)){projectError(e.message+' Reload Project to reconnect to its durable job.');projectUI.busy=false;}}
 }
 async function projectCancel() {
   const c=projectContext(),job=projectUI.jobId;if(!job)return;

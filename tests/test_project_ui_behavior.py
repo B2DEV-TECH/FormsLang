@@ -67,6 +67,18 @@ def run_js(tmp_path, script):
     assert 'COMPLETE' in result.stdout.splitlines(), result.stdout + result.stderr
 
 
+def test_project_dependencies_navigation_keeps_current_project(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';assert.match(projectSectionNav('overview'),/>Dependencies</);
+const button={dataset:{projectSection:'dependencies'}};
+$('project-content').querySelectorAll=()=>[button];
+let options;projectOpenInventory=o=>{options=o;};
+projectLeave=()=>{throw Error('Must not leave the current project');};
+projectBindSectionNav();button.onclick();
+assert.equal(projectUI.activeId,'a');assert.equal(options.category,'dependencies');
+''')
+
+
 def test_name_and_sources_are_required_before_analysis(tmp_path):
     run_js(tmp_path, r'''
 api=async()=>{throw new Error('No API call expected');};
@@ -350,6 +362,38 @@ projectUI.activeId='a';projectUI.jobId='freshness-a';projectUI.operation='FRESHN
 api=async(path)=>path.includes('/jobs/')?{job_id:'freshness-a',status:'COMPLETED',phase:'FRESHNESS',processed:0,total:null}:path.endsWith('/overview')?{overview:overviewData}:summary;
 await pollProjectJob();assert.equal(projectUI.view,'overview');assert.equal(projectUI.overview.assessment.freshness,'CURRENT');
 assert.match($('project-content').innerHTML,/Application Inventory/);
+''')
+
+
+@pytest.mark.parametrize('view', ['reports', 'review', 'generate', 'inventory'])
+def test_freshness_completion_preserves_selected_workspace(tmp_path, view):
+    run_js(tmp_path, f"projectUI.view={view!r};" + r'''
+const chosen=projectUI.view;projectUI.activeId='a';projectUI.jobId='freshness-a';projectUI.operation='FRESHNESS';projectUI.summary=summary;
+$('project-content').innerHTML='Selected workspace';
+api=async path=>path.includes('/jobs/')?{job_id:'freshness-a',status:'COMPLETED',phase:'FRESHNESS'}:path.endsWith('/overview')?{overview:overviewData}:summary;
+await pollProjectJob();assert.equal(projectUI.view,chosen);assert.equal($('project-content').innerHTML,'Selected workspace');
+assert.equal(projectUI.overview.assessment.freshness,'CURRENT');assert.equal(projectUI.jobId,null);
+''')
+
+
+def test_late_overview_response_cannot_replace_reports(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.view='overview';const response=deferred();api=()=>response.promise;
+const pending=projectLoadOverview();projectUI.view='reports';$('project-content').innerHTML='Reports';
+response.resolve({overview:overviewData});await pending;
+assert.equal(projectUI.view,'reports');assert.equal($('project-content').innerHTML,'Reports');
+''')
+
+
+def test_analysis_completion_cannot_resolve_new_freshness_job(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.jobId='analysis';projectUI.operation='ANALYZE';
+api=async path=>path.endsWith('/jobs/analysis')?{status:'COMPLETED',operation:'ANALYZE'}:
+path.endsWith('/jobs/fresh')?{status:'RUNNING',operation:'FRESHNESS'}:
+path.endsWith('/freshness')?{job_id:'fresh'}:path.endsWith('/overview')?overviewData:summary;
+await pollProjectJob();let settled=false;projectUI.openingJob.then(()=>{settled=true;});
+await Promise.resolve();assert.equal(projectUI.jobId,'fresh');assert.equal(settled,false);
+projectEnter('home');await Promise.resolve();assert.equal(settled,true);
 ''')
 
 

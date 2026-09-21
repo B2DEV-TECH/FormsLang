@@ -10,6 +10,7 @@ PROJECT_STYLE = r'''
   #project-workspace { max-width:1100px; margin:auto; padding:24px; gap:12px; }
   #project-workspace h2 { font-size:22px; margin:12px 0; }
   #project-workspace p { line-height:1.6; }
+  #project-reports-body fieldset label { display:block;margin:8px 0; }
   #project-error:empty,#project-status:empty { display:none; }
   .project-toolbar,.project-actions { display:flex;flex-wrap:wrap;gap:10px;margin:12px 0; }
   .project-steps { display:flex;gap:24px;list-style:none;padding:16px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;color:var(--ink-dim); }

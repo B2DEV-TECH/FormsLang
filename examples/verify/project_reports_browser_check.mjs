@@ -8,6 +8,7 @@ export async function reportChecks({evaluate,click,clickSelector,wait,check,scre
   await wait(()=>evaluate(`!!projectUI.reportsState?.data`),'report snapshot');
   const binding=await evaluate('projectUI.reportsState.data.binding'),project=await evaluate('projectUI.activeId');
   check('F disclosure defaults are off',await evaluate(`!document.getElementById('reports-include-notes').checked&&!document.getElementById('reports-include-artifacts').checked`));
+  check('G technical identifier disclosure is visible',await evaluate(`document.getElementById('project-reports-body').textContent.includes('not anonymous')`));
   check('F report heading focus and live status',await evaluate(`document.activeElement.id==='project-reports-title'&&document.getElementById('project-reports-status').getAttribute('role')==='status'`));
   async function download(kind,filename){
     await clickSelector(`[data-report-download="${kind}"]`);
