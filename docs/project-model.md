@@ -1,6 +1,6 @@
 # Modernization project model (2.0 foundation)
 
-Status: 2.0 candidate. The project wizard, local CLI and versioned HTTP
+Status: released in FormsLang 2.0.0. The project wizard, local CLI and versioned HTTP
 API share this model, including persisted assessment, review and gated generation.
 Existing 1.x interfaces retain their contracts. See the approved
 [product architecture](formsLang-2-product-architecture.md).

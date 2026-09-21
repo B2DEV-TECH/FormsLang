@@ -1,6 +1,6 @@
 # FormsLang corporate user guide
 
-This guide describes the 2.0 candidate workflow. Release/installer status is recorded in [quality acceptance](../quality-acceptance.md); a candidate is not a published release.
+This guide describes the FormsLang 2.0 workflow. Release/installer evidence is recorded in [quality acceptance](../quality-acceptance.md).
 
 1. [Getting started](01-getting-started.md)
 2. [Installation](02-installation.md)

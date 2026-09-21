@@ -1,6 +1,6 @@
 # Reviewed project APEXlang generation
 
-FormsLang 2.0 candidate; see quality-acceptance.md for release gates. Generation is local and deterministic;
+FormsLang 2.0; see quality-acceptance.md for release acceptance. Generation is local and deterministic;
 it needs neither AI nor Oracle database credentials. The default target profile is
 Oracle APEX 26.1 / APEXlang. SQLcl is optional for **offline syntax validation**.
 
