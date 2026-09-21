@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-21
+
+FormsLang 2.0 transforms FormsLang into an Oracle Forms → Oracle APEX
+modernization workbench. Automate what is safe, assist what is complex, and
+escalate what requires human judgment.
+
+### Added
+
+- Persistent modernization projects with four-step onboarding, automatic source
+  discovery, zero-config local analysis, durable progress/cancellation, partial
+  failure diagnostics, source fingerprints, freshness/relink and a real synthetic demo.
+- Saved-assessment Overview and searchable/paginated Inventory: scope, risk,
+  modernization direction, intervention, source coverage and transparent priorities.
+- Modernization Review with revision-bound decisions, rationale, critical override
+  confirmation, independent annotations, history, stale revalidation and conservative
+  server-side bulk eligibility.
+- Oracle APEX 26.1 / APEXlang target profile and reviewed selected-module generation
+  using the existing exporter. Architecture decisions, code approval and generation
+  authorization remain separate. Immutable artifacts and hash-bound offline SQLcl
+  validation never imply runtime equivalence or automatic deployment.
+- Snapshot-based executive/technical/risk HTML, CSV/JSON backlog, decision history
+  and modernization packages with provenance, member hashes and explicit exclusions.
+- Shared `formslang project` CLI and `/api/v2/projects` APIs. Existing single-session
+  CLI/Workbench/Blueprint remain available; legacy migration preserves original data.
+- Corporate user guide, manual validation checklist, real synthetic screenshots and
+  release gates covering local/remote quality, packaged workflow and 1.6.0 upgrade.
+
+### Security and correctness
+
+- Project/source authorization, revision fencing and fail-closed generation reuse
+  one Store/service architecture. Missing/corrupt prepared code reviews cannot become
+  empty approved scope. Concurrent source/review changes reject unsafe publication.
+- Default report privacy, safe HTML/CSV rendering, opt-in sensitive notes/artifacts,
+  bounded evidence and complete package hashes. Default exports are not anonymous.
+- Background source verification preserves active workspaces and coordinates report
+  snapshot reads without arbitrary product retries.
+- Frozen modernization benchmark and ground-truth history remain unchanged.
+
+### Boundaries
+
+- Forms2XML is required for supported project Forms semantics; discovered binary
+  FMB/PLL/MMB/OLB files are not silently treated as parsed.
+- Generation supports one independent eligible module application, not arbitrary
+  full-estate merging. Unsupported mappings, unresolved controls and stale approvals
+  remain blocked. No invented executable database refactoring or labor estimates.
+- External AI and database credentials remain optional. Offline syntax validation
+  does not prove runtime parity, security correctness, UAT or Oracle endorsement.
+- Exact release/installer evidence is recorded in `docs/quality-acceptance.md`;
+  a versioned candidate alone is not a published release.
+
 ## [1.6.0] - 2026-09-19
 
 ### Added
@@ -1268,7 +1318,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.6.0...v2.0.0
 [1.6.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.3.2...v1.4.0
