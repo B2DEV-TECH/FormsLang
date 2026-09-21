@@ -395,6 +395,57 @@ class ProjectGenerationService:
         return self.task(source_id, task_id)
 
     def generate(self, request):
+        descriptor = self.service.open()
+        if descriptor.target.platform == 'UNSELECTED':
+            raise ProjectError('Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) to generate deliverables.')
+        if descriptor.target.platform == 'Generic Modernization':
+            from .target_adapter import get_target_adapter
+            adapter = get_target_adapter('Generic Modernization')
+            self.service._job_authority(rbac.EXPORT_PROJECT)
+            with project_worker_lock(self.service.access.root):
+                assessment, fresh = self._snapshot()
+                _fence(assessment, request)
+                if fresh['status'] != 'CURRENT':
+                    raise RevisionConflict('Refresh the source assessment before generating deliverables.')
+                directory = self._path('artifacts')
+                directory.mkdir(exist_ok=True)
+                with tempfile.TemporaryDirectory(prefix='stage-generic-', dir=directory) as staging:
+                    deliverables = adapter.generate_deliverables(
+                        module_id='all',
+                        reviewed_scope={'assessment': assessment},
+                        output_path=str(Path(staging) / 'output'),
+                    )
+                    self._verify(assessment, request, rbac.EXPORT_PROJECT)
+                    artifact_id = uuid.uuid4().hex
+                    destination = self._path('artifacts/' + artifact_id)
+                    destination.mkdir()
+                    out_src = Path(staging) / 'output'
+                    shutil.copytree(out_src, destination / 'apexlang')
+                    data = Path(deliverables['package_path']).read_bytes()
+                    with (destination / 'application.apex.zip').open('xb') as output:
+                        output.write(data)
+                    metadata = {
+                        **_binding(assessment),
+                        'artifact_id': artifact_id,
+                        'status': 'Generated',
+                        'validation_status': 'Not Validated',
+                        'created_at': now(),
+                        'target': assessment['target'],
+                        'sha256': hashlib.sha256(data).hexdigest(),
+                        'size_bytes': len(data),
+                        'policy': POLICY_VERSION,
+                        'mode': 'generic-modernization-package',
+                        'files': {
+                            p.relative_to(destination / 'apexlang').as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                            for p in sorted((destination / 'apexlang').rglob('*')) if p.is_file()
+                        },
+                        'limitations': ['Architectural deliverables package; executable code generation not applicable.'],
+                    }
+                    with self._publication(assessment, request, rbac.EXPORT_PROJECT) as db:
+                        db.execute('INSERT INTO project_artifact VALUES (?,?,?)',
+                            (artifact_id, metadata['created_at'], canonical_json(metadata)))
+                    return metadata
+
         with self._operation(request, rbac.EXPORT_PROJECT) as assessment:
             target_platform = assessment.get('target', {}).get('platform')
             if target_platform != 'Oracle APEX':

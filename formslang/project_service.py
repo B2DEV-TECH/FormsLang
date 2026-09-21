@@ -223,6 +223,14 @@ class ProjectService:
         self.open()
         return ProjectReportService(self).export(kind, request, **options)
 
+    def target_adapter(self):
+        """Returns the TargetAdapter for this project's target profile."""
+        from .target_adapter import get_target_adapter
+        descriptor = self.open()
+        if descriptor.target.platform == "UNSELECTED":
+            raise ProjectError("Target strategy is unselected.")
+        return get_target_adapter(descriptor.target)
+
     def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None, started=None):
         from .project_analysis import analyze_project
 

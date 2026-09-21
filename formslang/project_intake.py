@@ -132,7 +132,7 @@ class ProjectIntake:
         base = self.data_dir / 'orgs' / self.identity.org_id if self.identity else self.data_dir
         return _plain_path(base / 'demo-sources')
 
-    def create_demo(self, *, destination=None):
+    def create_demo(self, *, destination=None, target: TargetProfile | None = None):
         """Explicitly copy bundled synthetic sources into an ordinary source area."""
         with self._auth(rbac.CREATE_PROJECT) if self.identity else nullcontext(self._local()):
             if self.identity is not None and destination is not None:
@@ -147,15 +147,15 @@ class ProjectIntake:
                 folder.mkdir(parents=True, exist_ok=False)
                 for name in names:
                     contents = package.joinpath(kind).joinpath(name).read_bytes()
-                    with _plain_path(folder / name).open('xb') as target:
-                        target.write(contents)
+                    with _plain_path(folder / name).open('xb') as target_file:
+                        target_file.write(contents)
                 selection = ({'root_id': kind, 'kind': kind, 'area_id': 'built-in-demo',
                               'relative_path': source_copy.name + '/' + kind} if self.identity else
                              {**self.select_source(folder, kind), 'root_id': kind})
                 selections.append(selection)
             return self.create('Synthetic dispatch desk', selections,
                                description='Public-safe synthetic demonstration; no runtime parity claim.',
-                               destination=destination)
+                               destination=destination, target=target)
 
     @contextmanager
     def _metadata(self, *, write=False):
