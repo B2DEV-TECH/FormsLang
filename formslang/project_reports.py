@@ -23,6 +23,11 @@ FORMATS = {
     'executive': ('executive-summary.html', 'text/html; charset=utf-8'),
     'technical': ('technical-assessment.html', 'text/html; charset=utf-8'),
     'risk': ('risk-report.html', 'text/html; charset=utf-8'),
+    'pitch-deck': ('migration-pitch-deck.html', 'text/html; charset=utf-8'),
+    'dossier-md': ('modernization-dossier.md', 'text/markdown; charset=utf-8'),
+    'waves-md': ('migration-waves.md', 'text/markdown; charset=utf-8'),
+    'waves-json': ('migration-waves.json', 'application/json; charset=utf-8'),
+    'adrs-md': ('architectural-decisions.md', 'text/markdown; charset=utf-8'),
     'backlog-csv': ('modernization-backlog.csv', 'text/csv; charset=utf-8'),
     'backlog-json': ('modernization-backlog.json', 'application/json; charset=utf-8'),
     'decisions': ('decisions.json', 'application/json; charset=utf-8'),
@@ -201,7 +206,11 @@ class ProjectReportService:
                         archive.writestr(entry, data)
                 body = stream.getvalue()
             else:
-                prefix = 'assessment/' if kind in {'executive', 'technical', 'risk'} else 'review/' if kind == 'decisions' else 'backlog/'
+                prefix = ('assessment/' if kind in {'executive', 'technical', 'risk', 'pitch-deck'}
+                          else 'review/' if kind == 'decisions'
+                          else 'dossier/' if kind == 'dossier-md'
+                          else 'architecture/' if kind in {'waves-md', 'waves-json', 'adrs-md'}
+                          else 'backlog/')
                 body = files[prefix + FORMATS[kind][0]]
             self.service._job_authority(rbac.EXPORT_PROJECT)
             current_fresh = ProjectReviewService(self.service)._freshness()
