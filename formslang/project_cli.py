@@ -65,13 +65,34 @@ def _operation(args):
             raise ProjectError('Unknown source root; use project info to list root IDs')
         selection = intake.select_source(args.path, root['kind'])
         return intake.relink(pid, args.root, selection, expected_configuration=summary['configuration_revision']), 0
-    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory'} else rbac.RUN_CONVERSION
+    is_read_policy = operation == 'policy' and not getattr(args, 'set', None)
+    action = rbac.VIEW_PROJECT if (operation in {'status', 'summary', 'inventory', 'search'} or is_read_policy) else rbac.RUN_CONVERSION
     authorize = lambda: intake.access(pid, action)
     service = ProjectService(authorize(), authorize=authorize)
     try:
         descriptor = service.open()
         preconditions = {'expected_revision': descriptor.analysis_revision,
                          'expected_configuration': summary['configuration_revision']}
+        if operation == 'policy':
+            set_options = getattr(args, 'set', None)
+            if set_options:
+                updates = {}
+                for item in set_options:
+                    if '=' in item:
+                        k, v = item.split('=', 1)
+                        parts = k.strip().split('.')
+                        curr = updates
+                        for part in parts[:-1]:
+                            curr = curr.setdefault(part, {})
+                        val_str = v.strip()
+                        if val_str.lower() in {'true', 'false'}:
+                            curr[parts[-1]] = val_str.lower() == 'true'
+                        else:
+                            curr[parts[-1]] = val_str
+                return service.update_architecture_policy(updates), 0
+            return service.architecture_policy(), 0
+        if operation == 'search':
+            return service.search(args.query, limit=args.limit), 0
         if operation == 'report':
             state = service.report_overview()
             if args.format == 'status':
@@ -270,3 +291,16 @@ def add_project_parser(subparsers):
             command.add_argument('--offset', type=int, default=0)
             command.add_argument('--limit', type=int, choices=range(1, 201), default=50)
             command.add_argument('--revision')
+
+    policy_cmd = commands.add_parser('policy', help='inspect or update architecture policy')
+    policy_cmd.add_argument('project', help='project directory or .formslang/project.json descriptor')
+    policy_cmd.add_argument('--json', action='store_true', help='machine-readable stdout')
+    policy_cmd.add_argument('--set', action='append', default=[], help='override policy setting, e.g. --set direct_dml.when_existing_owner=manual_review')
+    policy_cmd.set_defaults(func=run_project)
+
+    search_cmd = commands.add_parser('search', help='search project estate, system map, business rules, and findings')
+    search_cmd.add_argument('project', help='project directory or .formslang/project.json descriptor')
+    search_cmd.add_argument('--query', required=True, help='search query string')
+    search_cmd.add_argument('--limit', type=int, default=20, help='maximum results to return')
+    search_cmd.add_argument('--json', action='store_true', help='machine-readable stdout')
+    search_cmd.set_defaults(func=run_project)

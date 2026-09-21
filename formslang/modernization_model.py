@@ -198,6 +198,7 @@ class TargetRecommendation:
     target_component_kind: str
     rationale: str
     native_opportunity: bool = False
+    policy_provenance: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

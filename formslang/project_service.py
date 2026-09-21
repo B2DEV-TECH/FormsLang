@@ -231,6 +231,47 @@ class ProjectService:
             raise ProjectError("Target strategy is unselected.")
         return get_target_adapter(descriptor.target)
 
+    def architecture_policy(self) -> dict:
+        """Inspect the effective architecture policy, its provenance map, and override state."""
+        import json
+
+        from .architecture_policy import (
+            default_architecture_policy,
+            policy_to_dict,
+            resolve_effective_policy,
+        )
+        self.open()
+        policy_file = self.access.root / ".formslang" / "policy.json"
+        project_override = None
+        if policy_file.is_file():
+            try:
+                project_override = json.loads(policy_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                project_override = None
+
+        effective, provenance = resolve_effective_policy(
+            default_architecture_policy(),
+            organization_policy=None,
+            project_policy=project_override,
+        )
+        return {
+            "effective": policy_to_dict(effective),
+            "provenance": provenance,
+            "has_project_override": project_override is not None,
+        }
+
+    def update_architecture_policy(self, updates: dict) -> dict:
+        """Update and persist project-specific architecture policy overrides."""
+        import json
+
+        from .architecture_policy import validate_policy_dict
+        self._require(rbac.RUN_CONVERSION)
+        self.open()
+        validate_policy_dict(updates)
+        policy_file = self.access.root / ".formslang" / "policy.json"
+        policy_file.write_text(json.dumps(updates, indent=2), encoding="utf-8")
+        return self.architecture_policy()
+
     def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None, started=None):
         from .project_analysis import analyze_project
 
