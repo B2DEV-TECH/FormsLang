@@ -15,6 +15,7 @@ from .project_model import (
     ProjectDescriptor,
     ProjectError,
     SourceRoot,
+    TargetProfile,
     descriptor_to_dict,
     validate_descriptor,
 )
@@ -66,12 +67,14 @@ class ProjectService:
         return resolved
 
     def create(self, name: str, *, roots: tuple[SourceRoot, ...] = (),
-               description: str = "", client_label: str = "", project_id: str | None = None) -> ProjectDescriptor:
+               description: str = "", client_label: str = "", project_id: str | None = None,
+               target: TargetProfile | None = None) -> ProjectDescriptor:
         self._require(rbac.CREATE_PROJECT)
         if self.access.org_id is not None and (project_id is None or self._authorize_callback is None):
             raise ProjectError("Authenticated creation requires the project intake adapter")
         descriptor = ProjectDescriptor(id=project_id if project_id is not None else uuid.uuid4().hex, name=name, source_roots=roots,
-                                       description=description, client_label=client_label)
+                                       description=description, client_label=client_label,
+                                       target=target if target is not None else TargetProfile())
         validate_descriptor(descriptor)
         for root in roots:
             self._source(self.access.root / root.path)

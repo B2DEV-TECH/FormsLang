@@ -54,6 +54,11 @@ class ProjectGenerationService:
     @contextmanager
     def _operation(self, request, action=rbac.RUN_CONVERSION):
         self.service._job_authority(action)
+        descriptor = self.service.open()
+        if descriptor.target.platform != 'Oracle APEX':
+            raise ProjectError('Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) to prepare generation.'
+                               if descriptor.target.platform == 'UNSELECTED' else
+                               f"Target strategy '{descriptor.target.platform}' does not support executable generation.")
         with project_worker_lock(self.service.access.root):
             assessment, fresh = self._snapshot()
             _fence(assessment, request)
@@ -151,6 +156,11 @@ class ProjectGenerationService:
 
     def prepare(self, source_id, request):
         with self._operation(request) as assessment:
+            target_platform = assessment.get('target', {}).get('platform')
+            if target_platform != 'Oracle APEX':
+                raise ProjectError('Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) to prepare code review.'
+                                   if target_platform == 'UNSELECTED' else
+                                   f"Target strategy '{target_platform}' does not support executable generation.")
             entry = self._entry(assessment, source_id)
             if self._session_record(assessment, source_id) is None:
                 descriptor = self.store.descriptor()
@@ -188,6 +198,13 @@ class ProjectGenerationService:
         revision, plan = self._plan(assessment, source_id)
         code, tasks, bindings = None, [], []
         extra = []
+        target_platform = assessment.get('target', {}).get('platform')
+        if target_platform != 'Oracle APEX':
+            extra.append({'code': 'TARGET_STRATEGY_UNSELECTED' if target_platform == 'UNSELECTED' else 'TARGET_NOT_GENERATING',
+                          'id': source_id,
+                          'message': 'Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) to prepare generation.'
+                          if target_platform == 'UNSELECTED' else
+                          f"Target strategy '{target_platform}' does not support executable generation."})
         if self._session_record(assessment, source_id):
             with self._module(assessment, source_id) as (_, module, session):
                 code = self._code_revision(session)
@@ -289,6 +306,11 @@ class ProjectGenerationService:
 
     def configure(self, source_id, request):
         with self._operation(request) as assessment:
+            target_platform = assessment.get('target', {}).get('platform')
+            if target_platform != 'Oracle APEX':
+                raise ProjectError('Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) to configure a target plan.'
+                                   if target_platform == 'UNSELECTED' else
+                                   f"Target strategy '{target_platform}' does not support executable generation.")
             detail = self._detail(assessment, {'status': 'CURRENT'}, source_id)
             for key in ('target_revision', 'code_revision'):
                 if request.get(key) != detail[key]:
@@ -343,6 +365,11 @@ class ProjectGenerationService:
     def code(self, source_id, task_id, request):
         with (self._operation(request, rbac.APPROVE_AI_PROPOSAL) as assessment,
               self._module(assessment, source_id) as (_, _, session)):
+            target_platform = assessment.get('target', {}).get('platform')
+            if target_platform != 'Oracle APEX':
+                raise ProjectError('Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) before approving target code.'
+                                   if target_platform == 'UNSELECTED' else
+                                   f"Target strategy '{target_platform}' does not support executable generation.")
             session.db.execute('BEGIN IMMEDIATE')
             try:
                 if request.get('code_revision') != self._code_revision(session):
@@ -369,6 +396,11 @@ class ProjectGenerationService:
 
     def generate(self, request):
         with self._operation(request, rbac.EXPORT_PROJECT) as assessment:
+            target_platform = assessment.get('target', {}).get('platform')
+            if target_platform != 'Oracle APEX':
+                raise ProjectError('Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) to generate deliverables.'
+                                   if target_platform == 'UNSELECTED' else
+                                   f"Target strategy '{target_platform}' does not support executable generation.")
             scopes = request.get('scopes')
             if not isinstance(scopes, list) or len(scopes) != 1 or not isinstance(scopes[0], dict):
                 raise ProjectError('Select one independent module application for this generation run.')

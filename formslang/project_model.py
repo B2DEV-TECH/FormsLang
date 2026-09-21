@@ -26,6 +26,13 @@ class TargetProfile:
     representation: str = "APEXlang"
 
 
+SUPPORTED_TARGET_PROFILES: tuple[TargetProfile, ...] = (
+    TargetProfile(platform="Oracle APEX", version="26.1", representation="APEXlang"),
+    TargetProfile(platform="UNSELECTED", version="none", representation="none"),
+    TargetProfile(platform="Generic Modernization", version="1.0", representation="Neutral Backlog"),
+)
+
+
 @dataclass(frozen=True)
 class SourceRoot:
     id: str
@@ -71,7 +78,7 @@ def validate_descriptor(value: ProjectDescriptor) -> None:
         raise ProjectError("Unsupported project format")
     if value.store != "project.session.db":
         raise ProjectError("Invalid project store location")
-    if not isinstance(value.target, TargetProfile) or value.target != TargetProfile():
+    if not isinstance(value.target, TargetProfile) or value.target not in SUPPORTED_TARGET_PROFILES:
         raise ProjectError("Unsupported target profile")
     if value.analysis_revision is not None:
         _text(value.analysis_revision, "analysis_revision", 64)
@@ -120,9 +127,15 @@ def descriptor_from_dict(payload: dict) -> ProjectDescriptor:
     values = {k: v for k, v in payload.items() if k not in {
         "source_roots", "target_platform", "target_version", "target_representation",
     }}
-    project = ProjectDescriptor(**values, source_roots=tuple(SourceRoot(**r) for r in roots),
-        target=TargetProfile(payload.get("target_platform", "Oracle APEX"),
-                             payload.get("target_version", "26.1"),
-                             payload.get("target_representation", "APEXlang")))
+    raw_platform = payload.get("target_platform", "Oracle APEX")
+    raw_version = payload.get("target_version")
+    raw_rep = payload.get("target_representation")
+    if isinstance(raw_platform, str) and raw_platform.upper() == "UNSELECTED":
+        target = TargetProfile("UNSELECTED", raw_version or "none", raw_rep or "none")
+    elif raw_platform == "Generic Modernization":
+        target = TargetProfile("Generic Modernization", raw_version or "1.0", raw_rep or "Neutral Backlog")
+    else:
+        target = TargetProfile(raw_platform, raw_version or "26.1", raw_rep or "APEXlang")
+    project = ProjectDescriptor(**values, source_roots=tuple(SourceRoot(**r) for r in roots), target=target)
     validate_descriptor(project)
     return project

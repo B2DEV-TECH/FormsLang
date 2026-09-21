@@ -43,8 +43,16 @@ def _operation(args):
     if operation == 'create':
         sources = [intake.select_source(path, kind) for kind in ('forms', 'database', 'supporting')
                    for path in getattr(args, kind)]
+        target_flag = getattr(args, 'target', 'apex')
+        target_map = {
+            'apex': TargetProfile("Oracle APEX", "26.1", "APEXlang"),
+            'unselected': TargetProfile("UNSELECTED", "none", "none"),
+            'generic': TargetProfile("Generic Modernization", "1.0", "Neutral Backlog"),
+        }
+        target_profile = target_map.get(target_flag, TargetProfile())
         return intake.create(args.name, sources, description=args.description,
-                             client_label=args.client, destination=args.project), 0
+                             client_label=args.client, destination=args.project,
+                             target=target_profile), 0
     path = Path(args.project)
     locator = path if path.name == 'project.json' else path / '.formslang/project.json'
     summary = intake.open_locator(locator)
@@ -243,6 +251,8 @@ def add_project_parser(subparsers):
             command.add_argument('--client', default='')
             for kind in ('forms', 'database', 'supporting'):
                 command.add_argument('--' + kind, action='append', default=[], help='source folder; repeat for additional roots')
+            command.add_argument('--target', choices=['apex', 'unselected', 'generic'], default='apex',
+                                 help='target modernization strategy (default: apex)')
             command.add_argument('--target-apex', choices=[TargetProfile().version], default=TargetProfile().version)
         elif name == 'relink':
             command.add_argument('--root', required=True, help='stable source root ID from project info')

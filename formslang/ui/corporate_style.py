@@ -3,6 +3,24 @@
 CORPORATE_STYLE = r"""
   :root {
     color-scheme: dark;
+    --surface-0: #0C0D0E;
+    --surface-1: #16181B;
+    --surface-2: #212429;
+    --border-subtle: #2C3138;
+    --border-strong: #404752;
+    --risk-critical: #FF4D4F;
+    --risk-high:     #FAAD14;
+    --risk-medium:   #1890FF;
+    --risk-low:      #52C41A;
+    --risk-unknown:  #8C8C8C;
+    --review-accepted: #52C41A;
+    --review-changed:  #13C2C2;
+    --review-needs:    #FAAD14;
+    --review-stale:    #F5222D;
+    --freshness-current:    #52C41A;
+    --freshness-stale:      #FAAD14;
+    --freshness-missing:    #F5222D;
+    --freshness-unverified: #8C8C8C;
     --code-bg: #0D1117;
     --code-ink: #CDD6E3;
     --code-comment: #8997AC;

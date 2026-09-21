@@ -21,6 +21,7 @@ from .project_model import (
     ProjectDescriptor,
     ProjectError,
     SourceRoot,
+    TargetProfile,
     canonical_json,
     descriptor_to_dict,
     validate_descriptor,
@@ -261,7 +262,8 @@ class ProjectIntake:
         descriptor = ProjectDescriptor(uuid.uuid4().hex, 'Source preview', source_roots=roots)
         return discover_sources(access, descriptor, checkpoint=checkpoint, progress=lambda event: None)
 
-    def create(self, name, selections, *, description='', client_label='', destination=None):
+    def create(self, name, selections, *, description='', client_label='', destination=None, target=None):
+        target_profile = target if target is not None else TargetProfile()
         if self.identity is not None:
             if destination is not None:
                 raise PermissionError('Authenticated projects use host-managed storage')
@@ -271,7 +273,8 @@ class ProjectIntake:
         pid = uuid.uuid4().hex
         requested_destination = _plain_path(destination) if destination is not None else None
         root = requested_destination or _plain_path(self.data_dir / 'projects' / pid)
-        descriptor = ProjectDescriptor(pid, name, source_roots=roots, description=description, client_label=client_label)
+        descriptor = ProjectDescriptor(pid, name, source_roots=roots, description=description,
+                                       client_label=client_label, target=target_profile)
         validate_descriptor(descriptor)
         approved = tuple(Path(r.path) for r in roots)
         authorized_roots(local_project_access(root, approved_roots=approved), descriptor)
@@ -290,7 +293,8 @@ class ProjectIntake:
             else:
                 metadata['projects'][pid] = {'locator': str(root / '.formslang/project.json'),
                     'actor': actor, 'selections': selections, 'pending_local': pending_key}
-        descriptor = ProjectDescriptor(pid, name, source_roots=roots, description=description, client_label=client_label)
+        descriptor = ProjectDescriptor(pid, name, source_roots=roots, description=description,
+                                       client_label=client_label, target=target_profile)
         access = local_project_access(root, approved_roots=approved)
         authorized_roots(access, descriptor)
         root.mkdir(parents=True, exist_ok=True)
@@ -318,7 +322,8 @@ class ProjectIntake:
                         raise ProjectError('Initialized project differs from the creation request')
                 else:
                     service.create(name, roots=roots, description=description,
-                                   client_label=client_label, project_id=pid)
+                                   client_label=client_label, project_id=pid,
+                                   target=target_profile)
             finally:
                 service.close()
             with self._metadata(write=True) as metadata:
