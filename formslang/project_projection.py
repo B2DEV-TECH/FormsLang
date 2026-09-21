@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import copy
+import math
 from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 from threading import RLock
 
+from .hotspots import detect_estate_hotspots
 from .project_model import ProjectError, RevisionConflict
 
 RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
@@ -21,9 +23,16 @@ FORM_SUFFIXES = {".xml", ".fmb", ".pll", ".mmb", ".olb"}
 ROUTINE_TYPES = {"PACKAGE_SUBPROGRAM", "SUBPROGRAM_BODY", "PROGRAM_UNIT"}
 RESOLVED_REVIEWS = {"APPROVE", "MODIFY"}
 RISK_RANK = {value: index for index, value in enumerate(RISK_LEVELS)}
+BASE_SEVERITY = {
+    "CRITICAL": 100.0,
+    "HIGH": 50.0,
+    "MEDIUM": 20.0,
+    "LOW": 5.0,
+    "UNKNOWN": 1.0,
+}
 CATEGORIES = (
     "forms", "libraries", "packages", "routines", "views", "tables",
-    "dependencies", "business_rules", "findings",
+    "dependencies", "business_rules", "findings", "hotspots",
 )
 SORTS = {"name", "risk", "recommendation", "intervention", "module", "type", "priority"}
 MAX_OVERVIEW_WARNINGS = 50
@@ -177,8 +186,9 @@ def _statement_codes(item):
     return codes
 
 
-def _finding_rows(findings, entities, centrality, evidence_by_entity):
+def _finding_rows(findings, entities, centrality, evidence_by_entity, fan_in=None):
     rows = []
+    fan_in = fan_in or {}
     for item in sorted(findings.values(), key=lambda value: value["id"]):
         entity = entities.get(item.get("entity"), {})
         attributes = entity.get("attributes") if isinstance(entity.get("attributes"), dict) else {}
@@ -189,13 +199,34 @@ def _finding_rows(findings, entities, centrality, evidence_by_entity):
             evidence_factors.add("API_BYPASS")
         if any(code.startswith("LOGIC_DUPLICATED_") for code in signal_codes):
             evidence_factors.add("DUPLICATED_LOGIC")
+
+        risk_level = _bucket(risk.get("level"), RISK_LEVELS)
+        base = BASE_SEVERITY.get(risk_level, 1.0)
+        eid = item.get("entity")
+        fan_in_count = fan_in.get(eid, 0)
+        fan_in_multiplier = 0.2 * math.log2(1.0 + fan_in_count)
+        is_bypass = ("API_BYPASS" in evidence_factors) or (item.get("code") in ("DIRECT_DML_BYPASSES_API", "API_BYPASS_CANDIDATE"))
+        bypass_multiplier = 0.3 if is_bypass else 0.0
+        has_existing_api = bool(item.get("duplicates")) or ("DUPLICATED_LOGIC" in evidence_factors)
+        api_multiplier = 0.25 if has_existing_api else 0.0
+        priority_score = round(base * (1.0 + fan_in_multiplier + bypass_multiplier + api_multiplier), 1)
+
+        breakdown = [f"Base Severity: {int(base)} ({risk_level})"]
+        if fan_in_count > 0:
+            breakdown.append(f"Fan-In: {fan_in_count} (+{fan_in_multiplier:.2f}x)")
+        if is_bypass:
+            breakdown.append("API Bypass: Yes (+0.30x)")
+        if has_existing_api:
+            breakdown.append("Existing API: Yes (+0.25x)")
+        breakdown.append(f"Priority Score: {priority_score}")
+
         rows.append({
             "id": item["id"],
             "entity_id": _text(item.get("entity"), 500),
             "name": _text(entity.get("name") or item.get("id"), 500),
             "module": _logical_name(entity.get("module")),
             "source_type": _text(entity.get("type"), 100),
-            "risk": _bucket(risk.get("level"), RISK_LEVELS),
+            "risk": risk_level,
             "recommendation": _bucket(item.get("recommendation"), RECOMMENDATIONS),
             "intervention": _bucket(item.get("execution_verdict"), INTERVENTIONS),
             "review_state": _bucket_review(item.get("review_state")),
@@ -206,6 +237,9 @@ def _finding_rows(findings, entities, centrality, evidence_by_entity):
             )),
             "evidence_factors": tuple(sorted(evidence_factors)),
             "dependency_centrality": centrality.get(item.get("entity"), 0),
+            "priority_score": priority_score,
+            "priority_breakdown": tuple(breakdown),
+            "fan_in": fan_in_count,
         })
     return tuple(rows)
 
@@ -251,6 +285,7 @@ def _priority_key(row):
     return (
         group,
         RISK_RANK[row["risk"]],
+        -row.get("priority_score", 0.0),
         row["intervention"] != "MANUAL",
         row["review_state"] != "STALE",
         not evidenced,
@@ -396,6 +431,7 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         key=lambda edge: edge["id"],
     ))
     centrality = Counter()
+    fan_in = Counter()
     dependency_counts = Counter()
     evidence_by_entity = defaultdict(set)
     for edge in edges:
@@ -403,6 +439,8 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         target = edge.get("target")
         centrality[source] += 1
         centrality[target] += 1
+        if target:
+            fan_in[target] += 1
         for endpoint in {source, target}:
             dependency_counts[endpoint] += 1
         if edge.get("type") == "DUPLICATES_LOGIC":
@@ -412,7 +450,7 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         if source_module and target_module and source_module != target_module:
             evidence_by_entity[source].add("CROSS_MODULE_IMPACT")
             evidence_by_entity[target].add("CROSS_MODULE_IMPACT")
-    finding_rows = _finding_rows(findings, entities, centrality, evidence_by_entity)
+    finding_rows = _finding_rows(findings, entities, centrality, evidence_by_entity, fan_in)
     finding_rows = tuple({**row, "priority_factors": _priority_factors(row)}
                          for row in finding_rows)
     findings_by_entity = defaultdict(list)
@@ -453,6 +491,13 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         {**row, "candidate_kind": "Observed business rule candidate"}
         for row in finding_rows if "BUSINESS_RULE" in row["classification"]
     )
+    blueprint = assessment.get("blueprint", {}) if isinstance(assessment.get("blueprint"), dict) else {}
+    hotspot_results = detect_estate_hotspots(blueprint)
+    hotspot_rows = tuple({
+        **h,
+        "entity_ids": h.get("affected_entities", ()),
+        "_member_ids": h.get("affected_entities", ()),
+    } for h in hotspot_results.get("hotspots", []))
     rows = {
         "forms": forms,
         "libraries": libraries,
@@ -463,6 +508,7 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         "dependencies": dependency_rows,
         "business_rules": business_rules,
         "findings": finding_rows,
+        "hotspots": hotspot_rows,
     }
     inventory = assessment.get("inventory") if isinstance(assessment.get("inventory"), dict) else {}
     inventory_forms = inventory.get("forms") if isinstance(inventory.get("forms"), dict) else {}
@@ -526,10 +572,16 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
             "dependencies": len(dependency_rows),
             "business_rule_candidates": len(business_rules),
             "modernization_findings": len(finding_rows),
+            "architectural_hotspots": hotspot_results["total"],
         },
         **distributions,
         "automation_potential": automation,
         "priority": _priority_summary(finding_rows),
+        "hotspots": {
+            "total": hotspot_results["total"],
+            "by_type": hotspot_results["by_type"],
+            "items": hotspot_results["hotspots"][:20],
+        },
         "source_coverage": {
             "forms": {
                 "discovered": inventory_forms.get("discovered"),
@@ -544,7 +596,8 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
             "libraries": {
                 "discovered": len(libraries),
                 "without_semantic_representation": sum(
-                    row["semantic_support"] == "UNREPRESENTED" for row in libraries
+                    row.get("semantic_support") == "UNREPRESENTED"
+                    for row in libraries
                 ),
             },
         },
@@ -596,6 +649,19 @@ def _priority_summary(finding_rows):
         "stale": sum(row["review_state"] == "STALE" for row in unresolved),
         "total": len(unresolved),
         "first_finding_id": ordered[0]["id"] if ordered else None,
+        "highest_score": ordered[0].get("priority_score", 0.0) if ordered else 0.0,
+        "start_here": [
+            {
+                "id": r["id"],
+                "name": r.get("name"),
+                "module": r.get("module"),
+                "risk": r.get("risk"),
+                "score": r.get("priority_score", 0.0),
+                "factors": r.get("priority_factors", ()),
+                "breakdown": r.get("priority_breakdown", ()),
+            }
+            for r in ordered[:5]
+        ],
     }
 
 

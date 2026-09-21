@@ -138,6 +138,19 @@ CORPORATE_STYLE = r"""
   .bp-card, .bp-row, .bp-category { transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease); }
   @keyframes corporate-dialog { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes corporate-meter { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .project-hotspots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; }
+  .project-hotspot-card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .project-hotspot-card[data-severity="CRITICAL"] { border-left: 4px solid var(--risk-critical); }
+  .project-hotspot-card[data-severity="HIGH"] { border-left: 4px solid var(--risk-high); }
+  .project-hotspot-card[data-severity="MEDIUM"] { border-left: 4px solid var(--risk-medium); }
+  .project-hotspot-card b { font-size: 18px; font-weight: 700; color: var(--ink); }
+  .project-hotspot-card span { font-size: 12px; color: var(--ink-dim); }
+  .project-start-here { margin-top: 10px; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; }
+  .project-priority-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); gap: 10px; }
+  .project-priority-item:last-child { border-bottom: none; }
+  .project-score-pill { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border-strong); white-space: nowrap; }
+  .project-score-pill[data-risk="CRITICAL"] { color: var(--risk-critical); border-color: rgba(255, 77, 79, 0.4); }
+  .project-score-pill[data-risk="HIGH"] { color: var(--risk-high); border-color: rgba(250, 173, 20, 0.4); }
   @media (max-width: 760px) {
     .sheet-head { padding: 16px; gap: 10px; }
     .sheet-head h2 { font-size: 17px; }
