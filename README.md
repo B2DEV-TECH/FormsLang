@@ -1322,27 +1322,24 @@ screenshots and results as the `workbench-browser-evidence` artifact.
       APEX 26.1. Single-record blocks whose items sit in one region, for
       now; without a confirmation the region is unchanged
 
-### Next phase: continuous delivery with SQLcl
+### Beyond 2.0: Oracle Forms Modernization Intelligence Platform (2.1 → 3.0)
 
-- [ ] SQLcl `project` round-trip: export the application back from APEX
-      after a Page Designer session, so the committed APEXlang tree stays
-      the source of truth and `formslang diff` shows hand-made changes
-- [ ] Environment promotion: one validated ZIP through DEV → TEST → PROD,
-      workspace and schema resolved per deployment
-- [ ] Render-time verification as an optional CI job against a disposable
-      APEX container (the ORDS check, automated)
-- [ ] Wider item-type mapping (`datePicker`, `numberField`, select lists
-      from LOVs) — each keyword only after a live `apex validate`
+FormsLang 2.0 established the persistent project modernization workbench. The next horizon evolves FormsLang from an APEX-only converter into an **Oracle Forms Modernization Intelligence Platform**:
 
-### Later
+> *"Before a team rewrites a single Oracle Form, FormsLang should be the first tool they run."*
+>
+> **Core Motto:** *Understand first. Modernize second.*
 
-- [ ] Interactive hunk-by-hunk merge engine across module versions (`formdiff`
-      reports the structural diff; applying it is still manual)
-- [ ] Larger benchmark corpus (100 / 500 modules) with tracked performance
-      budgets
-- [ ] Broader LOV / validation / navigation / process-flow coverage
-- [ ] Installer code signing
-- [ ] Team / server mode
+The full platform architecture is formally defined in the [authoritative specification](docs/superpowers/specs/2026-09-21-formslang-modernization-intelligence-platform-spec.md) and detailed across five foundational design documents:
+
+* **[Platform Vision & Doctrine](docs/superpowers/specs/formslang-modernization-intelligence-vision.md)** — Target-neutral positioning, enterprise personas, and the 8 architectural laws.
+* **[UX & Information Architecture](docs/superpowers/specs/formslang-21-ux-information-architecture.md)** — The 5-stage modernization journey (*Understand → Assess → Decide → Plan → Deliver*), Phase 0 design tokens, and wireframes.
+* **[Modernization Model (IR)](docs/superpowers/specs/formslang-modernization-model-design.md)** — 6-level taxonomy separating Observed Facts from Structural Signals, Modernization Intents, Target Recommendations, and Human Decisions.
+* **[Target Adapter Architecture](docs/superpowers/specs/formslang-target-adapter-design.md)** — Decoupled `TargetAdapter` boundary preserving native APEX 26.1 capabilities alongside the new *Generic Modernization Target*.
+* **[Estate Intelligence Design](docs/superpowers/specs/formslang-21-estate-intelligence-design.md)** — Modernization Cockpit Overview, deterministic Hotspot engine contracts (API Bypass, Duplicated Rules), "Start Here" explainable ranking, and scale budgets.
+
+For detailed release milestone progression (2.1 Estate Intelligence, 2.2 Modernization Model, 2.3 Architecture & Planning, 2.4 Policy, 2.5 Target Adapters, 2.6 Extension Model, 3.0 Intelligence Platform), see **[docs/roadmap-2.md](docs/roadmap-2.md)**.
+
 
 ## Community
 
