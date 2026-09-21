@@ -1,36 +1,55 @@
 # Oracle Forms to APEX with FormsLang
 
-FormsLang helps Oracle teams inspect Forms and database source before modernization
-decisions. Automate what is safe, assist what is complex, and escalate architectural
-judgment to people. It is not a one-click FMB converter.
+FormsLang is an open-source modernization workbench for Oracle teams receiving an
+unfamiliar Forms estate. Its purpose is less manual discovery and better reviewed
+decisions, not magical one-click conversion or unmeasured migration-cost promises.
 
-Stable 1.x provides the existing CLI, Workbench, Blueprint/review and APEX export
-capabilities described in the [README](../README.md). Unreleased Phase B adds a
-persistent project workflow: choose sources, discover, analyze, inspect a saved
-summary, close and reopen. See [project workflows](project-workflows.md).
-Its target profile is Oracle APEX 26.1 / APEXlang, not certification that arbitrary
-Forms behavior has been converted.
+## Inputs
 
-Inputs include Forms2XML and supported SQL/package/DDL source. FMB, PLL, MMB and
-OLB are discovered, not silently treated as parsed representations. Optional
-Forms2XML conversion needs installed Oracle tooling and explicit confirmation.
-Incomplete database context and dynamic SQL limit static evidence.
+Select supported Forms2XML and related packages, procedures, functions, views,
+tables/DDL and other supported SQL sources. FMB, PLL, MMB and OLB are discovered
+with representation warnings; Forms2XML conversion requires separately installed
+Oracle tooling and explicit action. Neither AI nor a live database is required.
 
-The pipeline stages and hashes source, reuses deterministic parsers and cross-layer
-reasoning, and persists an assessment/Blueprint with warnings and provenance. It
-needs neither external AI nor database access. Parse failures remain visible, and
-changed source does not silently inherit approval.
+## Process
 
-FormsLang inventories, correlates dependencies and proposes evidence-backed
-directions. Specialists interpret undocumented intent, choose architecture, review
-security/workflows and test behavior. Business-rule candidates are not verified
-business intent.
+Create Project → Discover → Analyze → Overview/Inventory → Review → Generate
+eligible APEXlang → Validate explicitly → Deliver reports/package.
 
-APEXlang remains a reviewable output of existing export capabilities. The future
-project-level reviewed generation workflow and modernization package are not Phase B
-features. Validation, import and deployment remain separate actions; syntax validity
-is not functional equivalence. FormsLang does not replace architects, UAT or explicit
-approval to execute changes in an Oracle environment.
+The same persistent assessment drives UI, API and CLI. Source fingerprints explain
+which inputs were assessed. Partial failures, incomplete database context, dynamic
+SQL and stale sources remain visible. Review history does not overwrite engine
+evidence or silently transfer to changed source.
 
-The intended benefit is less repetitive discovery and more time for expert decisions.
-No measured analyst-hours saving or project-duration estimate is claimed.
+## What is automated
+
+Source inventory, deterministic parsing/correlation, dependency evidence, risk and
+modernization triage, transparent priority ordering, safe supported structural
+generation, and snapshot reports/backlog packaging.
+
+## What is assisted
+
+Cross-layer ownership, candidate business rules, duplicate logic, native APEX
+mapping and target prerequisites. The engine proposes; evidence explains; a human
+reviews architecture and code independently. Unsupported behavior stays blocked.
+
+## What requires people
+
+Undocumented intent, business-owner decisions, approval/identity/security behavior,
+transaction/navigation design, executable code review, database prerequisites,
+target runtime tests and UAT. Accepting a recommendation does not prove functional
+equivalence or authorize deployment.
+
+## Outputs
+
+Inventory, risk/direction/intervention distributions, priority review history,
+eligible selected-module Oracle APEX 26.1 / APEXlang applications, self-contained
+executive/technical HTML, CSV/JSON backlog and a hash-manifested modernization
+package. Default reports omit source bodies/private notes but are not anonymous.
+No invented executable database refactoring or labor estimate is emitted.
+
+The current 2.0 candidate supports one independent module application per generation
+run, not full-estate merging. Offline SQLcl validation does not establish runtime
+parity or Oracle endorsement. See [user guide](user-guide/README.md),
+[APEX target](apex-26-modernization.md), [limitations](user-guide/15-limitations.md)
+and [actual acceptance/release status](quality-acceptance.md).

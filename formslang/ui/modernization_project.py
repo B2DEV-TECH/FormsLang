@@ -18,6 +18,7 @@ function projectError(message, field) {
 function projectContext(){return {generation:projectUI.generation,id:projectUI.activeId};}
 function projectCurrent(c){return c.generation===projectUI.generation && c.id===projectUI.activeId;}
 function projectEnter(view) {
+  projectUI.finishOpeningJob?.();projectUI.finishOpeningJob=null;
   clearTimeout(projectUI.timer);projectUI.timer=null;projectUI.generation++;projectUI.view=view;
   projectUI.busy=false;projectUI.jobId=null;
   document.body.classList.add('project-mode');$('project-workspace').hidden=false;
@@ -26,6 +27,7 @@ function projectEnter(view) {
   setNavigationOpen(false);setShellSection('btn-modernization');
 }
 function projectLeave() {
+  projectUI.finishOpeningJob?.();projectUI.finishOpeningJob=null;
   projectSaveDraft();clearTimeout(projectUI.timer);projectUI.generation++;projectUI.view='legacy';projectUI.busy=false;
   document.body.classList.remove('project-mode');$('project-workspace').hidden=true;
   $('workspace-title').textContent=state.session.title || 'Welcome to FormsLang';
@@ -121,28 +123,36 @@ async function showProjectHome() {
     $('project-recents').querySelectorAll('[data-project-open]').forEach(el=>el.onclick=()=>openProject(el.dataset.projectOpen));
   }catch(e){if(projectCurrent(c))projectError(e.message+' Retry Recent Projects.');}
 }
-async function openProject(id,check=true) {
+function openProject(id,check=true) {
+  const opening=projectOpenSaved(id,check);projectUI.opening=opening;return opening;
+}
+async function projectAwaitOpeningJob() {
+  projectUI.openingJob=new Promise(resolve=>{projectUI.finishOpeningJob=resolve;});
+  await pollProjectJob();
+}
+async function projectOpenSaved(id,check=true) {
   projectSaveDraft();projectEnter('summary');projectUI.activeId=id;const c=projectContext();
   $('project-content').innerHTML='<p>Opening saved project…</p>';
   try {
     const summary=await api('/api/v2/projects/'+id);if(!projectCurrent(c))return;
     projectUI.summary=summary;renderProjectSummary(summary);
-    if(summary.last_job && ['QUEUED','RUNNING'].includes(summary.last_job.status)){projectUI.jobId=summary.last_job.job_id;projectUI.operation=summary.last_job.operation;if(projectUI.operation==='ANALYZE')renderProjectProgress(summary);await pollProjectJob();return;}
+    if(summary.last_job && ['QUEUED','RUNNING'].includes(summary.last_job.status)){projectUI.jobId=summary.last_job.job_id;projectUI.operation=summary.last_job.operation;if(projectUI.operation==='ANALYZE')renderProjectProgress(summary);await projectAwaitOpeningJob();return;}
     if(summary.project.analysis_revision)await projectLoadOverview(c);
     if(!projectCurrent(c))return;
     if(check && summary.project.analysis_revision){
       $('project-status').textContent='Saved assessment loaded. Checking source freshness…';
       const job=await api(`/api/v2/projects/${id}/freshness`,{});if(!projectCurrent(c))return;
-      projectUI.jobId=job.job_id;projectUI.operation='FRESHNESS';await pollProjectJob();
+      projectUI.jobId=job.job_id;projectUI.operation='FRESHNESS';await projectAwaitOpeningJob();
     }
     return projectCurrent(c)?c:undefined;
   }catch(e){if(projectCurrent(c))projectError(e.message+' Reload the project to retry.');}
 }
 async function projectLoadOverview(c=projectContext(),render=true) {
+  const requestedView=projectUI.view;
   try {
     const payload=await api(`/api/v2/projects/${c.id}/overview`);if(!projectCurrent(c))return;
     const data=payload?.overview||payload;
-    if(data?.assessment&&data?.inventory){projectUI.overview=data;if(render)renderProjectOverview(data);return data;}
+    if(data?.assessment&&data?.inventory){projectUI.overview=data;if(render&&projectUI.view===requestedView)renderProjectOverview(data);return data;}
   }catch(e){if(projectCurrent(c))projectError(e.message+' The saved project remains available; retry Overview.');}
 }
 const projectRiskLabels={CRITICAL:'Critical',HIGH:'High',MEDIUM:'Medium',LOW:'Low',UNKNOWN:'Unknown'};
@@ -150,16 +160,18 @@ const projectRecommendationLabels={PRESERVE:'Preserve',CONVERT:'Convert',REPLACE
 const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MANUAL:'Human decision',UNKNOWN:'Unknown'};
 function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
 function projectSectionNav(active='overview') {
-  const links=[['overview','Overview'],['inventory','Inventory'],['review','Review'],['blueprint','Blueprint'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
-  return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''} ${['generate','reports'].includes(id)?'title="Planned for a later FormsLang 2.0 phase"':''}>${label}</button>`).join('')}</nav>`;
+  const links=[['overview','Overview'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
+  return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`;
 }
 function projectBindSectionNav() {
   $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
     const section=el.dataset.projectSection;
-    if(section==='overview')renderProjectOverview(projectUI.overview);
+    if(section==='overview'){if(projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='overview';const c=projectContext();projectLoadOverview(c,false).then(data=>{if(data&&projectCurrent(c)&&projectUI.view==='overview')renderProjectOverview(data);});}}
     else if(section==='inventory')projectOpenInventory({category:'forms'});
-    else if(section==='review')projectOpenPriorityReview();
-    else if(section==='blueprint'){projectLeave();browse('');}
+    else if(section==='review')projectReviewOpen();
+    else if(section==='generate')projectGenerationOpen();
+    else if(section==='reports')projectReportsOpen();
+    else if(section==='dependencies')projectOpenInventory({category:'dependencies'});
     else if(section==='settings')renderProjectSummary(projectUI.summary);
     else {$('project-status').textContent=`${section==='generate'?'Generation':'Reports'} is planned for a later FormsLang 2.0 phase.`;}
   });
@@ -258,8 +270,9 @@ function projectInventoryPage(offset,focusId='') {const state=projectUI.inventor
 async function projectOpenPriorityReview() {
   const findingId=projectUI.overview?.priority?.first_finding_id||null;
   projectUI.reviewContext={project_id:projectUI.activeId,finding_id:findingId,filters:{priority:'unresolved'},analysis_revision:projectInventoryRevision()};
-  const page=await projectOpenInventory({category:'findings',priority:true});
-  if(findingId&&page?.rows?.some(row=>row.id===findingId))await projectInventoryDetail(findingId);
+  await projectReviewOpen({filters:{priority:'unresolved'}});
+  const page=projectUI.reviewState?.page;
+  if(findingId&&page?.rows?.some(row=>row.id===findingId))await projectReviewDetail(findingId);
   return page;
 }
 function projectDetailList(items,kind) {
@@ -306,7 +319,7 @@ function renderProjectOverview(data) {
   const critical=Number(priority.critical||0);
   const stateMessage=state==='Stale'?'Source changed since this assessment. Saved metrics remain visible; refresh analysis before treating them as current.':state==='Missing Source'?'A source folder cannot be found. Relink it or continue viewing the saved assessment.':state==='Incomplete'?'This assessment is incomplete. Review source warnings and failed inputs.':state==='Unverified'?'Source freshness has not been verified.':'';
   $('workspace-title').textContent=p.name||projectUI.summary?.project?.name||'Modernization Project';
-  $('project-content').innerHTML=`${projectSectionNav('overview')}<header class="project-overview-header"><div><h2 id="project-step-title" tabindex="-1">${esc(p.name||'Modernization Project')}</h2><p>${esc(target.platform||'Oracle APEX')} ${esc(target.version||'')} / ${esc(target.representation||'')}</p></div><p class="project-assessment-state"><span>Assessment status</span><b data-status="${esc(String(freshness).toUpperCase())}">${esc(state)}</b></p></header>${stateMessage?`<aside class="project-state-warning" role="status"><p>${esc(stateMessage)}</p><div class="project-actions">${projectButton('project-refresh','Refresh Analysis',true)}${state==='Missing Source'?projectButton('project-relink-missing','Relink Source'):''}</div></aside>`:''}<div class="project-overview-grid">${projectInventorySummary(data.inventory)}${projectDistribution('Risk',data.risk_distribution,projectRiskLabels,'risk')}${projectDistribution('Recommended Direction',data.recommendation_distribution,projectRecommendationLabels,'recommendation')}${projectDistribution('Intervention',data.intervention_distribution,projectInterventionLabels,'intervention')}<section class="project-panel" id="project-priority"><h3>Priority Review</h3>${critical?`<p><b>${critical}</b> Critical · <b>${Number(priority.high||0)}</b> High · <b>${Number(priority.manual||0)}</b> Human Decisions</p>`:'<p class="project-empty">No unresolved CRITICAL findings in the current assessment.</p>'}<p>${Number(priority.total||0)} unresolved findings ordered by transparent evidence factors.</p>${projectButton('project-start-priority','Start Priority Review',true)}</section><section class="project-panel"><h3>Automation Potential</h3><dl class="project-distribution">${Object.entries(projectInterventionLabels).map(([key,label])=>`<div><dt>${esc(label)}</dt><dd>${Number(data.automation_potential?.[key]?.percent??data.automation_potential?.categories?.[key]?.percent??0)}%</dd></div>`).join('')}</dl><p class="project-muted">Based on modernization decision categories, not effort or project-duration estimation. AUTO does not mean generation-ready.</p></section>${projectCoverage(coverage)}<section class="project-panel"><h3>Assessment Warnings</h3>${projectOverviewWarnings(data.warnings,data.warning_summary)}</section><section class="project-panel project-panel-wide"><h3>Assessment Record</h3><p>Assessed ${esc(timestamp)} · Analysis revision ${esc(String(assessment.analysis_revision||data.analysis_revision||'Unavailable').slice(0,12))}</p><p>Reviewed ${Number(review.reviewed||0)} / ${Number(review.total||0)} findings. Generation and validation readiness are not assessed in Phase C.</p></section></div>`;
+  $('project-content').innerHTML=`${projectSectionNav('overview')}<header class="project-overview-header"><div><h2 id="project-step-title" tabindex="-1">${esc(p.name||'Modernization Project')}</h2><p>${esc(target.platform||'Oracle APEX')} ${esc(target.version||'')} / ${esc(target.representation||'')}</p></div><p class="project-assessment-state"><span>Assessment status</span><b data-status="${esc(String(freshness).toUpperCase())}">${esc(state)}</b></p></header>${stateMessage?`<aside class="project-state-warning" role="status"><p>${esc(stateMessage)}</p><div class="project-actions">${projectButton('project-refresh','Refresh Analysis',true)}${state==='Missing Source'?projectButton('project-relink-missing','Relink Source'):''}</div></aside>`:''}<div class="project-overview-grid">${projectInventorySummary(data.inventory)}${projectDistribution('Risk',data.risk_distribution,projectRiskLabels,'risk')}${projectDistribution('Recommended Direction',data.recommendation_distribution,projectRecommendationLabels,'recommendation')}${projectDistribution('Intervention',data.intervention_distribution,projectInterventionLabels,'intervention')}<section class="project-panel" id="project-priority"><h3>Priority Review</h3>${critical?`<p><b>${critical}</b> Critical · <b>${Number(priority.high||0)}</b> High · <b>${Number(priority.manual||0)}</b> Human Decisions</p>`:'<p class="project-empty">No unresolved CRITICAL findings in the current assessment.</p>'}<p>${Number(priority.total||0)} unresolved findings ordered by transparent evidence factors.</p>${projectButton('project-start-priority','Start Priority Review',true)}</section><section class="project-panel"><h3>Automation Potential</h3><dl class="project-distribution">${Object.entries(projectInterventionLabels).map(([key,label])=>`<div><dt>${esc(label)}</dt><dd>${Number(data.automation_potential?.[key]?.percent??data.automation_potential?.categories?.[key]?.percent??0)}%</dd></div>`).join('')}</dl><p class="project-muted">Based on modernization decision categories, not effort or project-duration estimation. AUTO does not mean generation-ready.</p></section>${projectCoverage(coverage)}<section class="project-panel"><h3>Assessment Warnings</h3>${projectOverviewWarnings(data.warnings,data.warning_summary)}</section><section class="project-panel project-panel-wide"><h3>Assessment Record</h3><p>Assessed ${esc(timestamp)} · Analysis revision ${esc(String(assessment.analysis_revision||data.analysis_revision||'Unavailable').slice(0,12))}</p><p>Reviewed ${Number(review.reviewed||0)} / ${Number(review.total||0)} findings. Inspect Generate for scope-specific readiness and validation.</p></section></div>`;
   projectBindSectionNav();
   $('project-content').querySelectorAll('[data-project-filter]').forEach(el=>el.onclick=()=>projectOpenInventory({category:'findings',filters:{[el.dataset.projectFilter]:el.dataset.projectValue}}));
   $('project-start-priority').onclick=projectOpenPriorityReview;
@@ -318,7 +331,7 @@ function renderProjectSummary(data) {
   const p=data.project,f=data.freshness||{status:'UNVERIFIED'};projectUI.summary=data;
   $('workspace-title').textContent=p.name;
   const warning=f.status==='STALE'?'Source or engine changed since this assessment. Refresh Analysis or view saved evidence.':f.status==='MISSING_SOURCE'?'A source folder or file cannot be found. Relink its root or view saved evidence.':f.status==='INCOMPLETE'?'Assessment is incomplete. Review source warnings before relying on coverage.':f.status==='UNVERIFIED'?'Source freshness has not been verified.':'';
-  $('project-content').innerHTML=`<h2 id="project-step-title" tabindex="-1">${esc(p.name)}</h2><p>${esc(p.target_platform)} ${esc(p.target_version)} / ${esc(p.target_representation)}</p><p>Source status: <b>${esc(f.status)}</b></p><p>${esc(warning)}</p><p>Last analyzed: ${esc(data.analyzed_at||'Not analyzed')}</p>${projectStats(data.inventory)}<div class="project-actions">${projectButton('project-analyze',p.analysis_revision?'Refresh Analysis':'Analyze Project',true)}${p.analysis_revision?projectButton('project-saved','View Saved Assessment'):''}${projectButton('project-reload','Reload Project')}</div><h3>Source folders</h3><ul>${p.source_roots.map(r=>`<li>${esc(r.kind)}: ${esc(r.path||r.id)} <button class="btn" data-project-relink="${esc(r.id)}">Relink</button></li>`).join('')}</ul><div id="project-saved-content"></div><p class="project-muted">Project summary. The full Overview experience follows in Phase C.</p>`;
+  $('project-content').innerHTML=`<h2 id="project-step-title" tabindex="-1">${esc(p.name)}</h2><p>${esc(p.target_platform)} ${esc(p.target_version)} / ${esc(p.target_representation)}</p><p>Source status: <b>${esc(f.status)}</b></p><p>${esc(warning)}</p><p>Last analyzed: ${esc(data.analyzed_at||'Not analyzed')}</p>${projectStats(data.inventory)}<div class="project-actions">${projectButton('project-analyze',p.analysis_revision?'Refresh Analysis':'Analyze Project',true)}${p.analysis_revision?projectButton('project-saved','View Saved Assessment'):''}${projectButton('project-reload','Reload Project')}</div><h3>Source folders</h3><ul>${p.source_roots.map(r=>`<li>${esc(r.kind)}: ${esc(r.path||r.id)} <button class="btn" data-project-relink="${esc(r.id)}">Relink</button></li>`).join('')}</ul><div id="project-saved-content"></div><p class="project-muted">Project settings and source locations. Use Overview for the saved assessment.</p>`;
   $('project-analyze').onclick=startProjectAnalysis;$('project-reload').onclick=()=>openProject(p.id);
   if(data.last_job?.safe_failure){
     const failure=data.last_job.safe_failure;
@@ -370,6 +383,8 @@ function renderProjectProgress(summary){
 }
 async function pollProjectJob() {
   const c=projectContext(),jobId=projectUI.jobId;if(!jobId)return;
+  const operation=projectUI.operation,finish=projectUI.finishOpeningJob;
+  const settle=()=>{finish?.();if(projectUI.finishOpeningJob===finish)projectUI.finishOpeningJob=null;};
   try {
     const job=await api(`/api/v2/projects/${c.id}/jobs/${jobId}`);
     if(!projectCurrent(c)||projectUI.jobId!==jobId)return;
@@ -384,16 +399,18 @@ async function pollProjectJob() {
     }
     if(running){projectUI.timer=setTimeout(pollProjectJob,600);return;}
     projectUI.jobId=null;
-    const summary=await api(`/api/v2/projects/${c.id}`);if(!projectCurrent(c))return;
-    projectUI.view='summary';renderProjectSummary(summary);
+    const summary=await api(`/api/v2/projects/${c.id}`);if(!projectCurrent(c)||projectUI.jobId){settle();return;}
+    const background=operation==='FRESHNESS'&&!['overview','summary'].includes(projectUI.view);
+    projectUI.summary=summary;if(!background){projectUI.view='summary';renderProjectSummary(summary);}
     $('project-status').textContent=job.status==='CANCELLED'?'Analysis cancelled. The last committed assessment is preserved.':job.status==='FAILED'?'Analysis failed. The last committed assessment is preserved.':projectUI.operation==='FRESHNESS'?'Source freshness checked.':'Assessment created and saved.';
     if(job.safe_failure)projectError(`${job.safe_failure.safe_message} ${job.safe_failure.remediation}`);
-    $('project-saved-content').innerHTML=projectDiagnostics(job.diagnostics||[],true);projectBindConversions();
-    if(projectUI.operation==='FRESHNESS'&&summary.project.analysis_revision&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status)){
-      await projectLoadOverview(c);if(projectCurrent(c))$('project-status').textContent='Source freshness checked.';
+    if(!background){$('project-saved-content').innerHTML=projectDiagnostics(job.diagnostics||[],true);projectBindConversions();}
+    if(operation==='FRESHNESS'&&summary.project.analysis_revision&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status)){
+      await projectLoadOverview(c,!background);if(projectCurrent(c))$('project-status').textContent='Source freshness checked.';
     }
-    if(projectUI.operation==='ANALYZE'&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status))await openProject(c.id);
-  }catch(e){if(projectCurrent(c)){projectError(e.message+' Reload Project to reconnect to its durable job.');projectUI.busy=false;}}
+    settle();
+    if(operation==='ANALYZE'&&['COMPLETED','COMPLETED_WITH_WARNINGS'].includes(job.status))await openProject(c.id);
+  }catch(e){settle();if(projectCurrent(c)){projectError(e.message+' Reload Project to reconnect to its durable job.');projectUI.busy=false;}}
 }
 async function projectCancel() {
   const c=projectContext(),job=projectUI.jobId;if(!job)return;

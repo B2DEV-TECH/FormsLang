@@ -75,6 +75,34 @@ jobs:
           retention-days: 14
 
   # The promise docs/ci-cd.md is built on: the same session exports the
+  project-browser:
+    name: corporate project browser acceptance (Edge)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install FormsLang
+        run: python -m pip install -e .
+      - name: Exercise persisted project, review, code approval, generation and delivery
+        run: python examples/verify/project_browser_check.py --output "${{ runner.temp }}/project-browser"
+      - name: Keep synthetic browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corporate-project-browser-evidence
+          path: |
+            ${{ runner.temp }}/project-browser/**/result.json
+            ${{ runner.temp }}/project-browser/**/*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+  # The promise docs/ci-cd.md is built on: the same session exports the
   # same bytes. Export the showcase module from its XML, then again from
   # the session that first run created, and require identical ZIPs.
   export:

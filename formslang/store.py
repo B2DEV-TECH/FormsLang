@@ -218,6 +218,7 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("decision", "risk_level", "TEXT NOT NULL DEFAULT ''"),
     ("decision", "behavior", "TEXT NOT NULL DEFAULT ''"),
     ("decision", "engine_version", "TEXT NOT NULL DEFAULT ''"),
+    ("decision", "project_binding", "TEXT NOT NULL DEFAULT '{}'"),
     # The model's own reading of the behaviour, kept apart from the
     # rule engine's so the two can be compared instead of blended.
     ("proposal", "behavior", "TEXT NOT NULL DEFAULT ''"),
@@ -265,8 +266,16 @@ class TaskView:
 class Store:
     """One conversion session, backed by a single .db file."""
 
-    def __init__(self, path: Path | str, *, reconcile_jobs: bool = True):
+    def __init__(self, path: Path | str, *, reconcile_jobs: bool = True, read_only: bool = False,
+                 existing_only: bool = False):
         self.path = Path(path)
+        if read_only or existing_only:
+            # Registered prepared sessions must never be recreated or repaired on read.
+            mode = 'ro' if read_only else 'rw'
+            self.db = sqlite3.connect(self.path.resolve().as_uri() + '?mode=' + mode, uri=True,
+                                      check_same_thread=False)
+            self.db.row_factory = sqlite3.Row
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # No WAL: on Windows it keeps file handles alive and makes a session
         # file awkward to move, copy or delete while the tool is running.
@@ -425,7 +434,7 @@ class Store:
     # -- confirmed primary keys ------------------------------------------
 
     def confirm_block_key(
-        self, block: str, table_name: str, key_column: str, by: str = ""
+        self, block: str, table_name: str, key_column: str, by: str = "", *, commit: bool = True
     ) -> None:
         """Record that a person vouched for ``key_column`` identifying a row.
 
@@ -448,14 +457,16 @@ class Store:
                 _now(),
             ),
         )
-        self.db.commit()
+        if commit:
+            self.db.commit()
 
-    def forget_block_key(self, block: str) -> None:
+    def forget_block_key(self, block: str, *, commit: bool = True) -> None:
         """Withdraw a confirmation; the block goes back to an unbound region."""
         self.db.execute(
             "DELETE FROM block_key WHERE block = ?", (str(block or "").strip().upper(),)
         )
-        self.db.commit()
+        if commit:
+            self.db.commit()
 
     def block_keys(self) -> dict[str, dict]:
         """Every confirmed key, by block name, in block order."""
@@ -568,7 +579,8 @@ class Store:
     # -- decisions -------------------------------------------------------
 
     def set_decision(
-        self, task_id: str, state: str, code: str = "", comment: str = "", reviewer: str = ""
+        self, task_id: str, state: str, code: str = "", comment: str = "", reviewer: str = "",
+        *, commit: bool = True, project_binding: dict | None = None,
     ) -> None:
         if state not in STATES:
             raise ValueError(f"unknown state {state!r}")
@@ -582,15 +594,17 @@ class Store:
         snapshot = dict(row) if row else {}
         self.db.execute(
             "INSERT INTO decision (task_id, state, code, comment, reviewer, decided_at, "
-            "risk_level, behavior, engine_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "risk_level, behavior, engine_version, project_binding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 task_id, state, code, comment, reviewer, _now(),
                 snapshot.get("risk_level", ""),
                 snapshot.get("behavior", ""),
                 snapshot.get("engine_version", ""),
+                json.dumps(project_binding or {}, sort_keys=True),
             ),
         )
-        self.db.commit()
+        if commit:
+            self.db.commit()
 
     def latest_decision(self, task_id: str) -> dict | None:
         row = self.db.execute(

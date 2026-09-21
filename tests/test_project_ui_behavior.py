@@ -6,6 +6,7 @@ import subprocess
 import pytest
 
 from formslang.ui.modernization_project import PROJECT_JS
+from formslang.ui.modernization_review import REVIEW_PROJECT_JS
 
 NODE = shutil.which('node')
 pytestmark = pytest.mark.skipif(NODE is None, reason='Node needed for JavaScript behavior tests')
@@ -59,11 +60,23 @@ const inventoryDetail={category:'findings',item:inventoryPage.rows[0],dependenci
 
 def run_js(tmp_path, script):
     path = tmp_path / 'project-ui.cjs'
-    path.write_text(DOM + PROJECT_JS + '\n(async()=>{\n' + script +
+    path.write_text(DOM + PROJECT_JS + REVIEW_PROJECT_JS + '\n(async()=>{\n' + script +
                     "\n})().then(()=>console.log('COMPLETE')).catch(e=>{console.error(e);process.exitCode=1;});", encoding='utf-8')
     result = subprocess.run([NODE, str(path)], capture_output=True, text=True, timeout=60, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'COMPLETE' in result.stdout.splitlines(), result.stdout + result.stderr
+
+
+def test_project_dependencies_navigation_keeps_current_project(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';assert.match(projectSectionNav('overview'),/>Dependencies</);
+const button={dataset:{projectSection:'dependencies'}};
+$('project-content').querySelectorAll=()=>[button];
+let options;projectOpenInventory=o=>{options=o;};
+projectLeave=()=>{throw Error('Must not leave the current project');};
+projectBindSectionNav();button.onclick();
+assert.equal(projectUI.activeId,'a');assert.equal(options.category,'dependencies');
+''')
 
 
 def test_name_and_sources_are_required_before_analysis(tmp_path):
@@ -352,6 +365,46 @@ assert.match($('project-content').innerHTML,/Application Inventory/);
 ''')
 
 
+@pytest.mark.parametrize('view', ['reports', 'review', 'generate', 'inventory'])
+def test_freshness_completion_preserves_selected_workspace(tmp_path, view):
+    run_js(tmp_path, f"projectUI.view={view!r};" + r'''
+const chosen=projectUI.view;projectUI.activeId='a';projectUI.jobId='freshness-a';projectUI.operation='FRESHNESS';projectUI.summary=summary;
+$('project-content').innerHTML='Selected workspace';
+api=async path=>path.includes('/jobs/')?{job_id:'freshness-a',status:'COMPLETED',phase:'FRESHNESS'}:path.endsWith('/overview')?{overview:overviewData}:summary;
+await pollProjectJob();assert.equal(projectUI.view,chosen);assert.equal($('project-content').innerHTML,'Selected workspace');
+assert.equal(projectUI.overview.assessment.freshness,'CURRENT');assert.equal(projectUI.jobId,null);
+''')
+
+
+def test_late_overview_response_cannot_replace_reports(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.view='overview';const response=deferred();api=()=>response.promise;
+const pending=projectLoadOverview();projectUI.view='reports';$('project-content').innerHTML='Reports';
+response.resolve({overview:overviewData});await pending;
+assert.equal(projectUI.view,'reports');assert.equal($('project-content').innerHTML,'Reports');
+''')
+
+
+def test_analysis_completion_cannot_resolve_new_freshness_job(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.jobId='analysis';projectUI.operation='ANALYZE';
+api=async path=>path.endsWith('/jobs/analysis')?{status:'COMPLETED',operation:'ANALYZE'}:
+path.endsWith('/jobs/fresh')?{status:'RUNNING',operation:'FRESHNESS'}:
+path.endsWith('/freshness')?{job_id:'fresh'}:path.endsWith('/overview')?overviewData:summary;
+await pollProjectJob();let settled=false;projectUI.openingJob.then(()=>{settled=true;});
+await Promise.resolve();assert.equal(projectUI.jobId,'fresh');assert.equal(settled,false);
+projectEnter('home');await Promise.resolve();assert.equal(settled,true);
+''')
+
+
+def test_product_copy_does_not_present_implemented_sections_as_future(tmp_path):
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;renderProjectOverview(overviewData);
+assert.match($('project-content').innerHTML,/Inspect Generate for scope-specific readiness and validation/);
+renderProjectSummary(summary);assert.ok(!$('project-content').innerHTML.includes('follows in Phase C'));
+''')
+
+
 def test_inventory_sends_category_search_filters_and_revision_on_pages(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
@@ -422,12 +475,12 @@ assert.match(path,/priority=unresolved/);assert.match(path,/revision=r/);assert.
 def test_priority_review_deep_link_carries_project_finding_filter_and_revision(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
-api=async(path)=>{calls.push(path);return path.includes('/inventory/findings/')?inventoryDetail:inventoryPage;};
+api=async(path)=>{calls.push(path);return path.includes('/review/')?{...inventoryDetail,history:[],annotations:[],evidence:[],statements:[]}:inventoryPage;};
 await projectOpenPriorityReview();
 assert.deepEqual(projectUI.reviewContext,{project_id:'a',finding_id:'finding:critical',filters:{priority:'unresolved'},analysis_revision:'r'});
-assert.match(calls[0],/priority=unresolved/);assert.match(calls[0],/revision=r/);
-assert.match(calls[1],/inventory\/findings\/finding%3Acritical\?revision=r/);
-assert.match($('modal-body').innerHTML,/Approval control/);
+assert.match(calls[0],/priority=unresolved/);
+assert.match(calls[1],/review\/finding%3Acritical\?/);assert.equal(new URL(calls[1],'http://local').searchParams.get('revision'),'r');
+assert.match($('project-review-detail').innerHTML,/Approval control/);
 ''')
 
 

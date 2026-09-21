@@ -12,12 +12,49 @@
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-2E7D32" alt="PRs welcome"></a>
 </p>
 
-**FormsLang is an open-source toolkit for analyzing Oracle Forms
-applications and modernizing them toward Oracle APEX 26.1.** It assesses a
-portfolio, converts one module at a time with a human deciding on every
-unit, documents and diffs Forms modules, exports an APEXlang application
-that imports into APEX, and hands the whole thing to a pipeline.
-Apache-2.0 licensed — see [LICENSE](LICENSE).
+## Oracle Forms → Oracle APEX Modernization Workbench
+
+Understand legacy Oracle Forms applications, assess modernization risk, review
+architectural decisions, and generate reviewable Oracle APEX 26.1 / APEXlang
+artifacts where safe. Open source, Apache-2.0 licensed — see [LICENSE](LICENSE).
+
+**Automate what is safe. Assist what is complex. Escalate what requires human judgment.**
+
+![Real project Overview using synthetic source](assets/screenshots/project-overview-2.png)
+
+Actual candidate Workbench capture, not a mockup or customer application.
+
+**2.0 candidate:** the workflow below describes this development branch. Until a
+2.0 release is published, the latest stable installer remains 1.6.0. Exact accepted
+versions, test results and limitations are in [quality acceptance](docs/quality-acceptance.md).
+
+### Try the project workflow
+
+1. For the unpublished candidate, run this checkout with `pip install -e .` then `formslang workbench`. Use the matching [release installer](https://github.com/B2DEV-TECH/FormsLang/releases/latest) once 2.0 is published.
+2. Choose **Explore Demo Project**, or **New Project** for your own estate.
+3. Select Forms2XML and related database source folders.
+4. **Analyze** without AI, database credentials or mandatory account setup in local mode.
+5. Read **Overview** and **Inventory**, then **Start Priority Review**.
+6. Review architecture, prerequisites and executable code separately; **Generate** eligible scope.
+7. Explicitly **Validate** with supported SQLcl tooling and **Export** reports/a modernization package.
+
+| Understand | Modernize | Generate |
+|---|---|---|
+| Inventory Forms/database source and correlate dependencies | Prioritize evidence-backed risks and capture auditable human decisions | Produce eligible, reviewed APEXlang and self-contained delivery artifacts |
+
+The machine handles repetitive discovery and triage; Oracle specialists retain
+architecture, business intent, security and UAT responsibilities. No hours/cost
+savings or project-duration estimate is invented.
+
+Inputs include supported Forms2XML and SQL/package/DDL source. FMB/PLL/MMB/OLB
+discovery is not semantic parsing: unsupported binaries need an appropriate
+representation, and explicit Forms2XML orchestration requires separately installed
+Oracle tooling. Generation currently produces one independent eligible module
+application per run, not an automatic merged estate. AUTO is not generation-ready.
+
+[Corporate user guide](docs/user-guide/README.md) · [Forms to APEX workflow](docs/forms-to-apex.md) ·
+[Security/privacy](docs/user-guide/12-security-and-privacy.md) ·
+[Limitations](docs/user-guide/15-limitations.md) · [Manual validation](docs/manual-validation-2.0.md)
 
 **Modernization Blueprint** adds application-wide knowledge, shared dependencies,
 business-rule candidates, evidence-backed architecture recommendations and human
@@ -26,19 +63,10 @@ open `out/blueprint.session.db` in the Workbench's **Blueprint** view. Static an
 requires no AI provider. Read the [Blueprint guide](docs/modernization-blueprint.md)
 for schemas, formulas, local metadata, review and known limitations.
 
-FormsLang reads your `.fmb` modules, classifies every trigger and built-in
-against a Forms→APEX catalog, and tells you what the migration actually
-costs — measured from your own code, not estimated from a spreadsheet. Then
-its workbench does the migration with you: one code body at a time, an AI
-proposal on every unit, a human decision on every proposal. What comes out
-is an APEX 26.1 application that SQLcl validates and imports — and that the
-same session rebuilds, byte for byte, on a build server.
-
-> **Status: 1.5.0, stable.** The CLI, the session file, the export layout and
-> the workbench's local HTTP API are promised stable within 1.x — additive
-> changes only, every visible change in [CHANGELOG.md](CHANGELOG.md). Every
-> proposal the workbench produces is still a draft for a human to approve;
-> a migration remains something a person owns.
+Existing CLI, conversion sessions and Blueprint remain available. AI proposals
+are optional drafts; deterministic assessment and reviewed generation do not need
+an external provider. Validation and import are separate actions, and syntax
+validity is not runtime equivalence. Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 Upgrade notes for each release live in the [changelog](CHANGELOG.md). The
 one that matters most when coming from 1.2.0 or earlier: reopen the
@@ -80,7 +108,7 @@ developer community. See [AUTHORS.md](AUTHORS.md).
 ## Contents
 
 - [What you can do with it](#what-you-can-do-with-it)
-- [Five minutes, end to end](#five-minutes-end-to-end)
+- [Project CLI quick start](#project-cli-quick-start)
 - [Why this exists](#why-this-exists) · [What makes the numbers defensible](#what-makes-the-numbers-defensible) · [The verdict taxonomy](#the-verdict-taxonomy)
 - [Two ways to run it](#two-ways-to-run-it) — desktop app, CLI, the Oracle Forms toolchain
 - [Assess a portfolio](#assess-a-portfolio)
@@ -113,7 +141,24 @@ Everything on the left calls the same function as the thing on the right.
 There is one exporter, one differ, one documenter — reachable from a button
 and from a shell, so a pipeline reproduces exactly what a reviewer saw.
 
-## Five minutes, end to end
+## Project CLI quick start
+
+```console
+formslang project create ./orders-assessment --name "Orders" --forms ./forms --database ./database
+formslang project analyze ./orders-assessment --json
+formslang project summary ./orders-assessment --json
+formslang project review list ./orders-assessment --json
+formslang project report ./orders-assessment --format executive --output executive.html
+```
+
+Generation has explicit architecture, target and code gates; see the
+[CLI guide](docs/user-guide/11-cli.md). No AI/database credentials are needed above.
+
+### Existing single-session export workflow
+
+The following legacy power-user workflow remains available. Validation/import
+require separately configured Oracle tooling/target authorization; import is never
+part of automatic project generation. No completion-time promise is implied.
 
 ```bash
 pip install -e .                         # or run the Windows installer from Releases
@@ -130,7 +175,7 @@ formslang apex import   out\export\orders.apex.zip
 ```
 
 No Oracle Forms on this machine? Start from a Forms2XML `.xml` instead of
-the `.fmb` — every command accepts either. No SQLcl on the path? Point at
+the `.fmb` for these single-session commands. No SQLcl on the path? Point at
 it with `--sqlcl` or `FORMSLANG_SQLCL_PATH`, or set it once in Settings.
 
 ## Why this exists

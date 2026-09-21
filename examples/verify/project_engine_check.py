@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import uuid
+import zipfile
 from pathlib import Path
 
 
@@ -55,6 +56,54 @@ def main():
               ('parser.sha256', 'project_discovery.sha256', 'project_analysis.sha256', 'project_conversion.sha256')))
         repeated = command('repeat', 'project', 'analyze', destination, '--json')
         check('frozen analysis deterministic', repeated['analysis_revision'] == first['analysis_revision'])
+        queue = command('review-list', 'project', 'review', 'list', destination, '--json')
+        finding = queue['rows'][0]['id']
+        detail = command('review-show', 'project', 'review', 'show', destination, '--finding', finding, '--json')
+        command('review-defer', 'project', 'review', 'decide', destination, '--finding', finding,
+                '--binding', json.dumps(detail['binding']), '--action', 'DEFER',
+                '--rationale', 'Synthetic installed-engine review milestone.', '--json')
+        reviewed = command('review-reopen', 'project', 'review', 'show', destination, '--finding', finding, '--json')
+        check('frozen review history survives process reopen', reviewed['item']['review_state'] == 'DEFER' and reviewed['history_total'] > 0)
+        delivery = run / 'delivery.zip'
+        command('report', 'project', 'report', destination, '--format', 'package', '--output', delivery, '--json')
+        with zipfile.ZipFile(delivery) as archive:
+            manifest = json.loads(archive.read('manifest.json'))
+            check('frozen manifest covers the exact archive', bool(manifest['files']) and
+                  set(archive.namelist()) == {'manifest.json', *manifest['files']})
+            check('frozen report manifest hashes match', all(hashlib.sha256(archive.read(name)).hexdigest() == digest
+                  for name, digest in manifest['files'].items()))
+            html = archive.read('assessment/executive-summary.html')
+            check('frozen executive report has expected heading and no active external content',
+                  b'Executive Summary' in html and b'<script' not in html.lower() and
+                  b'src="http' not in html.lower() and b'href="http' not in html.lower())
+        sources = run / 'eligible-sources'
+        sources.mkdir()
+        (sources / 'notice.xml').write_text('<Module xmlns="http://xmlns.oracle.com/Forms"><FormModule Name="NOTICE">'
+            '<Block Name="INFO" DatabaseBlock="false"><Item Name="MESSAGE" ItemType="Display Item" Prompt="Message"/>'
+            '</Block></FormModule></Module>', encoding='utf-8')
+        eligible = run / 'eligible-project'
+        command('eligible-create', 'project', 'create', eligible, '--name', 'Synthetic installed generation', '--forms', sources, '--json')
+        command('eligible-analyze', 'project', 'analyze', eligible, '--json')
+        scopes = command('generation-status', 'project', 'generation', 'status', eligible, '--json')
+        sid = scopes['modules'][0]['source_id']
+        def generation_request(name, operation, payload, *extra):
+            request = run / (name + '.request.json')
+            request.write_text(json.dumps(payload), encoding='utf-8')
+            return command(name, 'project', 'generation', operation, eligible, '--request', request, *extra, '--json')
+        generation_request('prepare', 'prepare', scopes['binding'], '--source', sid)
+        queue = command('eligible-review', 'project', 'review', 'list', eligible, '--json')
+        for index, row in enumerate(queue['rows']):
+            detail = command(f'eligible-detail-{index}', 'project', 'review', 'show', eligible, '--finding', row['id'], '--json')
+            command(f'eligible-accept-{index}', 'project', 'review', 'decide', eligible, '--finding', row['id'],
+                    '--binding', json.dumps(detail['binding']), '--action', 'APPROVE', '--json')
+        detail = command('eligible-module', 'project', 'generation', 'module', eligible, '--source', sid, '--json')
+        detail = generation_request('target-plan', 'plan', {**detail['binding'], 'code_revision': detail['code_revision'],
+            'target_revision': detail['target_revision'], 'plan': {'security_confirmed': True, 'database_confirmed': True,
+            'mapping_confirmed': True, 'keys': {}, 'rationale': 'Synthetic display-only scope; no writes; target access reviewed.'}}, '--source', sid)
+        artifact = generation_request('generate', 'generate', {**detail['binding'], 'scopes': [detail]})
+        exported = run / 'generated.apex.zip'
+        command('download', 'project', 'generation', 'download', eligible, '--artifact', artifact['artifact_id'], '--output', exported, '--json')
+        check('frozen generation produces exact recorded artifact', hashlib.sha256(exported.read_bytes()).hexdigest() == artifact['sha256'])
         result['analysis_revision'] = first['analysis_revision']
         result['source_revision'] = assessment['source_revision']
         result['engine_identity'] = assessment['engine_identity']

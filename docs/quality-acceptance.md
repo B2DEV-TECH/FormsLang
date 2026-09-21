@@ -998,3 +998,341 @@ reduced-motion evidence, not a manual screen-reader audit; source coverage repor
 observed counts, not estate completeness; static analysis cannot infer undocumented
 business intent or runtime parity. Phase D review redesign, Phase E project-level
 APEXlang generation and Phase F reports/packages remain explicitly deferred.
+
+## FormsLang 2.0 Phase D — modernization review (2026-09-20)
+
+Implementation: `8aa534b574bbc868e6b2a119de1051ede1cea9d8`, branch
+`codex/formslang-2-phase-d`, base `262361e263ec3b3c4b74b607f3e2f8a7c7a1fa09`.
+This closes the review phase, not FormsLang 2.0 or its release gates. Version remains
+1.6.0. No release, tag, deployment, main integration or installer acceptance occurred.
+
+### Verification
+
+Windows 11 Pro 10.0.26200 x64, Intel Core i7-9700KF 3.60 GHz, Python 3.12.
+
+- `python -B -m pytest -q -p no:cacheprovider`: **1,531 passed / 5 skipped**, 518.90s.
+  The existing five Windows symlink-permission skips remain; junction coverage runs.
+- Focused `tests/test_project_review.py tests/test_project_review_scale.py
+  tests/test_project_review_ui.py tests/test_project_http.py tests/test_cli_project.py`
+  with the same pytest flags: **70 passed**, 287.89s.
+- Node/DOM `test_blueprint_ui_behavior.py test_project_ui_behavior.py
+  test_review_ui_behavior.py test_project_review_ui.py`: **71 passed**, 4.97s.
+- `python -B -m ruff check .`: clean. `git diff --check`: clean.
+- `python -B examples/verify/project_browser_check.py --output
+  out/phase-d-browser-accessibility`: **41/41**, including 29 prior project checks
+  and 12 Phase D checks. Evidence `run-2a4a92a2c79e/result.json`, six screenshots.
+  Real API/SQLite/demo; critical confirmation keyboard focus, return context,
+  approval/override, inert annotation, stale-client conflict, bulk and reopen.
+- `python -B examples/verify/workbench_browser_check.py --output
+  out/phase-d-legacy-browser`: **101/101**, 27 screenshots, evidence
+  `run-be050250c6bb/result.json`.
+
+The first full run found the structural DOM test did not include new dynamic
+templates: 1 failed / 1,520 passed / 5 skipped. Its declaration inspection now
+includes actual Review templates/factory IDs, not an exempted ID prefix. Real
+browser testing also found stale client Overview counts after review; mutation
+invalidates that cache and navigation fetches the current shared projection.
+
+### Independent review and concurrency
+
+Separate-context high-reasoning reviews found and drove RED→GREEN repairs for:
+unsupported recommendation approval; excessive bulk exclusions; unsafe co-occurring
+LOCK_RECORD despite LOW/AUTO; missing annotation provenance/context; annotation
+snapshot races; unsafe string/comment redaction; incoming cross-module bulk impact;
+and queue state lost on return navigation. Structural excerpts now use existing
+lexical tokens, never regex comment stripping as a privacy mechanism. UI conflicts
+preserve the typed draft and require a new submission, not an automatic replay.
+
+The final independent code-review verdict is **MERGE**, with no Critical/Important
+findings, conditional on execution gates. Those gates passed above. The reviewer
+independently probed redaction, cross-module policy, navigation and history paging;
+it did not independently rerun the complete Python/browser suites.
+
+Regression evidence covers simultaneous reviewers (one winner), stale clients,
+analysis-worker exclusion, changed source during a review (rollback), exact bulk
+preview revisions, injected second-append failure (whole transaction rollback),
+foreign project bindings, viewer/revoked authorization, reopen and retained history.
+No product retry or sleep was added to conceal a race.
+
+### Synthetic review scale
+
+Fixture: **500 synthetic Forms nodes, 5,000 findings, 5,000 dependencies, 5,001
+review events** before the measured bulk commit. This is persisted read-model scale,
+not a 500-source-file engine/freshness benchmark; the authorized source manifest is
+the compact demo. A 50-item commit finishes with 5,051 events. Single samples from
+the focused run, alongside other acceptance processes:
+
+| Operation | Time |
+|---|---:|
+| Queue first page | 1,534.524 ms |
+| Detail | 1,529.275 ms |
+| Queue with 5,001 reviews | 2,158.670 ms |
+| Priority filter | 2,365.178 ms |
+| History/detail | 2,084.166 ms |
+| Single mutation | 1,089.871 ms |
+| Bulk preview, 50 items | 1,376.392 ms |
+| Bulk commit, 50 items | 1,320.637 ms |
+
+An initial entity-by-edge scan measured roughly 4.5–5.4 seconds per read. Replacing
+it with one dependency counter reduced the measured cost without changing counts,
+classification or persistence. No projection tables were introduced. These are local
+synthetic observations, not customer performance or measured analyst savings.
+
+### Boundaries and limitations
+
+All **24 frozen baseline/ground-truth Git blob hashes** match the phase base.
+Engine classification and version declarations are untouched. Critical overrides
+require rationale/explicit confirmation; AUTO is insufficient for bulk acceptance.
+Accepted/Changed resolve review only, not code approval or generation authorization.
+
+Known limitations: conservative bulk policy; UI defaults to priority (other sorting
+is available through API/CLI); excerpts start at the first 80 lines and exact source
+values require authorized local inspection; critical confirmation uses a generic
+control-risk explanation. Non-current assessments reject mutations until refresh.
+Automated keyboard/semantics/responsive checks are not a manual screen-reader audit
+or human productivity study. Phase E generation and Phase F deliverables are next,
+not implied by Phase D acceptance. No live Oracle/APEX validation was performed here.
+
+## Phase E — selected-module APEXlang generation (2026-09-21)
+
+Unreleased branch `codex/formslang-2-phase-e`, based on D acceptance `3251c04`.
+Version remains **1.6.0**; no tag, release or main integration is implied. Platform:
+Windows 11 Pro 10.0.26200 x64, Intel i7-9700KF 3.60 GHz, Python 3.12.10.
+All fixtures are synthetic/public-safe. See [generation scope](project-generation.md).
+
+### Verification
+
+- Final `python -B -m pytest -q -p no:cacheprovider`: **1,598 passed / 5 skipped**,
+  598.54s. Skips remain the five Windows symlink-privilege cases; real junction
+  regressions ran. This includes the final authenticated-route tests/fix.
+- Focused generation/policy/HTTP/UI/validation, project CLI, legacy Store,
+  APEXlang binding and apeximport: **130 passed**, 125.43s, using
+  `python -B -m pytest -q -p no:cacheprovider tests/test_project_generation.py
+  tests/test_project_generation_policy.py tests/test_project_generation_http.py
+  tests/test_project_generation_ui.py tests/test_project_validation.py
+  tests/test_cli_project.py tests/test_store.py tests/test_apexlang_binding.py
+  tests/test_apeximport.py`.
+- JS/DOM: **74 passed**, 5.66s, existing four D UI suites plus
+  `tests/test_project_generation_ui.py`.
+- Real C/D/E browser: **48/48**, no browser exceptions/external application requests,
+  seven screenshots, `out/phase-e-final-browser/run-947ff65e6c3e/result.json`.
+  Exercises real onboarding, persisted assessment, review, explicit prerequisites,
+  generation, exact ZIP download, offline validation and reopen. Keyboard/status,
+  tablet and reduced-motion checks are automated, not a manual screen-reader audit.
+- Final legacy browser: **101/101**, zero exceptions, 27 screenshots,
+  `out/phase-e-final-legacy/run-d2a51c5b60b0/result.json`.
+- `python -B -m ruff check . --no-cache` and `git diff --check`: clean.
+- All **24 frozen benchmark/ground-truth Git blob hashes** match `262361e`.
+
+### Oracle offline validation
+
+Official standalone SQLcl **26.2.2.0 build 26.2.2.233.1901**, using its supported
+APEXlang **26.1.0+3102** grammar. The Oracle-home SQL executable failed to initialize
+(NoClassDefFoundError); it was not counted as a validator. Standalone SQLcl was
+downloaded from the same official URL used by repository CI, outside the repository.
+
+The browser generated artifact `ce3d9e77eb2f40c488204c095efb821f` validated offline;
+ZIP SHA-256 `1a460887398f0373269be72ba32bdc8aed273ad7d59827a051c06f824a0b0865`.
+`examples/verify/apexlang_offline_controls.py` also ran the existing synthetic
+showcase export and a separate copy with `interactiveGrid` changed to an invalid
+region type. Positive accepted; negative rejected. Both SQLcl process exit codes
+were zero, demonstrating why explicit success/error-marker checking is necessary.
+No Oracle database connection, workspace import, DDL or runtime/UAT validation ran.
+
+### Independent review and RED/GREEN fixes
+
+Two separate-context high-reasoning reviewers audited generation safety and the
+API/CLI/UI surface. Final scoped verdicts: **MERGE**, no open Critical/Important
+findings. They independently ran focused tests, not the full release gate.
+
+Regression-driven fixes cover: unsupported target code/binds; lost Forms
+insert/update/query/range/default controls; actual hidden layout placement;
+observed table/column identity versus sanitized/remote/quoted names; transitive
+resolved database references; target/key mismatch; complete code-event provenance
+even on identical same-second legacy approval; source changes before code commit;
+and code edits during final artifact copy. No arbitrary retry/sleep was added.
+
+An additional authenticated-route test found narrow `ProjectAccess.actions` did
+not match generation/export/code operations. RED showed denied granted exports;
+the minimal HTTP action-selection fix preserves the existing RBAC/export-grant
+boundary. Authenticated owner code approval/generation/download, Viewer grant,
+CSRF, foreign organization and membership revocation now pass (**3 tests**, 19.55s).
+The interface reviewer independently rechecked the permission fix.
+
+### Limits
+
+Selected independent module applications only; no multi-module merger or empty
+skeleton mode. Unsupported executable mappings conservatively block a whole module.
+Generation is synchronous and does not continue after app exit. A failed prepare
+can leave unregistered conversion files; it refuses to overwrite them and requires
+inspection before recovery (independent Minor finding). Target/key coordination
+across parent/module databases is fail-closed, not a distributed atomic transaction.
+No live Oracle/APEX parity, installer/upgrade or 2.0 release acceptance is claimed here.
+
+## Phase F — persisted delivery and generation-storage hardening (2026-09-21)
+
+Candidate branch `codex/formslang-2-phase-f`, based on Phase E
+`9fb6f5169ad2a311af4810b193cd40d564999f77`. Version declarations remain 1.6.0;
+no tag/release/main integration is part of this checkpoint. Windows 11 Pro
+10.0.26200 x64, Intel i7-9700KF, Python 3.12.10, Node/Edge real browser.
+
+### Environment correction
+
+The global Python environment exposed stale distribution metadata (1.2.2), despite
+the worktree's canonical declarations and source code being 1.6.0. Earlier D/E
+functional runs used the worktree source but must not be treated as validation of
+installed runtime metadata. Phase F uses `out/acceptance-env/Scripts/python.exe`,
+an isolated editable installation verified by `python -m formslang --version` as
+1.6.0. The global installation was not changed. Full regression is rerun here;
+the existing freeze guard rejects stale metadata before packaging.
+
+### Delivery and independent findings
+
+Reports share one persisted snapshot and server service across UI/API/CLI. HTML,
+backlog, decision history and ZIP manifest tests cover escaping, CSV formula
+prefixes, provenance, deterministic bytes, source freshness, authorized disclosure,
+artifact hashes and explicit exclusions. No executable database refactoring or
+source-complete evidence export is claimed.
+
+Separate-context delivery reviewer: final **MERGE**, no remaining
+Critical/Important/Minor findings. The reviewer ran 26 focused cases and independent
+capture/render race, corrupt-storage and aggregate-size probes. Corrections include
+read-only inspection of missing/corrupt module databases, removal of interpolated
+source literals from exported reasons, sensitive export provenance/filenames,
+browser filename preservation and bounded aggregate artifact retention.
+
+Cross-cutting security review found an additional Important generation defect:
+opening a lost registered module database recreated an empty review queue and
+could omit an unapproved validation. Three RED cases (missing, empty replacement,
+deleted task) demonstrated the bypass. The correction opens existing SQLite storage
+without creation/migration and verifies session identity plus the exact original
+task/source inventory. The reviewer independently rejected five cases through both
+inspection and generation (also altered source/owner); no artifacts were created.
+Missing storage remained absent. Final scoped security recommendation: **MERGE**,
+subject to regression gates; independent auth/MFA/CSRF/path run 42 passed/1
+symlink-privilege skip. No retries or sleeps were added to mask a product race.
+
+Focused post-fix generation/report/Store regression: **89 passed**, 54.04s.
+Shared JS/DOM suites including Reports: **78 passed**, 6.35s.
+Real C/D/E/F browser after storage hardening: **55/55**, zero exceptions,
+eight screenshots, `out/phase-f-safety-browser/run-38e866604bc0/result.json`.
+Real report downloads exercised executive/technical HTML, sensitive decision JSON,
+explicit APEXlang package inclusion and unchanged snapshot after reopen.
+An earlier real downloaded package had 40 members, all 39 manifest hashes matched,
+15 `.apx` members, no exclusions, runtime version 1.6.0.
+Legacy Workbench browser: **101/101**, 27 screenshots,
+`out/phase-f-legacy/run-4e13cf65b6d7/result.json`.
+These are automated browser/accessibility checks, not a manual screen-reader study.
+
+Final full regression after storage hardening:
+`out/acceptance-env/Scripts/python.exe -B -m pytest -q -p no:cacheprovider`:
+**1,628 passed / 5 skipped**, 608.29s. Existing Windows symlink-privilege skips;
+junction tests ran. The earlier pre-hardening run was 1,625 passed/5 skipped in
+612.59s and is not the final safety candidate. A final sharing-disclosure sentence
+was added after its DOM RED; all four Reports DOM cases passed again (0.35s).
+Ruff and `git diff --check` clean. All 24 frozen benchmark/ground-truth blob hashes
+match `262361e`. No version/tag/release change.
+
+Windows HTTP polling stress: **50/50** invocations of
+`tests/test_project_http.py::test_analysis_is_accepted_then_persisted`, each in a
+fresh isolated Python process, passed. No flake/exception recurred; this establishes
+the observed repetitions, not proof of absence under every schedule.
+
+The persona walkthrough identified misleading project Blueprint navigation into
+the legacy importer; this remains an explicit Phase G UX acceptance fix, not a
+claim of completed release acceptance. Reports now warns on screen that default
+exports retain technical identifiers and are not anonymous. Native installer,
+1.6 upgrade, broader scale and release CI remain pending G/H gates.
+
+## 2.0 Phase G candidate acceptance (2026-09-21, not a release)
+
+Base `4636af2cc1dc706eccbbdca14f72a5c33fa37f5c`; candidate changes on
+`codex/formslang-2-phase-g`, version 1.6.0 until release preparation. Windows 11 Pro
+10.0.26200 x64, Intel i7-9700KF, Python 3.12.10. Isolated editable acceptance env.
+
+Independent security review found a prepared-generation-session loss bypass in F;
+it was fixed before the F commit. G adds persisted corruption/race probes. Independent
+five-persona inspection (not user research) identified misleading Blueprint navigation,
+generation re-selection and prerequisite ordering, report privacy wording, and review
+filter density. Current-project Dependencies now stays in project inventory; legacy
+Blueprint remains a separate existing-session capability. Generation retains scoped
+module selection and explains target-plan-before-code approval. Report disclosure is
+explicit; filters wrap responsively.
+
+Real browser exposed a background freshness callback replacing Reports and cancelling
+its guarded download. RED/GREEN preserves the selected workspace. A second failure
+showed Reports racing the reopen freshness lock. It now awaits the existing operation,
+not retrying requests. Independent review reproduced a resolver-ownership bug across
+analysis/reopen and project switch; captured per-job completion ownership fixed it.
+Independent probes for both races, cancellation and failure passed. No Critical or
+Important issue remains from that focused review. Report DOM tests require a COMPLETE
+marker, avoiding false green from an unresolved Node promise.
+
+Corporate browser: **59/59**, zero exceptions/egress, eight screenshots,
+`out/phase-g-browser-final/run-ceff3549248d/result.json`. It includes actual reviewed
+PL/SQL, explicit generation, SQLcl offline validation, delivery downloads and reopen.
+Legacy browser: **101/101**, 27 screenshots,
+`out/phase-g-legacy-final/run-f7c9b744b050/result.json`. Shared JS/DOM: **87 passed**,
+7.18s. Automated focus/keyboard/labels/tablet/reduced-motion checks are not a manual
+screen-reader audit. SQLcl 26.2.2.0 (26.2.2.233.1901), grammar 26.1.0+3102; no live
+Oracle/APEX runtime, customer database, UAT or production deployment was exercised.
+
+Concurrency: five fresh-process groups, **22 passed each / 110 total** (15.34,
+16.17, 16.31, 16.93, 14.76s). Selection across descriptor, job, review, generation
+and report tests: `-k 'concurrent or process or cancel or changed_during or
+change_during or race or lock or corruption'`. Descriptor tests include threaded
+and separate-process readers. F's separate 50/50 Windows HTTP polling invocations
+also remain recorded above. No product sleep/retry was introduced as a race fix.
+
+Actual synthetic estate measurements use `examples/verify/project_corporate_scale.py`.
+Unlike Phase C cache-only timings, these include end-to-end service/persistence work.
+They are single local runs, not customer SLA or productivity claims.
+
+| Measurement (ms) | 100 Forms | 500 Forms |
+|---|---:|---:|
+| Discovery | 5985.746 | 31994.143 |
+| Analysis | 3982.290 | 22179.149 |
+| Cold Overview | 457.794 | 2809.774 |
+| Warm Overview | 279.989 | 2289.481 |
+| Inventory first page | 297.082 | 1999.287 |
+| Inventory filter | 312.200 | 2437.135 |
+| Inventory search | 304.088 | 2313.375 |
+| Review queue | 812.684 | 5586.982 |
+| Review detail | 804.207 | 5674.637 |
+| Bulk preview / apply (50 Defer) | 896.293 / 864.292 | 5469.068 / 5089.309 |
+| Generation prepare | 2769.741 | 15276.896 |
+| Generate one eligible display module | 1889.247 | 10066.136 |
+| Package report | 2033.122 | 10394.151 |
+| Reopen summary | 1046.043 | 5942.196 |
+
+100 Forms: 2,586 findings, 2,480 dependencies, peak process 305,467,392 bytes.
+500 Forms: 12,986 findings, 12,480 dependencies, peak process 636,481,536 bytes.
+Evidence: `out/phase-g-scale-final/run-83ad5960847b/result.json` and
+`run-a088b97da381/result.json`. Full-estate generation was not measured: one safe
+display module is the generation control; remaining modules contain 12 validations
+each calling a shared synthetic package. Large-project review reads take seconds;
+no persistent projection tables were added or invented latency guarantees published.
+
+Frozen engine smoke from an isolated directory passed ordinary demo creation,
+deterministic analysis/reopen, review history, report package and exact generated
+artifact hash (`out/phase-g-frozen-project/run-0107d635b86a`). Upgraded harness also
+checks full manifest membership. Same-binary seed/verify harness smoke preserves
+settings, Blueprint decision, approved code/export bytes and a separate confirmed
+row-key session (`out/phase-g-engine-upgrade-harness-key-final`). This is harness
+validation, **not** a 1.6-to-2.0 installer result.
+
+CI now includes the corporate browser journey. Disposable installer acceptance adds
+packaged project/review/generation/report workflow, uninstall and reinstall with
+legacy state preservation. Exact 2.0 candidate EXE/MSI/upgrade and remote matrix
+remain release gates, pending versioned candidate preparation.
+
+All **24** frozen baseline/ground-truth Git blob hashes match `262361e`; Ruff and
+`git diff --check` clean. Final full regression:
+`out/acceptance-env/Scripts/python.exe -B -m pytest -q -p no:cacheprovider`:
+**1,643 passed / 5 skipped**, 602.14s. Skips remain unavailable Windows symlink
+privileges, not hidden product failures. An earlier run found a duplicated trigger
+in a test after the shared fixture gained its real validation; removing the redundant
+test insertion restored its authenticated code-generation roundtrip (1 passed, 5.47s).
+Focused final report/corruption selection: **14 passed**, 9.55s. Independent final
+persona/documentation review: no Critical/Important findings; candidate/release limits
+remain explicit. Actual versioned installer and upgrade acceptance remain pending.

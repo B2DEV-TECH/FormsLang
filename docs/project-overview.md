@@ -1,6 +1,6 @@
 # Project Overview and Inventory semantics
 
-This document specifies the unreleased FormsLang 2.0 Phase C read experience. All
+This document specifies the FormsLang 2.0 Overview/Inventory read experience. All
 values come from the current persisted `ProjectAssessment`. Reads work offline and
 never rerun analysis, call AI or require an Oracle connection.
 

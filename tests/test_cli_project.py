@@ -34,6 +34,20 @@ def test_create_analyze_status_json(tmp_path, sample_xml, capsys):
     assert again['analysis_revision'] == first['analysis_revision']
 
 
+def test_project_reports_use_snapshot_and_exclusive_download(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    state, _ = run_json(capsys, ['report', destination, '--format', 'status'])
+    assert state['binding']['snapshot_revision']
+    output = tmp_path / 'executive.html'
+    first, _ = run_json(capsys, ['report', destination, '--format', 'executive', '--output', output])
+    assert first['saved'] and first['size_bytes'] == output.stat().st_size
+    assert 'Executive Summary' in output.read_text(encoding='utf-8')
+    before = output.read_bytes()
+    run_json(capsys, ['report', destination, '--format', 'executive', '--output', output], expected=2)
+    assert output.read_bytes() == before
+
+
 def test_discover_open_and_relink(tmp_path, sample_xml, capsys):
     destination, created = create(capsys, tmp_path, sample_xml)
     found, _ = run_json(capsys, ['discover', destination])
@@ -64,6 +78,19 @@ def test_unsupported_target_is_argument_error(tmp_path):
     with pytest.raises(SystemExit) as failure:
         main(['project', 'create', str(tmp_path), '--name', 'Orders', '--target-apex', '0'])
     assert failure.value.code == 2
+
+
+def test_generation_cli_uses_project_service(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    overview, _ = run_json(capsys, ['generation', 'status', destination])
+    sid = overview['modules'][0]['source_id']
+    request = tmp_path / 'request.json'
+    request.write_text(json.dumps(overview['binding']), encoding='utf-8')
+    prepared, _ = run_json(capsys, ['generation', 'prepare', destination, '--source', sid, '--request', request])
+    detail, _ = run_json(capsys, ['generation', 'module', destination, '--source', sid])
+    assert detail['code_revision'] == prepared['code_revision']
+    assert detail['blockers'] and not detail['ready']
 
 
 def test_sigint_cooperatively_cancels_and_restores_handler(tmp_path, sample_xml, capsys, monkeypatch):
@@ -160,3 +187,21 @@ def test_inventory_cli_rejects_invalid_category_and_limit(tmp_path, capsys):
         main(['project', 'inventory', str(destination), '--limit', '201', '--json'])
 
     assert category.value.code == limit.value.code == 2
+
+
+def test_review_cli_uses_shared_history_and_explicit_revision(tmp_path, capsys):
+    destination = tmp_path / 'review-demo'
+    run_json(capsys, ['demo', destination])
+    run_json(capsys, ['analyze', destination])
+    page, _ = run_json(capsys, ['review', 'list', destination, '--limit', '1'])
+    finding_id = page['rows'][0]['id']
+    detail, _ = run_json(capsys, ['review', 'show', destination, '--finding', finding_id])
+    binding = detail['binding']
+    args = ['review', 'decide', destination, '--finding', finding_id,
+            '--action', 'APPROVE', '--binding', json.dumps(binding)]
+    run_json(capsys, args)
+    conflict, _ = run_json(capsys, args, expected=2)
+    assert 'changed' in conflict['error']
+    after, _ = run_json(capsys, ['review', 'show', destination, '--finding', finding_id])
+    assert after['item']['review_state'] == 'APPROVE'
+    assert len(after['history']) == 1

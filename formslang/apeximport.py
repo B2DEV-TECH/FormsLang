@@ -87,6 +87,20 @@ def sqlcl_binary() -> str:
     return shutil.which("sql") or shutil.which("sql.exe") or ""
 
 
+def sqlcl_version() -> str:
+    """Identify the configured local validator without connecting to Oracle."""
+    binary = sqlcl_binary()
+    if not binary:
+        return ''
+    try:
+        result = subprocess.run([binary, '-version'], capture_output=True, text=True,
+                                timeout=20, errors='replace', check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    match = re.search(r'SQLcl:\s*Release\s+([\d.]+).*?Build:\s*([\d.]+)', result.stdout)
+    return f'SQLcl {match[1]} build {match[2]}' if result.returncode == 0 and match else ''
+
+
 def connection_defaults() -> tuple[str, str]:
     """``(connect_string, username)`` to start from: environment, then Settings.
 

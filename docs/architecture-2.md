@@ -1,7 +1,7 @@
 # FormsLang 2.0 implementation architecture
 
-This page describes the unreleased Phase A-C foundation and assessment workflow,
-not the complete 2.0 product. For product scope and phases D-H see
+This page describes the 2.0 candidate foundation, assessment, review, gated generation
+and snapshot delivery. Release acceptance remains separately recorded. For product scope see
 [product architecture](formsLang-2-product-architecture.md). For storage and a
 runnable example see [project model](project-model.md).
 
@@ -57,6 +57,16 @@ needed.
 
 ## Ownership and concurrency
 
+Phase D adds `project_review` behind ProjectService. Queue and detail reuse Phase C
+projections; decisions retain the existing append-only `blueprint_review` model.
+An additive annotation table/trigger advances the same review revision. Worker lock,
+SQLite revision fencing and pre/post source checks protect mutations. No projection
+table or analysis logic is added. See [review contracts](modernization-review.md).
+
+The measured 5,000-finding review gate exposed an entity-by-edge scan. A single
+in-memory dependency counter replaces that quadratic pass while preserving counts.
+The synthetic measurements and their limits are recorded in acceptance evidence.
+
 Each service instance owns its Store connection. Do not share it between workers
 or switch its project identity while an operation is running. Project creation
 does not initialize AuthStore. Authenticated access goes through the existing
@@ -93,12 +103,45 @@ can safely clean up staging files.
 - Static project foundation performs no external AI, Oracle connection or telemetry.
 - New assessment fields extend a versioned projection; do not rewrite engine
   evidence with human decisions or represent architecture approval as code approval.
-- Future generation consumes revision-bound assessment/review/target state and
+- Project generation consumes revision-bound assessment/review/target state and
   must independently enforce eligibility; nothing here automatically deploys SQL.
+
+## Project generation boundary (Phase E)
+
+`ProjectService` delegates to `ProjectGenerationService` and one server-side
+`project_generation_policy`. The existing module conversion Store, APEXlayout and
+APEXlang exporter remain the only code approval and generation path. The existing
+`project_module_session` registry binds a conversion session to source identity and
+analysis revision. Additive target-plan, artifact and validation records live in
+ProjectStore; no second project model or projection tables are introduced.
+
+Architecture approval never implies code approval. An approved code event records
+source/analysis/review/target binding in the existing append-only decision table.
+Its revision includes event identity/provenance, not just code text or timestamps.
+Project locking, module write locks, parent revision fences and source verification
+protect publication. Parent and module SQLite files are not a distributed transaction:
+interrupted target-key publication fails closed through key/plan mismatch detection.
+
+Each selected independent module generates a versioned application and ZIP. All
+files are hashed, read containment is checked, and edits invalidate applicability
+of validation. Offline SQLcl validates an isolated copy; validation stores the tool,
+mode, exact artifact hash and safe result, never claims functional equivalence.
+See [generation contracts and limitations](project-generation.md).
 - Unknown schema/target, partial analysis, stale evidence and unavailable source
   remain explicit states or errors, not success defaults.
 
 ## Testing layers
+
+### Phase F delivery boundary
+
+ProjectService delegates snapshot capture and export to ProjectReportService;
+project_report_render contains pure HTML/CSV/JSON rendering. No additional Store
+or projection tables exist. Export captures persisted assessment, review/annotation
+history, plans and artifact metadata under revision fencing, then checks source
+freshness before returning. Default deliverables exclude source bodies and human
+notes. Artifact inclusion is explicit, read-only, revision/hash checked and records
+exclusions. UI, CLI and authenticated HTTP use this same boundary, including EXPORT
+authorization. See [report contracts](project-reports.md).
 
 Pure model and manifest tests cover validation and deterministic identity.
 Store integration covers recovery, transaction rollback, stale writes and history.

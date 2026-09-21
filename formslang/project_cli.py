@@ -64,6 +64,62 @@ def _operation(args):
         descriptor = service.open()
         preconditions = {'expected_revision': descriptor.analysis_revision,
                          'expected_configuration': summary['configuration_revision']}
+        if operation == 'report':
+            state = service.report_overview()
+            if args.format == 'status':
+                return state, 0
+            if not args.output:
+                raise ProjectError('Choose --output for this report download.')
+            download = service.report_export(args.format, state['binding'],
+                include_notes=args.include_notes, include_artifacts=args.include_artifacts)
+            with Path(args.output).open('xb') as output:
+                output.write(download.body)
+            return {'saved': True, 'size_bytes': len(download.body), 'binding': state['binding']}, 0
+        if operation == 'generation':
+            command = args.generation_command
+            if command == 'status':
+                return service.generation_overview(), 0
+            if command == 'module':
+                return service.generation_module(args.source), 0
+            if command == 'task':
+                return service.generation_task(args.source, args.task), 0
+            if command == 'validate':
+                result = service.generation_validate(args.artifact)
+                return result, 0 if result['status'] == 'Validated' else 1
+            if command == 'download':
+                data = service.generation_download(args.artifact)
+                with Path(args.output).open('xb') as output:
+                    output.write(data)
+                return {'artifact_id': args.artifact, 'size_bytes': len(data), 'saved': True}, 0
+            path = Path(args.request)
+            if path.stat().st_size > 256000:
+                raise ProjectError('Generation request exceeds 256 KB')
+            request = json.loads(path.read_text(encoding='utf-8'))
+            if not isinstance(request, dict):
+                raise ProjectError('Generation request must be a JSON object with exact revisions')
+            if command == 'generate':
+                return service.generate(request), 0
+            if command == 'code':
+                return service.generation_code(args.source, args.task, request), 0
+            method = service.generation_prepare if command == 'prepare' else service.generation_configure
+            return method(args.source, request), 0
+        if operation == 'review':
+            if args.review_command == 'list':
+                filters = {key: getattr(args, key) for key in ('risk', 'recommendation',
+                    'intervention', 'module', 'source_type', 'review') if getattr(args, key)}
+                return service.review_queue(query=args.query, filters=filters, limit=args.limit,
+                    offset=args.offset, sort=args.sort, expected_revision=args.revision,
+                    expected_review=args.review_revision), 0
+            if args.review_command == 'show':
+                return service.review_detail(args.finding), 0
+            binding = json.loads(args.binding)
+            if not isinstance(binding, dict):
+                raise ProjectError('Binding must be the JSON revision object from review show')
+            if args.review_command == 'annotate':
+                return service.review_annotate(args.finding, {**binding, 'kind': args.kind, 'note': args.note}), 0
+            return service.review_decide(args.finding, {**binding, 'action': args.action,
+                'recommendation': args.recommendation, 'rationale': args.rationale,
+                'reason_code': args.reason, 'critical_confirmed': args.confirm_critical}), 0
         if operation == 'status':
             freshness = service.freshness()
             row = service._store.session.db.execute('SELECT job_id FROM project_job ORDER BY rowid DESC LIMIT 1').fetchone()
@@ -120,6 +176,61 @@ def run_project(args):
 def add_project_parser(subparsers):
     parser = subparsers.add_parser('project', help='local modernization projects: create, analyze and reopen')
     commands = parser.add_subparsers(dest='project_command', required=True)
+    from .project_reports import FORMATS
+    report = commands.add_parser('report', help='snapshot HTML, backlog and modernization package')
+    report.add_argument('project')
+    report.add_argument('--format', choices=['status', *FORMATS], default='status')
+    report.add_argument('--output')
+    report.add_argument('--include-notes', action='store_true', help='explicit sensitive human-note disclosure')
+    report.add_argument('--include-artifacts', action='store_true', help='include verified generated code in package')
+    report.add_argument('--json', action='store_true')
+    report.set_defaults(func=run_project)
+    generation = commands.add_parser('generation', help='reviewed module artifacts and explicit offline validation')
+    generation_commands = generation.add_subparsers(dest='generation_command', required=True)
+    for operation in ('status', 'module', 'prepare', 'plan', 'task', 'code', 'generate', 'validate', 'download'):
+        command = generation_commands.add_parser(operation)
+        command.add_argument('project')
+        command.add_argument('--json', action='store_true')
+        command.set_defaults(func=run_project)
+        if operation in {'module', 'prepare', 'plan', 'task', 'code'}:
+            command.add_argument('--source', required=True)
+        if operation in {'task', 'code'}:
+            command.add_argument('--task', required=True)
+        if operation in {'prepare', 'plan', 'code', 'generate'}:
+            command.add_argument('--request', required=True, help='JSON file with exact binding and operation fields')
+        if operation in {'validate', 'download'}:
+            command.add_argument('--artifact', required=True)
+        if operation == 'download':
+            command.add_argument('--output', required=True, help='new ZIP path; existing files are never overwritten')
+    review = commands.add_parser('review', help='revision-bound modernization decisions')
+    review_commands = review.add_subparsers(dest='review_command', required=True)
+    for operation in ('list', 'show', 'decide', 'annotate'):
+        command = review_commands.add_parser(operation)
+        command.add_argument('project')
+        command.add_argument('--json', action='store_true')
+        command.set_defaults(func=run_project)
+        if operation == 'list':
+            command.add_argument('--query', default='')
+            for key in ('risk', 'recommendation', 'intervention', 'module', 'source-type', 'review'):
+                command.add_argument('--' + key)
+            command.add_argument('--limit', type=int, default=50)
+            command.add_argument('--offset', type=int, default=0)
+            command.add_argument('--sort', choices=SORTS, default='priority')
+            command.add_argument('--revision')
+            command.add_argument('--review-revision', type=int)
+        else:
+            command.add_argument('--finding', required=True)
+        if operation in {'decide', 'annotate'}:
+            command.add_argument('--binding', required=True, help='exact JSON binding from review show')
+        if operation == 'decide':
+            command.add_argument('--action', choices=['APPROVE', 'MODIFY', 'REJECT', 'DEFER'], required=True)
+            command.add_argument('--recommendation', default='')
+            command.add_argument('--rationale', default='')
+            command.add_argument('--reason', default='')
+            command.add_argument('--confirm-critical', action='store_true')
+        if operation == 'annotate':
+            command.add_argument('--kind', required=True)
+            command.add_argument('--note', default='')
     for name in ('create', 'demo', 'discover', 'analyze', 'status', 'summary',
                  'inventory', 'info', 'open', 'relink'):
         command = commands.add_parser(name)

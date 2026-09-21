@@ -4,7 +4,12 @@ One version number declared in seven files, one annotated tag, one GitHub
 release whose assets are the exact binaries the acceptance workflow
 tested. The steps, in order.
 
-## 1. Bump the version
+## 1. Prepare an accepted candidate, then bump the version
+
+Complete phase implementation, independent review and local regression first.
+Critical/Important safety issues block release. Preserve a candidate branch; do not
+publish incomplete work to main merely to trigger a release. Version preparation
+does not authorize a tag or claim installer acceptance.
 
 Set the new version in `pyproject.toml`, then in the files that must agree
 with it. `tests/test_version.py` fails until all of them do.
@@ -25,27 +30,18 @@ Move the `[Unreleased]` section of `CHANGELOG.md` under the new version
 with its date, add the compare link at the bottom and point `[Unreleased]`
 at the new tag. Run `python -m pytest -q` and `python -m ruff check .`.
 
-## 2. Tag before publishing, annotated
+## 2. Build and test the exact candidate before tagging
 
-Commit the bump, then:
-
-```bash
-git tag -a v1.2.3 -m "FormsLang 1.2.3"
-git push origin main v1.2.3
-```
-
-An annotated tag records who cut the release and when, and `git describe`
-sees it. A tag created from the GitHub release page is lightweight and
-does not exist in your clone until `git fetch --tags`.
-
-## 3. Build and test the installers on CI
-
-Run the **Installer acceptance** workflow on the tag (Actions, Installer
-acceptance, Run workflow). It calls `build-installers.yml`, which freezes
+Commit and push the candidate branch. Run the full CI matrix through a PR to main.
+Run **Installer acceptance** on that exact candidate branch/ref (Actions, Installer
+acceptance, Run workflow), explicitly using baseline `1.6.0` for 2.0. It calls
+`build-installers.yml`, which freezes
 the engine from `packaging/formslang-engine.spec`, then on two disposable
 Windows runners installs the latest published release, saves an approval
 through it, upgrades to the candidate and verifies that the approval, the
-export and the native desktop survived, once for NSIS and once for MSI.
+export and the native desktop survived, once for NSIS and once for MSI. The candidate
+also exercises packaged project/review/generation/report commands and uninstall/
+reinstall preservation. A same-binary smoke is not an upgrade result.
 
 Leave the baseline input empty unless the candidate version is already
 published; then name the release to upgrade from.
@@ -54,6 +50,26 @@ Download the `installers-<version>` artifact from that run. Those are the
 files to publish, and the build log prints their SHA-256. A local build
 from the README recipe is fine for trying things out, but publish the CI
 artifact, since that is what the acceptance ran against.
+
+Any candidate code change invalidates the previous exact-candidate acceptance.
+Do not tag if matrix, browser, generation, frozen benchmark, security, installer,
+upgrade, version consistency or asset checks fail. Record RELEASE BLOCKED and retain
+the recoverable candidate instead of bypassing a gate.
+
+## 3. Integrate accepted state and create the annotated tag
+
+Verify remote ancestry, checks and exact accepted tree. Integrate through repository
+workflow, verify main and its final checks, then tag the accepted product state:
+
+```bash
+git tag -a v2.0.0 -m "FormsLang 2.0.0"
+git push origin v2.0.0
+```
+
+Never move a published tag. If integration changes the product tree, rebuild and
+retest before tagging. Record both tested candidate and integration SHAs where a
+merge commit preserves the exact tested tree. Only validated CI-produced binaries
+may become release assets.
 
 ## 4. Publish and record
 

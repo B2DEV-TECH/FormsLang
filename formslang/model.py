@@ -155,6 +155,13 @@ class Item:
     icon_name: str = ""
     justification: str = ""  # "Start" | "Center" | "Right" | "End" ...
     radio_buttons: list[RadioButton] = field(default_factory=list)
+    # Preserve item-level DML restrictions for target capability checks. These
+    # are source facts, not automatic authorization to generate equivalent code.
+    insert_allowed: bool = True
+    update_allowed: bool = True
+    query_only: bool = False
+    minimum_value: str = ""
+    maximum_value: str = ""
 
 
 @dataclass

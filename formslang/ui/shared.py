@@ -796,7 +796,7 @@ async function api(path, body) {
   const opt = body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), cache: "no-store" } : { cache: "no-store" };
   const r = await fetch(path, opt);
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || r.statusText);
+  if (!r.ok) { const error = new Error(data.error || r.statusText); error.status = r.status; error.code = data.code; throw error; }
   return data;
 }
 

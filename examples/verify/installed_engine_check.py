@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import time
 import urllib.error
@@ -47,6 +48,33 @@ def free_port() -> int:
         return reservation.getsockname()[1]
 
 
+def verify_key_session(engine, work, phase, env):
+    """Use a separate minimal bound form; the showcase has no bindable region."""
+    source = work / 'key-control.xml'
+    output = work / 'key-control'
+    session = output / 'KEY_CONTROL.session.db'
+    if phase == 'seed':
+        source.write_text('<Module xmlns="http://xmlns.oracle.com/Forms"><FormModule Name="KEY_CONTROL">'
+            '<Canvas Name="MAIN" CanvasType="Content" Width="400" Height="200"/>'
+            '<Block Name="ORDERS" DatabaseBlock="true" QueryDataSourceName="ORDERS" RecordsDisplayCount="1">'
+            '<Item Name="ORDER_ID" ItemType="Text Item" DataType="Number" ColumnName="ORDER_ID" '
+            'DatabaseItem="true" CanvasName="MAIN" XPosition="10" YPosition="10" Width="100" Height="20"/>'
+            '</Block></FormModule></Module>', encoding='utf-8')
+        arguments = [str(source), '-o', str(output), '--key', 'ORDERS=ORDER_ID', '--key-by', REVIEWER]
+    else:
+        check(session.is_file(), 'key-confirmed session missing after upgrade')
+        arguments = [str(session)]
+    completed = subprocess.run([str(engine), 'export', *arguments, '--json'], env=env,
+                               capture_output=True, text=True, timeout=60, check=False)
+    check(completed.returncode == 0, 'key session export failed', completed.stderr)
+    connection = sqlite3.connect(session.as_uri() + '?mode=ro', uri=True)
+    try:
+        row = connection.execute('SELECT key_column,confirmed_by FROM block_key WHERE block=?', ('ORDERS',)).fetchone()
+        check(row == ('ORDER_ID', REVIEWER), 'confirmed key or reviewer lost', row)
+    finally:
+        connection.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("engine", type=Path)
@@ -67,7 +95,8 @@ def main() -> None:
         check("task_id" in seed, "seed phase left no task id to verify", seed_result)
 
     port = free_port()
-    env = dict(os.environ, FORMSLANG_CONFIG_DIR=str(work / "config"), FORMSLANG_SECRET_BACKEND="memory")
+    env = dict(os.environ, FORMSLANG_CONFIG_DIR=str(work / "config"), FORMSLANG_DATA_DIR=str(work / 'data'),
+               FORMSLANG_AUTH='0', FORMSLANG_SECRET_BACKEND="memory")
     source_hash = sha256(SOURCE)
     with (work / f"{args.phase}-engine.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
@@ -117,6 +146,17 @@ def main() -> None:
                 saved = next(t for t in request("/api/state")["tasks"] if t["id"] == task["id"])
                 check(saved["state"] == "approved", "approval was not recorded", saved)
                 result.update(task_id=task["id"], approval_recorded=True)
+                settings = request('/api/settings', {'provider': 'echo', 'deployment': 'synthetic-upgrade-setting'})
+                check(settings['deployment'] == 'synthetic-upgrade-setting', 'safe setting was not saved')
+                context = state['context_id']
+                baseline_blueprint = request('/api/blueprint/build', {'context_id': context})
+                entity = baseline_blueprint['guide']['start_here'][0]['id']
+                finding = request('/api/blueprint/explore?node=' + entity + '&context_id=' + context)['selected']['finding']
+                request('/api/blueprint/review', {'context_id': context, 'entity': finding['entity'],
+                    'revision': finding['revision'], 'action': 'DEFER', 'reviewer': REVIEWER,
+                    'comment': 'Synthetic pre-upgrade architecture decision'})
+                result.update(settings_seeded=True, blueprint_entity=finding['entity'],
+                    blueprint_revision=finding['revision'])
             else:
                 task = next((t for t in state["tasks"] if t["id"] == seed["task_id"]), None)
                 check(task is not None, "approved unit disappeared after upgrade", seed["task_id"])
@@ -127,6 +167,11 @@ def main() -> None:
                       (seed["tasks"], state["stats"]["tasks"]))
                 result.update(task_id=task["id"], approval_preserved=True,
                               baseline_export_sha256=seed.get("export_sha256"))
+                check(request('/api/settings')['deployment'] == 'synthetic-upgrade-setting', 'saved setting lost')
+                prior = request('/api/blueprint/explore?node=' + seed['blueprint_entity'] +
+                                '&context_id=' + state['context_id'])['selected']['finding']
+                check(prior['review_state'] == 'DEFER', 'baseline Blueprint decision lost')
+                result.update(settings_preserved=True, blueprint_history_preserved=True)
 
                 # Exercise the new modules inside the frozen candidate, not only
                 # the editable Python checkout. Baseline versions need not have
@@ -177,7 +222,12 @@ def main() -> None:
             check(sha256(zip_path) == first, "second export differs from the first")
             check(sha256(SOURCE) == source_hash, "source file was modified")
             result.update(deterministic_export=True, source_unchanged=True, export_sha256=first)
+            if args.phase == 'verify':
+                check(first == seed['export_sha256'], 'upgrade changed the approved legacy export bytes')
+                result['baseline_export_preserved'] = True
 
+            verify_key_session(engine, work, args.phase, env)
+            result['key_confirmation_preserved' if args.phase == 'verify' else 'key_confirmation_seeded'] = True
             (work / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(result))
         finally:

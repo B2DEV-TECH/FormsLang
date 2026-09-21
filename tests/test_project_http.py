@@ -106,6 +106,30 @@ def test_onboarding_exposes_backend_target_profile(project_server):
     assert response.json['target_profile'] == {'platform': 'Oracle APEX', 'version': '26.1', 'representation': 'APEXlang'}
 
 
+def test_review_http_decision_conflict_and_annotation(project_server):
+    client, _ = project_server
+    pid = analyze_demo(client)
+    route = f'/api/v2/projects/{pid}/review'
+    page = client.get(route + '?limit=1')
+    assert page.status == 200, page.json
+    assert len(page.json['rows']) == 1
+    finding = page.json['rows'][0]['id']
+    detail = client.get(route + '/' + quote(finding, safe=''))
+    assert detail.status == 200, detail.json
+    request = {**detail.json['binding'], 'action': 'APPROVE'}
+    assert client.post(route + '/' + quote(finding, safe=''), request).status == 200
+    assert client.post(route + '/' + quote(finding, safe=''), request).status == 409
+    current = client.get(route + '/' + quote(finding, safe=''))
+    annotation = {**current.json['binding'], 'operation': 'ANNOTATE',
+                  'kind': 'CONFIRMED_BUSINESS_RULE', 'note': '<script>private</script>'}
+    assert client.post(route + '/' + quote(finding, safe=''), annotation).status == 200
+    page = client.get(route)
+    assert 'private' not in json.dumps(page.json)
+    assert client.get(route + '?limit=201').status == 400
+    assert client.get(route + '?review_revision=0').status == 409
+    assert client.get(route + '/foreign-finding').status == 404
+
+
 def test_demo_endpoint_uses_normal_analysis_route(project_server):
     client, _ = project_server
     created = client.post('/api/v2/projects/demo', {})
@@ -295,9 +319,22 @@ def test_authenticated_project_routes_preserve_boundaries(authenticated_server, 
     assert job.status == 202
     assert client.wait_job(pid, job.json['job_id'])['status'] == 'COMPLETED'
     assert str(tmp_path) not in json.dumps(client.get(f'/api/v2/projects/{pid}/assessment').json)
+    review = client.get(f'/api/v2/projects/{pid}/review?limit=1')
+    assert review.status == 200, review.json
+    finding_id = quote(review.json['rows'][0]['id'], safe='')
+    detail = client.get(f'/api/v2/projects/{pid}/review/{finding_id}')
+    assert detail.status == 200 and str(tmp_path) not in json.dumps(detail.json)
+    command = {**detail.json['binding'], 'action': 'DEFER'}
+    assert client.post(f'/api/v2/projects/{pid}/review/{finding_id}', command,
+                       headers={'X-CSRF-Token': ''}).status == 403
+    assert client.post(f'/api/v2/projects/{pid}/review/{finding_id}', command).status == 200
+    reviewed = client.get(f'/api/v2/projects/{pid}/review/{finding_id}')
+    assert owner['user_id'] not in json.dumps(reviewed.json)
     assert client.post(f'/api/v2/projects/{pid}/freshness', {}, headers={'X-CSRF-Token': ''}).status == 403
     registry.db.execute('DELETE FROM membership WHERE user_id=?', (owner['user_id'],))
     assert client.get(f'/api/v2/projects/{pid}').status == 401
+    assert client.get(f'/api/v2/projects/{pid}/review').status == 401
+    assert client.post(f'/api/v2/projects/{pid}/review/{finding_id}', command).status == 401
 
 
 def test_mfa_scoped_session_cannot_reach_v2(authenticated_server):
@@ -340,12 +377,14 @@ def test_http_foreign_project_hidden_and_viewer_mutation_denied(authenticated_se
     observer = Client(client.base, {'Cookie': f'formslang_session={token}', 'X-CSRF-Token': session['csrf_secret'], 'Origin': client.base})
     assert observer.get(f'/api/v2/projects/{pid}').status == 200
     assert observer.post(f'/api/v2/projects/{pid}/analyze', {'expected_revision': None, 'expected_configuration': 0}).status == 403
+    assert observer.post(f'/api/v2/projects/{pid}/review/foreign', {}).status == 403
     org = registry.create_organization('foreign', 'Foreign')
     registry.create_membership(org, viewer, authstore.DEVELOPER)
     token, session = registry.create_session(viewer, org)
     foreign = Client(client.base, {'Cookie': f'formslang_session={token}', 'X-CSRF-Token': session['csrf_secret'], 'Origin': client.base})
     assert foreign.get('/api/v2/projects').json['projects'] == []
     assert foreign.get(f'/api/v2/projects/{pid}').status == 404
+    assert foreign.get(f'/api/v2/projects/{pid}/review').status == 404
     assert foreign.post(f'/api/v2/projects/{pid}/analyze', {'expected_revision': None, 'expected_configuration': 0}).status == 404
 
 

@@ -1170,6 +1170,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(
         self, code: int, body: bytes, content_type: str, *, cookie: str | None = None,
+        attachment: str | None = None,
     ) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
@@ -1187,6 +1188,8 @@ class Handler(BaseHTTPRequestHandler):
         )
         if cookie is not None:
             self.send_header("Set-Cookie", cookie)
+        if attachment is not None:
+            self.send_header('Content-Disposition', f'attachment; filename="{attachment}"')
         self.end_headers()
         self.wfile.write(body)
 
@@ -1385,7 +1388,13 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path.startswith('/api/v2/'):
                 status, payload = wb.project_api.dispatch('GET', path, {k: v[0] for k, v in parse_qs(query).items()}, {}, auth)
-                self._json(payload, status)
+                from .project_reports import ProjectDownload
+                if isinstance(payload, ProjectDownload):
+                    self._send(status, payload.body, payload.content_type, attachment=payload.filename)
+                elif isinstance(payload, bytes):
+                    self._send(status, payload, 'application/zip')
+                else:
+                    self._json(payload, status)
             elif wb.auth_store is None and (
                 path.startswith(("/api/auth/", "/api/projects"))
             ):

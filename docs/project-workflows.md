@@ -1,8 +1,9 @@
-# Modernization project workflows — Phase C development
+# Modernization project workflows
 
-Unreleased 2.0 development, still versioned 1.6.0 until release acceptance. Phase C
-adds Overview and Inventory on the persisted Phase B assessment. It does not add the
-Phase D decision workflow, Phase E project generation or Phase F reports.
+FormsLang 2.0 candidate; see quality-acceptance.md for release acceptance. Overview
+and Inventory read the persisted assessment. Phase D adds project-scoped human
+review. Phase E adds gated, selected-module APEXlang generation. Phase F adds
+snapshot-bound reports and modernization delivery packages.
 
 ## First assessment
 
@@ -30,8 +31,8 @@ projections. Counts are not reconstructed in JavaScript. `UNKNOWN` remains visib
 Risk and recommendation metrics open the server-filtered Findings inventory. **Start
 Priority Review** opens unresolved findings in the documented deterministic priority
 order and focuses the first eligible finding with project/filter/revision context.
-This Phase C bridge is read-only; Phase D adds the project decision workspace rather
-than writing project decisions into the unrelated legacy session Blueprint.
+Phase D opens the split-pane project decision workspace, with revision-bound actions,
+annotations, history and safe bulk preview. See [Modernization Review](modernization-review.md).
 Inventory categories are Forms, Libraries, Packages, Routines, Views, Tables,
 Dependencies, Business Rules and Findings. Search/filter changes replace page state.
 Every later page carries the assessment revision; a 409 resets to page one rather
@@ -168,7 +169,10 @@ secret-store mechanism, never project metadata.
 
 The demo creates a normal project from compact bundled synthetic files, runs the
 unchanged engine and opens the same Overview/Inventory used by other projects. It is
-not a frontend simulation or the Modernization Lab benchmark. Phase D review changes,
-Phase E generation gates and Phase F reports/delivery packages remain later phases.
-Phase C does not claim 2.0 release
+not a frontend simulation or the Modernization Lab benchmark. Project Review and
+Generate now use the same saved assessment and revision-bound human overlay.
+See [modernization review](modernization-review.md) and [generation](project-generation.md).
+Reports now exports persisted executive/technical assessments, backlog and explicit
+modernization packages through the same service; see [delivery](project-reports.md).
+This development build does not claim 2.0 release
 acceptance, runtime parity, automatic deployment or completed migration.

@@ -136,6 +136,72 @@ class ProjectService:
             raise PermissionError('Project operations require fresh authorization')
         return self._authorize_callback() if self._authorize_callback else self.access
 
+    def _review_service(self):
+        from .project_review import ProjectReviewService
+        self.open()
+        return ProjectReviewService(self)
+
+    def review_queue(self, **query):
+        return self._review_service().queue(**query)
+
+    def review_detail(self, finding_id, **query):
+        return self._review_service().detail(finding_id, **query)
+
+    def review_decide(self, finding_id, command):
+        return self._review_service().mutate(finding_id, command)
+
+    def review_annotate(self, finding_id, command):
+        return self._review_service().mutate(finding_id, command, annotation=True)
+
+    def review_bulk_preview(self, command):
+        return self._review_service().bulk(command, apply=False)
+
+    def review_bulk_apply(self, command):
+        return self._review_service().bulk(command, apply=True)
+
+    def _generation_service(self):
+        from .project_generation import ProjectGenerationService
+        self.open()
+        return ProjectGenerationService(self)
+
+    def generation_overview(self):
+        return self._generation_service().overview()
+
+    def generation_module(self, source_id):
+        return self._generation_service().module(source_id)
+
+    def generation_prepare(self, source_id, request):
+        return self._generation_service().prepare(source_id, request)
+
+    def generation_configure(self, source_id, request):
+        return self._generation_service().configure(source_id, request)
+
+    def generation_task(self, source_id, task_id):
+        return self._generation_service().task(source_id, task_id)
+
+    def generation_code(self, source_id, task_id, request):
+        return self._generation_service().code(source_id, task_id, request)
+
+    def generate(self, request):
+        return self._generation_service().generate(request)
+
+    def generation_download(self, artifact_id):
+        return self._generation_service().download(artifact_id)
+
+    def generation_validate(self, artifact_id):
+        from .project_validation import validate_artifact
+        return validate_artifact(self._generation_service(), artifact_id)
+
+    def report_overview(self):
+        from .project_reports import ProjectReportService
+        self.open()
+        return ProjectReportService(self).overview()
+
+    def report_export(self, kind, request, **options):
+        from .project_reports import ProjectReportService
+        self.open()
+        return ProjectReportService(self).export(kind, request, **options)
+
     def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None, started=None):
         from .project_analysis import analyze_project
 

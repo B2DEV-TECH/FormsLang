@@ -406,6 +406,8 @@ def apply_block_keys(
     confirm: dict[str, str],
     forget: Iterable[str] = (),
     by: str = "",
+    *,
+    commit: bool = True,
 ) -> None:
     """Record (or withdraw) the primary keys a reviewer confirmed.
 
@@ -418,9 +420,8 @@ def apply_block_keys(
     forgetting and re-confirming in one call means what it reads like.
     """
     tables = {block.name.upper(): block.query_data_source_name for block in module.blocks}
-    for name in forget:
-        store.forget_block_key(name)
     who = (by or "").strip() or getpass.getuser()
+    validated = []
     for raw_block, raw_column in confirm.items():
         block = str(raw_block or "").strip().upper()
         column = str(raw_column or "").strip()
@@ -431,7 +432,11 @@ def apply_block_keys(
             raise ValueError(
                 f"--key names a block this module has not got: {block} (has: {known})"
             )
-        store.confirm_block_key(block, tables[block], column, who)
+        validated.append((block, tables[block], column))
+    for name in forget:
+        store.forget_block_key(name, commit=commit)
+    for block, table, column in validated:
+        store.confirm_block_key(block, table, column, who, commit=commit)
 
 
 def binding_options(store: Store, module: FormModule, page: int = 1) -> list[dict]:
