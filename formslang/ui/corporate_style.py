@@ -151,6 +151,38 @@ CORPORATE_STYLE = r"""
   .project-score-pill { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border-strong); white-space: nowrap; }
   .project-score-pill[data-risk="CRITICAL"] { color: var(--risk-critical); border-color: rgba(255, 77, 79, 0.4); }
   .project-score-pill[data-risk="HIGH"] { color: var(--risk-high); border-color: rgba(250, 173, 20, 0.4); }
+
+  /* System Map & Architecture Topology */
+  .project-system-map-split { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: stretch; min-height: 520px; }
+  .project-system-map-canvas { background: var(--surface-0); border: 1px solid var(--border-subtle); border-radius: 9px; overflow: auto; position: relative; min-height: 480px; }
+  .project-system-map-svg { width: 100%; height: 100%; min-width: 600px; min-height: 460px; display: block; }
+  .system-map-drawer { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: 9px; padding: 18px; overflow-y: auto; max-height: 650px; }
+  .system-map-drawer h4 { font-size: 14px; margin: 0 0 10px; }
+  .system-map-drawer h5 { font-size: 12px; margin: 12px 0 6px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .system-map-drawer pre { font-size: 11px; background: var(--surface-0); padding: 8px; border-radius: 6px; border: 1px solid var(--border-subtle); overflow-x: auto; }
+  .map-node { cursor: pointer; transition: transform var(--fast) var(--ease); }
+  .map-node:hover rect { stroke-width: 2px; }
+  .map-node.is-focus rect { stroke: var(--gold); stroke-width: 3px; }
+  .map-edge { cursor: pointer; }
+  .map-edge:hover path { stroke-width: 3px; }
+  .edge-bypass path { stroke: var(--risk-critical) !important; stroke-dasharray: 6 3; }
+
+  /* Global Modernization Search (Ctrl+K) */
+  .global-search-backdrop { position: fixed; inset: 0; background: var(--overlay); backdrop-filter: blur(4px); z-index: 200; display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+  .global-search-modal { background: var(--panel); width: min(640px, 92vw); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+  .global-search-input-wrap { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); gap: 10px; background: var(--surface-1); }
+  .global-search-input { width: 100%; font-size: 15px; border: none; background: transparent; color: var(--ink); outline: none; }
+  .global-search-results { max-height: 380px; overflow-y: auto; padding: 8px; margin: 0; list-style: none; }
+  .global-search-item { padding: 10px 14px; border-radius: 7px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border: 1px solid transparent; }
+  .global-search-item:hover, .global-search-item.active { background: var(--surface-2); border-color: var(--border-subtle); }
+  .search-cat-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-2); color: var(--ink-dim); border: 1px solid var(--border-subtle); }
+  .search-shortcut-pill { font-size: 10px; padding: 2px 5px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border-subtle); color: var(--ink-dim); }
+
+  /* 4-Layer Modernization Review */
+  .review-layer-card { border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-0); margin-bottom: 14px; overflow: hidden; }
+  .review-layer-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; background: var(--surface-1); border-bottom: 1px solid var(--border-subtle); font-size: 12px; font-weight: 650; }
+  .review-layer-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.04em; background: var(--surface-2); color: var(--gold-deep); border: 1px solid var(--gold-line); }
+  .review-layer-body { padding: 14px; font-size: 12px; }
   @media (max-width: 760px) {
     .sheet-head { padding: 16px; gap: 10px; }
     .sheet-head h2 { font-size: 17px; }

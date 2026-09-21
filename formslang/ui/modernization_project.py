@@ -1,10 +1,11 @@
 """Project onboarding and saved assessments, using the versioned project API."""
 
 PROJECT_HTML = r'''<section id="project-workspace" aria-label="Modernization project" hidden>
-  <div class="project-toolbar"><button class="btn" id="project-home">Recent Projects</button><button class="btn" id="project-resume">New Project</button><button class="btn" id="project-legacy">Open Existing Session</button></div>
+  <div class="project-toolbar"><button class="btn" id="project-home">Recent Projects</button><button class="btn" id="project-resume">New Project</button><button class="btn" id="project-legacy">Open Existing Session</button><button class="btn" id="project-search-btn" title="Global Search (Ctrl+K)">Search (Ctrl+K)</button></div>
   <p id="project-error" role="alert"></p>
   <p id="project-status" role="status" aria-live="polite"></p>
   <div id="project-content"></div>
+  <div id="global-search-container" hidden></div>
 </section>
 '''
 
@@ -160,13 +161,14 @@ const projectRecommendationLabels={PRESERVE:'Preserve',CONVERT:'Convert',REPLACE
 const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MANUAL:'Human decision',UNKNOWN:'Unknown'};
 function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
 function projectSectionNav(active='overview') {
-  const links=[['overview','Overview'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
+  const links=[['overview','Overview'],['system-map','System Map'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
   return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`;
 }
 function projectBindSectionNav() {
   $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
     const section=el.dataset.projectSection;
     if(section==='overview'){if(projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='overview';const c=projectContext();projectLoadOverview(c,false).then(data=>{if(data&&projectCurrent(c)&&projectUI.view==='overview')renderProjectOverview(data);});}}
+    else if(section==='system-map')projectSystemMapOpen();
     else if(section==='inventory')projectOpenInventory({category:'forms'});
     else if(section==='review')projectReviewOpen();
     else if(section==='generate')projectGenerationOpen();
@@ -482,9 +484,417 @@ async function projectDemo() {
   try{const result=await api('/api/v2/projects/demo',{});if(projectCurrent(c)){projectUI.busy=false;const opened=await openProject(result.project.id,false);if(opened&&projectCurrent(opened))await startProjectAnalysis();}}
   catch(e){if(projectCurrent(c)){projectUI.busy=false;$('project-demo').disabled=false;projectError(e.message);}}
 }
+const systemMapState = { focus: null, depth: 2, layer: '', edge_type: '', data: null, selectedNode: null, selectedEdge: null };
+
+async function projectSystemMapOpen(options = {}) {
+  projectSaveDraft();projectEnter('system-map');
+  Object.assign(systemMapState, options);
+  if (options.focus) systemMapState.focus = options.focus;
+  renderProjectSystemMap();
+  await loadProjectSystemMap();
+}
+
+async function loadProjectSystemMap() {
+  const c = projectContext();
+  const params = new URLSearchParams({ depth: String(systemMapState.depth) });
+  if (systemMapState.focus) params.set('focus', systemMapState.focus);
+  if (systemMapState.layer) params.set('layer', systemMapState.layer);
+  if (systemMapState.edge_type) params.set('edge_type', systemMapState.edge_type);
+  try {
+    const data = await api(`/api/v2/projects/${c.id}/system-map?${params}`);
+    if (!projectCurrent(c) || projectUI.view !== 'system-map') return;
+    systemMapState.data = data;
+    if (!systemMapState.focus && data.focus) systemMapState.focus = data.focus;
+    if (systemMapState.selectedNode) {
+      systemMapState.selectedNode = data.nodes.find(n => n.id === systemMapState.selectedNode.id) || null;
+    }
+    if (systemMapState.selectedEdge) {
+      systemMapState.selectedEdge = data.edges.find(e => e.id === systemMapState.selectedEdge.id) || null;
+    }
+    renderProjectSystemMap();
+  } catch (e) {
+    if (projectCurrent(c)) projectError(e.message);
+  }
+}
+
+function renderProjectSystemMap() {
+  const d = systemMapState.data;
+  const forms = d?.available_forms || [];
+  const focus = systemMapState.focus || d?.focus || '';
+  const edgeType = systemMapState.edge_type || '';
+  const layer = systemMapState.layer || '';
+  const depth = systemMapState.depth || 2;
+
+  const edgeTypes = ['', 'CALLS', 'WRITES', 'READS', 'DIRECT_DML', 'OPENS_FORM', 'SHARES_STATE'];
+  const layers = ['', 'FORM', 'DATABASE', 'LIBRARY', 'GLOBAL', 'EXTERNAL'];
+
+  const controls = `
+    <div class="project-filter-bar" style="margin-bottom:12px;">
+      <label for="system-map-focus">Focus Module
+        <select id="system-map-focus">
+          ${forms.map(f => `<option value="${esc(f.id)}" ${f.id === focus ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+        </select>
+      </label>
+      <label for="system-map-depth">Depth
+        <select id="system-map-depth">
+          ${[1, 2, 3, 4].map(n => `<option value="${n}" ${depth === n ? 'selected' : ''}>${n} ${n === 1 ? 'hop' : 'hops'}</option>`).join('')}
+        </select>
+      </label>
+      <label for="system-map-layer">Layer
+        <select id="system-map-layer">
+          <option value="">All layers</option>
+          ${layers.filter(Boolean).map(l => `<option value="${l}" ${layer === l ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </label>
+      <label for="system-map-edge">Edge Type
+        <select id="system-map-edge">
+          <option value="">All edges</option>
+          ${edgeTypes.filter(Boolean).map(e => `<option value="${e}" ${edgeType === e ? 'selected' : ''}>${e.replace('_', ' ')}</option>`).join('')}
+        </select>
+      </label>
+      ${projectButton('system-map-refresh', 'Refresh Map')}
+    </div>
+  `;
+
+  let svgContent = '';
+  let drawerContent = '';
+
+  if (!d) {
+    svgContent = '<p style="padding:24px;">Loading system architecture map…</p>';
+    drawerContent = '<p>Loading details…</p>';
+  } else if (!d.nodes || !d.nodes.length) {
+    svgContent = '<p style="padding:24px;">No architecture nodes match the current focus and filters.</p>';
+    drawerContent = '<p>Select a different focus module or loosen the filters.</p>';
+  } else {
+    const colBuckets = [[], [], [], []];
+    d.nodes.forEach(n => {
+      if (['GLOBAL', 'LIBRARY', 'EXTERNAL'].includes(n.layer)) colBuckets[0].push(n);
+      else if (n.layer === 'FORM') colBuckets[1].push(n);
+      else if (['PACKAGE', 'PROCEDURE', 'FUNCTION', 'ROUTINE'].includes(n.type)) colBuckets[2].push(n);
+      else colBuckets[3].push(n);
+    });
+
+    const colX = [40, 250, 470, 690];
+    const cardW = 160, cardH = 50;
+    const nodeCoords = new Map();
+
+    colBuckets.forEach((colNodes, cIdx) => {
+      colNodes.forEach((n, rIdx) => {
+        const x = colX[cIdx];
+        const y = 50 + rIdx * 66;
+        nodeCoords.set(n.id, { x, y, node: n });
+      });
+    });
+
+    const maxRow = Math.max(...colBuckets.map(b => b.length), 1);
+    const svgWidth = 890;
+    const svgHeight = Math.max(480, 80 + maxRow * 66);
+
+    let edgesSvg = '';
+    d.edges.forEach(e => {
+      const s = nodeCoords.get(e.source);
+      const t = nodeCoords.get(e.target);
+      if (!s || !t) return;
+      const isSelected = systemMapState.selectedEdge?.id === e.id;
+      const isBypass = e.is_hotspot && e.classification === 'DIRECT_DML';
+      const x1 = s.x < t.x ? s.x + cardW : s.x;
+      const y1 = s.y + cardH / 2;
+      const x2 = s.x < t.x ? t.x : t.x + cardW;
+      const y2 = t.y + cardH / 2;
+      const dx = Math.max(40, Math.abs(x2 - x1) * 0.4);
+      const cx1 = s.x < t.x ? x1 + dx : x1 - dx;
+      const cx2 = s.x < t.x ? x2 - dx : x2 + dx;
+      const pathD = `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`;
+      const edgeClass = isBypass ? 'edge-bypass' : `edge-${e.classification.toLowerCase()}`;
+      const strokeColor = isBypass ? 'var(--risk-critical)' : isSelected ? 'var(--gold)' : 'var(--border-strong)';
+      const strokeWidth = isSelected ? 3 : isBypass ? 2.5 : 1.5;
+
+      edgesSvg += `
+        <g class="map-edge ${edgeClass}" data-edge-id="${esc(e.id)}">
+          <path d="${pathD}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+        </g>
+      `;
+    });
+
+    let nodesSvg = '';
+    nodeCoords.forEach(({ x, y, node }) => {
+      const isFocus = node.id === focus;
+      const isSelected = systemMapState.selectedNode?.id === node.id;
+      const riskColor = node.risk === 'CRITICAL' ? 'var(--risk-critical)' : node.risk === 'HIGH' ? 'var(--risk-high)' : 'var(--border-subtle)';
+      const bg = isFocus ? 'var(--surface-2)' : 'var(--surface-1)';
+      const stroke = isSelected ? 'var(--gold)' : isFocus ? 'var(--gold-deep)' : riskColor;
+      const strokeW = isSelected ? 2.5 : isFocus ? 2 : 1;
+
+      nodesSvg += `
+        <g class="map-node ${isFocus ? 'is-focus' : ''}" data-node-id="${esc(node.id)}" transform="translate(${x},${y})">
+          <rect width="${cardW}" height="${cardH}" rx="7" ry="7" fill="${bg}" stroke="${stroke}" stroke-width="${strokeW}" />
+          <text x="10" y="20" font-size="11" font-weight="650" fill="var(--ink)">${esc(node.name.length > 20 ? node.name.slice(0, 18) + '…' : node.name)}</text>
+          <text x="10" y="38" font-size="9.5" fill="var(--ink-dim)">${esc(node.type)} · in:${node.fan_in} out:${node.fan_out}</text>
+        </g>
+      `;
+    });
+
+    svgContent = `
+      <svg class="project-system-map-svg" viewBox="0 0 ${svgWidth} ${svgHeight}" preserveAspectRatio="xMinYMin meet">
+        ${edgesSvg}
+        ${nodesSvg}
+      </svg>
+    `;
+
+    if (systemMapState.selectedEdge) {
+      const se = systemMapState.selectedEdge;
+      drawerContent = `
+        <h4>Edge Evidence Inspector</h4>
+        <p><b>Classification:</b> <span class="review-layer-badge">${esc(se.classification)}</span> ${se.is_hotspot ? '<span class="project-score-pill" data-risk="CRITICAL">Hotspot</span>' : ''}</p>
+        <h5>Source & Target</h5>
+        <p><b>Source:</b> ${esc(se.source_name)}</p>
+        <p><b>Target:</b> ${esc(se.target_name)}</p>
+        <p><b>Relationship:</b> ${esc(se.relationship)}</p>
+        ${se.is_hotspot ? `<p class="project-state-warning" style="margin:10px 0;"><b>Architectural Verdict:</b> API Bypass Candidate. UI code performs direct DML on table while a dedicated package API exists in the schema catalog.</p>` : ''}
+        ${se.evidence?.length ? `<h5>Static Proof / Excerpt</h5>${se.evidence.map(ev => `<pre>${esc(ev)}</pre>`).join('')}` : ''}
+      `;
+    } else if (systemMapState.selectedNode) {
+      const sn = systemMapState.selectedNode;
+      drawerContent = `
+        <h4>Node Architecture Inspector</h4>
+        <p><b>Name:</b> ${esc(sn.name)}</p>
+        <p><b>Type:</b> ${esc(sn.type)} · <b>Layer:</b> ${esc(sn.layer)}</p>
+        <p><b>Risk:</b> <span class="project-score-pill" data-risk="${esc(sn.risk)}">${esc(sn.risk)}</span></p>
+        <p><b>Connections:</b> ${sn.fan_in} incoming, ${sn.fan_out} outgoing</p>
+        <p><b>Associated Findings:</b> ${sn.findings_count}</p>
+        <div class="project-actions" style="margin-top:14px;display:flex;flex-direction:column;gap:6px;">
+          ${sn.layer === 'FORM' ? `<button class="btn primary" id="system-map-set-focus" data-focus-id="${esc(sn.id)}">Focus System Map Here</button>` : ''}
+          <button class="btn" id="system-map-view-inventory" data-node-name="${esc(sn.name)}" data-node-layer="${esc(sn.layer)}">View in Inventory</button>
+        </div>
+      `;
+    } else {
+      drawerContent = `
+        <h4>Architecture Inspector</h4>
+        <p>Click any node or edge in the map to inspect its deterministic evidence, layer boundaries, and bypass signals.</p>
+        <p><b>Nodes shown:</b> ${d.total_nodes} (of ${d.total_estate_nodes} estate nodes)</p>
+        <p><b>Edges shown:</b> ${d.total_edges} (of ${d.total_estate_edges} estate edges)</p>
+        ${d.truncated ? '<p class="project-state-warning">Neighborhood truncated at performance budget limit (100 nodes). Refocus to inspect other clusters.</p>' : ''}
+      `;
+    }
+  }
+
+  $('project-content').innerHTML = `
+    ${projectSectionNav('system-map')}
+    <header>
+      <h2 id="project-step-title" tabindex="-1">System Architecture Map</h2>
+      <p>Interactive bounded topology graph of cross-form navigation, shared database packages, and state coupling.</p>
+    </header>
+    ${controls}
+    <div class="project-system-map-split">
+      <div class="project-system-map-canvas">${svgContent}</div>
+      <aside class="system-map-drawer" aria-label="System map inspector">${drawerContent}</aside>
+    </div>
+  `;
+
+  projectBindSectionNav();
+
+  const focusEl = $('system-map-focus');
+  if (focusEl) focusEl.onchange = () => { systemMapState.focus = focusEl.value; systemMapState.selectedNode = null; systemMapState.selectedEdge = null; loadProjectSystemMap(); };
+  const depthEl = $('system-map-depth');
+  if (depthEl) depthEl.onchange = () => { systemMapState.depth = Number(depthEl.value); loadProjectSystemMap(); };
+  const layerEl = $('system-map-layer');
+  if (layerEl) layerEl.onchange = () => { systemMapState.layer = layerEl.value; loadProjectSystemMap(); };
+  const edgeEl = $('system-map-edge');
+  if (edgeEl) edgeEl.onchange = () => { systemMapState.edge_type = edgeEl.value; loadProjectSystemMap(); };
+  const refBtn = $('system-map-refresh');
+  if (refBtn) refBtn.onclick = () => loadProjectSystemMap();
+
+  $('project-content').querySelectorAll('[data-node-id]').forEach(el => {
+    el.onclick = () => {
+      const nid = el.dataset.nodeId;
+      const n = d?.nodes?.find(x => x.id === nid);
+      if (n) {
+        systemMapState.selectedNode = n;
+        systemMapState.selectedEdge = null;
+        renderProjectSystemMap();
+      }
+    };
+  });
+  $('project-content').querySelectorAll('[data-edge-id]').forEach(el => {
+    el.onclick = () => {
+      const eid = el.dataset.edgeId;
+      const edge = d?.edges?.find(x => x.id === eid);
+      if (edge) {
+        systemMapState.selectedEdge = edge;
+        systemMapState.selectedNode = null;
+        renderProjectSystemMap();
+      }
+    };
+  });
+
+  const focusBtn = $('system-map-set-focus');
+  if (focusBtn) focusBtn.onclick = () => {
+    systemMapState.focus = focusBtn.dataset.focusId;
+    systemMapState.selectedNode = null;
+    systemMapState.selectedEdge = null;
+    loadProjectSystemMap();
+  };
+
+  const invBtn = $('system-map-view-inventory');
+  if (invBtn) invBtn.onclick = () => {
+    const layer = invBtn.dataset.nodeLayer;
+    const cat = layer === 'FORM' ? 'forms' : layer === 'DATABASE' ? 'packages' : 'dependencies';
+    projectOpenInventory({ category: cat, query: invBtn.dataset.nodeName });
+  };
+}
+
+let searchDebounceTimer = null;
+let searchActiveIndex = -1;
+let currentSearchResults = [];
+
+function openGlobalSearch() {
+  let modal = $('global-search-container');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'global-search-container';
+    document.body.appendChild(modal);
+  }
+  modal.hidden = false;
+  modal.innerHTML = `
+    <div class="global-search-backdrop" id="global-search-backdrop">
+      <div class="global-search-modal" role="dialog" aria-modal="true" aria-label="Global Modernization Search">
+        <div class="global-search-input-wrap">
+          <span style="color:var(--ink-dim);font-weight:bold;">🔍</span>
+          <input id="global-search-input" class="global-search-input" placeholder="Find forms, packages, tables, business rules, hotspots (Ctrl+K)..." autocomplete="off" />
+          <span class="search-shortcut-pill">ESC to close</span>
+        </div>
+        <ul id="global-search-list" class="global-search-results">
+          <li style="padding:14px;color:var(--ink-dim);font-size:12px;">Type 2 or more characters to search project estate...</li>
+        </ul>
+      </div>
+    </div>
+  `;
+  const input = $('global-search-input');
+  input.focus();
+
+  $('global-search-backdrop').onclick = (e) => {
+    if (e.target.id === 'global-search-backdrop') closeGlobalSearch();
+  };
+
+  input.oninput = () => {
+    clearTimeout(searchDebounceTimer);
+    const q = input.value.trim();
+    if (q.length < 2) {
+      $('global-search-list').innerHTML = '<li style="padding:14px;color:var(--ink-dim);font-size:12px;">Type 2 or more characters to search project estate...</li>';
+      currentSearchResults = [];
+      searchActiveIndex = -1;
+      return;
+    }
+    searchDebounceTimer = setTimeout(() => runGlobalSearch(q), 150);
+  };
+
+  input.onkeydown = (e) => {
+    if (e.key === 'Escape') {
+      closeGlobalSearch();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (currentSearchResults.length) {
+        searchActiveIndex = (searchActiveIndex + 1) % currentSearchResults.length;
+        updateSearchActiveItem();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (currentSearchResults.length) {
+        searchActiveIndex = (searchActiveIndex - 1 + currentSearchResults.length) % currentSearchResults.length;
+        updateSearchActiveItem();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (searchActiveIndex >= 0 && currentSearchResults[searchActiveIndex]) {
+        executeSearchAction(currentSearchResults[searchActiveIndex]);
+      }
+    }
+  };
+}
+
+function closeGlobalSearch() {
+  const modal = $('global-search-container');
+  if (modal) modal.hidden = true;
+  currentSearchResults = [];
+  searchActiveIndex = -1;
+}
+
+async function runGlobalSearch(query) {
+  if (!projectUI.activeId) return;
+  try {
+    const res = await api(`/api/v2/projects/${projectUI.activeId}/search?query=${encodeURIComponent(query)}&limit=20`);
+    currentSearchResults = res.results || [];
+    searchActiveIndex = currentSearchResults.length ? 0 : -1;
+    const list = $('global-search-list');
+    if (!list) return;
+    if (!currentSearchResults.length) {
+      list.innerHTML = `<li style="padding:14px;color:var(--ink-dim);font-size:12px;">No results found for "${esc(query)}".</li>`;
+      return;
+    }
+    list.innerHTML = currentSearchResults.map((r, i) => `
+      <li class="global-search-item ${i === 0 ? 'active' : ''}" data-search-index="${i}">
+        <div style="min-width:0;display:flex;flex-direction:column;gap:2px;">
+          <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;">
+            <span>${esc(r.title)}</span>
+            ${r.risk && r.risk !== 'UNKNOWN' && r.risk !== 'NONE' ? `<span class="project-score-pill" data-risk="${esc(r.risk)}">${esc(r.risk)}</span>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.subtitle)}</div>
+        </div>
+        <span class="search-cat-badge">${esc(r.category_label || r.category)}</span>
+      </li>
+    `).join('');
+
+    list.querySelectorAll('[data-search-index]').forEach(el => {
+      el.onclick = () => {
+        const idx = Number(el.dataset.searchIndex);
+        if (currentSearchResults[idx]) executeSearchAction(currentSearchResults[idx]);
+      };
+    });
+  } catch (e) {
+    const list = $('global-search-list');
+    if (list) list.innerHTML = `<li style="padding:14px;color:var(--risk-critical);font-size:12px;">Search failed: ${esc(e.message)}</li>`;
+  }
+}
+
+function updateSearchActiveItem() {
+  const items = $('global-search-list')?.querySelectorAll('.global-search-item');
+  if (!items) return;
+  items.forEach((el, i) => {
+    if (i === searchActiveIndex) {
+      el.classList.add('active');
+      el.scrollIntoView({ block: 'nearest' });
+    } else {
+      el.classList.remove('active');
+    }
+  });
+}
+
+function executeSearchAction(item) {
+  closeGlobalSearch();
+  const action = item.action || {};
+  if (action.view === 'system-map') {
+    projectSystemMapOpen({ focus: action.focus || action.target_id });
+  } else if (action.view === 'review') {
+    projectReviewOpen().then(() => {
+      if (action.finding_id) projectReviewDetail(action.finding_id);
+    });
+  } else if (action.view === 'inventory') {
+    projectOpenInventory({ category: action.category, query: item.title });
+  } else if (action.view === 'overview') {
+    if (projectUI.overview) renderProjectOverview(projectUI.overview);
+    else projectLoadOverview();
+  }
+}
+
 function initProjects(){
   $('project-home').onclick=showProjectHome;$('project-resume').onclick=newProject;
   $('project-legacy').onclick=()=>{projectLeave();browse('');};$('btn-modernization').onclick=showProjectHome;
+  const searchBtn=$('project-search-btn');if(searchBtn)searchBtn.onclick=openGlobalSearch;
+  window.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){
+      e.preventDefault();openGlobalSearch();
+    }
+  });
   if(!state.session.title&&!state.tasks.length)showProjectHome();
 }
 '''

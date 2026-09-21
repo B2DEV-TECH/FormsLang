@@ -324,6 +324,28 @@ class ProjectHTTP:
             if tail == ['overview'] and method == 'GET':
                 freshness = self._freshness(service)
                 return 200, {'overview': service.overview(freshness=freshness)}
+            if tail == ['system-map'] and method == 'GET':
+                focus = query.get('focus') or None
+                try:
+                    depth = int(query.get('depth', 2))
+                    limit = int(query.get('limit', 100))
+                except (TypeError, ValueError) as exc:
+                    raise ProjectError('System map requires integer depth and limit') from exc
+                layer = query.get('layer') or None
+                edge_type = query.get('edge_type') or None
+                freshness = self._freshness(service)
+                return 200, service.system_map(
+                    focus=focus, depth=depth, layer=layer,
+                    edge_type=edge_type, limit=limit, freshness=freshness,
+                )
+            if tail == ['search'] and method == 'GET':
+                search_query = query.get('query') or query.get('q') or ''
+                try:
+                    limit = int(query.get('limit', 20))
+                except (TypeError, ValueError) as exc:
+                    raise ProjectError('Search requires integer limit') from exc
+                freshness = self._freshness(service)
+                return 200, service.search(search_query, limit=limit, freshness=freshness)
             if tail == ['inventory'] and method == 'GET':
                 freshness = self._freshness(service)
                 return 200, service.inventory(**_inventory_query(query), freshness=freshness)

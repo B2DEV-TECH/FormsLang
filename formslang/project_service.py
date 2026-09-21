@@ -24,12 +24,16 @@ from .project_projection import (
     inventory_page,
     prepare_projection,
     projection_key,
+    search_project,
 )
 from .project_projection import (
     inventory_detail as project_inventory_detail,
 )
 from .project_projection import (
     overview as project_overview,
+)
+from .project_projection import (
+    system_map as project_system_map,
 )
 from .project_store import ProjectStore
 from .projects import ProjectAccess
@@ -132,6 +136,20 @@ class ProjectService:
             raise ProjectError("Analyze the project before opening Inventory")
         return project_inventory_detail(prepared, category, item_id,
                                         expected_revision=expected_revision)
+
+    def system_map(self, *, focus=None, depth=2, layer=None, edge_type=None,
+                   limit=100, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening System Map")
+        return project_system_map(prepared, focus=focus, depth=depth,
+                                  layer=layer, edge_type=edge_type, limit=limit)
+
+    def search(self, query: str, *, limit: int = 20, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before searching")
+        return search_project(prepared, query, limit=limit)
 
     def _job_authority(self, action=rbac.RUN_CONVERSION):
         self._require(action)
