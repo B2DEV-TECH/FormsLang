@@ -2,7 +2,7 @@
 
 Open **Start Priority Review** from Overview or **Review** in project navigation.
 Static review needs neither AI nor a database connection. This documents the
-2.0 candidate implementation; release gates are recorded in quality-acceptance.md.
+FormsLang 2.0 implementation; release acceptance is recorded in quality-acceptance.md.
 
 ## States and evidence
 

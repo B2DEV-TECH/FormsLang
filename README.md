@@ -22,15 +22,17 @@ artifacts where safe. Open source, Apache-2.0 licensed — see [LICENSE](LICENSE
 
 ![Real project Overview using synthetic source](assets/screenshots/project-overview-2.png)
 
-Actual candidate Workbench capture, not a mockup or customer application.
+Actual FormsLang 2.0 Workbench capture using synthetic source, not a mockup
+or customer application.
 
-**2.0 candidate:** the workflow below describes this development branch. Until a
-2.0 release is published, the latest stable installer remains 1.6.0. Exact accepted
+**FormsLang 2.0.0 is the current stable release.** The corporate project workflow
+below is the supported path, and the installers are on the
+[releases page](https://github.com/B2DEV-TECH/FormsLang/releases/latest). Exact accepted
 versions, test results and limitations are in [quality acceptance](docs/quality-acceptance.md).
 
 ### Try the project workflow
 
-1. For the unpublished candidate, run this checkout with `pip install -e .` then `formslang workbench`. Use the matching [release installer](https://github.com/B2DEV-TECH/FormsLang/releases/latest) once 2.0 is published.
+1. Install FormsLang 2.0.0 from the [latest release](https://github.com/B2DEV-TECH/FormsLang/releases/latest) (Windows MSI or setup `.exe`) and launch it. For development or source use, run this checkout with `pip install -e .` then `formslang workbench`.
 2. Choose **Explore Demo Project**, or **New Project** for your own estate.
 3. Select Forms2XML and related database source folders.
 4. **Analyze** without AI, database credentials or mandatory account setup in local mode.
@@ -154,11 +156,12 @@ formslang project report ./orders-assessment --format executive --output executi
 Generation has explicit architecture, target and code gates; see the
 [CLI guide](docs/user-guide/11-cli.md). No AI/database credentials are needed above.
 
-### Existing single-session export workflow
+### Legacy / power-user workflows: single-session export
 
-The following legacy power-user workflow remains available. Validation/import
-require separately configured Oracle tooling/target authorization; import is never
-part of automatic project generation. No completion-time promise is implied.
+The following legacy 1.x power-user workflow is preserved for compatibility and
+remains available. Validation/import require separately configured Oracle
+tooling/target authorization; import is never part of automatic project
+generation. No completion-time promise is implied.
 
 ```bash
 pip install -e .                         # or run the Windows installer from Releases
@@ -1357,13 +1360,17 @@ other Oracle developers find it.
 
 ## Project status
 
-FormsLang **1.0 is stable**. Within the 1.x line, the CLI commands and
-their flags, the `.session.db` file (a 1.0 session opens in every later
-1.x), the export layout (`<alias>.apex.zip`, `<alias>/`, `<alias>-review/`)
-and the workbench's local HTTP API only gain things; anything that would
-break one of them is a 2.0. The changelog records every visible change, and
-[releases](https://github.com/B2DEV-TECH/FormsLang/releases) carry the
-installers.
+FormsLang **2.0.0 is the current stable release**, published from `main` and
+carried by the [releases](https://github.com/B2DEV-TECH/FormsLang/releases)
+page as Windows installers. The project-based modernization workflow above is
+the supported path.
+
+The 1.x single-session surfaces are preserved for compatibility, not removed:
+the CLI commands and their flags, the `.session.db` file, the export layout
+(`<alias>.apex.zip`, `<alias>/`, `<alias>-review/`) and the workbench's local
+HTTP API remain available, and legacy migration preserves original data.
+Within the 2.x line those surfaces only gain things; anything that would break
+one of them is a 3.0. The changelog records every visible change.
 
 What that stability covers, and what it does not: FormsLang is a working
 single-developer desktop tool with a tested build and release pipeline. It

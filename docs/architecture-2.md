@@ -1,6 +1,6 @@
 # FormsLang 2.0 implementation architecture
 
-This page describes the 2.0 candidate foundation, assessment, review, gated generation
+This page describes the FormsLang 2.0 foundation, assessment, review, gated generation
 and snapshot delivery. Release acceptance remains separately recorded. For product scope see
 [product architecture](formsLang-2-product-architecture.md). For storage and a
 runnable example see [project model](project-model.md).

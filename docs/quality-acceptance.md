@@ -1336,3 +1336,65 @@ test insertion restored its authenticated code-generation roundtrip (1 passed, 5
 Focused final report/corruption selection: **14 passed**, 9.55s. Independent final
 persona/documentation review: no Critical/Important findings; candidate/release limits
 remain explicit. Actual versioned installer and upgrade acceptance remain pending.
+
+## 2.0.0 verification (2026-09-21, America/Sao_Paulo)
+
+FormsLang 2.0.0 is published. This section records post-release facts only; the
+Phase A/B/C/D/E/F/G sections above remain the historical development acceptance
+record and are unchanged.
+
+Release: <https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.0.0>.
+Annotated tag `v2.0.0` (tag object `72e6c90`) targets release commit
+`326d16ee43e247a017d58a002d0bcd1bbe78a9da`, the merge of PR #9. The tag was
+created once and is not moved or recreated. `v2.0.0` is the **Latest** release,
+replacing 1.6.0.
+
+Final `main` CI: run
+[35596237137](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35596237137)
+on `326d16ee`, **13/13 green** — ruff, deterministic showcase export, SQLcl
+`apex validate` without a database, workbench and corporate browser acceptance
+(Edge), and pytest on ubuntu-latest and windows-latest for Python 3.10, 3.11,
+3.12 and 3.13. The four Windows jobs took 21-28 minutes and all passed; the
+intermittent Windows concurrency failures recorded earlier are pre-existing and
+reproduce on `main` independently of this release.
+
+Release-candidate evidence carries over because the trees are identical: candidate
+`0d0d964` and release commit `326d16ee` both have tree
+`5d8b98359a08aabd09a4f64b5f167a137355a30c`. On that candidate, CI run
+[35586134664](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35586134664)
+passed 13/13 and Installer acceptance run
+[35586159708](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35586159708)
+passed with **baseline 1.6.0 → 2.0.0**, covering both the MSI and the NSIS/EXE
+installer, the packaged project/review/generation/report workflow, uninstall,
+reinstall and legacy state preservation.
+
+Published assets, as uploaded to the release:
+
+| Asset | Size (bytes) | SHA-256 |
+|---|---|---|
+| `FormsLang_2.0.0_x64-setup.exe` | 14,532,985 | `3b5515b72bdb2e8e919ae7b787eb57edc6877e85ba74aa0c55902c46eb37ff14` |
+| `FormsLang_2.0.0_x64_en-US.msi` | 15,642,624 | `7559ec4ed6975434d178235d7f77df1626d748b18078e145133634f4fcec7f65` |
+
+These are the exact artifacts produced and accepted by the release pipeline; no
+binary was rebuilt for publication.
+
+The frozen modernization benchmark and ground truth remained unchanged through
+the release: all **24** baseline/ground-truth blobs under
+`examples/modernization-lab/benchmark/baselines/` and
+`examples/modernization-lab/expected/modernization-ground-truth.json` have the
+same Git blob hashes at `v2.0.0` as at `262361e`. No baseline was retuned to
+accompany publication.
+
+Publication changes the release state, not the engineering boundaries. Every
+limitation recorded above remains a limitation: Forms2XML is required for
+supported project semantics and discovered FMB/PLL/MMB/OLB binaries are not
+semantically parsed; generation produces one independent eligible module
+application per scope rather than a merged estate; unsupported mappings,
+unresolved controls and stale approvals stay blocked; offline SQLcl validation
+is syntax and structural evidence, not runtime equivalence. Shipping 2.0.0 does
+**not** imply universal Oracle Forms runtime parity, and every figure in this
+repository still comes from synthetic fixtures rather than a production estate.
+
+Manual product validation remains documented separately in
+[manual-validation-2.0.md](manual-validation-2.0.md) and is not superseded by
+this section.

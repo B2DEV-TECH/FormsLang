@@ -48,7 +48,7 @@ executive/technical HTML, CSV/JSON backlog and a hash-manifested modernization
 package. Default reports omit source bodies/private notes but are not anonymous.
 No invented executable database refactoring or labor estimate is emitted.
 
-The current 2.0 candidate supports one independent module application per generation
+FormsLang 2.0 supports one independent module application per generation
 run, not full-estate merging. Offline SQLcl validation does not establish runtime
 parity or Oracle endorsement. See [user guide](user-guide/README.md),
 [APEX target](apex-26-modernization.md), [limitations](user-guide/15-limitations.md)
