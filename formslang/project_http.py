@@ -241,6 +241,8 @@ class ProjectHTTP:
             return 200, intake.convert(pid, body.get('source_id'), expected_configuration=body.get('expected_configuration'),
                                       confirmed=body.get('confirmed', False))
         action = rbac.RUN_CONVERSION if method == 'POST' else rbac.VIEW_PROJECT
+        if len(tail) == 2 and tail[0] == 'reports' and method == 'GET':
+            action = rbac.EXPORT_PROJECT
         if ((tail == ['generation'] and method == 'POST')
                 or (len(tail) == 3 and tail[0] == 'artifacts'
                     and (tail[2], method) in {('download', 'GET'), ('validate', 'POST')})):
@@ -249,6 +251,20 @@ class ProjectHTTP:
               and tail[3] == 'code' and method == 'POST'):
             action = rbac.APPROVE_AI_PROPOSAL
         with self._service(intake, pid, action) as service:
+            if tail == ['reports'] and method == 'GET':
+                return 200, service.report_overview()
+            if len(tail) == 2 and tail[0] == 'reports' and method == 'GET':
+                fields = {'project_id', 'source_revision', 'analysis_revision', 'review_revision', 'snapshot_revision'}
+                if set(query) - fields - {'include_notes', 'include_artifacts'}:
+                    raise ProjectError('Unknown report query parameter')
+                binding = {k: query.get(k) for k in fields}
+                binding['review_revision'] = int(binding['review_revision'])
+                options = {}
+                for key in ('include_notes', 'include_artifacts'):
+                    if query.get(key, '0') not in {'0', '1'}:
+                        raise ProjectError('Report disclosure options must be 0 or 1')
+                    options[key] = query.get(key) == '1'
+                return 200, service.report_export(tail[1], binding, **options)
             if tail == ['generation']:
                 if method == 'GET':
                     return 200, service.generation_overview()

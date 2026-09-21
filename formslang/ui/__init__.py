@@ -23,6 +23,7 @@ from .formdoc import FORMDOC_JS
 from .modernization_generation import GENERATION_PROJECT_JS
 from .modernization_project import PROJECT_HTML, PROJECT_JS
 from .modernization_project_style import PROJECT_STYLE
+from .modernization_reports import REPORTS_PROJECT_JS
 from .modernization_review import REVIEW_PROJECT_JS, REVIEW_PROJECT_STYLE
 from .nav_layout import NAV_LAYOUT_JS
 from .projects import DASHBOARD_JS, PICKER_JS
@@ -90,5 +91,6 @@ INDEX_HTML = (
     + PROJECT_JS
     + REVIEW_PROJECT_JS
     + GENERATION_PROJECT_JS
+    + REPORTS_PROJECT_JS
     + WIRING_JS
 )

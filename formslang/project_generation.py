@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import shutil
+import sqlite3
 import tempfile
 import uuid
 from contextlib import contextmanager
@@ -107,7 +108,7 @@ class ProjectGenerationService:
         return path
 
     @contextmanager
-    def _module(self, assessment, source_id):
+    def _module(self, assessment, source_id, *, read_only=False):
         entry = self._entry(assessment, source_id)
         record = self._session_record(assessment, source_id)
         if record is None:
@@ -117,9 +118,22 @@ class ProjectGenerationService:
             raise RevisionConflict('Prepared source was edited; refresh its source-bound session.')
         module = parser.parse_xml(xml)
         module.source_path = entry['module']
-        session = Store(self._path(record['relative_store']), reconcile_jobs=False)
         try:
+            session = Store(self._path(record['relative_store']), existing_only=True, read_only=read_only)
+        except (OSError, sqlite3.Error) as exc:
+            raise ProjectError('Prepared code session is unavailable; restore it before generation.') from exc
+        try:
+            metadata = session.session()
+            if metadata.get('title') != module.name or metadata.get('source_path') != record['provenance']['xml']:
+                raise ProjectError('Prepared code session identity changed; restore its source-bound state.')
+            fields = ('id', 'module', 'kind', 'name', 'owner', 'source', 'fingerprint')
+            expected = sorted(tuple(task.to_dict()[key] for key in fields) for task in build_tasks(module))
+            actual = sorted(tuple(view.task[key] for key in fields) for view in session.all_views())
+            if actual != expected:
+                raise ProjectError('Prepared code tasks differ from source; restore the complete review session.')
             yield entry, module, session
+        except sqlite3.Error as exc:
+            raise ProjectError('Prepared code session is invalid; preserve it for diagnostics and restore its state.') from exc
         finally:
             session.close()
 

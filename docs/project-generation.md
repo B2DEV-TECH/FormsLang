@@ -28,6 +28,10 @@ The server checks current source/analysis/review/target/code revisions. It requi
 applicable human decisions, supported mappings, reviewed prerequisite rationale and
 explicit code approval. `AUTO` alone is never sufficient. Unknown, stale, unresolved
 architecture, unsupported Forms code and unobserved database identity block generation.
+Registered code sessions must already exist and retain the complete task inventory
+and original source identities from their prepared XML. Missing, replaced or damaged
+sessions are not recreated as empty reviews; preserve them for diagnostics and
+restore their state before generation.
 
 Only implemented layout mappings and enabled validation mappings are accepted.
 Executable mappings that the exporter would disable block the whole module, rather

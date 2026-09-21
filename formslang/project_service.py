@@ -192,6 +192,16 @@ class ProjectService:
         from .project_validation import validate_artifact
         return validate_artifact(self._generation_service(), artifact_id)
 
+    def report_overview(self):
+        from .project_reports import ProjectReportService
+        self.open()
+        return ProjectReportService(self).overview()
+
+    def report_export(self, kind, request, **options):
+        from .project_reports import ProjectReportService
+        self.open()
+        return ProjectReportService(self).export(kind, request, **options)
+
     def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None, started=None):
         from .project_analysis import analyze_project
 

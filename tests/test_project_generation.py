@@ -60,6 +60,33 @@ def test_prepare_does_not_approve_code_or_architecture(generation_project):
     assert service.overview(freshness=service.freshness())['review_progress']['reviewed'] == 0
 
 
+@pytest.mark.parametrize('damage', ['missing', 'empty', 'deleted_task'])
+def test_lost_prepared_code_cannot_become_zero_task_eligible(generation_project, damage):
+    from contextlib import closing
+
+    from formslang.project_model import ProjectError
+    from formslang.store import Store
+    service = generation_project
+    sid, _, _, _ = code_scope(service)
+    detail = prepared(service)
+    assert not detail['ready'] and detail['tasks']
+    record = service._store.module_sessions()[0]
+    path = service._store.directory / record['relative_store']
+    if damage in {'missing', 'empty'}:
+        path.unlink()
+    if damage == 'empty':
+        with closing(Store(path)):
+            pass
+    if damage == 'deleted_task':
+        with closing(Store(path)) as session:
+            session.db.execute('DELETE FROM task')
+            session.db.commit()
+    with pytest.raises(ProjectError, match='session|tasks'):
+        service.generation_module(sid)
+    if damage == 'missing':
+        assert not path.exists()
+
+
 def test_generate_is_deterministic_versioned_and_reopenable(generation_project):
     service = generation_project
     detail = prepared(service)

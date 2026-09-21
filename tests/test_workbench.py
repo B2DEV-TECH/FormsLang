@@ -392,12 +392,14 @@ def test_the_ui_script_only_reaches_for_elements_that_exist():
     from formslang.ui.blueprint import BLUEPRINT_JS
     from formslang.ui.modernization_generation import GENERATION_PROJECT_JS
     from formslang.ui.modernization_project import PROJECT_JS
+    from formslang.ui.modernization_reports import REPORTS_PROJECT_JS
     from formslang.ui.modernization_review import REVIEW_PROJECT_JS
 
     declared |= set(re.findall(r'id="([^"]+)"', BLUEPRINT_JS))
     declared |= set(re.findall(r'id="([^"]+)"', PROJECT_JS))
     declared |= set(re.findall(r'id="([^"]+)"', REVIEW_PROJECT_JS))
     declared |= set(re.findall(r'id="([^"]+)"', GENERATION_PROJECT_JS))
+    declared |= set(re.findall(r'id="([^"]+)"', REPORTS_PROJECT_JS))
     # The project wizard renders controls through one button template. Inspect
     # literal IDs supplied to that factory, not a blanket project-* exemption.
     declared |= set(re.findall(r"projectButton\('([^']+)'", PROJECT_JS))

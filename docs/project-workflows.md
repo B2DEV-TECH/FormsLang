@@ -1,8 +1,9 @@
-# Modernization project workflows — Phase E development
+# Modernization project workflows — Phase F development
 
 Unreleased 2.0 development, still versioned 1.6.0 until release acceptance. Overview
 and Inventory read the persisted assessment. Phase D adds project-scoped human
-review. Phase E adds gated, selected-module APEXlang generation; reports remain Phase F.
+review. Phase E adds gated, selected-module APEXlang generation. Phase F adds
+snapshot-bound reports and modernization delivery packages.
 
 ## First assessment
 
@@ -171,5 +172,7 @@ unchanged engine and opens the same Overview/Inventory used by other projects. I
 not a frontend simulation or the Modernization Lab benchmark. Project Review and
 Generate now use the same saved assessment and revision-bound human overlay.
 See [modernization review](modernization-review.md) and [generation](project-generation.md).
-Reports/delivery packages remain Phase F. This development build does not claim 2.0 release
+Reports now exports persisted executive/technical assessments, backlog and explicit
+modernization packages through the same service; see [delivery](project-reports.md).
+This development build does not claim 2.0 release
 acceptance, runtime parity, automatic deployment or completed migration.

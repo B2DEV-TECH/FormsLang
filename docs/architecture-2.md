@@ -132,6 +132,17 @@ See [generation contracts and limitations](project-generation.md).
 
 ## Testing layers
 
+### Phase F delivery boundary
+
+ProjectService delegates snapshot capture and export to ProjectReportService;
+project_report_render contains pure HTML/CSV/JSON rendering. No additional Store
+or projection tables exist. Export captures persisted assessment, review/annotation
+history, plans and artifact metadata under revision fencing, then checks source
+freshness before returning. Default deliverables exclude source bodies and human
+notes. Artifact inclusion is explicit, read-only, revision/hash checked and records
+exclusions. UI, CLI and authenticated HTTP use this same boundary, including EXPORT
+authorization. See [report contracts](project-reports.md).
+
 Pure model and manifest tests cover validation and deterministic identity.
 Store integration covers recovery, transaction rollback, stale writes and history.
 Migration tests compare full table content and actual deterministic APEXlang ZIP

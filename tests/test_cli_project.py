@@ -34,6 +34,20 @@ def test_create_analyze_status_json(tmp_path, sample_xml, capsys):
     assert again['analysis_revision'] == first['analysis_revision']
 
 
+def test_project_reports_use_snapshot_and_exclusive_download(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    state, _ = run_json(capsys, ['report', destination, '--format', 'status'])
+    assert state['binding']['snapshot_revision']
+    output = tmp_path / 'executive.html'
+    first, _ = run_json(capsys, ['report', destination, '--format', 'executive', '--output', output])
+    assert first['saved'] and first['size_bytes'] == output.stat().st_size
+    assert 'Executive Summary' in output.read_text(encoding='utf-8')
+    before = output.read_bytes()
+    run_json(capsys, ['report', destination, '--format', 'executive', '--output', output], expected=2)
+    assert output.read_bytes() == before
+
+
 def test_discover_open_and_relink(tmp_path, sample_xml, capsys):
     destination, created = create(capsys, tmp_path, sample_xml)
     found, _ = run_json(capsys, ['discover', destination])

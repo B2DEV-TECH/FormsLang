@@ -105,11 +105,11 @@ full regression and independent generation review. E gates now passed; exact
 acceptance is in quality-acceptance.md (1,598 Python, 130 focused, 74 JS/DOM,
 48 project-browser and 101 legacy-browser checks; five known Python skips).
 
-- [ ] Read existing exporter, layout, code approval and validator contracts; record supported scope modes and prerequisites.
-- [ ] Write failing tests for stale/unresolved critical/manual findings, code approval/key/security prerequisites, deterministic bytes, collision detection, safe partial scope, immutable artifacts and concurrent revision changes.
-- [ ] Implement one server eligibility policy and generation service invoking the existing exporter. Unsupported executable DB changes remain descriptive candidates.
-- [ ] Implement hash-bound validation metadata and explicit validation action; generation never imports.
-- [ ] Add API/CLI/real browser generation/validation coverage. Run full regression and independent generation/security review; fix and commit E with exact acceptance.
+- [x] Read existing exporter, layout, code approval and validator contracts; record supported scope modes and prerequisites.
+- [x] Write failing tests for stale/unresolved critical/manual findings, code approval/key/security prerequisites, deterministic bytes, collision detection, safe partial scope, immutable artifacts and concurrent revision changes.
+- [x] Implement one server eligibility policy and generation service invoking the existing exporter. Unsupported executable DB changes remain descriptive candidates.
+- [x] Implement hash-bound validation metadata and explicit validation action; generation never imports.
+- [x] Add API/CLI/real browser generation/validation coverage. Run full regression and independent generation/security review; fix and commit E with exact acceptance.
 
 ## F: Snapshot reports and delivery
 
@@ -144,10 +144,10 @@ fixed filenames; CLI uses the same service and exclusive output creation. Browse
 downloads carry exact revision preconditions, retain response guards and do not
 render exported HTML inside the privileged application origin.
 
-- [ ] Write RED fixtures for escaped HTML, CSV formula injection, executive source/privacy exclusion, manifest hashes, deterministic snapshot bytes, stale labeling and partial generation disclosure.
-- [ ] Implement printable executive/technical HTML, CSV/JSON backlog and supported package contents from one consistent persisted snapshot.
-- [ ] Reuse generation artifacts by verified hashes. Do not emit misleading SQL or unsupported empty folders.
-- [ ] Exercise browser downloads and CLI parity, full regression and independent privacy/package review. Commit F with acceptance.
+- [x] Write RED fixtures for escaped HTML, CSV formula injection, executive source/privacy exclusion, manifest hashes, deterministic snapshot bytes, stale labeling and partial generation disclosure.
+- [x] Implement printable executive/technical HTML, CSV/JSON backlog and supported package contents from one consistent persisted snapshot.
+- [x] Reuse generation artifacts by verified hashes. Do not emit misleading SQL or unsupported empty folders.
+- [x] Exercise browser downloads and CLI parity, full regression and independent privacy/package review. Commit F with acceptance.
 
 ## G: Candidate acceptance
 

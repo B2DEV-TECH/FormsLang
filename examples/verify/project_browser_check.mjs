@@ -115,6 +115,8 @@ try{
   await reviewChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send});
   const {generationChecks}=await import('./project_generation_browser_check.mjs');
   await generationChecks({evaluate,click,clickSelector,value,wait,check,screenshot,pick,folder:config.generation});
+  const {reportChecks}=await import('./project_reports_browser_check.mjs');
+  await reportChecks({evaluate,click,clickSelector,wait,check,screenshot,send,root});
   await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
   await sleep(300);check('tablet no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
   check('reduced motion preference retained',await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`));

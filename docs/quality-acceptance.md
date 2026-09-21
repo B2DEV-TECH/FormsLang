@@ -1168,3 +1168,78 @@ can leave unregistered conversion files; it refuses to overwrite them and requir
 inspection before recovery (independent Minor finding). Target/key coordination
 across parent/module databases is fail-closed, not a distributed atomic transaction.
 No live Oracle/APEX parity, installer/upgrade or 2.0 release acceptance is claimed here.
+
+## Phase F — persisted delivery and generation-storage hardening (2026-09-21)
+
+Candidate branch `codex/formslang-2-phase-f`, based on Phase E
+`9fb6f5169ad2a311af4810b193cd40d564999f77`. Version declarations remain 1.6.0;
+no tag/release/main integration is part of this checkpoint. Windows 11 Pro
+10.0.26200 x64, Intel i7-9700KF, Python 3.12.10, Node/Edge real browser.
+
+### Environment correction
+
+The global Python environment exposed stale distribution metadata (1.2.2), despite
+the worktree's canonical declarations and source code being 1.6.0. Earlier D/E
+functional runs used the worktree source but must not be treated as validation of
+installed runtime metadata. Phase F uses `out/acceptance-env/Scripts/python.exe`,
+an isolated editable installation verified by `python -m formslang --version` as
+1.6.0. The global installation was not changed. Full regression is rerun here;
+the existing freeze guard rejects stale metadata before packaging.
+
+### Delivery and independent findings
+
+Reports share one persisted snapshot and server service across UI/API/CLI. HTML,
+backlog, decision history and ZIP manifest tests cover escaping, CSV formula
+prefixes, provenance, deterministic bytes, source freshness, authorized disclosure,
+artifact hashes and explicit exclusions. No executable database refactoring or
+source-complete evidence export is claimed.
+
+Separate-context delivery reviewer: final **MERGE**, no remaining
+Critical/Important/Minor findings. The reviewer ran 26 focused cases and independent
+capture/render race, corrupt-storage and aggregate-size probes. Corrections include
+read-only inspection of missing/corrupt module databases, removal of interpolated
+source literals from exported reasons, sensitive export provenance/filenames,
+browser filename preservation and bounded aggregate artifact retention.
+
+Cross-cutting security review found an additional Important generation defect:
+opening a lost registered module database recreated an empty review queue and
+could omit an unapproved validation. Three RED cases (missing, empty replacement,
+deleted task) demonstrated the bypass. The correction opens existing SQLite storage
+without creation/migration and verifies session identity plus the exact original
+task/source inventory. The reviewer independently rejected five cases through both
+inspection and generation (also altered source/owner); no artifacts were created.
+Missing storage remained absent. Final scoped security recommendation: **MERGE**,
+subject to regression gates; independent auth/MFA/CSRF/path run 42 passed/1
+symlink-privilege skip. No retries or sleeps were added to mask a product race.
+
+Focused post-fix generation/report/Store regression: **89 passed**, 54.04s.
+Shared JS/DOM suites including Reports: **78 passed**, 6.35s.
+Real C/D/E/F browser after storage hardening: **55/55**, zero exceptions,
+eight screenshots, `out/phase-f-safety-browser/run-38e866604bc0/result.json`.
+Real report downloads exercised executive/technical HTML, sensitive decision JSON,
+explicit APEXlang package inclusion and unchanged snapshot after reopen.
+An earlier real downloaded package had 40 members, all 39 manifest hashes matched,
+15 `.apx` members, no exclusions, runtime version 1.6.0.
+Legacy Workbench browser: **101/101**, 27 screenshots,
+`out/phase-f-legacy/run-4e13cf65b6d7/result.json`.
+These are automated browser/accessibility checks, not a manual screen-reader study.
+
+Final full regression after storage hardening:
+`out/acceptance-env/Scripts/python.exe -B -m pytest -q -p no:cacheprovider`:
+**1,628 passed / 5 skipped**, 608.29s. Existing Windows symlink-privilege skips;
+junction tests ran. The earlier pre-hardening run was 1,625 passed/5 skipped in
+612.59s and is not the final safety candidate. A final sharing-disclosure sentence
+was added after its DOM RED; all four Reports DOM cases passed again (0.35s).
+Ruff and `git diff --check` clean. All 24 frozen benchmark/ground-truth blob hashes
+match `262361e`. No version/tag/release change.
+
+Windows HTTP polling stress: **50/50** invocations of
+`tests/test_project_http.py::test_analysis_is_accepted_then_persisted`, each in a
+fresh isolated Python process, passed. No flake/exception recurred; this establishes
+the observed repetitions, not proof of absence under every schedule.
+
+The persona walkthrough identified misleading project Blueprint navigation into
+the legacy importer; this remains an explicit Phase G UX acceptance fix, not a
+claim of completed release acceptance. Reports now warns on screen that default
+exports retain technical identifiers and are not anonymous. Native installer,
+1.6 upgrade, broader scale and release CI remain pending G/H gates.

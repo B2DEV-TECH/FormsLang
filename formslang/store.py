@@ -266,8 +266,16 @@ class TaskView:
 class Store:
     """One conversion session, backed by a single .db file."""
 
-    def __init__(self, path: Path | str, *, reconcile_jobs: bool = True):
+    def __init__(self, path: Path | str, *, reconcile_jobs: bool = True, read_only: bool = False,
+                 existing_only: bool = False):
         self.path = Path(path)
+        if read_only or existing_only:
+            # Registered prepared sessions must never be recreated or repaired on read.
+            mode = 'ro' if read_only else 'rw'
+            self.db = sqlite3.connect(self.path.resolve().as_uri() + '?mode=' + mode, uri=True,
+                                      check_same_thread=False)
+            self.db.row_factory = sqlite3.Row
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # No WAL: on Windows it keeps file handles alive and makes a session
         # file awkward to move, copy or delete while the tool is running.
