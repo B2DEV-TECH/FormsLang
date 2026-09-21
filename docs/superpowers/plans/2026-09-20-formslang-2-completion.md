@@ -64,6 +64,47 @@ assert after['blueprint']['findings'][0]['recommendation'] == before['blueprint'
 
 **Files:** focused `project_generation.py`, ProjectStore additive artifact metadata, ProjectService facade, API/CLI/UI generation adapters; reuse existing APEXlayout/APEXlang/SQLcl modules after inspecting their exact contracts.
 
+### E contract refinement (base 3251c04)
+
+Ruling: retain this tracked plan as the execution ledger. The skill's Bash workspace
+helper failed Windows path creation and was stopped; no correctness gate depends
+on that bookkeeping script. D is already committed and verified; do not repeat it.
+
+Pre-flight interfaces: D returns immutable engine evidence plus human overlays;
+E consumes exact source/analysis/review binding. Existing APEXlang consumes one
+FormModule and one conversion Store, not an estate graph. F will consume E's
+immutable artifact metadata and the same assessment snapshot, never rerun analysis.
+
+Ruling: initial project generation supports selected independent modules (one
+APEX application per module). Empty skeleton and multi-module modes are deferred:
+an empty shell would not demonstrate modernization and the existing
+exporter does not merge multiple modules into one application; fabricating a merger
+would violate the one-generation-path constraint. Names include stable source
+identity; collisions fail. A reviewed-pages scope can select eligible modules,
+not split a module's safety controls across independently generated pages.
+
+Ruling: module conversion sessions use the existing `project_module_session`
+registry and Store code decisions. Architecture review never populates APPROVED
+code automatically. Source/review/target/code revisions fence preparation,
+code approval and generation. A target plan records explicit database/security
+prerequisites and row keys; credentials never belong in it.
+
+Ruling: unsupported/disabled execution mappings block usable module generation;
+in particular a disabled approval process must not coexist with an enabled save
+process. Unsafe scope is omitted with blockers,
+not represented as converted. Cost: conservative scope, more individual work.
+
+Artifact publication is staged/versioned and never overwrites an earlier run.
+Every output file is hashed; validation binds exact bytes and records tool/mode.
+Missing SQLcl means Not Validated, never successful validation. Import is not an
+automatic next step. Reads/downloads reauthorize project and path containment.
+
+E implementation sequence: policy RED tests; source-bound module session/code
+approval bridge; immutable generator/validation; API+CLI+Generate UI; real browser,
+full regression and independent generation review. E gates now passed; exact
+acceptance is in quality-acceptance.md (1,598 Python, 130 focused, 74 JS/DOM,
+48 project-browser and 101 legacy-browser checks; five known Python skips).
+
 - [ ] Read existing exporter, layout, code approval and validator contracts; record supported scope modes and prerequisites.
 - [ ] Write failing tests for stale/unresolved critical/manual findings, code approval/key/security prerequisites, deterministic bytes, collision detection, safe partial scope, immutable artifacts and concurrent revision changes.
 - [ ] Implement one server eligibility policy and generation service invoking the existing exporter. Unsupported executable DB changes remain descriptive candidates.
@@ -73,6 +114,35 @@ assert after['blueprint']['findings'][0]['recommendation'] == before['blueprint'
 ## F: Snapshot reports and delivery
 
 **Files:** focused `project_reports.py`, service/API/CLI/UI report adapters, report/package tests.
+
+Contract refinement: reports use a revision-fenced, read-only snapshot of the
+existing assessment/review Store, then reuse Phase C projections. Capture target
+plans/artifact/validation metadata from the same checked parent-store transaction.
+Do not call the analysis engine or create report/projection tables. Concurrent
+changes produce a conflict or an internally consistent historical snapshot, never
+mixed revisions. Freshness is checked without reasoning; stale saved assessments
+remain exportable with explicit status.
+
+Default executive/technical/backlog outputs exclude source bodies, host paths,
+private identity IDs and human notes. Optional notes are an explicitly labeled
+sensitive export, separate from executive HTML. Generated APEXlang inclusion is an
+explicit package option because it can contain business logic. Verify exact files
+and hashes through the existing generation service; unavailable/modified/stale
+artifacts are exclusions, not replacement generation. An artifact's validation is
+syntax evidence for its bytes, never a new generation authorization.
+
+Output names are fixed/allowlisted and ZIP entries are deterministic with fixed
+timestamps. Package manifest hashes every included file except itself; snapshot
+identity includes analysis/review/target/artifact/validation state. Export wall time
+does not alter bytes. Capture actual assessment/generation/validation timestamps
+from persisted records. No fake SQL, empty unsupported directories, estimated
+effort, full-source dump or runtime-parity claims.
+
+Interface: one Reports page with executive/technical/risk HTML, backlog CSV/JSON,
+decisions JSON and package ZIP downloads. API returns typed attachment bytes with
+fixed filenames; CLI uses the same service and exclusive output creation. Browser
+downloads carry exact revision preconditions, retain response guards and do not
+render exported HTML inside the privileged application origin.
 
 - [ ] Write RED fixtures for escaped HTML, CSV formula injection, executive source/privacy exclusion, manifest hashes, deterministic snapshot bytes, stale labeling and partial generation disclosure.
 - [ ] Implement printable executive/technical HTML, CSV/JSON backlog and supported package contents from one consistent persisted snapshot.

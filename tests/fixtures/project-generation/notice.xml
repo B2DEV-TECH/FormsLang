@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="NOTICE" Title="Synthetic public notice">
+    <Block Name="INFO" DatabaseBlock="false">
+      <Item Name="MESSAGE" ItemType="Display Item" Prompt="Message" Width="100" Height="16"/>
+    </Block>
+  </FormModule>
+</Module>

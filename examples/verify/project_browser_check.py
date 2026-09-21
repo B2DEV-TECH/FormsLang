@@ -80,6 +80,9 @@ def main():
     forms, database = run / 'sources/forms', run / 'sources/database'
     forms.mkdir(parents=True)
     database.mkdir()
+    generation = run / 'sources/generation'
+    generation.mkdir()
+    shutil.copyfile(REPO / 'tests/fixtures/project-generation/notice.xml', generation / 'notice.xml')
     shutil.copyfile(REPO / 'tests/fixtures/showcase/module.xml', forms / 'orders.xml')
     (database / 'orders.sql').write_text('create table orders (id number primary key);', encoding='utf-8')
     server_process, server_stop, server_port = _start_server(run)
@@ -87,7 +90,7 @@ def main():
         reservation.bind(('127.0.0.1', 0))
         debug_port = reservation.getsockname()[1]
     (run / 'state.json').write_text(json.dumps({'url': f'http://127.0.0.1:{server_port}',
-        'debug_port': debug_port, 'forms': str(forms), 'database': str(database)}), encoding='utf-8')
+        'debug_port': debug_port, 'forms': str(forms), 'database': str(database), 'generation': str(generation)}), encoding='utf-8')
     hidden = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     edge = node = None
     print(f'Project browser evidence: {run}', flush=True)

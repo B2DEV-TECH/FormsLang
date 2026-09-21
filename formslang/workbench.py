@@ -1385,7 +1385,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path.startswith('/api/v2/'):
                 status, payload = wb.project_api.dispatch('GET', path, {k: v[0] for k, v in parse_qs(query).items()}, {}, auth)
-                self._json(payload, status)
+                if isinstance(payload, bytes):
+                    self._send(status, payload, 'application/zip')
+                else:
+                    self._json(payload, status)
             elif wb.auth_store is None and (
                 path.startswith(("/api/auth/", "/api/projects"))
             ):

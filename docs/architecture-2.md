@@ -1,7 +1,7 @@
 # FormsLang 2.0 implementation architecture
 
-This page describes the unreleased Phase A-D foundation and assessment/review workflow,
-not the complete 2.0 product. For product scope and phases E-H see
+This page describes the unreleased Phase A-E foundation, assessment, review and gated generation,
+not the complete 2.0 product. For product scope and phases F-H see
 [product architecture](formsLang-2-product-architecture.md). For storage and a
 runnable example see [project model](project-model.md).
 
@@ -103,8 +103,30 @@ can safely clean up staging files.
 - Static project foundation performs no external AI, Oracle connection or telemetry.
 - New assessment fields extend a versioned projection; do not rewrite engine
   evidence with human decisions or represent architecture approval as code approval.
-- Future generation consumes revision-bound assessment/review/target state and
+- Project generation consumes revision-bound assessment/review/target state and
   must independently enforce eligibility; nothing here automatically deploys SQL.
+
+## Project generation boundary (Phase E)
+
+`ProjectService` delegates to `ProjectGenerationService` and one server-side
+`project_generation_policy`. The existing module conversion Store, APEXlayout and
+APEXlang exporter remain the only code approval and generation path. The existing
+`project_module_session` registry binds a conversion session to source identity and
+analysis revision. Additive target-plan, artifact and validation records live in
+ProjectStore; no second project model or projection tables are introduced.
+
+Architecture approval never implies code approval. An approved code event records
+source/analysis/review/target binding in the existing append-only decision table.
+Its revision includes event identity/provenance, not just code text or timestamps.
+Project locking, module write locks, parent revision fences and source verification
+protect publication. Parent and module SQLite files are not a distributed transaction:
+interrupted target-key publication fails closed through key/plan mismatch detection.
+
+Each selected independent module generates a versioned application and ZIP. All
+files are hashed, read containment is checked, and edits invalidate applicability
+of validation. Offline SQLcl validates an isolated copy; validation stores the tool,
+mode, exact artifact hash and safe result, never claims functional equivalence.
+See [generation contracts and limitations](project-generation.md).
 - Unknown schema/target, partial analysis, stale evidence and unavailable source
   remain explicit states or errors, not success defaults.
 

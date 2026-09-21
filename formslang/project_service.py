@@ -159,6 +159,39 @@ class ProjectService:
     def review_bulk_apply(self, command):
         return self._review_service().bulk(command, apply=True)
 
+    def _generation_service(self):
+        from .project_generation import ProjectGenerationService
+        self.open()
+        return ProjectGenerationService(self)
+
+    def generation_overview(self):
+        return self._generation_service().overview()
+
+    def generation_module(self, source_id):
+        return self._generation_service().module(source_id)
+
+    def generation_prepare(self, source_id, request):
+        return self._generation_service().prepare(source_id, request)
+
+    def generation_configure(self, source_id, request):
+        return self._generation_service().configure(source_id, request)
+
+    def generation_task(self, source_id, task_id):
+        return self._generation_service().task(source_id, task_id)
+
+    def generation_code(self, source_id, task_id, request):
+        return self._generation_service().code(source_id, task_id, request)
+
+    def generate(self, request):
+        return self._generation_service().generate(request)
+
+    def generation_download(self, artifact_id):
+        return self._generation_service().download(artifact_id)
+
+    def generation_validate(self, artifact_id):
+        from .project_validation import validate_artifact
+        return validate_artifact(self._generation_service(), artifact_id)
+
     def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None, started=None):
         from .project_analysis import analyze_project
 

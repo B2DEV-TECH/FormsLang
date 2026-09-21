@@ -241,7 +241,38 @@ class ProjectHTTP:
             return 200, intake.convert(pid, body.get('source_id'), expected_configuration=body.get('expected_configuration'),
                                       confirmed=body.get('confirmed', False))
         action = rbac.RUN_CONVERSION if method == 'POST' else rbac.VIEW_PROJECT
+        if ((tail == ['generation'] and method == 'POST')
+                or (len(tail) == 3 and tail[0] == 'artifacts'
+                    and (tail[2], method) in {('download', 'GET'), ('validate', 'POST')})):
+            action = rbac.EXPORT_PROJECT
+        elif (len(tail) == 5 and tail[:2] == ['generation', 'modules']
+              and tail[3] == 'code' and method == 'POST'):
+            action = rbac.APPROVE_AI_PROPOSAL
         with self._service(intake, pid, action) as service:
+            if tail == ['generation']:
+                if method == 'GET':
+                    return 200, service.generation_overview()
+                if method == 'POST':
+                    return 201, service.generate(body)
+            if len(tail) >= 3 and tail[:2] == ['generation', 'modules']:
+                source_id = tail[2]
+                if len(tail) == 3 and method == 'GET':
+                    return 200, service.generation_module(source_id)
+                if tail[3:] == ['prepare'] and method == 'POST':
+                    return 200, service.generation_prepare(source_id, body)
+                if tail[3:] == ['plan'] and method == 'POST':
+                    return 200, service.generation_configure(source_id, body)
+                if len(tail) == 5 and tail[3] == 'code':
+                    task_id = unquote(tail[4], errors='strict')
+                    if method == 'GET':
+                        return 200, service.generation_task(source_id, task_id)
+                    if method == 'POST':
+                        return 200, service.generation_code(source_id, task_id, body)
+            if len(tail) == 3 and tail[0] == 'artifacts':
+                if tail[2] == 'download' and method == 'GET':
+                    return 200, service.generation_download(tail[1])
+                if tail[2] == 'validate' and method == 'POST':
+                    return 200, service.generation_validate(tail[1])
             if tail and tail[0] == 'review':
                 if len(tail) == 1 and method == 'GET':
                     values = _inventory_query({k: v for k, v in query.items() if k != 'review_revision'})

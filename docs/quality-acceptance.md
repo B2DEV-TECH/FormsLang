@@ -1092,3 +1092,79 @@ control-risk explanation. Non-current assessments reject mutations until refresh
 Automated keyboard/semantics/responsive checks are not a manual screen-reader audit
 or human productivity study. Phase E generation and Phase F deliverables are next,
 not implied by Phase D acceptance. No live Oracle/APEX validation was performed here.
+
+## Phase E — selected-module APEXlang generation (2026-09-21)
+
+Unreleased branch `codex/formslang-2-phase-e`, based on D acceptance `3251c04`.
+Version remains **1.6.0**; no tag, release or main integration is implied. Platform:
+Windows 11 Pro 10.0.26200 x64, Intel i7-9700KF 3.60 GHz, Python 3.12.10.
+All fixtures are synthetic/public-safe. See [generation scope](project-generation.md).
+
+### Verification
+
+- Final `python -B -m pytest -q -p no:cacheprovider`: **1,598 passed / 5 skipped**,
+  598.54s. Skips remain the five Windows symlink-privilege cases; real junction
+  regressions ran. This includes the final authenticated-route tests/fix.
+- Focused generation/policy/HTTP/UI/validation, project CLI, legacy Store,
+  APEXlang binding and apeximport: **130 passed**, 125.43s, using
+  `python -B -m pytest -q -p no:cacheprovider tests/test_project_generation.py
+  tests/test_project_generation_policy.py tests/test_project_generation_http.py
+  tests/test_project_generation_ui.py tests/test_project_validation.py
+  tests/test_cli_project.py tests/test_store.py tests/test_apexlang_binding.py
+  tests/test_apeximport.py`.
+- JS/DOM: **74 passed**, 5.66s, existing four D UI suites plus
+  `tests/test_project_generation_ui.py`.
+- Real C/D/E browser: **48/48**, no browser exceptions/external application requests,
+  seven screenshots, `out/phase-e-final-browser/run-947ff65e6c3e/result.json`.
+  Exercises real onboarding, persisted assessment, review, explicit prerequisites,
+  generation, exact ZIP download, offline validation and reopen. Keyboard/status,
+  tablet and reduced-motion checks are automated, not a manual screen-reader audit.
+- Final legacy browser: **101/101**, zero exceptions, 27 screenshots,
+  `out/phase-e-final-legacy/run-d2a51c5b60b0/result.json`.
+- `python -B -m ruff check . --no-cache` and `git diff --check`: clean.
+- All **24 frozen benchmark/ground-truth Git blob hashes** match `262361e`.
+
+### Oracle offline validation
+
+Official standalone SQLcl **26.2.2.0 build 26.2.2.233.1901**, using its supported
+APEXlang **26.1.0+3102** grammar. The Oracle-home SQL executable failed to initialize
+(NoClassDefFoundError); it was not counted as a validator. Standalone SQLcl was
+downloaded from the same official URL used by repository CI, outside the repository.
+
+The browser generated artifact `ce3d9e77eb2f40c488204c095efb821f` validated offline;
+ZIP SHA-256 `1a460887398f0373269be72ba32bdc8aed273ad7d59827a051c06f824a0b0865`.
+`examples/verify/apexlang_offline_controls.py` also ran the existing synthetic
+showcase export and a separate copy with `interactiveGrid` changed to an invalid
+region type. Positive accepted; negative rejected. Both SQLcl process exit codes
+were zero, demonstrating why explicit success/error-marker checking is necessary.
+No Oracle database connection, workspace import, DDL or runtime/UAT validation ran.
+
+### Independent review and RED/GREEN fixes
+
+Two separate-context high-reasoning reviewers audited generation safety and the
+API/CLI/UI surface. Final scoped verdicts: **MERGE**, no open Critical/Important
+findings. They independently ran focused tests, not the full release gate.
+
+Regression-driven fixes cover: unsupported target code/binds; lost Forms
+insert/update/query/range/default controls; actual hidden layout placement;
+observed table/column identity versus sanitized/remote/quoted names; transitive
+resolved database references; target/key mismatch; complete code-event provenance
+even on identical same-second legacy approval; source changes before code commit;
+and code edits during final artifact copy. No arbitrary retry/sleep was added.
+
+An additional authenticated-route test found narrow `ProjectAccess.actions` did
+not match generation/export/code operations. RED showed denied granted exports;
+the minimal HTTP action-selection fix preserves the existing RBAC/export-grant
+boundary. Authenticated owner code approval/generation/download, Viewer grant,
+CSRF, foreign organization and membership revocation now pass (**3 tests**, 19.55s).
+The interface reviewer independently rechecked the permission fix.
+
+### Limits
+
+Selected independent module applications only; no multi-module merger or empty
+skeleton mode. Unsupported executable mappings conservatively block a whole module.
+Generation is synchronous and does not continue after app exit. A failed prepare
+can leave unregistered conversion files; it refuses to overwrite them and requires
+inspection before recovery (independent Minor finding). Target/key coordination
+across parent/module databases is fail-closed, not a distributed atomic transaction.
+No live Oracle/APEX parity, installer/upgrade or 2.0 release acceptance is claimed here.

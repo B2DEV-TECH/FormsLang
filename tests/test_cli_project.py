@@ -66,6 +66,19 @@ def test_unsupported_target_is_argument_error(tmp_path):
     assert failure.value.code == 2
 
 
+def test_generation_cli_uses_project_service(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    overview, _ = run_json(capsys, ['generation', 'status', destination])
+    sid = overview['modules'][0]['source_id']
+    request = tmp_path / 'request.json'
+    request.write_text(json.dumps(overview['binding']), encoding='utf-8')
+    prepared, _ = run_json(capsys, ['generation', 'prepare', destination, '--source', sid, '--request', request])
+    detail, _ = run_json(capsys, ['generation', 'module', destination, '--source', sid])
+    assert detail['code_revision'] == prepared['code_revision']
+    assert detail['blockers'] and not detail['ready']
+
+
 def test_sigint_cooperatively_cancels_and_restores_handler(tmp_path, sample_xml, capsys, monkeypatch):
     from formslang import project_cli
 

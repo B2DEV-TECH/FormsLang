@@ -64,6 +64,34 @@ def _operation(args):
         descriptor = service.open()
         preconditions = {'expected_revision': descriptor.analysis_revision,
                          'expected_configuration': summary['configuration_revision']}
+        if operation == 'generation':
+            command = args.generation_command
+            if command == 'status':
+                return service.generation_overview(), 0
+            if command == 'module':
+                return service.generation_module(args.source), 0
+            if command == 'task':
+                return service.generation_task(args.source, args.task), 0
+            if command == 'validate':
+                result = service.generation_validate(args.artifact)
+                return result, 0 if result['status'] == 'Validated' else 1
+            if command == 'download':
+                data = service.generation_download(args.artifact)
+                with Path(args.output).open('xb') as output:
+                    output.write(data)
+                return {'artifact_id': args.artifact, 'size_bytes': len(data), 'saved': True}, 0
+            path = Path(args.request)
+            if path.stat().st_size > 256000:
+                raise ProjectError('Generation request exceeds 256 KB')
+            request = json.loads(path.read_text(encoding='utf-8'))
+            if not isinstance(request, dict):
+                raise ProjectError('Generation request must be a JSON object with exact revisions')
+            if command == 'generate':
+                return service.generate(request), 0
+            if command == 'code':
+                return service.generation_code(args.source, args.task, request), 0
+            method = service.generation_prepare if command == 'prepare' else service.generation_configure
+            return method(args.source, request), 0
         if operation == 'review':
             if args.review_command == 'list':
                 filters = {key: getattr(args, key) for key in ('risk', 'recommendation',
@@ -137,6 +165,23 @@ def run_project(args):
 def add_project_parser(subparsers):
     parser = subparsers.add_parser('project', help='local modernization projects: create, analyze and reopen')
     commands = parser.add_subparsers(dest='project_command', required=True)
+    generation = commands.add_parser('generation', help='reviewed module artifacts and explicit offline validation')
+    generation_commands = generation.add_subparsers(dest='generation_command', required=True)
+    for operation in ('status', 'module', 'prepare', 'plan', 'task', 'code', 'generate', 'validate', 'download'):
+        command = generation_commands.add_parser(operation)
+        command.add_argument('project')
+        command.add_argument('--json', action='store_true')
+        command.set_defaults(func=run_project)
+        if operation in {'module', 'prepare', 'plan', 'task', 'code'}:
+            command.add_argument('--source', required=True)
+        if operation in {'task', 'code'}:
+            command.add_argument('--task', required=True)
+        if operation in {'prepare', 'plan', 'code', 'generate'}:
+            command.add_argument('--request', required=True, help='JSON file with exact binding and operation fields')
+        if operation in {'validate', 'download'}:
+            command.add_argument('--artifact', required=True)
+        if operation == 'download':
+            command.add_argument('--output', required=True, help='new ZIP path; existing files are never overwritten')
     review = commands.add_parser('review', help='revision-bound modernization decisions')
     review_commands = review.add_subparsers(dest='review_command', required=True)
     for operation in ('list', 'show', 'decide', 'annotate'):

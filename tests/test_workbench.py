@@ -390,16 +390,19 @@ def test_the_ui_script_only_reaches_for_elements_that_exist():
     # Blueprint renders its bounded explorer/review panel into the shared modal.
     # Include its actual template declarations, rather than exempting an ID prefix.
     from formslang.ui.blueprint import BLUEPRINT_JS
+    from formslang.ui.modernization_generation import GENERATION_PROJECT_JS
     from formslang.ui.modernization_project import PROJECT_JS
     from formslang.ui.modernization_review import REVIEW_PROJECT_JS
 
     declared |= set(re.findall(r'id="([^"]+)"', BLUEPRINT_JS))
     declared |= set(re.findall(r'id="([^"]+)"', PROJECT_JS))
     declared |= set(re.findall(r'id="([^"]+)"', REVIEW_PROJECT_JS))
+    declared |= set(re.findall(r'id="([^"]+)"', GENERATION_PROJECT_JS))
     # The project wizard renders controls through one button template. Inspect
     # literal IDs supplied to that factory, not a blanket project-* exemption.
     declared |= set(re.findall(r"projectButton\('([^']+)'", PROJECT_JS))
     declared |= set(re.findall(r"projectButton\('([^']+)'", REVIEW_PROJECT_JS))
+    declared |= set(re.findall(r"projectButton\('([^']+)'", GENERATION_PROJECT_JS))
     used = set(re.findall(r"getElementById\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
     used |= set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", INDEX_HTML))
     assert used, "the review screen has no script left in it"

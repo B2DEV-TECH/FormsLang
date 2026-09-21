@@ -151,7 +151,7 @@ const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MA
 function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
 function projectSectionNav(active='overview') {
   const links=[['overview','Overview'],['inventory','Inventory'],['review','Review'],['blueprint','Blueprint'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
-  return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''} ${['generate','reports'].includes(id)?'title="Planned for a later FormsLang 2.0 phase"':''}>${label}</button>`).join('')}</nav>`;
+  return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''} ${id==='reports'?'title="Planned for a later FormsLang 2.0 phase"':''}>${label}</button>`).join('')}</nav>`;
 }
 function projectBindSectionNav() {
   $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
@@ -159,6 +159,7 @@ function projectBindSectionNav() {
     if(section==='overview'){if(projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='overview';const c=projectContext();projectLoadOverview(c,false).then(data=>{if(data&&projectCurrent(c)&&projectUI.view==='overview')renderProjectOverview(data);});}}
     else if(section==='inventory')projectOpenInventory({category:'forms'});
     else if(section==='review')projectReviewOpen();
+    else if(section==='generate')projectGenerationOpen();
     else if(section==='blueprint'){projectLeave();browse('');}
     else if(section==='settings')renderProjectSummary(projectUI.summary);
     else {$('project-status').textContent=`${section==='generate'?'Generation':'Reports'} is planned for a later FormsLang 2.0 phase.`;}

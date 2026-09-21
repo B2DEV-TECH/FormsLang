@@ -89,6 +89,18 @@ CREATE TRIGGER IF NOT EXISTS project_annotation_revision AFTER INSERT ON bluepri
 BEGIN
  UPDATE modernization_project SET review_revision=review_revision+1 WHERE id=1;
 END;
+CREATE TABLE IF NOT EXISTS project_target_plan (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL,
+ analysis_revision TEXT NOT NULL, revision TEXT NOT NULL, payload_json TEXT NOT NULL,
+ reviewer TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_artifact (
+ artifact_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, metadata_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_artifact_validation (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, artifact_id TEXT NOT NULL,
+ artifact_sha256 TEXT NOT NULL, created_at TEXT NOT NULL, payload_json TEXT NOT NULL
+);
 """
 
 
@@ -208,7 +220,8 @@ class ProjectStore:
         required = {'project_configuration', 'project_discovery_run',
                     'project_discovery_entry', 'project_discovery_diagnostic',
                     'project_job', 'project_analysis_run', 'project_derived_source',
-                    'blueprint_annotation'}
+                    'blueprint_annotation', 'project_target_plan', 'project_artifact',
+                    'project_artifact_validation'}
         present = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if required <= present:
             return
