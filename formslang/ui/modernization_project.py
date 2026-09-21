@@ -156,9 +156,9 @@ function projectSectionNav(active='overview') {
 function projectBindSectionNav() {
   $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
     const section=el.dataset.projectSection;
-    if(section==='overview')renderProjectOverview(projectUI.overview);
+    if(section==='overview'){if(projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='overview';const c=projectContext();projectLoadOverview(c,false).then(data=>{if(data&&projectCurrent(c)&&projectUI.view==='overview')renderProjectOverview(data);});}}
     else if(section==='inventory')projectOpenInventory({category:'forms'});
-    else if(section==='review')projectOpenPriorityReview();
+    else if(section==='review')projectReviewOpen();
     else if(section==='blueprint'){projectLeave();browse('');}
     else if(section==='settings')renderProjectSummary(projectUI.summary);
     else {$('project-status').textContent=`${section==='generate'?'Generation':'Reports'} is planned for a later FormsLang 2.0 phase.`;}
@@ -258,8 +258,9 @@ function projectInventoryPage(offset,focusId='') {const state=projectUI.inventor
 async function projectOpenPriorityReview() {
   const findingId=projectUI.overview?.priority?.first_finding_id||null;
   projectUI.reviewContext={project_id:projectUI.activeId,finding_id:findingId,filters:{priority:'unresolved'},analysis_revision:projectInventoryRevision()};
-  const page=await projectOpenInventory({category:'findings',priority:true});
-  if(findingId&&page?.rows?.some(row=>row.id===findingId))await projectInventoryDetail(findingId);
+  await projectReviewOpen({filters:{priority:'unresolved'}});
+  const page=projectUI.reviewState?.page;
+  if(findingId&&page?.rows?.some(row=>row.id===findingId))await projectReviewDetail(findingId);
   return page;
 }
 function projectDetailList(items,kind) {

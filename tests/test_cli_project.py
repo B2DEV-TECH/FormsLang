@@ -160,3 +160,21 @@ def test_inventory_cli_rejects_invalid_category_and_limit(tmp_path, capsys):
         main(['project', 'inventory', str(destination), '--limit', '201', '--json'])
 
     assert category.value.code == limit.value.code == 2
+
+
+def test_review_cli_uses_shared_history_and_explicit_revision(tmp_path, capsys):
+    destination = tmp_path / 'review-demo'
+    run_json(capsys, ['demo', destination])
+    run_json(capsys, ['analyze', destination])
+    page, _ = run_json(capsys, ['review', 'list', destination, '--limit', '1'])
+    finding_id = page['rows'][0]['id']
+    detail, _ = run_json(capsys, ['review', 'show', destination, '--finding', finding_id])
+    binding = detail['binding']
+    args = ['review', 'decide', destination, '--finding', finding_id,
+            '--action', 'APPROVE', '--binding', json.dumps(binding)]
+    run_json(capsys, args)
+    conflict, _ = run_json(capsys, args, expected=2)
+    assert 'changed' in conflict['error']
+    after, _ = run_json(capsys, ['review', 'show', destination, '--finding', finding_id])
+    assert after['item']['review_state'] == 'APPROVE'
+    assert len(after['history']) == 1

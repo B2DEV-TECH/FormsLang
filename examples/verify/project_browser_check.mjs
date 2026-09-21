@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const root=path.resolve(process.argv[2]),config=JSON.parse(await fs.readFile(path.join(root,'state.json'),'utf8'));
-const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + 250 cancellation modules',scope:'Phase C real Overview, Inventory, detail, reopen, stale source, cancellation and demo'};
+const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + 250 cancellation modules',scope:'Phase C+D real assessment, inventory, review governance, reopen, stale source and demo'};
 const allowedOrigins=new Set([new URL(config.url).origin]),requests=[];
 let socket,sequence=0;const pending=new Map();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -111,6 +111,8 @@ try{
   await value('project-inventory-search','SHIPMENT_API');await click('project-inventory-apply');await wait(()=>evaluate(`projectUI.inventoryState?.query==='SHIPMENT_API'&&projectUI.inventoryState.page?.total===1`),'package search');
   check('package search uses persisted projection',await evaluate(`projectUI.inventoryState.page.rows[0].name==='SHIPMENT_API'`));
   await screenshot('demo-inventory.png');
+  const {reviewChecks}=await import('./project_review_browser_check.mjs');
+  await reviewChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send});
   await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
   await sleep(300);check('tablet no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
   check('reduced motion preference retained',await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`));

@@ -136,6 +136,29 @@ class ProjectService:
             raise PermissionError('Project operations require fresh authorization')
         return self._authorize_callback() if self._authorize_callback else self.access
 
+    def _review_service(self):
+        from .project_review import ProjectReviewService
+        self.open()
+        return ProjectReviewService(self)
+
+    def review_queue(self, **query):
+        return self._review_service().queue(**query)
+
+    def review_detail(self, finding_id, **query):
+        return self._review_service().detail(finding_id, **query)
+
+    def review_decide(self, finding_id, command):
+        return self._review_service().mutate(finding_id, command)
+
+    def review_annotate(self, finding_id, command):
+        return self._review_service().mutate(finding_id, command, annotation=True)
+
+    def review_bulk_preview(self, command):
+        return self._review_service().bulk(command, apply=False)
+
+    def review_bulk_apply(self, command):
+        return self._review_service().bulk(command, apply=True)
+
     def analyze(self, *, expected_revision, expected_configuration, progress=None, cancellation=None, started=None):
         from .project_analysis import analyze_project
 

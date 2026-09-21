@@ -22,6 +22,7 @@ from .corporate_style import CORPORATE_STYLE, THEME_JS
 from .formdoc import FORMDOC_JS
 from .modernization_project import PROJECT_HTML, PROJECT_JS
 from .modernization_project_style import PROJECT_STYLE
+from .modernization_review import REVIEW_PROJECT_JS, REVIEW_PROJECT_STYLE
 from .nav_layout import NAV_LAYOUT_JS
 from .projects import DASHBOARD_JS, PICKER_JS
 from .review import (
@@ -52,7 +53,7 @@ from .workspace_layout import WORKSPACE_LAYOUT_JS, WORKSPACE_LAYOUT_STYLE
 
 INDEX_HTML = (
     HEAD_HTML
-    + STYLE_BLOCK.replace("</style>", CORPORATE_STYLE + SHELL_STYLE + REVIEW_STYLE + WORKSPACE_LAYOUT_STYLE + PROJECT_STYLE + "</style>")
+    + STYLE_BLOCK.replace("</style>", CORPORATE_STYLE + SHELL_STYLE + REVIEW_STYLE + WORKSPACE_LAYOUT_STYLE + PROJECT_STYLE + REVIEW_PROJECT_STYLE + "</style>")
     + BODY_OPEN_HTML
     + HEADER_HTML
     + PROGRESS_BAR_HTML
@@ -86,5 +87,6 @@ INDEX_HTML = (
     + NAV_LAYOUT_JS
     + WORKSPACE_LAYOUT_JS
     + PROJECT_JS
+    + REVIEW_PROJECT_JS
     + WIRING_JS
 )

@@ -25,7 +25,7 @@ CATEGORIES = (
     "forms", "libraries", "packages", "routines", "views", "tables",
     "dependencies", "business_rules", "findings",
 )
-SORTS = {"name", "risk", "recommendation", "intervention", "module", "type"}
+SORTS = {"name", "risk", "recommendation", "intervention", "module", "type", "priority"}
 MAX_OVERVIEW_WARNINGS = 50
 
 
@@ -140,7 +140,7 @@ def _unique(values):
     return result
 
 
-def _safe_entity(node, findings_by_entity, edges):
+def _safe_entity(node, findings_by_entity, dependency_count):
     identity = node["id"]
     attributes = node.get("attributes") if isinstance(node.get("attributes"), dict) else {}
     related = findings_by_entity.get(identity, ())
@@ -153,9 +153,7 @@ def _safe_entity(node, findings_by_entity, edges):
         "type": _text(node.get("type"), 100),
         "module": _logical_name(node.get("module")),
         "source_status": "ANALYZED",
-        "dependencies": sum(
-            edge.get("source") == identity or edge.get("target") == identity for edge in edges
-        ),
+        "dependencies": dependency_count,
         "findings": len(related),
         "highest_risk": highest,
         "columns": len(attributes.get("columns", ()))
@@ -398,12 +396,15 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
         key=lambda edge: edge["id"],
     ))
     centrality = Counter()
+    dependency_counts = Counter()
     evidence_by_entity = defaultdict(set)
     for edge in edges:
         source = edge.get("source")
         target = edge.get("target")
         centrality[source] += 1
         centrality[target] += 1
+        for endpoint in {source, target}:
+            dependency_counts[endpoint] += 1
         if edge.get("type") == "DUPLICATES_LOGIC":
             evidence_by_entity[source].add("DUPLICATED_LOGIC")
         source_module = _logical_name(entities.get(source, {}).get("module"))
@@ -418,7 +419,7 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
     for row in finding_rows:
         findings_by_entity[row["entity_id"]].append(row)
     entity_rows = {
-        identity: _safe_entity(node, findings_by_entity, edges)
+        identity: _safe_entity(node, findings_by_entity, dependency_counts[identity])
         for identity, node in entities.items()
     }
     forms = tuple(sorted(
@@ -553,6 +554,12 @@ def prepare_projection(descriptor: dict, assessment: dict, freshness: dict, *,
             "total": total,
             "reviewed": sum(row["review_state"] in {"APPROVE", "MODIFY"}
                             for row in finding_rows),
+            "critical_total": sum(row['risk'] == 'CRITICAL' for row in finding_rows),
+            "critical_resolved": sum(row['risk'] == 'CRITICAL' and row['review_state'] in RESOLVED_REVIEWS
+                                     for row in finding_rows),
+            "manual_total": sum(row['intervention'] == 'MANUAL' for row in finding_rows),
+            "manual_resolved": sum(row['intervention'] == 'MANUAL' and row['review_state'] in RESOLVED_REVIEWS
+                                   for row in finding_rows),
         },
         "analysis_metadata": {
             "engine_identity": dict(assessment.get("engine_identity", {}))
@@ -650,7 +657,7 @@ def _filtered(rows, *, query, filters):
 def _sort_rows(rows, sort, *, priority=False):
     if sort not in SORTS:
         raise ProjectError("Unknown inventory sort")
-    if priority:
+    if priority or sort == "priority":
         return sorted(rows, key=_priority_key)
     if sort == "risk":
         return sorted(rows, key=lambda row: (

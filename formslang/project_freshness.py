@@ -8,7 +8,7 @@ from .project_sources import fingerprint_inputs
 from .project_store import ProjectStore
 
 
-def check_freshness(access, descriptor, assessment, *, checkpoint):
+def check_freshness(access, descriptor, assessment, *, checkpoint, store=None):
     result = {'status': 'UNVERIFIED', 'reasons': [], 'source_revision': None,
               'analysis_revision': assessment['analysis_revision'] if assessment else None,
               'checked_at': now()}
@@ -16,12 +16,14 @@ def check_freshness(access, descriptor, assessment, *, checkpoint):
         return {**result, 'status': 'INCOMPLETE', 'reasons': ['NOT_ANALYZED']}
     try:
         checkpoint()
-        store = ProjectStore.open(access.root)
+        owned_store = store is None
+        store = ProjectStore.open(access.root) if owned_store else store
         try:
             discovery = discover_project_sources(access, descriptor, store, checkpoint=checkpoint,
                                                  progress=lambda event: None, preview=False)
         finally:
-            store.close()
+            if owned_store:
+                store.close()
         entries = fingerprint_inputs(access, descriptor, discovery, checkpoint=checkpoint)
         checkpoint()
         options = dict(assessment['analysis_options'].get('intake', {}))

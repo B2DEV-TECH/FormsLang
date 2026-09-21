@@ -6,6 +6,7 @@ import subprocess
 import pytest
 
 from formslang.ui.modernization_project import PROJECT_JS
+from formslang.ui.modernization_review import REVIEW_PROJECT_JS
 
 NODE = shutil.which('node')
 pytestmark = pytest.mark.skipif(NODE is None, reason='Node needed for JavaScript behavior tests')
@@ -59,7 +60,7 @@ const inventoryDetail={category:'findings',item:inventoryPage.rows[0],dependenci
 
 def run_js(tmp_path, script):
     path = tmp_path / 'project-ui.cjs'
-    path.write_text(DOM + PROJECT_JS + '\n(async()=>{\n' + script +
+    path.write_text(DOM + PROJECT_JS + REVIEW_PROJECT_JS + '\n(async()=>{\n' + script +
                     "\n})().then(()=>console.log('COMPLETE')).catch(e=>{console.error(e);process.exitCode=1;});", encoding='utf-8')
     result = subprocess.run([NODE, str(path)], capture_output=True, text=True, timeout=60, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -422,12 +423,12 @@ assert.match(path,/priority=unresolved/);assert.match(path,/revision=r/);assert.
 def test_priority_review_deep_link_carries_project_finding_filter_and_revision(tmp_path):
     run_js(tmp_path, r'''
 projectUI.activeId='a';projectUI.summary=summary;projectUI.overview=overviewData;const calls=[];
-api=async(path)=>{calls.push(path);return path.includes('/inventory/findings/')?inventoryDetail:inventoryPage;};
+api=async(path)=>{calls.push(path);return path.includes('/review/')?{...inventoryDetail,history:[],annotations:[],evidence:[],statements:[]}:inventoryPage;};
 await projectOpenPriorityReview();
 assert.deepEqual(projectUI.reviewContext,{project_id:'a',finding_id:'finding:critical',filters:{priority:'unresolved'},analysis_revision:'r'});
-assert.match(calls[0],/priority=unresolved/);assert.match(calls[0],/revision=r/);
-assert.match(calls[1],/inventory\/findings\/finding%3Acritical\?revision=r/);
-assert.match($('modal-body').innerHTML,/Approval control/);
+assert.match(calls[0],/priority=unresolved/);
+assert.match(calls[1],/review\/finding%3Acritical\?/);assert.equal(new URL(calls[1],'http://local').searchParams.get('revision'),'r');
+assert.match($('project-review-detail').innerHTML,/Approval control/);
 ''')
 
 

@@ -242,6 +242,34 @@ class ProjectHTTP:
                                       confirmed=body.get('confirmed', False))
         action = rbac.RUN_CONVERSION if method == 'POST' else rbac.VIEW_PROJECT
         with self._service(intake, pid, action) as service:
+            if tail and tail[0] == 'review':
+                if len(tail) == 1 and method == 'GET':
+                    values = _inventory_query({k: v for k, v in query.items() if k != 'review_revision'})
+                    values.pop('category')
+                    values['sort'] = query.get('sort', 'priority')
+                    expected_review = int(query['review_revision']) if 'review_revision' in query else None
+                    return 200, service.review_queue(**values, expected_review=expected_review)
+                if tail == ['review', 'bulk-preview'] and method == 'POST':
+                    return 200, service.review_bulk_preview(body)
+                if tail == ['review', 'bulk'] and method == 'POST':
+                    return 200, service.review_bulk_apply(body)
+                if len(tail) == 2:
+                    finding_id = unquote(tail[1], errors='strict')
+                    if method == 'GET':
+                        if set(query) - {'revision', 'review_revision', 'offset', 'limit'}:
+                            raise ProjectError('Unknown review detail query')
+                        offset, limit = _page(query)
+                        return 200, service.review_detail(finding_id,
+                            expected_revision=query.get('revision'),
+                            expected_review=int(query['review_revision']) if 'review_revision' in query else None,
+                            history_offset=offset, history_limit=limit)
+                    if method == 'POST':
+                        operation = body.get('operation', 'DECIDE')
+                        if operation == 'ANNOTATE':
+                            return 200, service.review_annotate(finding_id, body)
+                        if operation == 'DECIDE':
+                            return 200, service.review_decide(finding_id, body)
+                        raise ProjectError('Unknown review operation')
             if tail == ['freshness'] and method == 'GET':
                 return 200, self._freshness(service)
             if tail == ['assessment'] and method == 'GET':

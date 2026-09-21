@@ -1,8 +1,8 @@
-# Modernization project workflows — Phase C development
+# Modernization project workflows — Phase D development
 
-Unreleased 2.0 development, still versioned 1.6.0 until release acceptance. Phase C
-adds Overview and Inventory on the persisted Phase B assessment. It does not add the
-Phase D decision workflow, Phase E project generation or Phase F reports.
+Unreleased 2.0 development, still versioned 1.6.0 until release acceptance. Overview
+and Inventory read the persisted assessment. Phase D adds project-scoped human
+review. Project generation and reports remain Phase E/F.
 
 ## First assessment
 
@@ -30,8 +30,8 @@ projections. Counts are not reconstructed in JavaScript. `UNKNOWN` remains visib
 Risk and recommendation metrics open the server-filtered Findings inventory. **Start
 Priority Review** opens unresolved findings in the documented deterministic priority
 order and focuses the first eligible finding with project/filter/revision context.
-This Phase C bridge is read-only; Phase D adds the project decision workspace rather
-than writing project decisions into the unrelated legacy session Blueprint.
+Phase D opens the split-pane project decision workspace, with revision-bound actions,
+annotations, history and safe bulk preview. See [Modernization Review](modernization-review.md).
 Inventory categories are Forms, Libraries, Packages, Routines, Views, Tables,
 Dependencies, Business Rules and Findings. Search/filter changes replace page state.
 Every later page carries the assessment revision; a 409 resets to page one rather

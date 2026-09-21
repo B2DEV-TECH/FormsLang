@@ -1,7 +1,7 @@
 # FormsLang 2.0 implementation architecture
 
-This page describes the unreleased Phase A-C foundation and assessment workflow,
-not the complete 2.0 product. For product scope and phases D-H see
+This page describes the unreleased Phase A-D foundation and assessment/review workflow,
+not the complete 2.0 product. For product scope and phases E-H see
 [product architecture](formsLang-2-product-architecture.md). For storage and a
 runnable example see [project model](project-model.md).
 
@@ -56,6 +56,16 @@ that gate; evidence, not feature count, decides whether a persisted projection i
 needed.
 
 ## Ownership and concurrency
+
+Phase D adds `project_review` behind ProjectService. Queue and detail reuse Phase C
+projections; decisions retain the existing append-only `blueprint_review` model.
+An additive annotation table/trigger advances the same review revision. Worker lock,
+SQLite revision fencing and pre/post source checks protect mutations. No projection
+table or analysis logic is added. See [review contracts](modernization-review.md).
+
+The measured 5,000-finding review gate exposed an entity-by-edge scan. A single
+in-memory dependency counter replaces that quadratic pass while preserving counts.
+The synthetic measurements and their limits are recorded in acceptance evidence.
 
 Each service instance owns its Store connection. Do not share it between workers
 or switch its project identity while an operation is running. Project creation

@@ -1,0 +1,55 @@
+// Real Phase D UI, HTTP, SQLite and demo; no substituted API responses.
+export async function reviewChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send}) {
+  await clickSelector('[data-project-section="overview"]');
+  await wait(()=>evaluate(`projectUI.view==='overview'&&!!document.getElementById('project-start-priority')`),'Overview before review');
+  await click('project-start-priority');
+  await wait(()=>evaluate(`projectUI.view==='review'&&projectUI.reviewState?.detail?.item.risk==='CRITICAL'`),'critical review detail');
+  check('D priority queue opens critical evidence',await evaluate(`document.getElementById('project-review-detail').textContent.includes('Engine recommendation')&&document.getElementById('project-review-detail').textContent.includes('Human decision')`));
+  const id=await evaluate('projectUI.reviewState.detail.item.id');
+  await click('project-review-accept');
+  await wait(()=>evaluate(`!projectUI.reviewState.busy&&projectUI.reviewState.detail?.item.review_state==='APPROVE'`),'accepted review');
+  check('D accept records one human history event',await evaluate(`projectUI.reviewState.detail.history.length===1`));
+  await value('project-review-direction','PRESERVE');await value('project-review-rationale','Synthetic architect verified the approval contract.');await click('project-review-change');
+  await wait(()=>evaluate(`document.getElementById('modal').classList.contains('show')&&!!document.getElementById('project-review-critical-confirm')`),'critical confirmation');
+  await evaluate(`document.getElementById('project-review-critical-submit').focus()`);
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+  check('D critical dialog traps keyboard focus',await evaluate(`document.getElementById('modal').contains(document.activeElement)`));
+  await click('project-review-critical-submit');
+  check('D critical override needs explicit checkbox',await evaluate(`document.getElementById('modal').classList.contains('show')&&projectUI.reviewState.detail.item.review_state==='APPROVE'`));
+  await click('project-review-critical-confirm');await click('project-review-critical-submit');
+  await wait(()=>evaluate(`!projectUI.reviewState.busy&&projectUI.reviewState.detail?.item.review_state==='MODIFY'`),'changed review');
+  check('D override preserves engine recommendation',await evaluate(`projectUI.reviewState.detail.engine_recommendation!=='PRESERVE'&&projectUI.reviewState.detail.human_decision.recommendation==='PRESERVE'`));
+  await value('project-review-annotation-note','<script>window.reviewXss=1</script>');await click('project-review-annotate');
+  await wait(()=>evaluate(`!projectUI.reviewState.busy&&projectUI.reviewState.detail.annotations.length===1`),'annotation saved');
+  check('D notes rendered inert',await evaluate(`!window.reviewXss&&document.getElementById('project-review-detail').textContent.includes('<script>window.reviewXss=1</script>')`));
+  // External review changes the exact version still displayed by this browser.
+  await evaluate(`(async()=>{const d=projectUI.reviewState.detail;const r=await fetch('/api/v2/projects/'+projectUI.activeId+'/review/'+encodeURIComponent(d.item.id),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...d.binding,action:'DEFER'})});if(!r.ok)throw Error('External review failed');})()`);
+  await click('project-review-accept');
+  await wait(()=>evaluate(`!projectUI.reviewState.busy&&document.getElementById('project-review-status').textContent.includes('changed')`),'stale UI conflict');
+  check('D stale UI reloads without overwriting',await evaluate(`projectUI.reviewState.detail.item.review_state==='DEFER'&&projectUI.reviewState.detail.history.length===3`));
+  await screenshot('phase-d-review.png');
+  await clickSelector('[data-project-section="overview"]');
+  await wait(()=>evaluate(`projectUI.view==='overview'&&!!document.querySelector('[data-project-section="review"]')`),'Overview navigation');
+  await clickSelector('[data-project-section="review"]');
+  await wait(()=>evaluate(`projectUI.view==='review'&&projectUI.reviewState?.detail?.item.id===${JSON.stringify(id)}`),'restored review context');
+  check('D review return preserves finding and filters',await evaluate(`projectUI.reviewState.filters.priority==='unresolved'&&projectUI.reviewState.detail.item.id===${JSON.stringify(id)}`));
+  await value('project-review-risk','LOW');await value('project-review-intervention','AUTO');await value('project-review-review','PENDING');
+  await clickSelector('#project-review-filters button[type="submit"]');
+  await wait(()=>evaluate(`projectUI.reviewState.page?.rows.some(r=>r.recommendation==='REPLACE_WITH_APEX_NATIVE')&&projectUI.reviewState.filters.risk==='LOW'`),'mechanical findings');
+  const safe=await evaluate(`projectUI.reviewState.page.rows.find(r=>r.recommendation==='REPLACE_WITH_APEX_NATIVE').id`);
+  await clickSelector(`[data-review-select="${safe}"]`);await click('project-review-bulk-accept');
+  await wait(()=>evaluate(`!!document.getElementById('project-review-bulk-submit')`),'bulk preview');
+  check('D bulk preview exposes eligible set',await evaluate(`document.getElementById('modal-body').textContent.includes('Eligible: 1')`));
+  await click('project-review-bulk-submit');
+  await wait(()=>evaluate(`!projectUI.reviewState.busy&&!document.getElementById('modal').classList.contains('show')`),'bulk committed');
+  check('D bulk acceptance records history',await evaluate(`(async()=>{const d=await api('/api/v2/projects/'+projectUI.activeId+'/review/'+encodeURIComponent(${JSON.stringify(safe)}));return d.item.review_state==='APPROVE'&&d.history.length===1;})()`));
+  await clickSelector('[data-project-section="overview"]');
+  await wait(()=>evaluate(`projectUI.view==='overview'&&!!document.getElementById('project-start-priority')&&projectUI.overview.review_progress.reviewed===1`),'updated Overview');
+  check('D Overview counts only resolved decisions',await evaluate(`projectUI.overview.review_progress.reviewed===1`));
+  const project=await evaluate('projectUI.activeId');await click('project-home');
+  await wait(()=>evaluate(`!!document.querySelector('[data-project-open="${project}"]')`),'reviewed recent project');
+  await clickSelector(`[data-project-open="${project}"]`);
+  await wait(()=>evaluate(`projectUI.view==='overview'&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'`),'reopened reviewed project');
+  check('D review history survives reopen',await evaluate(`(async()=>{const d=await api('/api/v2/projects/'+projectUI.activeId+'/review/'+encodeURIComponent(${JSON.stringify(id)}));return d.history.length===3&&d.annotations.length===1;})()`));
+}
