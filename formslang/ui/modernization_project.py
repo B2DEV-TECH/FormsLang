@@ -173,14 +173,16 @@ const projectRecommendationLabels={PRESERVE:'Preserve',CONVERT:'Convert',REPLACE
 const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MANUAL:'Human decision',UNKNOWN:'Unknown'};
 function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
 function projectSectionNav(active='overview') {
-  const links=[['overview','Overview'],['system-map','System Map'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
+  const links=[['overview','Overview'],['system-map','System Map'],['hotspots','Hotspots'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
   return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`;
 }
 function projectBindSectionNav() {
   $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
     const section=el.dataset.projectSection;
+    if(typeof visualUI==='object')visualUI.back=null;
     if(section==='overview'){if(projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='overview';const c=projectContext();projectLoadOverview(c,false).then(data=>{if(data&&projectCurrent(c)&&projectUI.view==='overview')renderProjectOverview(data);});}}
     else if(section==='system-map')projectSystemMapOpen();
+    else if(section==='hotspots'){if(typeof visualHotspotsOpen==='function')visualHotspotsOpen({},{remember:false});else projectOpenInventory({category:'hotspots'});}
     else if(section==='inventory')projectOpenInventory({category:'forms'});
     else if(section==='review')projectReviewOpen();
     else if(section==='generate')projectGenerationOpen();
@@ -519,7 +521,7 @@ function openGlobalSearch() {
   globalSearch.context = globalSearchOpenContext();
   globalSearch.returnFocus = document.activeElement;
   modal.hidden = false;
-  modal.innerHTML = `<div class="global-search-backdrop" id="global-search-backdrop"><div class="global-search-modal" role="dialog" aria-modal="true" aria-label="Search this project"><div class="global-search-input-wrap"><input id="global-search-input" class="global-search-input" placeholder="Find forms, packages, tables, hotspot candidates, business rules, findings" autocomplete="off" maxlength="200" role="combobox" aria-expanded="true" aria-controls="global-search-list" aria-autocomplete="list" /><span class="search-shortcut-pill">Esc to close</span></div><ul id="global-search-list" class="global-search-results" role="listbox" aria-label="Search results"><li class="global-search-hint">Type 2 or more characters to search this project.</li></ul></div></div>`;
+  modal.innerHTML = `<div class="global-search-backdrop" id="global-search-backdrop"><div class="global-search-modal" role="dialog" aria-modal="true" aria-label="Search this project"><div class="global-search-input-wrap"><input id="global-search-input" class="global-search-input" placeholder="Find forms, packages, tables, hotspot candidates, business rules, findings" autocomplete="off" maxlength="200" role="combobox" aria-expanded="true" aria-controls="global-search-list" aria-autocomplete="list" /><span class="search-shortcut-pill">Enter opens · Alt+Enter shows on map · Esc closes</span></div><ul id="global-search-list" class="global-search-results" role="listbox" aria-label="Search results"><li class="global-search-hint">Type 2 or more characters to search this project.</li></ul></div></div>`;
   const input = $('global-search-input');
   input.focus();
   $('global-search-backdrop').onclick = e => { if (e.target.id === 'global-search-backdrop') closeGlobalSearch(); };
@@ -536,7 +538,7 @@ function openGlobalSearch() {
     else if (e.key === 'Tab') { e.preventDefault(); }
     else if (e.key === 'ArrowDown' && count) { e.preventDefault(); globalSearch.active = (globalSearch.active + 1) % count; updateSearchActiveItem(); }
     else if (e.key === 'ArrowUp' && count) { e.preventDefault(); globalSearch.active = (globalSearch.active - 1 + count) % count; updateSearchActiveItem(); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (globalSearch.active >= 0) executeSearchAction(globalSearch.results[globalSearch.active]); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (globalSearch.active >= 0) { const item = globalSearch.results[globalSearch.active]; if (e.altKey && item?.map_focus) executeSearchMap(item); else executeSearchAction(item); } }
   };
 }
 
@@ -568,9 +570,10 @@ function globalSearchRender(results, query) {
   const list = $('global-search-list'); if (!list) return;
   if (!query) { list.innerHTML = '<li class="global-search-hint">Type 2 or more characters to search this project.</li>'; return; }
   if (!results.length) { list.innerHTML = `<li class="global-search-hint">No results found for "${esc(query)}".</li>`; return; }
-  list.innerHTML = results.map((r, i) => `<li class="global-search-item ${i === 0 ? 'active' : ''}" id="global-search-option-${i}" role="option" aria-selected="${i === 0}" data-search-index="${i}"><div style="min-width:0;display:flex;flex-direction:column;gap:2px;"><div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;"><span>${esc(r.title)}</span>${r.risk && r.risk !== 'UNKNOWN' && r.risk !== 'NONE' ? `<span class="project-score-pill" data-risk="${esc(r.risk)}">${esc(r.risk)}</span>` : ''}</div><div style="font-size:11px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.subtitle)}</div></div><span class="search-cat-badge">${esc(r.category_label || r.category)}</span></li>`).join('');
+  list.innerHTML = results.map((r, i) => `<li class="global-search-item ${i === 0 ? 'active' : ''}" id="global-search-option-${i}" role="option" aria-selected="${i === 0}" data-search-index="${i}"><div style="min-width:0;display:flex;flex-direction:column;gap:2px;"><div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;"><span>${esc(r.title)}</span>${r.risk && r.risk !== 'UNKNOWN' && r.risk !== 'NONE' ? `<span class="project-score-pill" data-risk="${esc(r.risk)}">${esc(r.risk)}</span>` : ''}</div><div style="font-size:11px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.subtitle)}</div></div><span>${r.map_focus ? `<button type="button" class="search-map-link" tabindex="-1" data-search-map="${i}" aria-label="Show ${esc(r.title)} on the System Map">Map</button>` : ''}<span class="search-cat-badge">${esc(r.category_label || r.category)}</span></span></li>`).join('');
   $('global-search-input')?.setAttribute('aria-activedescendant', 'global-search-option-0');
   list.querySelectorAll('[data-search-index]').forEach(el => { el.onclick = () => executeSearchAction(globalSearch.results[Number(el.dataset.searchIndex)]); });
+  list.querySelectorAll('[data-search-map]').forEach(el => { el.onclick = event => { event.stopPropagation?.(); executeSearchMap(globalSearch.results[Number(el.dataset.searchMap)]); }; });
 }
 
 function updateSearchActiveItem() {
@@ -582,6 +585,13 @@ function updateSearchActiveItem() {
     el.setAttribute('aria-selected', String(active));
   });
   $('global-search-input')?.setAttribute('aria-activedescendant', `global-search-option-${globalSearch.active}`);
+}
+
+// Any result placed on the System Map can open the map focused on it.
+async function executeSearchMap(item) {
+  if (!item || item.project_id !== projectUI.activeId || !item.map_focus) { closeGlobalSearch(); return; }
+  closeGlobalSearch();
+  await projectSystemMapOpen({ focus: item.map_focus, selectedNode: null, selectedEdge: null });
 }
 
 async function executeSearchAction(item) {

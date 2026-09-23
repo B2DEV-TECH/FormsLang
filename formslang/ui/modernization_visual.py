@@ -140,12 +140,44 @@ VISUAL_PROJECT_STYLE = r'''
   .visual-drawer-facts dd { margin:0;text-align:right;overflow-wrap:anywhere; }
   .visual-drawer-rel ul,.visual-drawer-list { list-style:none;margin:4px 0;padding:0;display:grid;gap:3px;font-size:12px; }
   .visual-drawer-list li span { display:block;color:var(--fl-text-dim); }
+  .visual-drawer-list li span.visual-status { display:inline-block; }
   .visual-drawer-actions { display:flex;flex-direction:column;gap:6px;margin-top:4px; }
   .visual-map-table { margin-top:var(--fl-space-3); }
   .visual-map-table summary { cursor:pointer;font-size:13px;padding:6px 0; }
   @media(prefers-reduced-motion:no-preference){.visual-map-node,.visual-map-edge{transition:opacity .15s ease;}}
   @media(max-width:1100px){.project-system-map-split{grid-template-columns:1fr;}.visual-map-minimap{display:none;}.visual-map-toolbar-actions{margin-left:0;}}
   @media(max-width:720px){.project-system-map-canvas.visual-map-canvas{height:60vh;}.visual-map-controls{position:static;margin-top:4px;flex-wrap:wrap;}}
+  .visual-page-head { display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:var(--fl-space-3); }
+  .visual-page-head h2 { margin:var(--fl-space-2) 0 var(--fl-space-1); }
+  .visual-back { margin-bottom:var(--fl-space-1); }
+  .visual-module-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--fl-space-3);margin:var(--fl-space-3) 0; }
+  #visual-module-body > .visual-panel { margin:var(--fl-space-3) 0; }
+  .visual-panel h4 { margin:var(--fl-space-3) 0 var(--fl-space-1);font-size:13px; }
+  .visual-cell-note { display:block;color:var(--fl-text-dim);font-size:11.5px; }
+  .visual-neighbours td,.visual-matrix td,.visual-matrix th { vertical-align:top; }
+  .visual-hotspot { border:1px solid var(--fl-card-border);border-left:3px solid var(--fl-status-candidate);border-radius:var(--fl-radius);background:var(--fl-card);padding:var(--fl-space-4);margin:var(--fl-space-3) 0; }
+  .visual-hotspot-head h3 { margin:0 0 var(--fl-space-1);font-size:15px;overflow-wrap:anywhere; }
+  .visual-hotspot-head p { margin:0 0 var(--fl-space-3); }
+  .visual-why,.visual-not-prove { min-width:0;border:1px solid var(--fl-card-border);border-radius:var(--fl-radius-sm);padding:var(--fl-space-3);background:var(--fl-card-raised); }
+  .visual-not-prove { border-style:dashed; }
+  .visual-why h4,.visual-not-prove h4 { margin:0 0 var(--fl-space-2); }
+  .visual-not-prove ul { margin:0 0 var(--fl-space-2);padding-left:18px; }
+  .visual-severity { font-size:11px;font-weight:700;letter-spacing:.03em;border:1px solid var(--fl-card-border-hi);border-radius:3px;padding:0 5px; }
+  .visual-severity[data-severity="HIGH"] { color:var(--risk-high);border-color:var(--risk-high); }
+  .visual-hotspot-nodes { list-style:none;margin:0;padding:0;display:grid;gap:4px; }
+  .visual-hotspot-nodes li { display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:var(--fl-space-2); }
+  .visual-hotspot-nodes small { color:var(--fl-text-dim); }
+  .visual-matrix td { text-align:center;font-variant-numeric:tabular-nums; }
+  .visual-matrix th[scope="row"] { overflow-wrap:anywhere;max-width:340px;text-align:left; }
+  .visual-matrix td[data-level="1"] { background:color-mix(in srgb,var(--fl-status-candidate) 12%,transparent); }
+  .visual-matrix td[data-level="2"] { background:color-mix(in srgb,var(--fl-status-candidate) 24%,transparent); }
+  .visual-matrix td[data-level="3"] { background:color-mix(in srgb,var(--fl-status-candidate) 38%,transparent); }
+  .visual-matrix .visual-card-link { text-align:center; }
+  .visual-review-context { border:1px solid var(--fl-card-border);border-radius:var(--fl-radius-sm);padding:var(--fl-space-2) var(--fl-space-3);margin:0 0 var(--fl-space-3);font-size:12.5px; }
+  .visual-review-context:empty { display:none; }
+  .visual-review-context p { margin:0 0 var(--fl-space-2); }
+  .search-map-link { font:inherit;font-size:11px;background:none;border:1px solid var(--border-subtle);border-radius:4px;color:var(--ink-dim);padding:1px 6px;margin-right:6px;cursor:pointer; }
+  @media(max-width:900px){.visual-module-grid{grid-template-columns:1fr;}}
   body[data-view-mode="executive"] .visual-technical-only { display:none; }
   @media(max-width:1100px){.visual-glance,.visual-journey{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:720px){.visual-glance,.visual-journey,.visual-two{grid-template-columns:1fr;}.visual-command-bar{flex-direction:column;align-items:flex-start;}}
@@ -174,6 +206,8 @@ function visualSetMode(mode) {
   if (document.body && document.body.dataset) document.body.dataset.viewMode = visualUI.mode;
   if (projectUI.view === 'overview' && projectUI.overview) renderProjectOverview(projectUI.overview);
   else if (projectUI.view === 'system-map' && typeof renderProjectSystemMap === 'function') renderProjectSystemMap();
+  else if (projectUI.view === 'module-360' && typeof visualRenderModule === 'function') visualRenderModule();
+  else if (projectUI.view === 'hotspots' && typeof visualRenderHotspots === 'function') visualRenderHotspots();
   const pressed = $('visual-mode-' + visualUI.mode);
   if (pressed && pressed.focus) pressed.focus();
 }
@@ -332,7 +366,7 @@ function visualFillOverview(data) {
 
 function visualOpenSection(section) {
   if (section === 'system-map') projectSystemMapOpen({ view: 'ESTATE' });
-  else if (section === 'hotspots') { if (typeof visualHotspotsOpen === 'function') visualHotspotsOpen(); else projectOpenInventory({ category: 'hotspots' }); }
+  else if (section === 'hotspots') { if (typeof visualHotspotsOpen === 'function') visualHotspotsOpen({}); else projectOpenInventory({ category: 'hotspots' }); }
   else if (section === 'review') projectReviewOpen();
   else if (section === 'reports') projectReportsOpen();
 }
@@ -616,7 +650,7 @@ function systemMapNodeDrawer(d, n) {
   if (detail?.error) evidence = `<p class="project-state-warning">Details are unavailable: ${esc(detail.error)}</p>` + evidence;
   else if (!info) evidence = '<p>Loading findings…</p>' + evidence;
   else if (info.findings?.length) evidence = `<ul class="visual-drawer-list">${info.findings.map(f => `<li><button type="button" class="visual-card-link" data-map-finding="${esc(f.id)}">${esc(f.name)}</button><span>${esc(f.risk)} · ${esc((typeof projectReviewStates === 'object' && projectReviewStates[f.review_state]) || f.review_state)}</span></li>`).join('')}</ul>${info.findings_total > info.findings.length ? `<p class="project-muted">Showing ${info.findings.length} of ${Number(info.findings_total)} findings.</p>` : ''}` + evidence;
-  const actions = `<div class="project-actions visual-drawer-actions">${isFocus ? '' : `<button class="btn primary" id="system-map-set-focus" data-focus-id="${esc(n.id)}">Focus System Map Here</button>`}${typeof visualModuleOpen === 'function' && n.type === 'FORM' ? `<button class="btn" id="system-map-module-360" data-module="${esc(n.module || n.name)}">Open Module 360</button>` : ''}${findings && n.module ? `<button class="btn" id="system-map-view-findings" data-module="${esc(n.module)}">View Findings</button>` : ''}<button class="btn" id="system-map-view-inventory" data-node-name="${esc(n.name)}" data-node-layer="${esc(n.layer)}" data-node-type="${esc(n.type)}">View in Inventory</button></div>`;
+  const actions = `<div class="project-actions visual-drawer-actions">${isFocus ? '' : `<button class="btn primary" id="system-map-set-focus" data-focus-id="${esc(n.id)}">Focus System Map Here</button>`}${typeof visualModuleOpen === 'function' && n.type === 'FORM' ? `<button class="btn" id="system-map-module-360" data-node="${esc(n.id)}">Open Module 360</button>` : ''}${findings && n.module ? `<button class="btn" id="system-map-view-findings" data-module="${esc(n.module)}">View Findings</button>` : ''}<button class="btn" id="system-map-view-inventory" data-node-name="${esc(n.name)}" data-node-layer="${esc(n.layer)}" data-node-type="${esc(n.type)}">View in Inventory</button></div>`;
   const identity = `<dl class="visual-drawer-facts"><div><dt>Type</dt><dd>${esc(systemMapTypeLabel(n))}</dd></div><div><dt>Lane</dt><dd>${esc(systemMapLaneLabel(systemMapLaneOf(n)))}</dd></div>${n.module ? `<div class="visual-technical-only"><dt>Module</dt><dd>${esc(n.module)}</dd></div>` : ''}<div><dt>Components folded in</dt><dd>${Number(n.members) || 0}</dd></div></dl>${unresolved ? '<p>Not found in the supplied sources. Supply its definition to resolve it.</p>' : ''}`;
   return `<h4>${esc(n.name)}</h4><p>${visualStatus(unresolved ? 'UNRESOLVED' : 'OBSERVED')} ${esc(systemMapTypeLabel(n))}</p>${systemMapSection('Identity', identity)}${systemMapSection('Architecture', architecture)}${systemMapSection('Modernization attention', attention)}${systemMapSection('Review', reviewBody)}${systemMapSection('Evidence', evidence)}${systemMapSection('Actions', actions)}`;
 }
@@ -663,8 +697,9 @@ function renderProjectSystemMap() {
   else stage = `<div id="system-map-svg-host">${systemMapSvg(d)}</div>`;
   const controls = d && d.nodes?.length ? `<div class="visual-map-controls" role="group" aria-label="Zoom and pan">${projectButton('system-map-zoom-out', '−')}${projectButton('system-map-zoom-in', '+')}${projectButton('system-map-pan-left', '←')}${projectButton('system-map-pan-up', '↑')}${projectButton('system-map-pan-down', '↓')}${projectButton('system-map-pan-right', '→')}</div>${systemMapMinimap(d)}` : '';
   const hint = '<p class="visual-map-hint">Drag or use the arrow buttons to pan; Ctrl + mouse wheel zooms. The wheel alone scrolls the page.</p>';
-  $('project-content').innerHTML = `${projectSectionNav('system-map')}<header><h2 id="project-step-title" tabindex="-1">System Map</h2><p>Module-level architecture: each Form includes its blocks, items, triggers and program units; each package includes its subprograms. Containment is not drawn as a dependency.</p></header>${systemMapToolbar(d)}<p id="system-map-search-status" class="visual-map-hint" aria-live="polite"></p>${systemMapLegend()}${systemMapNotes(d)}<div class="project-system-map-split"><div class="visual-map-stage"><div class="project-system-map-canvas visual-map-canvas" id="system-map-canvas">${stage}</div>${controls}${hint}</div><aside class="system-map-drawer" id="system-map-drawer" aria-label="System map inspector" aria-live="polite">${systemMapDrawerHtml(d)}</aside></div>${d && d.edges?.length ? systemMapTable(d) : ''}`;
+  $('project-content').innerHTML = `${projectSectionNav('system-map')}<header>${visualBackButton()}<h2 id="project-step-title" tabindex="-1">System Map</h2><p>Module-level architecture: each Form includes its blocks, items, triggers and program units; each package includes its subprograms. Containment is not drawn as a dependency.</p></header>${systemMapToolbar(d)}<p id="system-map-search-status" class="visual-map-hint" aria-live="polite"></p>${systemMapLegend()}${systemMapNotes(d)}<div class="project-system-map-split"><div class="visual-map-stage"><div class="project-system-map-canvas visual-map-canvas" id="system-map-canvas">${stage}</div>${controls}${hint}</div><aside class="system-map-drawer" id="system-map-drawer" aria-label="System map inspector" aria-live="polite">${systemMapDrawerHtml(d)}</aside></div>${d && d.edges?.length ? systemMapTable(d) : ''}`;
   projectBindSectionNav();
+  visualBindBack();
   systemMapBind();
   const fresh = $('system-map-canvas');
   if (scroll && fresh) { fresh.scrollLeft = scroll.left; fresh.scrollTop = scroll.top; }
@@ -824,7 +859,7 @@ function systemMapBindDrawer() {
   const findingsBtn = $('system-map-view-findings');
   if (findingsBtn) findingsBtn.onclick = () => projectOpenInventory({ category: 'findings', filters: { module: findingsBtn.dataset.module } });
   const moduleBtn = $('system-map-module-360');
-  if (moduleBtn && typeof visualModuleOpen === 'function') moduleBtn.onclick = () => visualModuleOpen(moduleBtn.dataset.module);
+  if (moduleBtn && typeof visualModuleOpen === 'function') moduleBtn.onclick = () => visualModuleOpen({ node: moduleBtn.dataset.node });
   root.querySelectorAll('[data-map-finding]').forEach(el => { el.onclick = () => projectReviewFinding(el.dataset.mapFinding); });
   root.querySelectorAll('[data-map-select]').forEach(el => { el.onclick = () => systemMapSelectNode(el.dataset.mapSelect); });
   root.querySelectorAll('[data-map-focus]').forEach(el => { el.onclick = () => systemMapFocusOn(el.dataset.mapFocus); });
@@ -901,5 +936,301 @@ function systemMapBind() {
   systemMapBindCanvas();
   systemMapBindDrawer();
   $('project-content').querySelectorAll('[data-edge-inspect]').forEach(el => { el.onclick = () => systemMapSelectEdge(el.dataset.edgeInspect); });
+}
+
+// ---- 2.2 Return context ----------------------------------------------------
+// Cross-navigation remembers where the reader came from, so "Back to …" returns
+// to the same map focus, review item or hotspot filter. It is a bounded chain
+// held in memory only; the section navigation starts a fresh chain.
+visualUI.back = null;
+const VISUAL_BACK_DEPTH = 8;
+
+function visualReturnContext() {
+  const view = projectUI.view;
+  if (view === 'system-map') {
+    const focus = systemMapState.view === 'FOCUS' ? systemMapState.data?.nodes?.find(n => n.id === systemMapState.focus) : null;
+    return { view, label: focus ? `System Map · ${focus.name}` : 'System Map' };
+  }
+  if (view === 'review') return { view, label: 'Review' };
+  if (view === 'overview') return { view, label: 'Overview' };
+  if (view === 'hotspots') return { view, label: 'Hotspots' };
+  if (view === 'module-360' && visualUI.module.selector) return { view, label: `Module 360${visualUI.module.data ? ` · ${visualUI.module.data.node.name}` : ''}`, selector: visualUI.module.selector };
+  return null;
+}
+
+function visualCross(target) {
+  const here = visualReturnContext();
+  if (!here) { visualUI.back = null; return; }
+  let prior = visualUI.back?.target === projectUI.view ? visualUI.back : null, depth = 1;
+  for (let p = prior; p; p = p.prior) if (++depth > VISUAL_BACK_DEPTH) { prior = null; break; }
+  visualUI.back = { ...here, target, prior };
+}
+
+function visualBackButton() {
+  const back = visualUI.back;
+  return back && back.target === projectUI.view ? `<button type="button" class="btn visual-back" id="visual-back">← Back to ${esc(back.label)}</button>` : '';
+}
+
+function visualBindBack() {
+  const button = $('visual-back');
+  if (button) button.onclick = visualGoBack;
+}
+
+function visualGoBack() {
+  const back = visualUI.back;
+  if (!back) return;
+  visualUI.back = back.prior || null;
+  if (back.view === 'system-map') projectSystemMapOpen();
+  else if (back.view === 'review') projectReviewOpen();
+  else if (back.view === 'hotspots') visualHotspotsOpen(null, { remember: false });
+  else if (back.view === 'module-360') visualModuleOpen(back.selector, { remember: false });
+  else visualOpenOverview();
+}
+
+function visualOpenOverview() {
+  if (projectUI.overview) { renderProjectOverview(projectUI.overview); return; }
+  projectUI.view = 'overview';
+  const c = projectContext();
+  projectLoadOverview(c, false).then(data => { if (data && projectCurrent(c) && projectUI.view === 'overview') renderProjectOverview(data); });
+}
+
+function visualShowOnMap(id) { visualCross('system-map'); projectSystemMapOpen({ focus: id, selectedNode: null, selectedEdge: null }); }
+
+function visualPageHead(title, intro) {
+  return `<header class="visual-page-head"><div>${visualBackButton()}<h2 id="project-step-title" tabindex="-1">${title}</h2><p>${intro}</p></div>${visualModeToggle()}</header>`;
+}
+
+function visualBindPage() {
+  const root = $('project-content');
+  projectBindSectionNav();
+  visualBindBack();
+  visualBindModeToggle(root);
+}
+
+// ---- 2.2 Module 360 --------------------------------------------------------
+// One module on one page. Every count comes from the saved analysis; the page
+// holds names, statuses and counts, never source text.
+visualUI.module = { selector: null, data: null, error: null, request: 0 };
+
+function visualModuleSelector(selector) {
+  if (typeof selector === 'string') return { module: selector };
+  const key = ['module', 'node', 'finding'].find(k => selector && typeof selector[k] === 'string' && selector[k]);
+  return key ? { [key]: selector[key] } : null;
+}
+
+async function visualModuleOpen(selector, options = {}) {
+  const chosen = visualModuleSelector(selector);
+  if (!chosen) return;
+  if (options.remember !== false) visualCross('module-360');
+  projectSaveDraft(); projectEnter('module-360');
+  const state = visualUI.module, c = projectContext(), request = ++state.request;
+  Object.assign(state, { selector: chosen, data: null, error: null });
+  visualRenderModule();
+  try {
+    const data = await api(`/api/v2/projects/${encodeURIComponent(c.id)}/module-360?${new URLSearchParams(chosen)}`);
+    if (!projectCurrent(c) || request !== state.request) return;
+    state.data = data;
+  } catch (e) {
+    if (!projectCurrent(c) || request !== state.request) return;
+    state.error = e.message;
+  }
+  if (projectUI.view === 'module-360') visualRenderModule();
+}
+
+function visualNeighbourList(group, direction) {
+  const items = group?.items || [];
+  if (!items.length) return `<p class="project-muted">${direction === 'inbound' ? 'Nothing in the supplied sources reaches this module.' : 'This module reaches nothing else in the supplied sources.'}</p>`;
+  const rows = items.map(n => `<tr><td><b>${esc(n.name)}</b><span class="visual-cell-note">${esc(visualLabel(n.presentation_type) || n.type)}</span></td><td>${esc(visualLabel(n.presentation_label) || n.classification)}${n.is_hotspot ? ' · hotspot candidate' : ''}</td><td>${visualStatus(n.unresolved ? 'UNRESOLVED' : n.status)}</td><td>${Number(n.count)}</td><td><button type="button" class="btn" data-module-map="${esc(n.id)}" aria-label="Show ${esc(n.name)} on the System Map">Map</button>${n.type === 'FORM' ? ` <button type="button" class="btn" data-module-node="${esc(n.id)}" aria-label="Open Module 360 for ${esc(n.name)}">360</button>` : ''}</td></tr>`).join('');
+  const more = group.total > items.length ? `<p class="project-muted">Showing ${items.length} of ${Number(group.total)}. Hotspot-linked relationships first; open the System Map focus for the rest.</p>` : '';
+  const caption = direction === 'inbound' ? 'What reaches this module' : 'What this module reaches';
+  return `<div class="project-table-wrap"><table class="project-table visual-neighbours"><caption>${caption}</caption><thead><tr><th scope="col">Name</th><th scope="col">Relationship</th><th scope="col">Status</th><th scope="col">Observations</th><th scope="col">Open</th></tr></thead><tbody>${rows}</tbody></table></div>${more}`;
+}
+
+function visualDistribution(dist, labels = {}) {
+  const entries = Object.entries(dist || {});
+  return entries.length ? `<dl class="visual-drawer-facts">${entries.map(([k, v]) => `<div><dt>${esc(labels[k] || k)}</dt><dd>${Number(v)}</dd></div>`).join('')}</dl>` : '<p class="project-muted">No findings on this module.</p>';
+}
+
+function visualModuleBody(d) {
+  const n = d.node || {}, review = n.review_summary || {}, unresolved = n.unresolved || n.layer === 'UNRESOLVED';
+  const composition = (d.composition || []).map(c => `<li>${esc(c.type)} <b>${Number(c.count)}</b></li>`).join('');
+  const identity = `<p>${visualStatus(unresolved ? 'UNRESOLVED' : 'OBSERVED')} ${esc(visualLabel(n.presentation_type) || n.type)}</p><dl class="visual-drawer-facts"><div><dt>Lane</dt><dd>${esc(systemMapLaneLabel(n.lane))}</dd></div><div class="visual-technical-only"><dt>Module</dt><dd>${esc(d.module || '')}</dd></div><div><dt>Components folded in</dt><dd>${Number(n.members) || 0}</dd></div></dl>${composition ? `<h4>Composition</h4><ul class="visual-drawer-list visual-composition">${composition}</ul>` : ''}`;
+  const architecture = `<p>${Number(n.fan_in)} incoming · ${Number(n.fan_out)} outgoing relationships</p><div class="visual-two"><div>${visualNeighbourList(d.neighbours?.inbound, 'inbound')}</div><div>${visualNeighbourList(d.neighbours?.outbound, 'outbound')}</div></div>`;
+  const hotspots = (d.hotspots || []).map(h => `<li>${visualStatus('CANDIDATE')} <b>${esc(h.title)}</b> <span>${esc(h.severity)} · ${esc(h.statement)}</span></li>`).join('');
+  const attention = `<p><b>Findings:</b> ${Number(d.findings_total)}${d.findings_total ? ` · highest risk ${esc(n.highest_risk)}` : ''}</p>${visualDistribution(d.risk_distribution, typeof projectRiskLabels === 'object' ? projectRiskLabels : {})}<p><b>Hotspot candidates:</b> ${Number(d.hotspots_total)}</p>${hotspots ? `<ul class="visual-drawer-list">${hotspots}</ul><p class="project-muted">Candidates need architecture review; they are not verdicts.</p>` : ''}`;
+  const reviewBody = Number(review.total) > 0
+    ? `<p>${visualStatus('DECIDED')} ${Number(review.decided)} of ${Number(review.total)} findings decided</p><p>${visualStatus('PROPOSED')} ${Number(review.open)} still proposals${Number(review.stale) ? ` · ${Number(review.stale)} need revalidation` : ''}${Number(review.deferred) ? ` · ${Number(review.deferred)} deferred` : ''}</p><h4>Recommendations proposed</h4>${visualDistribution(d.recommendation_distribution, typeof projectRecommendationLabels === 'object' ? projectRecommendationLabels : {})}<p><b>Business-rule candidates:</b> ${Number(d.business_rule_candidates)}</p><p class="project-muted">Review status, not migration readiness.</p>`
+    : '<p>No findings on this module, so nothing to decide here.</p>';
+  const findings = (d.findings || []).map(f => `<li><button type="button" class="visual-card-link" data-module-finding="${esc(f.id)}">${esc(f.name)}</button><span>${esc(f.risk)} · ${esc((typeof projectReviewStates === 'object' && projectReviewStates[f.review_state]) || f.review_state)}</span></li>`).join('');
+  const evidence = `${findings ? `<ul class="visual-drawer-list">${findings}</ul>` : ''}${d.findings_total > (d.findings || []).length ? `<p class="project-muted">Showing ${(d.findings || []).length} of ${Number(d.findings_total)} findings.</p>` : ''}<p class="project-muted">Module 360 never shows source text. Source-level evidence stays in Review.</p>`;
+  const actions = `<div class="project-actions"><button class="btn primary" id="visual-module-map" data-id="${esc(n.id)}">Show on System Map</button>${d.hotspots_total ? '<button class="btn" id="visual-module-hotspots">Explore these hotspots</button>' : ''}${d.findings_total ? '<button class="btn" id="visual-module-findings">View findings in Inventory</button>' : ''}</div>`;
+  const section = (id, title, body) => `<section class="visual-panel" aria-labelledby="visual-module-${id}"><h3 id="visual-module-${id}">${title}</h3>${body}</section>`;
+  return `<p class="visual-boundary" role="note">${esc(d.boundary || '')}</p><div class="visual-module-grid">${section('identity', 'Identity', identity)}${section('attention', 'Modernization attention', attention)}</div>${section('architecture', 'Architecture', architecture)}<div class="visual-module-grid">${section('review', 'Review', reviewBody)}${section('evidence', 'Evidence', evidence)}</div>${section('actions', 'Actions', actions)}`;
+}
+
+function visualRenderModule() {
+  const state = visualUI.module, d = state.data;
+  let body;
+  if (state.error) body = `<p class="project-state-warning" role="status">Module 360 is unavailable: ${esc(state.error)}</p>${state.selector?.module ? '<div class="project-actions"><button class="btn" id="visual-module-inventory">View this module\'s findings in Inventory</button></div>' : ''}`;
+  else if (!d) body = '<p aria-live="polite">Loading Module 360…</p>';
+  else body = visualModuleBody(d);
+  const title = d ? `Module 360 · ${esc(d.node?.name || '')}` : 'Module 360';
+  $('project-content').innerHTML = `${projectSectionNav('module-360')}${visualPageHead(title, 'Everything the saved assessment shows about one module: what it contains, what it touches, what needs attention and what has been decided.')}<div id="visual-module-body" aria-live="polite">${body}</div>`;
+  visualBindPage();
+  const root = $('project-content');
+  root.querySelectorAll('[data-module-map]').forEach(el => { el.onclick = () => visualShowOnMap(el.dataset.moduleMap); });
+  root.querySelectorAll('[data-module-node]').forEach(el => { el.onclick = () => visualModuleOpen({ node: el.dataset.moduleNode }); });
+  root.querySelectorAll('[data-module-finding]').forEach(el => { el.onclick = () => { visualCross('review'); projectReviewFinding(el.dataset.moduleFinding); }; });
+  const map = $('visual-module-map');
+  if (map && d) map.onclick = () => visualShowOnMap(d.node.id);
+  const hot = $('visual-module-hotspots');
+  if (hot && d) hot.onclick = () => visualHotspotsOpen({ module: d.module });
+  const findings = $('visual-module-findings');
+  if (findings && d) findings.onclick = () => projectOpenInventory({ category: 'findings', filters: { module: d.module } });
+  const inventory = $('visual-module-inventory');
+  if (inventory) inventory.onclick = () => projectOpenInventory({ category: 'findings', filters: { module: state.selector.module } });
+}
+
+// ---- 2.2 Hotspot Explorer --------------------------------------------------
+// Why each candidate was noticed, and what that evidence cannot prove, side by
+// side. Candidates are never verdicts, defects or migration priorities.
+visualUI.hotspots = { filters: {}, offset: 0, data: null, error: null, request: 0 };
+const VISUAL_HOTSPOT_PAGE = 20;
+const VISUAL_NO_MODULE = 'UNKNOWN';
+
+async function visualHotspotsOpen(filters, options = {}) {
+  const state = visualUI.hotspots;
+  if (options.remember !== false) visualCross('hotspots');
+  if (filters) Object.assign(state, { filters: { ...filters }, offset: 0 });
+  projectSaveDraft(); projectEnter('hotspots');
+  return visualLoadHotspots();
+}
+
+async function visualLoadHotspots() {
+  const state = visualUI.hotspots, c = projectContext(), request = ++state.request;
+  const params = new URLSearchParams({ offset: String(state.offset), limit: String(VISUAL_HOTSPOT_PAGE) });
+  for (const key of ['type', 'severity', 'module']) if (state.filters[key]) params.set(key, state.filters[key]);
+  Object.assign(state, { error: null });
+  visualRenderHotspots();
+  try {
+    const data = await api(`/api/v2/projects/${encodeURIComponent(c.id)}/hotspots?${params}`);
+    if (!projectCurrent(c) || request !== state.request) return;
+    state.data = data;
+  } catch (e) {
+    if (!projectCurrent(c) || request !== state.request) return;
+    state.error = e.message; state.data = null;
+  }
+  if (projectUI.view === 'hotspots') visualRenderHotspots();
+}
+
+function visualEvidenceValue(value) {
+  if (value && typeof value === 'object' && Array.isArray(value.values)) {
+    const more = value.total > value.values.length ? ` (+${Number(value.total) - value.values.length} more)` : '';
+    return `${value.values.map(esc).join(', ')}${more}`;
+  }
+  if (value === null || value === undefined) return 'Not observed';
+  return esc(String(value));
+}
+
+function visualHotspotCard(h) {
+  const evidence = Object.entries(h.evidence || {}).map(([k, v]) => `<div><dt>${esc(k.replaceAll('_', ' '))}</dt><dd>${visualEvidenceValue(v)}</dd></div>`).join('');
+  const nodes = (h.nodes || []).map(n => `<li><span>${esc(n.name)} <small>${esc(visualLabel(n.presentation_type) || n.type)}</small></span><span><button type="button" class="btn" data-hotspot-map="${esc(n.id)}" aria-label="Show ${esc(n.name)} on the System Map">Show on map</button>${n.type === 'FORM' ? ` <button type="button" class="btn" data-hotspot-module="${esc(n.id)}" aria-label="Open Module 360 for ${esc(n.name)}">Module 360</button>` : ''}</span></li>`).join('');
+  const moreNodes = h.nodes_total > (h.nodes || []).length ? `<p class="project-muted">Showing ${(h.nodes || []).length} of ${Number(h.nodes_total)} places.</p>` : '';
+  const review = (h.finding_ids || []).length ? `<button type="button" class="btn" data-hotspot-review="${esc(h.finding_ids[0])}">Review the linked finding${h.finding_ids.length > 1 ? ` (1 of ${h.finding_ids.length})` : ''}</button>` : '';
+  return `<article class="visual-hotspot" aria-labelledby="visual-hotspot-${esc(h.id)}">
+    <div class="visual-hotspot-head"><h3 id="visual-hotspot-${esc(h.id)}">${esc(h.title)}</h3><p>${visualStatus('CANDIDATE', 'A candidate for architecture review, not a verdict')} <span class="visual-severity" data-severity="${h.severity === 'HIGH' ? 'HIGH' : 'MEDIUM'}">${esc(h.severity)}</span> ${esc(h.label)}${h.module ? ` · <span class="visual-technical-only">${esc(h.module)}</span>` : ' · across modules'}</p></div>
+    <div class="visual-two">
+      <section class="visual-why" aria-label="Why FormsLang noticed this"><h4>Why FormsLang noticed this</h4><p>${esc(h.statement)}</p>${evidence ? `<dl class="visual-drawer-facts">${evidence}</dl>` : ''}<p class="project-muted">${Number(h.evidence_count)} evidence record(s) linked.</p></section>
+      <section class="visual-not-prove" aria-label="What this does NOT prove"><h4>What this does NOT prove</h4><ul>${(h.uncertainty || []).map(u => `<li>${esc(u)}</li>`).join('')}</ul><p><b>Next step:</b> ${esc(h.recommended_action)}</p></section>
+    </div>
+    ${nodes ? `<h4>Where it was observed</h4><ul class="visual-hotspot-nodes">${nodes}</ul>${moreNodes}` : ''}
+    ${review ? `<div class="project-actions">${review}</div>` : ''}
+  </article>`;
+}
+
+function visualMatrixLevel(count, max) {
+  if (!count) return 0;
+  return Math.max(1, Math.min(3, Math.ceil(count * 3 / max)));
+}
+
+function visualHotspotMatrix(matrix) {
+  if (!matrix || !(matrix.rows || []).length) return '';
+  const max = Math.max(1, ...matrix.rows.flatMap(r => r.cells.map(Number)));
+  const head = matrix.types.map(t => `<th scope="col">${esc(t.label)}</th>`).join('');
+  const rows = matrix.rows.map(r => {
+    const single = r.module !== VISUAL_NO_MODULE;
+    const label = single ? esc(r.module) : 'Across modules';
+    const cells = r.cells.map((count, i) => {
+      const n = Number(count), type = matrix.types[i];
+      const text = n ? String(n) : '<span aria-label="none">·</span>';
+      return `<td data-level="${visualMatrixLevel(n, max)}">${n && single ? `<button type="button" class="visual-card-link" data-matrix-module="${esc(r.module)}" data-matrix-type="${esc(type.id)}" aria-label="${n} ${esc(type.label)} in ${esc(r.module)}">${text}</button>` : text}</td>`;
+    }).join('');
+    return `<tr><th scope="row">${label}</th>${cells}<td>${Number(r.total)}</td></tr>`;
+  }).join('');
+  const more = matrix.truncated ? `<p class="project-muted">Showing ${matrix.rows.length} of ${Number(matrix.total_modules)} modules, those with the most candidates first.</p>` : '';
+  return `<section class="visual-panel" aria-labelledby="visual-matrix-title"><h3 id="visual-matrix-title">Attention matrix</h3><p>Hotspot candidates per module and type. Counts of candidates, not a ranking of modules.</p><div class="project-table-wrap"><table class="project-table visual-matrix"><caption>Hotspot candidates by module and type</caption><thead><tr><th scope="col">Module</th>${head}<th scope="col">Total</th></tr></thead><tbody>${rows}</tbody></table></div>${more}</section>`;
+}
+
+function visualHotspotFilters(d) {
+  const f = visualUI.hotspots.filters;
+  const types = (d?.types || []).map(t => `<option value="${esc(t.id)}" ${f.type === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+  const severities = (d?.severities || ['HIGH', 'MEDIUM']).map(s => `<option value="${esc(s)}" ${f.severity === s ? 'selected' : ''}>${esc(s)}</option>`).join('');
+  const module = f.module ? `<p class="visual-map-note">Module: <b>${esc(f.module)}</b> <button type="button" class="btn" id="visual-hotspot-clear-module">Show every module</button></p>` : '';
+  return `<form id="visual-hotspot-filters" class="visual-map-toolbar" aria-label="Filter hotspot candidates"><label>Type <select id="visual-hotspot-type"><option value="">All types</option>${types}</select></label><label>Severity <select id="visual-hotspot-severity"><option value="">All severities</option>${severities}</select></label></form>${module}`;
+}
+
+function visualRenderHotspots() {
+  const state = visualUI.hotspots, d = state.data;
+  let body;
+  if (state.error) body = `<p class="project-state-warning" role="status">Hotspots are unavailable: ${esc(state.error)}</p>`;
+  else if (!d) body = '<p>Loading hotspot candidates…</p>';
+  else if (!d.estate_total) body = '<p class="project-empty">The saved assessment has no hotspot candidates. That is an observation about the supplied sources, not a clean bill of health.</p>';
+  else {
+    const cards = (d.items || []).map(visualHotspotCard).join('') || '<p class="project-empty">No hotspot candidates match these filters.</p>';
+    const page = d.total > d.limit ? `<div class="project-actions"><button class="btn" id="visual-hotspot-prev" ${d.offset === 0 ? 'disabled' : ''}>Previous</button><span>${d.offset + 1}–${Math.min(d.total, d.offset + d.limit)} of ${Number(d.total)}</span><button class="btn" id="visual-hotspot-next" ${d.offset + d.limit >= d.total ? 'disabled' : ''}>Next</button></div>` : '';
+    body = `<p class="visual-boundary" role="note">${esc(d.boundary)}</p><p aria-live="polite">Showing ${(d.items || []).length} of ${Number(d.total)} matching candidates (${Number(d.estate_total)} in the estate).</p>${cards}${page}${visualHotspotMatrix(d.matrix)}`;
+  }
+  $('project-content').innerHTML = `${projectSectionNav('hotspots')}${visualPageHead('Hotspot Explorer', 'Structural patterns in the saved assessment that deserve an architect\'s attention, with the evidence behind each one and its limits.')}${visualHotspotFilters(d)}<div id="visual-hotspot-body">${body}</div>`;
+  visualBindPage();
+  const root = $('project-content'), reload = () => { state.offset = 0; visualLoadHotspots(); };
+  const type = $('visual-hotspot-type'), severity = $('visual-hotspot-severity');
+  if (type) type.onchange = () => { state.filters.type = type.value || undefined; reload(); };
+  if (severity) severity.onchange = () => { state.filters.severity = severity.value || undefined; reload(); };
+  const form = $('visual-hotspot-filters');
+  if (form) form.onsubmit = e => e.preventDefault();
+  const clear = $('visual-hotspot-clear-module');
+  if (clear) clear.onclick = () => { delete state.filters.module; reload(); };
+  const prev = $('visual-hotspot-prev'), next = $('visual-hotspot-next');
+  if (prev) prev.onclick = () => { state.offset = Math.max(0, state.offset - VISUAL_HOTSPOT_PAGE); visualLoadHotspots(); };
+  if (next) next.onclick = () => { state.offset += VISUAL_HOTSPOT_PAGE; visualLoadHotspots(); };
+  root.querySelectorAll('[data-hotspot-map]').forEach(el => { el.onclick = () => visualShowOnMap(el.dataset.hotspotMap); });
+  root.querySelectorAll('[data-hotspot-module]').forEach(el => { el.onclick = () => visualModuleOpen({ node: el.dataset.hotspotModule }); });
+  root.querySelectorAll('[data-hotspot-review]').forEach(el => { el.onclick = () => { visualCross('review'); projectReviewFinding(el.dataset.hotspotReview); }; });
+  root.querySelectorAll('[data-matrix-module]').forEach(el => { el.onclick = () => { state.filters = { module: el.dataset.matrixModule, type: el.dataset.matrixType }; reload(); }; });
+}
+
+// ---- 2.2 Review architecture context ---------------------------------------
+// The review detail gains one line of architecture around the finding. It is
+// refetched for every detail render, so a decision refreshes the counts
+// without re-analysis; a late answer for another finding is discarded.
+visualUI.reviewContext = { request: 0 };
+
+async function visualReviewContext(row) {
+  const host = $('visual-review-context');
+  if (!host || !row?.id) return;
+  const c = projectContext(), state = visualUI.reviewContext, request = ++state.request;
+  host.innerHTML = '<p class="project-muted">Loading architecture context…</p>';
+  let d = null, error = null;
+  try { d = await api(`/api/v2/projects/${encodeURIComponent(c.id)}/module-360?finding=${encodeURIComponent(row.id)}`); }
+  catch (e) { error = e.message; }
+  if (!projectCurrent(c) || request !== state.request || projectUI.view !== 'review' || projectUI.reviewState?.detail?.item?.id !== row.id) return;
+  const target = $('visual-review-context');
+  if (!target) return;
+  if (error) { target.innerHTML = `<p class="project-muted">Architecture context is unavailable for this finding: ${esc(error)}</p>`; return; }
+  const n = d.node || {}, review = n.review_summary || {};
+  target.innerHTML = `<p><b>Architecture context:</b> ${esc(n.name)} · ${esc(visualLabel(n.presentation_type) || n.type)} · ${Number(n.fan_in)} incoming · ${Number(n.fan_out)} outgoing relationships${d.hotspots_total ? ` · ${visualStatus('CANDIDATE')} ${Number(d.hotspots_total)} hotspot candidate(s)` : ''} · ${Number(review.decided)} of ${Number(review.total)} findings decided</p><div class="project-actions"><button type="button" class="btn" id="visual-review-module" data-id="${esc(n.id)}">Open Module 360</button><button type="button" class="btn" id="visual-review-map" data-id="${esc(n.id)}">Show on System Map</button></div>`;
+  const module = $('visual-review-module'), map = $('visual-review-map');
+  if (module) module.onclick = () => visualModuleOpen({ node: n.id });
+  if (map) map.onclick = () => visualShowOnMap(n.id);
 }
 '''

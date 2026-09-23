@@ -162,6 +162,34 @@ it arrived.
   separators: "Showing 100 of 4,812 nodes in this view. Refocus, search or
   filter to explore the rest."
 
+### Module 360, Hotspot Explorer and return context
+
+- `GET …/module-360` takes exactly one of `module`, `node` or `finding` and
+  returns one module-level node: identity, fan-in and fan-out, up to 20
+  neighbours per direction with their status, composition, risk and
+  recommendation distributions, review summary, up to 20 findings and up to
+  20 hotspot candidates. It never returns source text. The page has six
+  panels (Identity, Modernization attention, Architecture, Review, Evidence,
+  Actions) and ends with its boundary note. A late answer for another
+  selector is discarded.
+- `GET …/hotspots` pages hotspot candidates (at most 50 per page) with
+  `type`, `severity` and `module` filters. Every card says why FormsLang
+  noticed it (the observed signals) and what it does not prove (the
+  uncertainty and the next step). Each card is marked Candidate. The
+  modules × type matrix shades cells in three buckets through a `data-level`
+  attribute, never an inline style, and a cross-module candidate sits in the
+  "Across modules" row. An estate with no candidates says it is not a clean
+  bill of health.
+- Review detail shows an architecture context line for the finding's module
+  (relationships in and out, hotspot candidates, decided findings) with
+  links to Module 360 and to the map. If that request fails, the review
+  stays usable and says the context is unavailable.
+- Cross-navigation keeps a return context of at most 8 steps. Back reopens
+  the same map focus, the same review item, the same hotspot filters or the
+  same module. Choosing a section in the navigation clears it.
+- Search results placed on the map carry a Map button, and Alt+Enter opens
+  the map focused on the result.
+
 ## Boundaries (non-negotiable)
 
 - Investigation groups organize review work. They are not migration waves,
@@ -186,7 +214,7 @@ The log is updated per phase with the commit and what was verified.
 | A | Visual projection, labels, layout, graph memo, tests | done: `tests/test_project_visualization.py` (19 cases) plus HTTP route coverage |
 | B | Overview command center, Exec/Tech view | done: `formslang/ui/modernization_visual.py` (tokens, mode, command center), `tests/test_visual_ui_behavior.py` (9 cases) |
 | C | System Map 2.2 | done: System Map moved into `modernization_visual.py` (estate view, lenses, pan/zoom, minimap, keyboard, six-section drawer), `tests/test_visual_ui_behavior.py` (+12 cases), 2.1 Edge acceptance rerun |
-| D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | not started |
+| D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | done: `module-360` and `hotspots` routes, UI in `modernization_visual.py`, `tests/test_visual_ui_behavior.py` (+12 cases), estate Edge acceptance 82 of 82 |
 | E | Report visuals (static SVG) | not started |
 | F | Lab walkthrough | not started |
 | G | Hardening, Edge acceptance, measurements, docs | not started |

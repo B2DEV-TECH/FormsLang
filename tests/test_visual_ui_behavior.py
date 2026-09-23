@@ -370,3 +370,211 @@ assert.equal(systemMapState.view,'ESTATE');assert.equal(systemMapState.focus,nul
 assert.equal(systemMapState.lane,null);assert.equal(systemMapState.edge_type,'');assert.equal(systemMapState.zoom,1);
 assert.match(mapCalls.at(-1),/view=ESTATE/);assert.ok(!/edge_type|focus=/.test(mapCalls.at(-1)));
 ''')
+
+
+PHASE_D_SETUP = r'''
+const pair=(technical,executive)=>({technical,executive});
+function moduleData(extra={}){return {node:node('form:A','INTAKE','FORM','FORM','APPLICATION',{fan_out:2,findings_count:2,highest_risk:'HIGH',hotspot_count:1,members:12,module:'intake.xml',
+    review_summary:{total:2,decided:1,open:1,stale:0,deferred:0}}),module:'intake.xml',analysis_revision:'r',labels:mapLabels,
+  composition:[{type:'BLOCK',count:2},{type:'TRIGGER',count:9}],
+  neighbours:{inbound:{items:[],total:0},outbound:{items:[
+    {id:'table:T',name:'WORK_ITEMS',type:'TABLE',layer:'DATABASE',presentation_type:pair('Table','Data object'),lane:'DATA',unresolved:false,classification:'WRITES',presentation_label:pair('Writes','Changes data'),status:'OBSERVED',count:2,is_hotspot:true,edge_id:'e1'},
+    {id:'pkg:P',name:'ORDER_API',type:'PACKAGE',layer:'DATABASE',presentation_type:pair('PL/SQL package','Shared PL/SQL service'),lane:'SHARED_LOGIC',unresolved:false,classification:'CALLS',presentation_label:pair('Calls','Uses service'),status:'CANDIDATE',count:1,is_hotspot:false,edge_id:'e2'}],total:25}},
+  relationships:{inbound:{},outbound:{WRITES:1,CALLS:1}},hotspots:[{id:'h1',title:'Direct table write',severity:'HIGH',statement:'INTAKE writes WORK_ITEMS directly.'}],hotspots_total:1,
+  findings:[{id:'f1',name:'WHEN-BUTTON-PRESSED',risk:'HIGH',review_state:'PENDING'}],findings_total:2,
+  risk_distribution:{HIGH:1,LOW:1},recommendation_distribution:{MOVE_TO_DB:2},business_rule_candidates:1,
+  boundary:'Module 360 lists what the supplied sources show about one module. It is not a migration plan, an effort estimate or a readiness verdict.',...extra};}
+function hotspotData(extra={}){return {items:[{id:'h1',hotspot_type:'API_BYPASS_CANDIDATE',label:'Possible API bypass',classification:'CANDIDATE',severity:'HIGH',
+    title:'Direct write to WORK_ITEMS',statement:'INTAKE writes WORK_ITEMS although WORK_API.CLOSE_ITEM also writes it.',module:'intake.xml',finding_ids:['f1','f2'],evidence_count:3,
+    uncertainty:['The API may not cover this write.','Dynamic SQL is not visible.'],recommended_action:'Architecture review required: decide the owner.',
+    evidence:{table:'WORK_ITEMS',potential_existing_api_owners:{values:['WORK_API.CLOSE_ITEM'],total:4}},
+    nodes:[{id:'form:A',name:'INTAKE',type:'FORM',layer:'FORM',presentation_type:pair('Form','Application module')},{id:'table:T',name:'WORK_ITEMS',type:'TABLE',layer:'DATABASE',presentation_type:pair('Table','Data object')}],nodes_total:2}],
+  total:1,offset:0,limit:20,estate_total:3,by_type:{},by_severity:{HIGH:1,MEDIUM:2},
+  types:[{id:'API_BYPASS_CANDIDATE',label:'Possible API bypass'},{id:'GLOBAL_STATE_COUPLING',label:'Global state coupling'}],severities:['HIGH','MEDIUM'],
+  matrix:{types:[{id:'API_BYPASS_CANDIDATE',label:'Possible API bypass'},{id:'GLOBAL_STATE_COUPLING',label:'Global state coupling'}],
+    rows:[{module:'UNKNOWN',total:2,cells:[0,2]},{module:'intake.xml',total:1,cells:[1,0]}],total_modules:2,truncated:false,classification:'CANDIDATE'},
+  filters:{},classification:'CANDIDATE',boundary:'Hotspot candidates are derived from saved structural evidence. They need architecture review; they are not verdicts, defects or migration priorities.',
+  labels:mapLabels,analysis_revision:'r',...extra};}
+const dCalls=[];
+function dApi(routes={}){return async path=>{dCalls.push(path);
+  if(path.includes('/module-360'))return routes.module?routes.module(path):moduleData();
+  if(path.includes('/hotspots'))return routes.hotspots?routes.hotspots(path):hotspotData();
+  if(path.includes('/system-map/node'))return mapDetail;
+  if(path.includes('/system-map'))return mapData();
+  return {};};}
+'''
+
+
+def run_d(tmp_path, script):
+    run_js(tmp_path, MAP_SETUP + PHASE_D_SETUP + script)
+
+
+def test_module_360_shows_one_module_without_source_text(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi();await visualModuleOpen({node:'form:A'});
+assert.equal(projectUI.view,'module-360');assert.match(dCalls.at(-1),/\/module-360\?node=form%3AA$/);
+const html=$('project-content').innerHTML;
+assert.match(html,/Module 360 · INTAKE/);
+for(const s of ['Identity','Modernization attention','Architecture','Review','Evidence','Actions'])assert.match(html,new RegExp('>'+s+'</h3>'),s);
+assert.match(html,/It is not a migration plan, an effort estimate or a readiness verdict/);
+assert.match(html,/TRIGGER <b>9<\/b>/);assert.match(html,/Nothing in the supplied sources reaches this module\./);
+assert.match(html,/Showing 2 of 25\. Hotspot-linked relationships first/);
+assert.match(html,/Writes · hotspot candidate/);
+// The candidate relationship keeps its own chip; observed and candidate never merge.
+assert.match(html,/data-status="CANDIDATE">Candidate<\/span><\/td><td>1</);assert.match(html,/data-status="OBSERVED">Observed<\/span><\/td><td>2</);
+assert.match(html,/1 of 2 findings decided/);assert.match(html,/Business-rule candidates:<\/b> 1/);assert.match(html,/Review status, not migration readiness/);
+assert.match(html,/Showing 1 of 2 findings\./);assert.match(html,/Module 360 never shows source text/);
+assert.match(html,/data-module-map="table:T"/);assert.ok(!html.includes('data-module-node="table:T"'),'only Forms open a Module 360');
+assert.match(html,/id="visual-module-map" data-id="form:A"/);
+visualSetMode('executive');
+const exec=$('project-content').innerHTML;assert.match(exec,/Changes data · hotspot candidate/);assert.match(exec,/Uses service/);assert.match(exec,/Application module/);
+assert.equal(dCalls.filter(p=>p.includes('/module-360')).length,1,'mode switch does not refetch');
+visualSetMode('technical');
+''')
+
+
+def test_module_360_by_logical_module_and_error_keeps_a_way_out(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi({module:async()=>{const e=new Error('Unknown module');e.status=400;throw e;}});
+await visualModuleOpen('pkgs/order_api.sql');
+assert.match(dCalls.at(-1),/\/module-360\?module=pkgs%2Forder_api\.sql$/);
+const html=$('project-content').innerHTML;
+assert.match(html,/Module 360 is unavailable: Unknown module/);assert.match(html,/id="visual-module-inventory"/);
+''')
+
+
+def test_late_module_answer_for_another_module_is_discarded(tmp_path):
+    run_d(tmp_path, r'''
+const slow=deferred();
+api=dApi({module:path=>path.includes('form%3AA')?slow.promise:moduleData({node:node('form:B','ORDERS','FORM','FORM','APPLICATION',{module:'orders.xml'})})});
+const first=visualModuleOpen({node:'form:A'});await visualModuleOpen({node:'form:B'});
+slow.resolve(moduleData({node:node('form:A','STALE ANSWER','FORM','FORM','APPLICATION')}));await first;
+assert.ok(!$('project-content').innerHTML.includes('STALE ANSWER'));assert.match($('project-content').innerHTML,/Module 360 · ORDERS/);
+''')
+
+
+def test_hotspot_explorer_explains_why_and_what_it_does_not_prove(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi();await visualHotspotsOpen({});
+assert.equal(projectUI.view,'hotspots');assert.match(dCalls.at(-1),/\/hotspots\?offset=0&limit=20$/);
+const html=$('project-content').innerHTML;
+assert.match(html,/Why FormsLang noticed this/);assert.match(html,/What this does NOT prove/);
+assert.match(html,/INTAKE writes WORK_ITEMS although/);assert.match(html,/The API may not cover this write\./);assert.match(html,/Dynamic SQL is not visible\./);
+assert.match(html,/WORK_API\.CLOSE_ITEM \(\+3 more\)/);assert.match(html,/potential existing api owners/);
+assert.match(html,/they are not verdicts, defects or migration priorities/);
+assert.match(html,/data-status="CANDIDATE"/);assert.ok(!html.includes('data-status="DECIDED"'),'a candidate is never shown as decided');
+assert.match(html,/Showing 1 of 1 matching candidates \(3 in the estate\)/);
+assert.match(html,/data-hotspot-map="form:A"/);assert.match(html,/data-hotspot-module="form:A"/);assert.ok(!html.includes('data-hotspot-module="table:T"'));
+assert.match(html,/data-hotspot-review="f1"/);assert.match(html,/Review the linked finding \(1 of 2\)/);
+// Attention matrix: counts only, fixed intensity buckets, no module row invented for cross-module candidates.
+assert.match(html,/Attention matrix/);assert.match(html,/<th scope="row">Across modules<\/th>/);
+assert.match(html,/data-matrix-module="intake.xml" data-matrix-type="API_BYPASS_CANDIDATE"/);
+assert.ok(!html.includes('data-matrix-module="UNKNOWN"'));assert.match(html,/data-level="3"/);assert.ok(!/style="[^"]*background/.test(html));
+''')
+
+
+def test_hotspot_filters_reload_from_the_server_and_empty_estate_says_so(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi();await visualHotspotsOpen({module:'intake.xml'});
+assert.match(dCalls.at(-1),/&module=intake\.xml$/);assert.match($('project-content').innerHTML,/Module: <b>intake\.xml<\/b>/);
+$('visual-hotspot-type').value='GLOBAL_STATE_COUPLING';$('visual-hotspot-type').onchange();await tick();
+assert.match(dCalls.at(-1),/type=GLOBAL_STATE_COUPLING/);assert.match(dCalls.at(-1),/module=intake\.xml/);
+$('visual-hotspot-clear-module').onclick();await tick();assert.ok(!dCalls.at(-1).includes('module='));
+api=dApi({hotspots:()=>hotspotData({items:[],total:0,estate_total:0,matrix:{types:[],rows:[],total_modules:0,truncated:false}})});
+await visualHotspotsOpen({});
+assert.match($('project-content').innerHTML,/has no hotspot candidates\. That is an observation about the supplied sources, not a clean bill of health\./);
+''')
+
+
+def test_phase_d_views_escape_hostile_text(tmp_path):
+    run_d(tmp_path, r'''
+const hostile='<img src=x onerror=alert(1)>"';
+api=dApi({module:()=>moduleData({node:node('form:A',hostile,'FORM','FORM','APPLICATION',{module:hostile}),module:hostile,composition:[{type:hostile,count:1}],
+  findings:[{id:hostile,name:hostile,risk:hostile,review_state:hostile}],hotspots:[{id:'h',title:hostile,severity:hostile,statement:hostile}]}),
+  hotspots:()=>{const d=hotspotData();Object.assign(d.items[0],{title:hostile,statement:hostile,label:hostile,module:hostile,uncertainty:[hostile],recommended_action:hostile,
+    evidence:{[hostile]:hostile,list:{values:[hostile],total:1}},nodes:[{id:hostile,name:hostile,type:'FORM',layer:'FORM'}],finding_ids:[hostile]});
+    d.matrix.rows=[{module:hostile,total:1,cells:[1,0]}];return d;}});
+await visualModuleOpen({node:'form:A'});
+let html=$('project-content').innerHTML;assert.ok(!html.includes('<img'));assert.ok(!html.includes('"<'));assert.match(html,/&lt;img src=x onerror=alert\(1\)>&quot;/);
+await visualHotspotsOpen({});
+html=$('project-content').innerHTML;assert.ok(!html.includes('<img'));assert.match(html,/&lt;img src=x onerror=alert\(1\)>&quot;/);
+''')
+
+
+def test_back_returns_along_the_path_the_reader_took(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi();
+await projectSystemMapOpen({focus:'form:A'});
+assert.ok(!$('project-content').innerHTML.includes('id="visual-back"'),'no back button without a cross-navigation');
+await visualModuleOpen({node:'form:A'});
+assert.match($('project-content').innerHTML,/Back to System Map · INTAKE/);
+await visualHotspotsOpen({module:'intake.xml'});
+assert.match($('project-content').innerHTML,/Back to Module 360 · INTAKE/);
+visualGoBack();await tick();await tick();
+assert.equal(projectUI.view,'module-360');assert.match($('project-content').innerHTML,/Back to System Map · INTAKE/);
+visualGoBack();await tick();await tick();
+assert.equal(projectUI.view,'system-map');assert.equal(systemMapState.focus,'form:A');assert.equal(systemMapState.view,'FOCUS');
+assert.ok(!$('project-content').innerHTML.includes('id="visual-back"'),'the chain ends where it started');
+// The section navigation starts a fresh chain.
+await visualModuleOpen({node:'form:A'});assert.ok(visualUI.back);
+visualUI.back=null;await visualHotspotsOpen({},{remember:false});assert.ok(!$('project-content').innerHTML.includes('Back to'));
+''')
+
+
+def test_back_chain_is_bounded(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi();await projectSystemMapOpen({focus:'form:A'});
+for(let i=0;i<30;i++){await visualModuleOpen({node:'form:A'});await visualHotspotsOpen({});}
+let depth=0;for(let p=visualUI.back;p;p=p.prior)depth++;
+assert.ok(depth<=VISUAL_BACK_DEPTH,String(depth));
+''')
+
+
+def test_review_detail_gains_architecture_context_and_discards_late_answers(tmp_path):
+    run_d(tmp_path, r'''
+const slow=deferred();
+api=dApi({module:path=>path.includes('finding=f1')?slow.promise:moduleData()});
+projectUI.view='review';projectUI.reviewState={detail:{item:{id:'f2'}}};
+const first=visualReviewContext({id:'f1'});
+await visualReviewContext({id:'f2'});
+assert.match(dCalls.at(-1),/\/module-360\?finding=f2$/);
+let html=$('visual-review-context').innerHTML;
+assert.match(html,/Architecture context:<\/b> INTAKE · Form · 0 incoming · 2 outgoing relationships/);
+assert.match(html,/data-status="CANDIDATE"/);assert.match(html,/1 hotspot candidate\(s\)/);assert.match(html,/1 of 2 findings decided/);
+assert.match(html,/id="visual-review-module" data-id="form:A"/);assert.match(html,/id="visual-review-map" data-id="form:A"/);
+slow.resolve(moduleData({node:node('form:Z','STALE ANSWER','FORM','FORM','APPLICATION')}));await first;
+assert.ok(!$('visual-review-context').innerHTML.includes('STALE ANSWER'));
+// Opening Module 360 from Review offers the way back to Review.
+$('visual-review-module').onclick();await tick();await tick();
+assert.equal(projectUI.view,'module-360');assert.match($('project-content').innerHTML,/Back to Review/);
+''')
+
+
+def test_review_context_failure_is_quiet_and_leaves_review_usable(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi({module:async()=>{throw new Error('The finding is not placed on the System Map');}});
+projectUI.view='review';projectUI.reviewState={detail:{item:{id:'f1'}}};
+await visualReviewContext({id:'f1'});
+assert.match($('visual-review-context').innerHTML,/Architecture context is unavailable for this finding: The finding is not placed on the System Map/);
+''')
+
+
+def test_search_result_can_open_the_system_map_focused_on_it(tmp_path):
+    run_d(tmp_path, r'''
+api=dApi();
+globalSearchRender([{project_id:'a',id:'pkg1',category:'packages',category_label:'Package',title:'ORDER_API',subtitle:'Package',map_focus:'pkg:P',action:{view:'inventory',category:'packages',target_id:'pkg1'}},
+                    {project_id:'a',id:'r1',category:'business_rules',title:'NO_MAP',subtitle:'Rule',map_focus:null,action:{view:'inventory',category:'business_rules',target_id:'r1'}}],'order');
+const list=$('global-search-list').innerHTML;
+assert.match(list,/data-search-map="0"/);assert.ok(!list.includes('data-search-map="1"'));assert.match(list,/aria-label="Show ORDER_API on the System Map"/);
+await executeSearchMap(globalSearch.results[0]);
+assert.equal(projectUI.view,'system-map');assert.equal(systemMapState.view,'FOCUS');assert.equal(systemMapState.focus,'pkg:P');
+assert.match(dCalls.find(p=>p.includes('/system-map?')),/focus=pkg%3AP/);
+''')
+
+
+def test_section_nav_lists_hotspots_and_keeps_the_2_1_sections(tmp_path):
+    run_d(tmp_path, r'''
+const nav=projectSectionNav('hotspots');
+for(const id of ['overview','system-map','hotspots','inventory','review','dependencies','generate','reports','settings'])assert.match(nav,new RegExp('data-project-section="'+id+'"'),id);
+assert.match(nav,/data-project-section="hotspots" aria-current="page"/);
+''')
