@@ -13,6 +13,7 @@ import csv
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -182,6 +183,34 @@ def test_default_package_and_reports_do_not_disclose_source_or_notes(journey):
     # The explicit sensitive option still works and is labelled.
     sensitive = journey.export("decisions", include_notes=True)
     assert sensitive.filename.endswith("-sensitive.json") and b"CANARY_RATIONALE" in sensitive.body
+
+
+def svg_figures(html_bytes: bytes) -> list[str]:
+    return re.findall(r'<figure class="fl-figure">.*?</figure>', html_bytes.decode("utf-8"), re.DOTALL)
+
+
+def test_report_visuals_are_static_redacted_and_deterministic(journey):
+    executive, technical = journey.export("executive").body, journey.export("technical").body
+    figures = svg_figures(executive) + svg_figures(technical)
+    # Executive: estate by lane and hotspot matrix; technical: the same two again.
+    assert len(svg_figures(executive)) == 2 and len(svg_figures(technical)) == 2
+    for figure in figures:
+        lowered = figure.casefold()
+        for forbidden in ("<script", "foreignobject", "href", "on" + "load", "style=", "<image", "<use"):
+            assert forbidden not in lowered, forbidden
+        # The only URL is the SVG namespace itself.
+        assert re.findall(r"https?://[^\s\"<]+", figure) == ["http://www.w3.org/2000/svg"]
+        for canary in (*CANARIES, "sqlplus", "intra.example", "purge.sql"):
+            assert canary not in figure, canary
+        assert "<figcaption>" in figure
+    estate = next(f for f in svg_figures(technical) if "fl-estate-map" in f)
+    assert "Integration target (literal omitted; ref " in estate
+    assert "Showing " in estate and " of " in estate
+    matrix = next(f for f in svg_figures(executive) if "fl-matrix" in f)
+    assert "A candidate is not a verdict." in matrix
+    journey.reopen()
+    assert svg_figures(journey.export("technical").body) == svg_figures(technical)
+    assert svg_figures(journey.export("executive").body) == svg_figures(executive)
 
 
 def test_generic_to_reports_survives_close_and_reopen(journey):

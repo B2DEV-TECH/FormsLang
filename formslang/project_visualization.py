@@ -488,7 +488,11 @@ def report_matrix_svg(matrix: dict, *, title="Hotspot candidates by module") -> 
     peak = max((v for r in rows for v in r["cells"]), default=0) or 1
     for r, row in enumerate(rows):
         y = top + r * cell_h
-        parts.append(f'<text x="{MARGIN}" y="{y + 20}">{_svg_text(row["module"], 34)}</text>')
+        # Module ids are "<root scope>/<file>"; the figure shows the file and keeps the id in <title>.
+        # A candidate spanning several modules has no single module row.
+        label = "Across modules" if row["module"] == "UNKNOWN" else row["module"].rsplit("/", 1)[-1]
+        parts.append(f'<text x="{MARGIN}" y="{y + 20}"><title>{_svg_text(label if row["module"] == "UNKNOWN" else row["module"])}</title>'
+                     f'{_svg_text(label, 34)}</text>')
         for c, value in enumerate(row["cells"]):
             level = 0 if not value else 1 + (3 * value) // (peak + 1)
             parts.append(f'<rect x="{MARGIN + label_w + c * cell_w}" y="{y + 2}" width="{cell_w - 6}" '
@@ -501,8 +505,9 @@ def report_matrix_svg(matrix: dict, *, title="Hotspot candidates by module") -> 
 
 
 REPORT_SVG_CSS = (
-    ".fl-figure{margin:16px 0;overflow-x:auto}.fl-figure svg{min-width:640px;font:12px system-ui,sans-serif}"
-    ".fl-figure figcaption{font-size:12px;color:#555;margin-top:6px}"
+        # The figure keeps its own light panel so it reads the same on the dark report page and on paper.
+    ".fl-figure{margin:16px 0;overflow-x:auto}.fl-figure svg{min-width:640px;font:12px system-ui,sans-serif;background:#fff;border-radius:8px}"
+    ".fl-figure figcaption{font-size:12px;color:var(--mut,#555);margin-top:6px}"
     ".fl-node rect{fill:#fff;stroke:#555;stroke-width:1}.fl-unresolved rect{stroke-dasharray:4 3;fill:#f4f4f4}"
     ".fl-node text{fill:#111}.fl-sub{fill:#555!important;font-size:10px}.fl-lane{font-weight:700;fill:#333}"
     ".fl-edge{fill:none;stroke:#888;stroke-width:1.2}.fl-hot{stroke:#c0392b;stroke-width:2}"

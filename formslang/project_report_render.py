@@ -9,9 +9,16 @@ import io
 import re
 
 from .estate_triage import investigation_markdown
+from .hotspots import HOTSPOT_LABELS, HOTSPOT_TYPES
 from .project_reports import GENERIC_ARTIFACT_KIND as GENERIC_KIND
 from .project_reports import json_bytes
 from .project_review import STATES
+from .project_visualization import (
+    REPORT_SVG_CSS,
+    attention_matrix,
+    report_estate_svg,
+    report_matrix_svg,
+)
 from .report import _CSS
 
 LIMITATIONS = [
@@ -84,7 +91,7 @@ def page(title, snapshot, sections):
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">'
-        f'<title>{escape(title)} — FormsLang</title><style>{_CSS}'
+        f'<title>{escape(title)} — FormsLang</title><style>{_CSS}{REPORT_SVG_CSS}'
         'td{overflow-wrap:anywhere}section{break-inside:auto}thead{display:table-header-group}'
         '@media print{body,.card{background:white;color:black}.wrap{padding:0;max-width:none}th,.sub{color:#333}a{color:black}h2{break-after:avoid}}'
         f'</style></head><body><main class="wrap"><h1>{escape(title)}</h1>'
@@ -169,9 +176,12 @@ def build_files(snapshot, *, include_notes, artifact_files):
     hotspots = list(rows.get('hotspots', ()))
     groups = snapshot['investigation_groups']
     critical = [b for b in backlog if b['Risk'] == 'CRITICAL' and b['Review Status'] not in {'Accepted', 'Changed'}]
+    # Static inline SVG built from the already-redacted snapshot: no script, no external reference.
+    matrix_figure = report_matrix_svg(attention_matrix(hotspots, HOTSPOT_TYPES, HOTSPOT_LABELS)) if hotspots else ''
+    estate_figure = report_estate_svg(snapshot['relationships']) if snapshot['relationships'] else ''
     hotspot_section = section('Architectural Hotspot Candidates',
         '<p>Candidates for architecture review derived from saved structural evidence. A candidate is not a verdict; '
-        'each lists what its evidence cannot establish.</p>' +
+        'each lists what its evidence cannot establish.</p>' + matrix_figure +
         table(hotspots, [('label', 'Candidate'), ('severity', 'Severity'), ('title', 'Subject'), ('statement', 'Observed evidence')]))
     first = [m for g in groups['groups'] if g['id'] in {'INVESTIGATE_FIRST', 'ARCHITECTURE_DECISIONS'}
              for m in ({**item, 'group': g['name']} for item in g['modules'])]
@@ -180,7 +190,11 @@ def build_files(snapshot, *, include_notes, artifact_files):
                       ('hotspot_candidates', 'Hotspot candidates'), ('reasons', 'Reasons')]))
     executive = page('Executive Modernization Assessment', snapshot, [
         section('Executive Summary', '<p>FormsLang inventories and triages observed legacy structure so specialists can focus on architectural and business decisions. Counts below describe analyzed evidence, not the completeness of an unknown estate. No cost, schedule or migration-percentage estimate is made.</p>'),
-        *common, hotspot_section,
+        *common,
+        *([section('Estate Architecture by Lane', '<p>Observed module relationships grouped by architectural layer. '
+                   'The layout is a reading aid; it is not a dependency order or a migration sequence.</p>' + estate_figure)]
+          if estate_figure else []),
+        hotspot_section,
         section('Unresolved Critical Findings', table(critical, [('Module', 'Module'), ('Component', 'Component'),
             ('Recommendation', 'Engine recommendation'), ('Review Status', 'Review status')])),
         areas,
@@ -193,14 +207,14 @@ def build_files(snapshot, *, include_notes, artifact_files):
                        ('routines', 'Procedures and Functions'), ('tables', 'Tables'), ('views', 'Views')]:
         inventory_sections.append(section(title, table(rows[key], [('name', 'Name'), ('source_type', 'Type'),
             ('findings', 'Findings'), ('highest_risk', 'Highest risk')])))
-    hotspot_evidence = section('Hotspot Evidence', ''.join(
+    hotspot_evidence = section('Hotspot Evidence', matrix_figure + ''.join(
         f'<article><h3>{escape(h["title"])} ({escape(h["severity"])} {escape(h["label"])})</h3><p>{escape(h["statement"])}</p>'
         + pairs(h['evidence']) + '<p>Uncertainty:</p><ul>' + ''.join(f'<li>{escape(u)}</li>' for u in h['uncertainty']) + '</ul>'
         + f'<p>Findings: {escape(h["finding_ids"])} · Evidence references: {len(h["evidence_refs"])} · Graph edges: {len(h["edge_refs"])}</p>'
         + f'<p>{escape(h["recommended_action"])}</p></article>' for h in hotspots)
         or '<p>No hotspot candidates were derived from the saved evidence.</p>')
     technical = page('Technical Modernization Assessment', snapshot, [*common, *inventory_sections,
-        section('Module Relationships', '<p>Module-level dependencies: a Form includes its blocks, items, triggers and program units; a package includes its subprograms.</p>' +
+        section('Module Relationships', '<p>Module-level dependencies: a Form includes its blocks, items, triggers and program units; a package includes its subprograms.</p>' + estate_figure +
                 table(snapshot['relationships'], [('source', 'Source'), ('relationship', 'Relationship'), ('target', 'Target'),
                                                   ('target_layer', 'Target layer'), ('count', 'Observations'), ('level', 'Evidence level')])),
         section('Cross-layer Dependencies (component level)', table(rows['dependencies'], [('source', 'Source'), ('target', 'Target'), ('relationship', 'Relationship')])),

@@ -190,6 +190,19 @@ it arrived.
 - Search results placed on the map carry a Map button, and Alt+Enter opens
   the map focused on the result.
 
+### Report visuals
+
+The executive and technical reports carry two static inline SVG figures,
+built from the saved report snapshot after its literal-named entities were
+renamed: the estate by lane (at most 60 modules and 120 relationships,
+ordered by observed attention, with the omitted counts in the caption) and
+the modules × hotspot-type matrix. The figures contain no script, no link, no
+`foreignObject`, no inline style and no URL other than the SVG namespace.
+Identifiers are derived from position, every text value is escaped, and the
+same snapshot produces the same bytes. Each figure has a `<title>` and a
+caption, and the tables that follow list the same content as text. The
+figure keeps its own light panel so it reads the same on screen and on paper.
+
 ## Boundaries (non-negotiable)
 
 - Investigation groups organize review work. They are not migration waves,
@@ -215,7 +228,7 @@ The log is updated per phase with the commit and what was verified.
 | B | Overview command center, Exec/Tech view | done: `formslang/ui/modernization_visual.py` (tokens, mode, command center), `tests/test_visual_ui_behavior.py` (9 cases) |
 | C | System Map 2.2 | done: System Map moved into `modernization_visual.py` (estate view, lenses, pan/zoom, minimap, keyboard, six-section drawer), `tests/test_visual_ui_behavior.py` (+12 cases), 2.1 Edge acceptance rerun |
 | D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | done: `module-360` and `hotspots` routes, UI in `modernization_visual.py`, `tests/test_visual_ui_behavior.py` (+12 cases), estate Edge acceptance 82 of 82 |
-| E | Report visuals (static SVG) | not started |
+| E | Report visuals (static SVG) | done: executive and technical reports, `tests/test_generic_assessment_journey.py::test_report_visuals_are_static_redacted_and_deterministic` (canaries, no script or URL, determinism across reopen) |
 | F | Lab walkthrough | not started |
 | G | Hardening, Edge acceptance, measurements, docs | not started |
 
