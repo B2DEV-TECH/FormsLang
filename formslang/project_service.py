@@ -35,6 +35,12 @@ from .project_projection import (
 from .project_projection import (
     system_map as project_system_map,
 )
+from .project_projection import (
+    system_map_node as project_system_map_node,
+)
+from .project_projection import (
+    visual_overview as project_visual_overview,
+)
 from .project_store import ProjectStore
 from .projects import ProjectAccess
 
@@ -123,6 +129,10 @@ class ProjectService:
         prepared = self._prepared_projection(freshness)
         return project_overview(prepared) if prepared is not None else None
 
+    def visual_overview(self, *, freshness=None) -> dict | None:
+        prepared = self._prepared_projection(freshness)
+        return project_visual_overview(prepared) if prepared is not None else None
+
     def inventory(self, category: str, *, query="", filters=None, sort="name",
                   offset=0, limit=50, expected_revision=None, freshness=None) -> dict:
         prepared = self._prepared_projection(freshness)
@@ -141,12 +151,19 @@ class ProjectService:
                                         expected_revision=expected_revision)
 
     def system_map(self, *, focus=None, depth=2, layer=None, edge_type=None,
-                   limit=100, edge_limit=200, freshness=None) -> dict:
+                   limit=100, edge_limit=200, view=None, freshness=None) -> dict:
         prepared = self._prepared_projection(freshness)
         if prepared is None:
             raise ProjectError("Analyze the project before opening System Map")
         return project_system_map(prepared, focus=focus, depth=depth, layer=layer,
-                                  edge_type=edge_type, limit=limit, edge_limit=edge_limit)
+                                  edge_type=edge_type, limit=limit, edge_limit=edge_limit,
+                                  view=view)
+
+    def system_map_node(self, node_id: str, *, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening System Map")
+        return project_system_map_node(prepared, node_id)
 
     def search(self, query: str, *, limit: int = 20, freshness=None) -> dict:
         prepared = self._prepared_projection(freshness)

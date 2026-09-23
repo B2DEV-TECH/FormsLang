@@ -11,8 +11,26 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath, PureWindowsPath
 from threading import RLock
 
-from .hotspots import HOTSPOT_SEVERITIES, HOTSPOT_TYPES, detect_estate_hotspots, signal_codes
+from .hotspots import (
+    HOTSPOT_LABELS,
+    HOTSPOT_SEVERITIES,
+    HOTSPOT_TYPES,
+    detect_estate_hotspots,
+    signal_codes,
+)
 from .project_model import ProjectError, RevisionConflict
+from .project_visualization import (
+    attention_matrix,
+    attention_rank,
+    estate_glance,
+    estate_layout,
+    focus_layout,
+    investigation_board,
+    journey,
+    labels_catalog,
+    visual_edge,
+    visual_node,
+)
 
 RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 RECOMMENDATIONS = (
@@ -74,6 +92,8 @@ class PreparedProjection:
     rows: dict[str, tuple[dict, ...]]
     details: dict[tuple[str, str], dict]
     raw_blueprint: dict = field(default_factory=dict)
+    # Derived views of this immutable revision (the module graph); never persisted.
+    memo: dict = field(default_factory=dict, compare=False, hash=False, repr=False)
 
 
 class ProjectionCache:
@@ -1082,7 +1102,19 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
     symbolic reference that resolved to a supplied database object is drawn as
     that object; an unresolved one stays a visibly unresolved node.
     Containment itself is never drawn as a dependency.
+
+    The graph is computed once per prepared revision and shared read-only:
+    callers copy what they return. A review decision creates a new prepared
+    projection, so review overlays refresh without re-analysis and without
+    mutating this graph.
     """
+    cached = prepared.memo.get("architecture_graph")
+    if cached is None:
+        cached = prepared.memo.setdefault("architecture_graph", _build_architecture_graph(prepared))
+    return cached
+
+
+def _build_architecture_graph(prepared: PreparedProjection) -> dict:
     blueprint = prepared.raw_blueprint or {}
     entities = _unique(blueprint.get("entities", []))
     raw_edges = sorted(_unique(blueprint.get("edges", [])).values(), key=lambda e: e["id"])
@@ -1176,6 +1208,7 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
             "module": _logical_name(entity.get("module")),
             "resolution": "UNRESOLVED_REFERENCE" if _map_layer(etype) == "UNRESOLVED" else "OBSERVED",
             "members": 0, "findings_count": 0, "highest_risk": "NONE", "hotspot_count": 0,
+            "review": Counter(),
         }
     for identity in entities:
         node = owner(identity)
@@ -1187,6 +1220,7 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
         if node is None:
             continue
         node["findings_count"] += 1
+        node["review"][row.get("review_state", "PENDING")] += 1
         if node["highest_risk"] == "NONE" or RISK_RANK[row["risk"]] < RISK_RANK[node["highest_risk"]]:
             node["highest_risk"] = row["risk"]
     for hotspot in prepared.rows.get("hotspots", ()):
@@ -1206,7 +1240,8 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
             "is_hotspot": bool(row["hotspot_ids"]),
         })
     edges.sort(key=lambda e: e["id"])
-    return {"nodes": nodes, "edges": edges}
+    return {"nodes": nodes, "edges": edges,
+            "owners": {identity: node for identity, node in sorted(owners.items()) if node in nodes}}
 
 
 def module_relationships(prepared: PreparedProjection, *, rename=None) -> list[dict]:
@@ -1238,6 +1273,23 @@ def _bounded_int(value, name, low, high):
     return value
 
 
+MAP_VIEWS = ("FOCUS", "ESTATE")
+
+
+def _resolve_focus(focus, nodes, forms):
+    """A focus is a node identity or a name; a Form name wins, then the first node by name order."""
+    if focus in nodes:
+        return focus
+    folded = focus.casefold()
+    match = next((n["id"] for n in forms if n["name"].casefold() == folded), None)
+    if match is None:
+        match = next((n["id"] for n in sorted(nodes.values(), key=lambda n: (n["name"].casefold(), n["id"]))
+                      if n["name"].casefold() == folded), None)
+    if match is None:
+        raise ProjectError("Unknown System Map focus; choose a node from the map, the selector or search")
+    return match
+
+
 def system_map(
     prepared: PreparedProjection,
     *,
@@ -1247,39 +1299,39 @@ def system_map(
     edge_type: str | None = None,
     limit: int = 100,
     edge_limit: int = MAP_DEFAULT_EDGES,
+    view: str | None = None,
 ) -> dict:
-    """Bounded module-level architecture around one focus node.
+    """Bounded module-level architecture: the whole estate by lane, or one focus node.
 
+    ``view`` is ``FOCUS`` (the 2.1 behaviour and the default) or ``ESTATE``.
     Node, edge and selector budgets are independent server-side limits; every
     cut is reported in ``truncation`` with the counts that were available.
+    Coordinates are computed for this response only and are never persisted.
     """
     depth = _bounded_int(depth, "depth", 1, MAP_MAX_DEPTH)
     limit = _bounded_int(limit, "node limit", 1, MAP_MAX_NODES)
     edge_limit = _bounded_int(edge_limit, "edge limit", 1, MAP_MAX_EDGES)
     layer = layer.strip().upper() if isinstance(layer, str) and layer.strip() else None
     edge_type = edge_type.strip().upper() if isinstance(edge_type, str) and edge_type.strip() else None
+    view = view.strip().upper() if isinstance(view, str) and view.strip() else "FOCUS"
     if layer is not None and layer not in MAP_LAYERS:
         raise ProjectError("Unknown System Map layer")
     if edge_type is not None and edge_type not in MAP_RELATIONSHIPS:
         raise ProjectError("Unknown System Map relationship")
+    if view not in MAP_VIEWS:
+        raise ProjectError("Unknown System Map view")
     if focus is not None and (not isinstance(focus, str) or len(focus) > 500):
         raise ProjectError("System Map focus must be bounded text")
     graph = _architecture_graph(prepared)
     nodes, all_edges = graph["nodes"], graph["edges"]
     forms = sorted((n for n in nodes.values() if n["type"] == "FORM"),
                    key=lambda n: (n["name"].casefold(), n["id"]))
-    focus_id = None
-    if focus:
-        if focus in nodes:
-            focus_id = focus
-        else:
-            focus_id = next((n["id"] for n in forms if n["name"].casefold() == focus.casefold()), None)
-        if focus_id is None:
-            raise ProjectError("Unknown System Map focus; choose a Form from the selector or search")
-    elif forms:
-        focus_id = forms[0]["id"]
-    elif nodes:
-        focus_id = min(nodes)
+    focus_id = _resolve_focus(focus, nodes, forms) if focus else None
+    if focus_id is None and view == "FOCUS":
+        if forms:
+            focus_id = forms[0]["id"]
+        elif nodes:
+            focus_id = min(nodes)
     selector = forms[:MAP_MAX_SELECTOR]
     if focus_id and nodes.get(focus_id, {}).get("type") == "FORM" and all(f["id"] != focus_id for f in selector):
         # Keep the current focus selectable without exceeding the budget.
@@ -1289,6 +1341,7 @@ def system_map(
         truncation.append({"reason": "SELECTOR_LIMIT", "limit": MAP_MAX_SELECTOR, "available": len(forms)})
     base = {
         "mode": MAP_MODE,
+        "view": view,
         "description": ("Module-level architecture: a Form includes its blocks, items, triggers "
                         "and program units; a package includes its subprograms. Containment is "
                         "not drawn as a dependency."),
@@ -1304,19 +1357,72 @@ def system_map(
                      "truncated": len(forms) > MAP_MAX_SELECTOR},
         "total_estate_nodes": len(nodes),
         "total_estate_edges": len(all_edges),
+        "labels": labels_catalog(),
         **_page_meta(prepared),
     }
+    degree_in, degree_out = Counter(), Counter()
+    for edge in all_edges:
+        degree_out[edge["source"]] += 1
+        degree_in[edge["target"]] += 1
+    order = lambda identity: (nodes[identity]["name"].casefold(), identity)
+
+    def present(identity):
+        return {**visual_node(nodes[identity], fan_in=degree_in[identity], fan_out=degree_out[identity]),
+                "fan_in": degree_in[identity], "fan_out": degree_out[identity],
+                "risk": nodes[identity]["highest_risk"], "is_focus": identity == focus_id}
+
+    def edge_order(e):
+        return (focus_id not in {e["source"], e["target"]}, not e["is_hotspot"], e["classification"],
+                e["source_name"].casefold(), e["target_name"].casefold(), e["id"])
+
+    def finish(kept, reachable_count, candidates):
+        edges = candidates[:edge_limit]
+        if len(candidates) > len(edges):
+            truncation.append({"reason": "EDGE_LIMIT", "limit": edge_limit, "available": len(candidates)})
+        result_nodes = [present(n) for n in sorted(kept, key=order)]
+        result_edges = [visual_edge(copy.deepcopy(e)) for e in edges]
+        by_id = {n["id"]: n for n in result_nodes}
+        if view == "FOCUS" and focus_id in by_id:
+            layout = focus_layout(by_id, result_edges, focus_id)
+        else:
+            layout = estate_layout(by_id, result_edges)
+        return {
+            **base,
+            "nodes": result_nodes,
+            "edges": result_edges,
+            "layout": layout,
+            "total_nodes": len(result_nodes),
+            "total_edges": len(edges),
+            "reachable_nodes": reachable_count,
+            "available_edges": len(candidates),
+            "truncated": bool(truncation),
+            "truncation": truncation,
+        }
+
+    if view == "ESTATE":
+        pool = set(nodes)
+        if edge_type:
+            pool = {n for e in all_edges if e["classification"] == edge_type for n in (e["source"], e["target"])}
+        if layer:
+            pool = {n for n in pool if nodes[n]["layer"] == layer}
+        if focus_id:
+            pool.add(focus_id)
+        # Observed attention decides which nodes a bounded estate view shows first.
+        ranked = sorted(pool, key=lambda n: (n != focus_id, attention_rank(present(n))))
+        kept = set(ranked[:limit])
+        if len(pool) > len(kept):
+            truncation.append({"reason": "NODE_LIMIT", "limit": limit, "available": len(pool)})
+        candidates = sorted((e for e in all_edges if e["source"] in kept and e["target"] in kept
+                             and (not edge_type or e["classification"] == edge_type)), key=edge_order)
+        return finish(kept, len(pool), candidates)
     if focus_id is None:
-        return {**base, "nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0,
-                "reachable_nodes": 0, "available_edges": 0,
-                "truncated": bool(truncation), "truncation": truncation}
+        return finish(set(), 0, [])
     adjacency = defaultdict(set)
     for edge in all_edges:
         if edge_type and edge["classification"] != edge_type:
             continue
         adjacency[edge["source"]].add(edge["target"])
         adjacency[edge["target"]].add(edge["source"])
-    order = lambda identity: (nodes[identity]["name"].casefold(), identity)
     reachable, frontier = {focus_id}, [focus_id]
     for _ in range(depth):
         frontier = sorted({n for current in frontier for n in adjacency[current]} - reachable, key=order)
@@ -1346,32 +1452,70 @@ def system_map(
     kept = set(visited)
     if len(reachable) > len(kept):
         truncation.append({"reason": "NODE_LIMIT", "limit": limit, "available": len(reachable)})
-    candidates = [e for e in all_edges
-                  if e["source"] in kept and e["target"] in kept
-                  and (not edge_type or e["classification"] == edge_type)]
-    candidates.sort(key=lambda e: (focus_id not in {e["source"], e["target"]}, not e["is_hotspot"],
-                                   e["classification"], e["source_name"].casefold(),
-                                   e["target_name"].casefold(), e["id"]))
-    edges = candidates[:edge_limit]
-    if len(candidates) > len(edges):
-        truncation.append({"reason": "EDGE_LIMIT", "limit": edge_limit, "available": len(candidates)})
-    degree_in, degree_out = Counter(), Counter()
-    for edge in all_edges:
-        degree_out[edge["source"]] += 1
-        degree_in[edge["target"]] += 1
-    result_nodes = [{**nodes[n], "fan_in": degree_in[n], "fan_out": degree_out[n],
-                     "risk": nodes[n]["highest_risk"], "is_focus": n == focus_id}
-                    for n in sorted(kept, key=order)]
+    candidates = sorted((e for e in all_edges
+                         if e["source"] in kept and e["target"] in kept
+                         and (not edge_type or e["classification"] == edge_type)), key=edge_order)
+    return finish(kept, len(reachable), candidates)
+
+
+MAP_NODE_MAX_ITEMS = 20
+
+
+def system_map_node(prepared: PreparedProjection, node_id: str) -> dict:
+    """Bounded drawer detail for one map node: relationship counts, hotspots, top findings.
+
+    No source text: a finding carries its name, risk, recommendation and review
+    state; evidence stays behind the existing Inventory and Review surfaces.
+    """
+    if not isinstance(node_id, str) or not node_id or len(node_id) > 500:
+        raise ProjectError("System Map node must be bounded text")
+    graph = _architecture_graph(prepared)
+    nodes, owners = graph["nodes"], graph["owners"]
+    if node_id not in nodes:
+        raise ProjectError("Unknown System Map node")
+    inbound, outbound = Counter(), Counter()
+    for edge in graph["edges"]:
+        if edge["source"] == node_id:
+            outbound[edge["classification"]] += 1
+        if edge["target"] == node_id:
+            inbound[edge["classification"]] += 1
+    findings = sorted((r for r in prepared.rows.get("findings", ())
+                       if owners.get(r.get("entity_id")) == node_id), key=_priority_key)
+    hotspots = sorted((h for h in prepared.rows.get("hotspots", ())
+                       if node_id in {owners.get(e) for e in h.get("affected_entities", ())}),
+                      key=lambda h: (h["severity"] != "HIGH", h["title"].casefold(), h["id"]))
+    fan_in, fan_out = sum(inbound.values()), sum(outbound.values())
+    node = visual_node(nodes[node_id], fan_in=fan_in, fan_out=fan_out)
     return {
-        **base,
-        "nodes": result_nodes,
-        "edges": [copy.deepcopy(e) for e in edges],
-        "total_nodes": len(result_nodes),
-        "total_edges": len(edges),
-        "reachable_nodes": len(reachable),
-        "available_edges": len(candidates),
-        "truncated": bool(truncation),
-        "truncation": truncation,
+        "node": {**node, "fan_in": fan_in, "fan_out": fan_out, "risk": node["highest_risk"]},
+        "relationships": {"inbound": dict(sorted(inbound.items())),
+                          "outbound": dict(sorted(outbound.items()))},
+        "hotspots": [_hotspot_summary(h) for h in hotspots[:MAP_NODE_MAX_ITEMS]],
+        "hotspots_total": len(hotspots),
+        "findings": [{"id": r["id"], "name": r.get("name", ""), "risk": r["risk"],
+                      "recommendation": r.get("recommendation"), "intervention": r.get("intervention"),
+                      "review_state": r["review_state"], "hotspot_ids": list(r.get("hotspot_ids", ()))}
+                     for r in findings[:MAP_NODE_MAX_ITEMS]],
+        "findings_total": len(findings),
+        "labels": labels_catalog(),
+        **_page_meta(prepared),
+    }
+
+
+def visual_overview(prepared: PreparedProjection) -> dict:
+    """Command-center aggregates for Overview; every figure is an observed count."""
+    graph = _architecture_graph(prepared)
+    findings, hotspots = prepared.rows.get("findings", ()), prepared.rows.get("hotspots", ())
+    return {
+        "estate": estate_glance(graph["nodes"]),
+        "relationships": dict(sorted(Counter(e["classification"] for e in graph["edges"]).items())),
+        "matrix": attention_matrix(
+            [{**h, "module": _logical_name(h.get("module"))} for h in hotspots],
+            list(HOTSPOT_TYPES), HOTSPOT_LABELS),
+        "board": investigation_board(findings, hotspots),
+        "journey": journey(prepared.overview_data),
+        "labels": labels_catalog(),
+        **_page_meta(prepared),
     }
 
 
@@ -1466,6 +1610,22 @@ def search_project(prepared: PreparedProjection, query: str, limit: int = 20) ->
                 "action": {"view": "review", "finding_id": fid, "target_id": fid},
             }))
 
+    # Any result that folds into a module-level node can open the System Map on it.
+    owners = _architecture_graph(prepared)["owners"]
+    anchors = {}
+    for category in ("forms", "tables", "views", "business_rules"):
+        for row in prepared.rows.get(category, ()):
+            anchors[(category, row["id"])] = row["id"]
+    for row in prepared.rows.get("packages", ()):
+        anchors[("packages", row["id"])] = next(iter(row.get("entity_ids", ())), None)
+    for category in ("hotspots", "findings"):
+        for row in prepared.rows.get(category, ()):
+            anchors[(category, row["id"])] = row.get("entity_id")
+    for _, item in scored_results:
+        node = owners.get(anchors.get((item["category"], item["id"])))
+        item["map_focus"] = node
+        if node is not None:
+            item["action"].setdefault("map_focus", node)
     scored_results.sort(key=lambda x: (-x[0], x[1]["category"], x[1]["title"], x[1]["id"]))
     return {
         "query": query,
