@@ -134,7 +134,10 @@ VISUAL_PROJECT_STYLE = r'''
   .visual-legend-line.is-hotspot { stroke:var(--risk-high); }
   .visual-legend-node { fill:none;stroke:var(--fl-status-unresolved);stroke-dasharray:5 4; }
   .visual-legend-badge { font-size:11px;color:var(--fl-status-candidate);border:1px dashed var(--fl-status-candidate);border-radius:3px;padding:0 4px; }
-  .visual-drawer-section { border-top:1px solid var(--fl-card-border);padding-top:var(--fl-space-2);margin-top:var(--fl-space-2); }
+  /* The shared shell makes every aside and section a shrinkable flex column; in the
+     height-capped inspector that squeezed each section under the next heading. */
+  .system-map-drawer { display:block; }
+  .visual-drawer-section { display:block;border-top:1px solid var(--fl-card-border);padding-top:var(--fl-space-2);margin-top:var(--fl-space-2); }
   .visual-drawer-section p { margin:4px 0; }
   .visual-drawer-facts { margin:0;display:grid;gap:3px;font-size:12.5px; }
   .visual-drawer-facts div { display:flex;justify-content:space-between;gap:var(--fl-space-2); }
@@ -246,6 +249,13 @@ function visualOverviewKey(data) {
   return [projectUI.activeId, a.analysis_revision || data.analysis_revision || '', a.review_revision ?? data.review_revision ?? '', a.freshness || ''].join('|');
 }
 
+// Saved timestamps are ISO 8601; show minutes and the zone, keep the exact value in the tooltip.
+function visualTimestamp(value) {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::[\d.]+)?(Z|[+-]\d{2}:\d{2})?$/.exec(String(value));
+  if (!m) return String(value);
+  return `${m[1]} ${m[2]}${!m[3] ? '' : m[3] === 'Z' || m[3] === '+00:00' ? ' UTC' : ` UTC${m[3]}`}`;
+}
+
 function visualCoverage(coverage = {}) {
   const forms = coverage.forms || {}, database = coverage.database || {}, libraries = coverage.libraries || {};
   const bar = (done, total, failed) => {
@@ -255,12 +265,18 @@ function visualCoverage(coverage = {}) {
     return `<div class="visual-bar" aria-hidden="true"><i style="width:${width(done)}%"></i>${failedPart}</div>`;
   };
   const failed = Number.isInteger(forms.failed) ? ` · ${forms.failed} failed` : '';
+  // The projection sends supplied sources and, when counted, what was analysed from them;
+  // the two are not the same unit, so no progress bar is drawn between them.
+  const suppliedText = Number.isInteger(database.sources) ? `${database.sources} supplied sources` : '';
+  const databaseText = Number.isInteger(database.analyzed)
+    ? `${database.analyzed} analyzed${suppliedText ? ` from ${suppliedText}` : ''}`
+    : suppliedText || 'Not observed';
   const librariesText = Number.isInteger(libraries.discovered)
     ? `${libraries.discovered} discovered · ${visualCount(libraries.without_semantic_representation)} without semantic representation`
     : 'Not observed';
   return `<section class="visual-panel" aria-labelledby="visual-coverage-title"><h3 id="visual-coverage-title">Source Coverage</h3><dl class="visual-coverage">
     <div><dt>Forms representations</dt><dd>${esc(visualCount(forms.analyzed))} of ${esc(visualCount(forms.discovered))} analyzed${esc(failed)}</dd>${bar(forms.analyzed, forms.discovered, forms.failed)}</div>
-    <div><dt>Database sources</dt><dd>${esc(visualCount(database.analyzed))} analyzed${Number.isInteger(database.discovered) ? ` of ${database.discovered} discovered` : ''}</dd>${bar(database.analyzed, database.discovered, database.failed)}</div>
+    <div><dt>Database sources</dt><dd>${esc(databaseText)}</dd></div>
     <div><dt>PL/SQL libraries</dt><dd>${esc(librariesText)}</dd></div>
   </dl><p class="project-muted">Coverage describes what was read, not how much of the migration is done.</p></section>`;
 }
@@ -339,7 +355,7 @@ function visualCommandCenter(data) {
   const revision = String(assessment.analysis_revision || data.analysis_revision || '').slice(0, 12);
   const assessed = assessment.assessment_timestamp || data.assessment_timestamp;
   return `<section class="visual-command-center" aria-label="Modernization command center">
-    <div class="visual-command-bar"><p class="visual-record">${assessed ? `Assessed ${esc(assessed)}` : 'Not analyzed'}${revision ? ` · Revision ${esc(revision)}` : ''}</p>${visualModeToggle()}${primary}</div>
+    <div class="visual-command-bar"><p class="visual-record">${assessed ? `Assessed <time datetime="${esc(assessed)}" title="${esc(assessed)}">${esc(visualTimestamp(assessed))}</time>` : 'Not analyzed'}${revision ? ` · Revision ${esc(revision)}` : ''}</p>${visualModeToggle()}${primary}</div>
     <section class="visual-panel" aria-labelledby="visual-estate-title"><h3 id="visual-estate-title">Estate at a Glance</h3><div id="visual-estate" aria-live="polite"><p class="project-muted">Loading estate architecture…</p></div></section>
     <div class="visual-two">${visualCoverage(data.source_coverage)}${visualAttentionSummary(data)}</div>
     <section class="visual-panel" aria-labelledby="visual-journey-title"><h3 id="visual-journey-title">Modernization Journey</h3><p class="project-muted">The kind of work each stage asks for, with what the assessment observed. It is not a progress tracker: stages overlap and none is ever marked complete.</p><div id="visual-journey"></div></section>

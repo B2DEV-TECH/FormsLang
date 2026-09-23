@@ -41,6 +41,10 @@ export async function showcaseChecks({evaluate,click,clickSelector,value,wait,ch
   check('showcase map opens with the focus node in view',await evaluate(`(()=>{const c=document.getElementById('system-map-canvas').getBoundingClientRect(),n=document.querySelector('[data-node-id="${form}"]').getBoundingClientRect();return n.left>=c.left&&n.right<=c.right;})()`));
   check('showcase map keeps the return context',await evaluate(`document.getElementById('visual-back')?.textContent.includes('Hotspot')`));
   await screenshot('showcase-3-system-map.png');
+  await clickSelector(`[data-node-id="${form}"]`);
+  await wait(()=>evaluate(`(()=>{const t=document.getElementById('system-map-drawer')?.textContent||'';return t.includes('Identity')&&!t.includes('Loading');})()`),'inspector for APPROVALS');
+  const squeezed=await evaluate(`[...document.querySelectorAll('#system-map-drawer .visual-drawer-section')].filter(s=>s.scrollHeight>s.clientHeight+1).map(s=>s.querySelector('h5')?.textContent)`);
+  check('showcase map inspector sections do not overlap',squeezed.length===0,squeezed);
 
   // 5. Back to the candidate, then Review: FormsLang proposes, a human decides.
   await click('visual-back');await wait(()=>evaluate(`projectUI.view==='hotspots'&&!!document.querySelector('[data-hotspot-review]')`),'back to hotspots');

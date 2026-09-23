@@ -253,7 +253,7 @@ The log is updated per phase with the commit and what was verified.
 | D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | done: `module-360` and `hotspots` routes, UI in `modernization_visual.py`, `tests/test_visual_ui_behavior.py` (+12 cases), estate Edge acceptance 82 of 82 |
 | E | Report visuals (static SVG) | done: executive and technical reports, `tests/test_generic_assessment_journey.py::test_report_visuals_are_static_redacted_and_deterministic` (canaries, no script or URL, determinism across reopen) |
 | F | Lab walkthrough | done: `examples/verify/project_showcase_browser_check.mjs` walks the lab through the real UI (15 checks, part of the Edge acceptance run, 97 of 97), `docs/modernization-lab-walkthrough.md` with five captures from that run |
-| G | Hardening, Edge acceptance, measurements, docs | done: see Hardening below. Local `pytest` 1821 passed, 5 skipped on `754581a`; Edge acceptance 102 of 102 including four viewports; 100/500-Form measurements below |
+| G | Hardening, Edge acceptance, measurements, docs | done: see Hardening below. Local `pytest` 1821 passed, 5 skipped on `754581a`, affected UI, report and visualization suites (215) rerun after the review fixes; Edge acceptance 103 of 103 including four viewports and the inspector layout; 100/500-Form measurements below |
 
 ## Measurements
 
@@ -315,6 +315,16 @@ Only measured results are written here.
   opened in 2.2 as CURRENT with the same analysis revision, no reanalysis, and
   served the visual overview, System Map (55 nodes), Hotspot Explorer (6),
   Module 360, an executive report with both figures and a Review decision.
+- Product review of Overview → Start Here → Hotspot → System Map → Module 360
+  → Review at the four viewports found three defects, all fixed:
+  - the System Map inspector squeezed each section under the next heading,
+    because the shell styles every `aside` and `section` as a shrinkable flex
+    column (Edge now checks that no inspector section overflows);
+  - Source Coverage read a `database.discovered` field the projection never
+    sends and showed "Not observed analyzed"; it now reports the supplied
+    database sources;
+  - the command bar showed the raw ISO assessment timestamp; it now shows
+    minutes and the zone, with the exact value kept in the tooltip.
 
 ## Follow-ups (not in 2.2)
 

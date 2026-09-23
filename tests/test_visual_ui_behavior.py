@@ -51,7 +51,7 @@ def test_command_center_renders_overview_and_fills_visuals_from_the_visual_endpo
 projectUI.activeId='a';projectUI.summary=summary;api=visualApi();
 renderProjectOverview(overviewData);await new Promise(r=>setImmediate(r));
 const html=$('project-content').innerHTML;
-assert.match(html,/Modernization command center/);assert.match(html,/Assessed 2026-09-20T12:00:00Z · Revision r/);
+assert.match(html,/Modernization command center/);assert.match(html,/Assessed <time datetime="2026-09-20T12:00:00Z" title="2026-09-20T12:00:00Z">2026-09-20 12:00 UTC<\/time> · Revision r/);
 assert.match(html,/Start Priority Review/);assert.match(html,/aria-label="Presentation mode"/);
 assert.match(html,/Source Coverage/);assert.match(html,/2 of 3 analyzed · 1 failed/);
 assert.match(html,/Architecture Attention/);assert.match(html,/data-status="CANDIDATE"/);assert.match(html,/data-status="PROPOSED"/);
@@ -78,6 +78,23 @@ assert.match(html,/Not observed of Not observed analyzed/);
 assert.match(html,/Unresolved CRITICAL findings<\/button><span><span[^>]*>Proposed<\/span> <b>Not observed<\/b>/);
 assert.match(html,/Hotspot candidates<\/button><span><span[^>]*>Candidate<\/span> <b>Not observed<\/b>/);
 assert.match(html,/Explore System Map/);assert.ok(!html.includes('visual-bar'));
+''')
+
+
+def test_coverage_uses_the_projection_shape_and_a_readable_timestamp(tmp_path):
+    # The projection sends database {sources, analyzed}; analyzed is null when not counted.
+    run_js(tmp_path, r'''
+projectUI.activeId='a';projectUI.summary=summary;api=visualApi();
+const coverage=database=>({...overviewData,assessment:{...overviewData.assessment,assessment_timestamp:'2026-09-23T23:22:04.766385+00:00'},source_coverage:{forms:{discovered:4,analyzed:4},database,libraries:{discovered:0,without_semantic_representation:0}}});
+renderProjectOverview(coverage({sources:20,analyzed:null}));
+let html=$('project-content').innerHTML;
+assert.match(html,/Database sources<\/dt><dd>20 supplied sources<\/dd>/);assert.ok(!html.includes('Not observed analyzed'));
+assert.match(html,/4 of 4 analyzed<\/dd>/);assert.match(html,/>2026-09-23 23:22 UTC<\/time>/);
+renderProjectOverview(coverage({sources:20,analyzed:18}));
+assert.match($('project-content').innerHTML,/Database sources<\/dt><dd>18 analyzed from 20 supplied sources<\/dd><\/div>/);
+renderProjectOverview({...coverage({}),assessment:{...overviewData.assessment,assessment_timestamp:'not-a-date'}});
+html=$('project-content').innerHTML;
+assert.match(html,/Database sources<\/dt><dd>Not observed<\/dd>/);assert.match(html,/>not-a-date<\/time>/);
 ''')
 
 
