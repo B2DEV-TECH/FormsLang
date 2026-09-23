@@ -1,280 +1,158 @@
-"""Estate Intelligence tests for FormsLang 2.1+.
+"""Contract edge cases for Estate Intelligence hotspots.
 
-Tests the 4 authoritative Hotspot Anti-Pattern Detectors (§88, §89, §107),
-the deterministic logarithmic 'Start Here' priority ranking algorithm (§4),
-and Overview Cockpit read models.
+The journeys in test_estate_intelligence.py start from real XML and PL/SQL. The
+cases here pin boundaries that are awkward to author as source files. Every
+structure below uses the exact producer shapes of blueprint._Builder: signal
+codes carried as ``[CODE]`` statement prefixes, ``SUBPROGRAM_BODY`` writers,
+symbolic references resolved through ``resolved_target``, and unit attributes
+``source_text``/``bind_references``/``inputs``.
 """
 
+from __future__ import annotations
+
 import math
+import random
 
 from formslang.hotspots import (
     HOTSPOT_API_BYPASS,
-    HOTSPOT_DUPLICATED_RULE,
-    HOTSPOT_GLOBAL_STATE,
-    HOTSPOT_OWNERSHIP_CONFLICT,
-    detect_api_bypass_candidates,
-    detect_cross_layer_ownership_conflicts,
-    detect_duplicated_rule_clusters,
     detect_estate_hotspots,
-    detect_global_state_couplings,
-    is_temp_table,
+    hotspot_id,
+    signal_codes,
 )
 from formslang.project_projection import overview, prepare_projection
 
-
-def test_is_temp_table_detection():
-    assert is_temp_table("TMP_ORDERS")
-    assert is_temp_table("temp_session_data")
-    assert is_temp_table("GTT_INVOICES")
-    assert is_temp_table("WRK_BATCH")
-    assert not is_temp_table("ORDERS")
-    assert not is_temp_table("CUSTOMER_ACCOUNTS")
+GUARDED = ("select state into v from t where id = p for update; "
+           "update t set state = 'X' where id = p; "
+           "if sql%rowcount = 0 then raise_application_error(-20001, 'missing'); end if;")
 
 
-def test_detect_api_bypass_candidate_via_graph():
-    blueprint = {
+def finding(entity, *codes, target=""):
+    return {"id": entity, "entity": entity, "recommendation": "MANUAL_REVIEW",
+            "suggested_target": target, "execution_verdict": "MANUAL",
+            "evidence": [f"evidence:{entity}"],
+            "statements": [{"level": "INFERENCE", "text": "Plain prose mentions [NOT_A_CODE] late."},
+                           *({"level": "INFERENCE", "text": f"[{c}] engine statement"} for c in codes)]}
+
+
+def bypass_blueprint(*, resolved=True, writer_table="table:ledger"):
+    return {
         "entities": [
-            {"id": "trigger:t1", "type": "TRIGGER", "name": "ON-INSERT", "module": "orders.xml"},
-            {"id": "table:orders", "type": "TABLE", "name": "ORDERS", "module": "db/schema.sql"},
-            {"id": "pkg:api", "type": "PACKAGE_SPEC", "name": "ORDER_API", "module": "db/order_api.pks"},
+            {"id": "form:entry", "type": "FORM", "name": "ENTRY", "module": "r/entry.xml", "attributes": {}},
+            {"id": "trigger:save", "type": "TRIGGER", "name": "WHEN-BUTTON-PRESSED", "module": "r/entry.xml",
+             "attributes": {"owner": "B.SAVE", "source_text": "update ledger set state = 'X';",
+                            "bind_references": [], "inputs": []}},
+            {"id": "ref:ledger", "type": "TABLE_OR_VIEW_REFERENCE", "name": "LEDGER", "module": "",
+             "attributes": {},
+             **({"resolution": "RESOLVED_TO_DATABASE_OBJECT", "resolved_target": "table:ledger"}
+                if resolved else {})},
+            {"id": "table:ledger", "type": "TABLE", "name": "LEDGER", "module": "db/a.sql", "attributes": {}},
+            {"id": "table:ledger_other", "type": "TABLE", "name": "LEDGER", "module": "db/b.sql",
+             "attributes": {}},
+            {"id": "ref:ledger_db", "type": "TABLE_OR_VIEW_REFERENCE", "name": "LEDGER", "module": "",
+             "attributes": {}, "resolution": "RESOLVED_TO_DATABASE_OBJECT", "resolved_target": writer_table},
+            {"id": "sub:api.touch", "type": "SUBPROGRAM_BODY", "name": "API.TOUCH", "module": "db/api.pkb",
+             "attributes": {"package": "API", "source_text": GUARDED}},
         ],
         "edges": [
-            {"id": "e1", "type": "WRITES", "source": "trigger:t1", "target": "table:orders"},
-            {"id": "e2", "type": "WRITES", "source": "pkg:api", "target": "table:orders"},
+            {"id": "e1", "type": "WRITES", "source": "trigger:save", "target": "ref:ledger", "evidence": ["x"]},
+            {"id": "e2", "type": "WRITES", "source": "sub:api.touch", "target": "ref:ledger_db", "evidence": ["y"]},
         ],
-        "findings": [],
+        "findings": [finding("trigger:save", "DIRECT_DML_BYPASSES_API", target="API.TOUCH")],
+        "evidence": [],
     }
-    hotspots = detect_api_bypass_candidates(blueprint)
-    assert len(hotspots) == 1
-    h = hotspots[0]
-    assert h.hotspot_type == HOTSPOT_API_BYPASS
-    assert h.severity == "CRITICAL"
-    assert h.entity_id == "trigger:t1"
-    assert h.evidence["table"] == "ORDERS"
-    assert h.evidence["bypassed_package"] == "ORDER_API"
 
 
-def test_detect_api_bypass_ignores_temp_tables():
-    blueprint = {
-        "entities": [
-            {"id": "trigger:t1", "type": "TRIGGER", "name": "POST-QUERY", "module": "orders.xml"},
-            {"id": "table:tmp", "type": "TABLE", "name": "TMP_ORDERS", "module": "db/schema.sql"},
-            {"id": "pkg:api", "type": "PACKAGE_SPEC", "name": "ORDER_API", "module": "db/order_api.pks"},
-        ],
-        "edges": [
-            {"id": "e1", "type": "WRITES", "source": "trigger:t1", "target": "table:tmp"},
-            {"id": "e2", "type": "WRITES", "source": "pkg:api", "target": "table:tmp"},
-        ],
-        "findings": [],
-    }
-    hotspots = detect_api_bypass_candidates(blueprint)
-    assert len(hotspots) == 0
+def test_signal_codes_read_only_the_canonical_prefix():
+    assert signal_codes(finding("t", "DIRECT_DML_BYPASSES_API")) == {"DIRECT_DML_BYPASSES_API"}
+    assert signal_codes({"code": "DIRECT_DML_BYPASSES_API", "statements": []}) == frozenset()
+    assert signal_codes({"statements": [{"text": "[lower] no"}, {"text": " [SPACED] no"}]}) == frozenset()
 
 
-def test_detect_duplicated_rule_clusters():
-    blueprint = {
-        "entities": [
-            {"id": "trigger:t1", "type": "TRIGGER", "name": "WVI_DISCOUNT", "module": "orders.xml"},
-            {"id": "trigger:t2", "type": "TRIGGER", "name": "WVI_RATE", "module": "invoices.xml"},
-        ],
-        "findings": [
-            {
-                "id": "f1",
-                "entity": "trigger:t1",
-                "code": "LOGIC_DUPLICATED_PREDICATE",
-                "target": "DISCOUNT_RULE",
-                "statement": "Validates discount threshold",
-            },
-            {
-                "id": "f2",
-                "entity": "trigger:t2",
-                "code": "LOGIC_DUPLICATED_PREDICATE",
-                "target": "DISCOUNT_RULE",
-                "statement": "Validates discount threshold",
-            },
-        ],
-    }
-    clusters = detect_duplicated_rule_clusters(blueprint)
-    assert len(clusters) == 1
-    c = clusters[0]
-    assert c.hotspot_type == HOTSPOT_DUPLICATED_RULE
-    assert c.severity == "HIGH"
-    assert c.evidence["occurrences"] == 2
-    assert "orders.xml" in c.evidence["modules"]
-    assert "invoices.xml" in c.evidence["modules"]
+def test_resolved_co_writer_with_guards_is_a_high_candidate():
+    result = detect_estate_hotspots(bypass_blueprint())
+    (hotspot,) = result["hotspots"]
+    assert hotspot["hotspot_type"] == HOTSPOT_API_BYPASS and hotspot["severity"] == "HIGH"
+    assert hotspot["evidence"]["potential_existing_api_owners"] == ["API.TOUCH"]
+    assert hotspot["id"] == hotspot_id(HOTSPOT_API_BYPASS, "trigger:save", "table:ledger")
 
 
-def test_detect_global_state_coupling_with_navigation():
-    blueprint = {
-        "entities": [
-            {
-                "id": "unit:auth",
-                "type": "TRIGGER",
-                "name": "PRE-FORM",
-                "module": "login.xml",
-                "attributes": {
-                    "source": ":GLOBAL.USER_TOKEN := 'XYZ'; CALL_FORM('ORDERS');",
-                },
-            },
-            {
-                "id": "unit:orders",
-                "type": "TRIGGER",
-                "name": "WHEN-NEW-FORM-INSTANCE",
-                "module": "orders.xml",
-                "attributes": {
-                    "source": "IF :GLOBAL.USER_TOKEN IS NULL THEN RAISE FORM_TRIGGER_FAILURE; END IF;",
-                },
-            },
-        ],
-        "edges": [],
-        "findings": [],
-    }
-    hotspots = detect_global_state_couplings(blueprint)
-    assert len(hotspots) == 1
-    h = hotspots[0]
-    assert h.hotspot_type == HOTSPOT_GLOBAL_STATE
-    assert h.severity == "HIGH"  # Elevated due to CALL_FORM
-    assert h.evidence["variable"] == ":GLOBAL.USER_TOKEN"
-    assert "login.xml" in h.evidence["writers"]
-    assert "orders.xml" in h.evidence["readers"]
-    assert h.evidence["cross_module_navigation"] is True
+def test_unresolved_reference_is_never_promoted_to_a_bypass():
+    assert detect_estate_hotspots(bypass_blueprint(resolved=False))["total"] == 0
 
 
-def test_detect_global_state_coupling_without_navigation():
-    blueprint = {
-        "entities": [
-            {
-                "id": "unit:m1",
-                "type": "TRIGGER",
-                "name": "POST-CHANGE",
-                "module": "m1.xml",
-                "attributes": {"source": ":GLOBAL.SHARED_COUNTER := 1;"},
-            },
-            {
-                "id": "unit:m2",
-                "type": "TRIGGER",
-                "name": "PRE-QUERY",
-                "module": "m2.xml",
-                "attributes": {"source": ":BLOCK.ITEM := :GLOBAL.SHARED_COUNTER;"},
-            },
-        ],
-        "edges": [],
-        "findings": [],
-    }
-    hotspots = detect_global_state_couplings(blueprint)
-    assert len(hotspots) == 1
-    h = hotspots[0]
-    assert h.hotspot_type == HOTSPOT_GLOBAL_STATE
-    assert h.severity == "MEDIUM"  # No cross-module navigation
+def test_same_named_table_in_another_source_is_not_the_same_table():
+    assert detect_estate_hotspots(bypass_blueprint(writer_table="table:ledger_other"))["total"] == 0
 
 
-def test_detect_cross_layer_ownership_conflicts():
-    blueprint = {
-        "entities": [
-            {"id": "trigger:chk", "type": "TRIGGER", "name": "WVI_AGE", "module": "customer.xml"},
-        ],
-        "findings": [
-            {
-                "id": "f_conflict",
-                "entity": "trigger:chk",
-                "code": HOTSPOT_OWNERSHIP_CONFLICT,
-                "statement": "Form trigger allows age > 18 while DB check constraint enforces age >= 21",
-                "reason": "Boundary divergence on CUSTOMER.AGE",
-            },
-        ],
-    }
-    conflicts = detect_cross_layer_ownership_conflicts(blueprint)
-    assert len(conflicts) == 1
-    assert conflicts[0].hotspot_type == HOTSPOT_OWNERSHIP_CONFLICT
-    assert conflicts[0].severity == "CRITICAL"
+def test_signal_without_structural_co_writer_produces_nothing():
+    blueprint = bypass_blueprint()
+    blueprint["edges"] = [e for e in blueprint["edges"] if e["id"] != "e2"]
+    assert detect_estate_hotspots(blueprint)["total"] == 0
 
 
-def test_detect_estate_hotspots_aggregation():
-    blueprint = {
-        "entities": [
-            {"id": "t1", "type": "TRIGGER", "name": "T1", "module": "m1.xml"},
-            {"id": "t2", "type": "TRIGGER", "name": "T2", "module": "m2.xml"},
-            {"id": "table:1", "type": "TABLE", "name": "T_DATA", "module": "db.sql"},
-            {"id": "pkg:1", "type": "PACKAGE_SPEC", "name": "DATA_API", "module": "db.pks"},
-        ],
-        "edges": [
-            {"id": "e1", "type": "WRITES", "source": "t1", "target": "table:1"},
-            {"id": "e2", "type": "WRITES", "source": "pkg:1", "target": "table:1"},
-        ],
-        "findings": [
-            {"id": "f1", "entity": "t2", "code": HOTSPOT_OWNERSHIP_CONFLICT, "statement": "Divergent check"},
-        ],
-    }
-    summary = detect_estate_hotspots(blueprint)
-    assert summary["total"] == 2
-    assert summary["by_type"]["api_bypass"] == 1
-    assert summary["by_type"]["cross_layer_conflict"] == 1
+def global_blueprint(modules):
+    entities, edges = [], []
+    entities.append({"id": "g:x", "type": "GLOBAL_REFERENCE", "name": "GLOBAL.X", "module": "",
+                     "attributes": {}})
+    for index, (module, writes) in enumerate(modules):
+        unit = f"trigger:{index}"
+        entities.append({"id": unit, "type": "TRIGGER", "name": "T", "module": module, "attributes": {
+            "owner": "B", "bind_references": ["GLOBAL.X"], "inputs": [] if writes else ["GLOBAL.X"]}})
+        edges.append({"id": f"e{index}", "type": "REFERENCES", "source": unit, "target": "g:x"})
+    return {"entities": entities, "edges": edges, "findings": [], "evidence": []}
 
 
-def test_start_here_priority_scoring_formula():
-    descriptor = {
-        "id": "p_test",
-        "name": "Estate Test",
-        "source_roots": [{"id": "src", "kind": "forms", "path": "."}],
-        "target": {"platform": "Oracle APEX", "version": "26.1", "representation": "APEXlang"},
-    }
-    # 1 critical finding with 3 fan-in edges and API bypass
-    assessment = {
-        "status": "Current",
-        "analysis_revision": "a" * 64,
-        "source_revision": "b" * 64,
-        "review_revision": 0,
-        "analyzed_at": "2026-09-21T12:00:00Z",
-        "blueprint": {
-            "entities": [
-                {"id": "form:main", "type": "FORM", "name": "MAIN", "module": "main.xml"},
-                {"id": "trigger:t1", "type": "TRIGGER", "name": "WVI", "module": "main.xml", "attributes": {"risk": {"level": "CRITICAL"}}},
-                {"id": "sub1", "type": "PROGRAM_UNIT", "name": "CALLER1", "module": "main.xml"},
-                {"id": "sub2", "type": "PROGRAM_UNIT", "name": "CALLER2", "module": "main.xml"},
-                {"id": "sub3", "type": "PROGRAM_UNIT", "name": "CALLER3", "module": "main.xml"},
-            ],
-            "edges": [
-                {"id": "e1", "type": "CALLS", "source": "sub1", "target": "trigger:t1"},
-                {"id": "e2", "type": "CALLS", "source": "sub2", "target": "trigger:t1"},
-                {"id": "e3", "type": "CALLS", "source": "sub3", "target": "trigger:t1"},
-            ],
-            "findings": [
-                {
-                    "id": "finding:crit_bypass",
-                    "entity": "trigger:t1",
-                    "code": "DIRECT_DML_BYPASSES_API",
-                    "recommendation": "MANUAL_REVIEW",
-                    "execution_verdict": "MANUAL",
-                    "reason": "Direct DML bypasses API",
-                    "classification": ["BUSINESS_RULE"],
-                    "statements": [],
-                    "evidence": [],
-                },
-            ],
-        },
-        "inventory": {},
-    }
-    prepared = prepare_projection(descriptor, assessment, {"status": "CURRENT"}, store_scope="test_store")
-    result = overview(prepared)
+def test_global_state_needs_two_modules_and_grades_observed_cross_flow():
+    assert detect_estate_hotspots(global_blueprint([("r/a.xml", True), ("r/a.xml", False)]))["total"] == 0
+    shared = detect_estate_hotspots(global_blueprint([("r/a.xml", False), ("r/b.xml", False)]))
+    assert shared["hotspots"][0]["severity"] == "MEDIUM"
+    flow = detect_estate_hotspots(global_blueprint([("r/a.xml", True), ("r/b.xml", False)]))
+    assert flow["hotspots"][0]["severity"] == "HIGH"
+    assert flow["hotspots"][0]["evidence"]["observed_writers"] == ["r/a.xml"]
 
-    # Check overview contains hotspots
-    assert "hotspots" in result
-    assert result["inventory"]["architectural_hotspots"] >= 0
 
-    # Check priority summary and start_here ranking
-    priority = result["priority"]
-    assert priority["total"] == 1
-    assert len(priority["start_here"]) == 1
-    top = priority["start_here"][0]
+def test_duplicated_rule_severity_depends_on_module_spread():
+    one = {"entities": [
+        {"id": "t1", "type": "TRIGGER", "name": "A", "module": "r/a.xml", "attributes": {}},
+        {"id": "t2", "type": "TRIGGER", "name": "B", "module": "r/a.xml", "attributes": {}},
+        {"id": "sub", "type": "SUBPROGRAM_BODY", "name": "API.F", "module": "db/api.pkb", "attributes": {}}],
+        "edges": [], "evidence": [],
+        "findings": [finding("t1", "LOGIC_DUPLICATED_FORMULA", target="API.F"),
+                     finding("t2", "LOGIC_DUPLICATED_QUERY", target="API.F")]}
+    (hotspot,) = detect_estate_hotspots(one)["hotspots"]
+    assert hotspot["severity"] == "MEDIUM"
+    assert hotspot["evidence"]["match_kinds"] == ["LOGIC_DUPLICATED_FORMULA", "LOGIC_DUPLICATED_QUERY"]
+    one["entities"][1]["module"] = "r/b.xml"
+    assert detect_estate_hotspots(one)["hotspots"][0]["severity"] == "HIGH"
 
-    # Verify calculation:
-    # Base: 100 (CRITICAL)
-    # FanIn: 3 -> log2(1 + 3) = 2.0 -> 0.2 * 2.0 = 0.40
-    # IsBypass: True -> +0.30
-    # Expected multiplier: 1.0 + 0.40 + 0.30 = 1.70
-    # Expected score: 100 * 1.70 = 170.0
-    expected_score = round(100.0 * (1.0 + 0.2 * math.log2(4) + 0.30), 1)
-    assert top["score"] == expected_score
-    assert any("Base Severity: 100" in b for b in top["breakdown"])
-    assert any("Fan-In: 3" in b for b in top["breakdown"])
-    assert any("API Bypass: Yes" in b for b in top["breakdown"])
+
+def test_output_is_independent_of_input_order():
+    blueprint = bypass_blueprint()
+    baseline = detect_estate_hotspots(blueprint)
+    for seed in range(5):
+        shuffled = {key: list(value) if isinstance(value, list) else value for key, value in blueprint.items()}
+        for key in ("entities", "edges", "findings"):
+            random.Random(seed).shuffle(shuffled[key])
+        assert detect_estate_hotspots(shuffled) == baseline
+
+
+def test_start_here_explains_priority_from_engine_signals():
+    blueprint = bypass_blueprint()
+    blueprint["entities"][1]["attributes"]["risk"] = {"level": "CRITICAL"}
+    for index in range(3):
+        blueprint["entities"].append({"id": f"pu{index}", "type": "PROGRAM_UNIT", "name": f"P{index}",
+                                      "module": "r/entry.xml", "attributes": {}})
+        blueprint["edges"].append({"id": f"c{index}", "type": "CALLS", "source": f"pu{index}",
+                                   "target": "trigger:save"})
+    assessment = {"status": "Current", "analysis_revision": "a" * 64, "source_revision": "b" * 64,
+                  "review_revision": 0, "analyzed_at": "2026-09-21T12:00:00Z", "blueprint": blueprint}
+    prepared = prepare_projection({"id": "p" * 32, "name": "Estate"}, assessment, {"status": "CURRENT"},
+                                  store_scope="test")
+    (top,) = overview(prepared)["priority"]["start_here"]
+    fan_in = 1 + 3  # log2(1 + three callers)
+    assert top["signals"] == ("DIRECT_DML_BYPASSES_API",)
+    assert top["hotspot_ids"] and "HOTSPOT_CANDIDATE" in top["factors"]
+    assert "API_BYPASS" in top["factors"]
+    expected = round(100.0 * (1.0 + 0.2 * math.log2(fan_in) + 0.30 + 0.25), 1)
+    assert top["score"] == expected
+    assert any(line.startswith("Measured risk: CRITICAL") for line in top["breakdown"])

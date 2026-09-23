@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import math
-from collections import Counter, OrderedDict, defaultdict, deque
+from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath, PureWindowsPath
 from threading import RLock
 
-from .hotspots import detect_estate_hotspots
+from .hotspots import HOTSPOT_SEVERITIES, HOTSPOT_TYPES, detect_estate_hotspots, signal_codes
 from .project_model import ProjectError, RevisionConflict
 
 RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
@@ -50,6 +52,7 @@ CATEGORIES = (
 )
 SORTS = {"name", "risk", "recommendation", "intervention", "module", "type", "priority"}
 MAX_OVERVIEW_WARNINGS = 50
+MAX_OVERVIEW_HOTSPOTS = 20
 
 
 @dataclass(frozen=True)
@@ -191,36 +194,23 @@ def _safe_entity(node, findings_by_entity, dependency_count):
     }
 
 
-def _statement_codes(item):
-    codes = set()
-    statements = item.get("statements") if isinstance(item.get("statements"), list) else []
-    for statement in statements:
-        text = statement.get("text") if isinstance(statement, dict) else None
-        if not isinstance(text, str) or not text.startswith("[") or "]" not in text:
-            continue
-        code = text[1 : text.index("]")]
-        if code and all(
-            character.isupper() or character.isdigit() or character == "_"
-            for character in code
-        ):
-            codes.add(code)
-    return codes
-
-
-def _finding_rows(findings, entities, centrality, evidence_by_entity, fan_in=None):
+def _finding_rows(findings, entities, centrality, evidence_by_entity, fan_in=None,
+                  hotspots_by_finding=None):
     rows = []
     fan_in = fan_in or {}
+    hotspots_by_finding = hotspots_by_finding or {}
     for item in sorted(findings.values(), key=lambda value: value["id"]):
         entity = entities.get(item.get("entity"), {})
         attributes = (
             entity.get("attributes") if isinstance(entity.get("attributes"), dict) else {}
         )
         risk = attributes.get("risk") if isinstance(attributes.get("risk"), dict) else {}
-        signal_codes = _statement_codes(item)
+        # The engine's structural signal codes are the only evidence read here.
+        codes = signal_codes(item)
         evidence_factors = set(evidence_by_entity.get(item.get("entity"), ()))
-        if "DIRECT_DML_BYPASSES_API" in signal_codes:
+        if "DIRECT_DML_BYPASSES_API" in codes:
             evidence_factors.add("API_BYPASS")
-        if any(code.startswith("LOGIC_DUPLICATED_") for code in signal_codes):
+        if any(code.startswith("LOGIC_DUPLICATED_") for code in codes):
             evidence_factors.add("DUPLICATED_LOGIC")
 
         risk_level = _bucket(risk.get("level"), RISK_LEVELS)
@@ -228,26 +218,25 @@ def _finding_rows(findings, entities, centrality, evidence_by_entity, fan_in=Non
         eid = item.get("entity")
         fan_in_count = fan_in.get(eid, 0)
         fan_in_multiplier = 0.2 * math.log2(1.0 + fan_in_count)
-        is_bypass = ("API_BYPASS" in evidence_factors) or (
-            item.get("code") in ("DIRECT_DML_BYPASSES_API", "API_BYPASS_CANDIDATE")
-        )
+        is_bypass = "API_BYPASS" in evidence_factors
         bypass_multiplier = 0.3 if is_bypass else 0.0
-        has_existing_api = bool(item.get("duplicates")) or (
-            "DUPLICATED_LOGIC" in evidence_factors
-        )
+        # Both signals name an existing database subprogram the unit does not call.
+        has_existing_api = is_bypass or "DUPLICATED_LOGIC" in evidence_factors
         api_multiplier = 0.25 if has_existing_api else 0.0
         priority_score = round(
             base * (1.0 + fan_in_multiplier + bypass_multiplier + api_multiplier), 1
         )
 
-        breakdown = [f"Base Severity: {int(base)} ({risk_level})"]
+        breakdown = [f"Measured risk: {risk_level} (base {int(base)})"]
         if fan_in_count > 0:
-            breakdown.append(f"Fan-In: {fan_in_count} (+{fan_in_multiplier:.2f}x)")
+            breakdown.append(
+                f"Referenced by {fan_in_count} relationship(s) (+{fan_in_multiplier:.2f}x)"
+            )
         if is_bypass:
-            breakdown.append("API Bypass: Yes (+0.30x)")
+            breakdown.append("Engine signal: possible API bypass (+0.30x)")
         if has_existing_api:
-            breakdown.append("Existing API: Yes (+0.25x)")
-        breakdown.append(f"Priority Score: {priority_score}")
+            breakdown.append("Existing database subprogram named by the signal (+0.25x)")
+        breakdown.append(f"Priority score: {priority_score}")
 
         rows.append(
             {
@@ -269,6 +258,8 @@ def _finding_rows(findings, entities, centrality, evidence_by_entity, fan_in=Non
                     )
                 ),
                 "evidence_factors": tuple(sorted(evidence_factors)),
+                "signals": tuple(sorted(codes)),
+                "hotspot_ids": tuple(hotspots_by_finding.get(item["id"], ())),
                 "dependency_centrality": centrality.get(item.get("entity"), 0),
                 "priority_score": priority_score,
                 "priority_breakdown": tuple(breakdown),
@@ -296,6 +287,8 @@ def _priority_factors(row):
     if row["review_state"] == "STALE":
         factors.append("STALE_DECISION")
     factors.extend(row.get("evidence_factors", ()))
+    if row.get("hotspot_ids"):
+        factors.append("HOTSPOT_CANDIDATE")
     if row.get("dependency_centrality", 0):
         factors.append("DEPENDENCY_CENTRALITY")
     return tuple(factors)
@@ -502,14 +495,24 @@ def prepare_projection(
             fan_in[target] += 1
         for endpoint in {source, target}:
             dependency_counts[endpoint] += 1
-        if edge.get("type") == "DUPLICATES_LOGIC":
-            evidence_by_entity[source].add("DUPLICATED_LOGIC")
         source_module = _logical_name(entities.get(source, {}).get("module"))
         target_module = _logical_name(entities.get(target, {}).get("module"))
         if source_module and target_module and source_module != target_module:
             evidence_by_entity[source].add("CROSS_MODULE_IMPACT")
             evidence_by_entity[target].add("CROSS_MODULE_IMPACT")
-    finding_rows = _finding_rows(findings, entities, centrality, evidence_by_entity, fan_in)
+    blueprint = (
+        assessment.get("blueprint", {})
+        if isinstance(assessment.get("blueprint"), dict)
+        else {}
+    )
+    hotspot_results = detect_estate_hotspots(blueprint)
+    hotspots_by_finding = defaultdict(list)
+    for hotspot in hotspot_results["hotspots"]:
+        for finding_id in hotspot["finding_ids"]:
+            hotspots_by_finding[finding_id].append(hotspot["id"])
+    finding_rows = _finding_rows(
+        findings, entities, centrality, evidence_by_entity, fan_in, hotspots_by_finding
+    )
     finding_rows = tuple(
         {**row, "priority_factors": _priority_factors(row)} for row in finding_rows
     )
@@ -578,19 +581,15 @@ def prepare_projection(
         for row in finding_rows
         if "BUSINESS_RULE" in row["classification"]
     )
-    blueprint = (
-        assessment.get("blueprint", {})
-        if isinstance(assessment.get("blueprint"), dict)
-        else {}
-    )
-    hotspot_results = detect_estate_hotspots(blueprint)
     hotspot_rows = tuple(
         {
-            **h,
-            "entity_ids": h.get("affected_entities", ()),
-            "_member_ids": h.get("affected_entities", ()),
+            **copy.deepcopy(h),
+            "name": h["title"],
+            "source_type": h["label"],
+            "entity_ids": tuple(h["affected_entities"]),
+            "_member_ids": tuple(h["affected_entities"]),
         }
-        for h in hotspot_results.get("hotspots", [])
+        for h in hotspot_results["hotspots"]
     )
     rows = {
         "forms": forms,
@@ -687,7 +686,17 @@ def prepare_projection(
         "hotspots": {
             "total": hotspot_results["total"],
             "by_type": hotspot_results["by_type"],
-            "items": hotspot_results["hotspots"][:20],
+            "by_severity": {
+                value: sum(h["severity"] == value for h in hotspot_results["hotspots"])
+                for value in HOTSPOT_SEVERITIES
+            },
+            "types": list(HOTSPOT_TYPES),
+            "classification": "CANDIDATE",
+            "items": [
+                _hotspot_summary(h)
+                for h in hotspot_results["hotspots"][:MAX_OVERVIEW_HOTSPOTS]
+            ],
+            "shown": min(hotspot_results["total"], MAX_OVERVIEW_HOTSPOTS),
         },
         "source_coverage": {
             "forms": {
@@ -742,6 +751,24 @@ def prepare_projection(
     )
 
 
+def _hotspot_summary(hotspot):
+    """The bounded Overview card: what, where, why, and where the evidence is."""
+    return {
+        "id": hotspot["id"],
+        "hotspot_type": hotspot["hotspot_type"],
+        "label": hotspot["label"],
+        "classification": hotspot["classification"],
+        "severity": hotspot["severity"],
+        "title": hotspot["title"],
+        "statement": hotspot["statement"],
+        "module": _logical_name(hotspot["module"]),
+        "finding_ids": list(hotspot["finding_ids"][:10]),
+        "evidence_count": len(hotspot["evidence_refs"]) + len(hotspot["edge_refs"]),
+        "uncertainty": list(hotspot["uncertainty"][:3]),
+        "recommended_action": hotspot["recommended_action"],
+    }
+
+
 def overview(prepared: PreparedProjection) -> dict:
     """Return a fresh bounded overview dictionary safe for adapter serialization."""
     result = {}
@@ -778,6 +805,9 @@ def _priority_summary(finding_rows):
                 "score": r.get("priority_score", 0.0),
                 "factors": r.get("priority_factors", ()),
                 "breakdown": r.get("priority_breakdown", ()),
+                "signals": r.get("signals", ()),
+                "hotspot_ids": r.get("hotspot_ids", ()),
+                "review_state": r.get("review_state"),
             }
             for r in ordered[:5]
         ],
@@ -980,49 +1010,209 @@ def inventory_detail(
     }
 
 
-def _node_layer(entity_type: str) -> str:
+MAP_MODE = "MODULE_ARCHITECTURE"
+MAP_LAYERS = ("FORM", "DATABASE", "GLOBAL", "LIBRARY", "INTEGRATION", "UNRESOLVED", "OTHER")
+MAP_RELATIONSHIPS = (
+    "CALLS", "READS", "WRITES", "OPENS_FORM", "SHARES_STATE", "DUPLICATES_LOGIC", "REFERENCES",
+)
+MAP_MAX_DEPTH = 5
+MAP_MAX_NODES = 200
+MAP_MAX_EDGES = 400
+MAP_DEFAULT_EDGES = 200
+MAP_MAX_SELECTOR = 200
+MAP_MAX_SAMPLES = 5
+# Structure and runtime plumbing, not architectural dependencies between modules.
+MAP_SKIPPED_RELATIONSHIPS = frozenset({"CONTAINS", "DECLARES", "IMPLEMENTS"})
+MAP_SKIPPED_TYPES = frozenset({"APPLICATION", "BUILTIN"})
+_PACKAGE_MEMBERS = frozenset({"SUBPROGRAM_BODY", "PACKAGE_SUBPROGRAM", "CONSTANT_DECLARATION"})
+_OWN_NODE_TYPES = frozenset({
+    "FORM", "FORM_REFERENCE", "TABLE", "VIEW", "SEQUENCE_REFERENCE", "GLOBAL_REFERENCE",
+    "LIBRARY", "LIBRARY_REFERENCE", "MENU", "MENU_REFERENCE", "INTEGRATION_POINT",
+    "TABLE_OR_VIEW_REFERENCE", "ROUTINE_REFERENCE", "PACKAGE_REFERENCE",
+    "DATABASE_OBJECT_REFERENCE",
+})
+MAX_SEARCH_QUERY = 200
+MAX_SEARCH_LIMIT = 50
+
+
+def _map_layer(entity_type: str) -> str:
+    """Architecture layer of one map node; an unknown type is never promoted to a service."""
     et = (entity_type or "").upper()
-    if et in {"FORM", "MODULE", "CANVAS", "BLOCK", "ITEM", "TRIGGER"}:
+    if et in {"FORM", "FORM_REFERENCE"}:
         return "FORM"
-    elif et in {
-        "PACKAGE",
-        "PACKAGE_BODY",
-        "PACKAGE_SPEC",
-        "PROCEDURE",
-        "FUNCTION",
-        "ROUTINE",
-        "ROUTINE_REFERENCE",
-        "PACKAGE_REFERENCE",
-        "TABLE",
-        "VIEW",
-        "TABLE_OR_VIEW_REFERENCE",
-        "SEQUENCE",
-        "SEQUENCE_REFERENCE",
-        "DATABASE",
-    }:
+    if et in {"PACKAGE", "PACKAGE_SPEC", "PACKAGE_BODY", "SUBPROGRAM_BODY",
+              "PACKAGE_SUBPROGRAM", "TABLE", "VIEW", "SEQUENCE_REFERENCE"}:
         return "DATABASE"
-    elif et in {"LIBRARY", "ATTACHED_LIBRARY", "PLL", "PL/SQL LIBRARY"}:
-        return "LIBRARY"
-    elif et in {"GLOBAL", "GLOBAL_REFERENCE", "GLOBAL_STATE"}:
+    if et == "GLOBAL_REFERENCE":
         return "GLOBAL"
-    return "EXTERNAL"
+    if et in {"LIBRARY", "LIBRARY_REFERENCE", "MENU", "MENU_REFERENCE"}:
+        return "LIBRARY"
+    if et == "INTEGRATION_POINT":
+        return "INTEGRATION"
+    if et in {"TABLE_OR_VIEW_REFERENCE", "ROUTINE_REFERENCE", "PACKAGE_REFERENCE",
+              "DATABASE_OBJECT_REFERENCE"}:
+        return "UNRESOLVED"
+    return "OTHER"
 
 
-def _classify_edge(edge_type: str, target_name: str = "", *, is_bypass: bool = False) -> str:
-    if is_bypass:
-        return "DIRECT_DML"
+def _map_relationship(edge_type: str, target_layer: str) -> str:
     et = (edge_type or "").upper()
-    if et in {"CALLS", "USES_PROGRAM_UNIT", "INVOKES_BUILTIN"}:
+    if et in {"CALLS", "USES_PROGRAM_UNIT"}:
         return "CALLS"
-    elif et in {"READS", "EXECUTES_QUERY"}:
+    if et == "READS":
         return "READS"
-    elif et in {"WRITES", "COMMITS"}:
+    if et == "WRITES":
         return "WRITES"
-    elif et in {"OPENS_FORM", "NAVIGATES_TO", "CALL_FORM"}:
+    if et in {"OPENS_FORM", "NAVIGATES_TO"}:
         return "OPENS_FORM"
-    elif "GLOBAL" in target_name.upper():
+    if et == "DUPLICATES_LOGIC":
+        return "DUPLICATES_LOGIC"
+    if target_layer == "GLOBAL":
         return "SHARES_STATE"
     return "REFERENCES"
+
+
+def _architecture_graph(prepared: PreparedProjection) -> dict:
+    """Fold the component-level Blueprint graph into module-level architecture.
+
+    A Form node stands for the Form and every component it contains (blocks,
+    items, triggers, program units, rule candidates), so a relationship that a
+    trigger inside the Form has with a table becomes a relationship of the Form.
+    A package node stands for its specification, body and subprograms. A
+    symbolic reference that resolved to a supplied database object is drawn as
+    that object; an unresolved one stays a visibly unresolved node.
+    Containment itself is never drawn as a dependency.
+    """
+    blueprint = prepared.raw_blueprint or {}
+    entities = _unique(blueprint.get("entities", []))
+    raw_edges = sorted(_unique(blueprint.get("edges", [])).values(), key=lambda e: e["id"])
+    form_by_module = {}
+    for identity, entity in sorted(entities.items()):
+        if entity.get("type") == "FORM" and entity.get("module"):
+            form_by_module.setdefault(entity["module"], identity)
+    packages = {}
+    for identity, entity in sorted(entities.items()):
+        if entity.get("type") in {"PACKAGE_SPEC", "PACKAGE_BODY"}:
+            name = _text(entity.get("name"), 500).upper()
+            current = packages.get(name)
+            # One package node; the specification represents it when supplied.
+            if current is None or (entity.get("type") == "PACKAGE_SPEC"
+                                   and entities[current].get("type") != "PACKAGE_SPEC"):
+                packages[name] = identity
+    owners = {}
+
+    def owner(identity, seen=()):
+        if identity in owners:
+            return owners[identity]
+        entity = entities.get(identity)
+        result = None
+        if entity is not None and entity.get("type") not in MAP_SKIPPED_TYPES:
+            etype = entity.get("type")
+            attributes = entity.get("attributes") if isinstance(entity.get("attributes"), dict) else {}
+            target = entity.get("resolved_target")
+            if (entity.get("resolution") == "RESOLVED_TO_DATABASE_OBJECT"
+                    and target in entities and target not in seen):
+                result = owner(target, (*seen, identity))
+            elif etype in {"PACKAGE_SPEC", "PACKAGE_BODY"}:
+                result = packages.get(_text(entity.get("name"), 500).upper(), identity)
+            elif etype in _PACKAGE_MEMBERS:
+                result = packages.get(_text(attributes.get("package"), 500).upper(), identity)
+            elif etype in _OWN_NODE_TYPES:
+                result = identity
+            else:
+                result = form_by_module.get(entity.get("module"), identity)
+        owners[identity] = result
+        return result
+
+    hotspots_by_edge = defaultdict(set)
+    for hotspot in prepared.rows.get("hotspots", ()):
+        for edge_id in hotspot.get("edge_refs", ()):
+            hotspots_by_edge[edge_id].add(hotspot["id"])
+    aggregated = {}
+    for edge in raw_edges:
+        if edge.get("type") in MAP_SKIPPED_RELATIONSHIPS:
+            continue
+        source, target = owner(edge.get("source")), owner(edge.get("target"))
+        if source is None or target is None or source == target:
+            continue
+        target_layer = _map_layer(entities[target].get("type"))
+        relationship = _map_relationship(edge.get("type"), target_layer)
+        key = (source, target, relationship)
+        row = aggregated.get(key)
+        if row is None:
+            row = aggregated[key] = {
+                "id": "map-edge:" + digest_text(list(key)),
+                "source": source, "target": target, "classification": relationship,
+                "count": 0, "fact": False, "edge_ids": [], "evidence": [],
+                "components": set(), "relationships": set(), "hotspot_ids": set(),
+            }
+        row["count"] += 1
+        row["fact"] |= edge.get("level", "FACT") == "FACT"
+        row["relationships"].add(_text(edge.get("type"), 100))
+        row["hotspot_ids"] |= hotspots_by_edge.get(edge["id"], set())
+        if len(row["edge_ids"]) < MAP_MAX_SAMPLES:
+            row["edge_ids"].append(edge["id"])
+        for proof in edge.get("evidence", ()) if isinstance(edge.get("evidence"), list) else ():
+            if isinstance(proof, str) and len(row["evidence"]) < MAP_MAX_SAMPLES and proof not in row["evidence"]:
+                row["evidence"].append(proof)
+        component = entities.get(edge.get("source"), {})
+        if edge.get("source") != source and len(row["components"]) < MAP_MAX_SAMPLES:
+            row["components"].add(_text(component.get("name"), 200))
+    nodes = {}
+    for identity in sorted({owner(i) for i in entities} - {None}):
+        entity = entities[identity]
+        etype = entity.get("type", "UNKNOWN")
+        is_package = etype in {"PACKAGE_SPEC", "PACKAGE_BODY"}
+        nodes[identity] = {
+            "id": identity,
+            "name": _text(entity.get("name") or identity, 500),
+            "type": "PACKAGE" if is_package else _text(etype, 100),
+            "layer": _map_layer(etype),
+            "module": _logical_name(entity.get("module")),
+            "resolution": "UNRESOLVED_REFERENCE" if _map_layer(etype) == "UNRESOLVED" else "OBSERVED",
+            "members": 0, "findings_count": 0, "highest_risk": "NONE", "hotspot_count": 0,
+        }
+    for identity in entities:
+        node = owner(identity)
+        if node in nodes and node != identity:
+            nodes[node]["members"] += 1
+    # One finding counts once, on the node its component folds into.
+    for row in prepared.rows.get("findings", ()):
+        node = nodes.get(owner(row.get("entity_id")))
+        if node is None:
+            continue
+        node["findings_count"] += 1
+        if node["highest_risk"] == "NONE" or RISK_RANK[row["risk"]] < RISK_RANK[node["highest_risk"]]:
+            node["highest_risk"] = row["risk"]
+    for hotspot in prepared.rows.get("hotspots", ()):
+        for node_id in {owner(e) for e in hotspot.get("affected_entities", ())} - {None}:
+            if node_id in nodes:
+                nodes[node_id]["hotspot_count"] += 1
+    edges = []
+    for row in aggregated.values():
+        edges.append({
+            **{k: v for k, v in row.items() if k not in {"components", "relationships", "hotspot_ids", "fact"}},
+            "source_name": nodes[row["source"]]["name"],
+            "target_name": nodes[row["target"]]["name"],
+            "level": "FACT" if row["fact"] else "INFERENCE",
+            "components": sorted(row["components"]),
+            "relationships": sorted(row["relationships"]),
+            "hotspot_ids": sorted(row["hotspot_ids"]),
+            "is_hotspot": bool(row["hotspot_ids"]),
+        })
+    edges.sort(key=lambda e: e["id"])
+    return {"nodes": nodes, "edges": edges}
+
+
+def digest_text(value) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
+
+
+def _bounded_int(value, name, low, high):
+    if type(value) is not int or not low <= value <= high:
+        raise ProjectError(f"System Map {name} must be an integer between {low} and {high}")
+    return value
 
 
 def system_map(
@@ -1033,222 +1223,144 @@ def system_map(
     layer: str | None = None,
     edge_type: str | None = None,
     limit: int = 100,
+    edge_limit: int = MAP_DEFAULT_EDGES,
 ) -> dict:
-    """Return a bounded, explainable architecture topology around a focus module."""
-    if not 1 <= depth <= 5:
-        depth = 2
-    if not 1 <= limit <= 200:
-        limit = 100
+    """Bounded module-level architecture around one focus node.
 
-    available_forms = tuple(
-        {"id": f["id"], "name": f["name"]} for f in prepared.rows.get("forms", ())
-    )
-
-    blueprint = prepared.raw_blueprint or {}
-    raw_entities = _unique(blueprint.get("entities", []))
-    raw_edges = _unique(blueprint.get("edges", []))
-    findings_by_entity = defaultdict(list)
-    for f in prepared.rows.get("findings", ()):
-        findings_by_entity[f.get("entity_id")].append(f)
-        findings_by_entity[f.get("id")].append(f)
-
-    bypass_tables_by_module = defaultdict(set)
-    for h in prepared.rows.get("hotspots", ()):
-        if h.get("type") == "API_BYPASS_CANDIDATE":
-            det = h.get("details", {})
-            table = det.get("table", "").upper()
-            module = det.get("form_block_trigger", "").split(".")[0].upper()
-            if table and module:
-                bypass_tables_by_module[module].add(table)
-
+    Node, edge and selector budgets are independent server-side limits; every
+    cut is reported in ``truncation`` with the counts that were available.
+    """
+    depth = _bounded_int(depth, "depth", 1, MAP_MAX_DEPTH)
+    limit = _bounded_int(limit, "node limit", 1, MAP_MAX_NODES)
+    edge_limit = _bounded_int(edge_limit, "edge limit", 1, MAP_MAX_EDGES)
+    layer = layer.strip().upper() if isinstance(layer, str) and layer.strip() else None
+    edge_type = edge_type.strip().upper() if isinstance(edge_type, str) and edge_type.strip() else None
+    if layer is not None and layer not in MAP_LAYERS:
+        raise ProjectError("Unknown System Map layer")
+    if edge_type is not None and edge_type not in MAP_RELATIONSHIPS:
+        raise ProjectError("Unknown System Map relationship")
+    if focus is not None and (not isinstance(focus, str) or len(focus) > 500):
+        raise ProjectError("System Map focus must be bounded text")
+    graph = _architecture_graph(prepared)
+    nodes, all_edges = graph["nodes"], graph["edges"]
+    forms = sorted((n for n in nodes.values() if n["type"] == "FORM"),
+                   key=lambda n: (n["name"].casefold(), n["id"]))
     focus_id = None
     if focus:
-        focus_id = next(
-            (
-                f["id"]
-                for f in available_forms
-                if f["id"] == focus or f["name"].casefold() == focus.casefold()
-            ),
-            None,
-        )
-        if not focus_id and focus in raw_entities:
+        if focus in nodes:
             focus_id = focus
-    if not focus_id and available_forms:
-        focus_id = available_forms[0]["id"]
-    if not focus_id and raw_entities:
-        focus_id = next(iter(raw_entities.keys()))
-
-    if not focus_id:
-        return {
-            "nodes": [],
-            "edges": [],
-            "focus": None,
-            "depth": depth,
-            "total_nodes": 0,
-            "total_edges": 0,
-            "total_estate_nodes": len(raw_entities),
-            "total_estate_edges": len(raw_edges),
-            "truncated": False,
-            "available_forms": list(available_forms),
-            **_page_meta(prepared),
-        }
-
-    all_dep_edges = []
-    if raw_edges:
-        for edge in raw_edges.values():
-            if edge.get("type") == "CONTAINS":
-                continue
-            src = edge.get("source")
-            tgt = edge.get("target")
-            if src and tgt:
-                all_dep_edges.append(edge)
-    else:
-        for dep in prepared.rows.get("dependencies", ()):
-            all_dep_edges.append(
-                {
-                    "id": dep["id"],
-                    "source": dep["source_id"],
-                    "target": dep["target_id"],
-                    "type": dep["relationship"],
-                }
-            )
-
-    adj_out = defaultdict(list)
-    adj_in = defaultdict(list)
-    for edge in all_dep_edges:
-        src = edge.get("source")
-        tgt = edge.get("target")
-        adj_out[src].append(tgt)
-        adj_in[tgt].append(src)
-
-    visited = {focus_id}
-    queue = deque([(focus_id, 0)])
-    truncated = False
-
-    while queue:
-        curr, curr_d = queue.popleft()
-        if curr_d >= depth:
-            continue
-        neighbors = set(adj_out.get(curr, [])) | set(adj_in.get(curr, []))
-        for n in sorted(neighbors):
-            if n not in visited:
-                if len(visited) >= limit:
-                    truncated = True
-                    break
-                visited.add(n)
-                queue.append((n, curr_d + 1))
-        if truncated:
-            break
-
-    if layer:
-        target_layer = layer.strip().upper()
-        visited = {
-            nid
-            for nid in visited
-            if nid == focus_id
-            or _node_layer(raw_entities.get(nid, {}).get("type", "")) == target_layer
-        }
-
-    nodes = []
-    for nid in sorted(visited):
-        entity = raw_entities.get(nid, {})
-        etype = entity.get("type", "UNKNOWN")
-        name = entity.get("name") or nid
-        n_layer = _node_layer(etype)
-        related_findings = findings_by_entity.get(nid, [])
-        risk = "UNKNOWN"
-        for rk in RISK_LEVELS:
-            if any(f.get("risk") == rk for f in related_findings):
-                risk = rk
-                break
-
-        nodes.append(
-            {
-                "id": nid,
-                "name": name,
-                "type": etype,
-                "layer": n_layer,
-                "risk": risk if related_findings else "NONE",
-                "fan_in": len(adj_in.get(nid, [])),
-                "fan_out": len(adj_out.get(nid, [])),
-                "findings_count": len(related_findings),
-                "is_focus": nid == focus_id,
-            }
-        )
-
-    tables_with_pkg_writer = {
-        edge.get("target")
-        for edge in all_dep_edges
-        if edge.get("type") == "WRITES"
-        and raw_entities.get(edge.get("source"), {}).get("type")
-        in {
-            "PACKAGE",
-            "PACKAGE_SPEC",
-            "PACKAGE_BODY",
-        }
-    }
-
-    edges = []
-    for edge in all_dep_edges:
-        src = edge.get("source")
-        tgt = edge.get("target")
-        if src in visited and tgt in visited:
-            src_name = raw_entities.get(src, {}).get("name", src)
-            tgt_name = raw_entities.get(tgt, {}).get("name", tgt)
-            src_type = raw_entities.get(src, {}).get("type", "")
-            src_module = (raw_entities.get(src, {}).get("module") or src_name).upper()
-            is_bypass = (
-                edge.get("type") == "WRITES"
-                and tgt in tables_with_pkg_writer
-                and src_type in {"FORM", "TRIGGER", "PROGRAM_UNIT"}
-            ) or (tgt_name.upper() in bypass_tables_by_module.get(src_module, set()))
-            classification = _classify_edge(edge.get("type"), tgt_name, is_bypass=is_bypass)
-
-            if edge_type and classification != edge_type.strip().upper():
-                continue
-
-            edges.append(
-                {
-                    "id": edge.get("id"),
-                    "source": src,
-                    "source_name": src_name,
-                    "target": tgt,
-                    "target_name": tgt_name,
-                    "relationship": edge.get("type", ""),
-                    "classification": classification,
-                    "is_hotspot": is_bypass
-                    or classification in {"DIRECT_DML", "SHARES_STATE"},
-                    "evidence": edge.get("evidence", []),
-                }
-            )
-
-    return {
-        "nodes": nodes,
-        "edges": edges,
+        else:
+            focus_id = next((n["id"] for n in forms if n["name"].casefold() == focus.casefold()), None)
+        if focus_id is None:
+            raise ProjectError("Unknown System Map focus; choose a Form from the selector or search")
+    elif forms:
+        focus_id = forms[0]["id"]
+    elif nodes:
+        focus_id = min(nodes)
+    selector = forms[:MAP_MAX_SELECTOR]
+    if focus_id and nodes.get(focus_id, {}).get("type") == "FORM" and all(f["id"] != focus_id for f in selector):
+        selector = [*selector, nodes[focus_id]]
+    truncation = []
+    if len(forms) > MAP_MAX_SELECTOR:
+        truncation.append({"reason": "SELECTOR_LIMIT", "limit": MAP_MAX_SELECTOR, "available": len(forms)})
+    base = {
+        "mode": MAP_MODE,
+        "description": ("Module-level architecture: a Form includes its blocks, items, triggers "
+                        "and program units; a package includes its subprograms. Containment is "
+                        "not drawn as a dependency."),
         "focus": focus_id,
         "depth": depth,
         "layer_filter": layer,
         "edge_filter": edge_type,
-        "total_nodes": len(nodes),
-        "total_edges": len(edges),
-        "total_estate_nodes": len(raw_entities),
-        "total_estate_edges": len(raw_edges),
-        "truncated": truncated,
-        "available_forms": list(available_forms),
+        "layers": list(MAP_LAYERS),
+        "relationships": list(MAP_RELATIONSHIPS),
+        "limits": {"nodes": limit, "edges": edge_limit, "selector": MAP_MAX_SELECTOR},
+        "available_forms": [{"id": f["id"], "name": f["name"]} for f in selector],
+        "selector": {"total": len(forms), "shown": len(selector),
+                     "truncated": len(forms) > MAP_MAX_SELECTOR},
+        "total_estate_nodes": len(nodes),
+        "total_estate_edges": len(all_edges),
         **_page_meta(prepared),
+    }
+    if focus_id is None:
+        return {**base, "nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0,
+                "reachable_nodes": 0, "available_edges": 0,
+                "truncated": bool(truncation), "truncation": truncation}
+    adjacency = defaultdict(set)
+    for edge in all_edges:
+        if edge_type and edge["classification"] != edge_type:
+            continue
+        adjacency[edge["source"]].add(edge["target"])
+        adjacency[edge["target"]].add(edge["source"])
+    order = lambda identity: (nodes[identity]["name"].casefold(), identity)
+    reachable, frontier = {focus_id}, [focus_id]
+    for _ in range(depth):
+        frontier = sorted({n for current in frontier for n in adjacency[current]} - reachable, key=order)
+        reachable.update(frontier)
+    if layer:
+        reachable = {n for n in reachable if n == focus_id or nodes[n]["layer"] == layer}
+    # Keep the focus, then the nearest nodes in breadth-first, name order.
+    visited, frontier = [focus_id], [focus_id]
+    seen = {focus_id}
+    while frontier and len(visited) < limit:
+        following = []
+        for current in frontier:
+            for neighbour in sorted(adjacency[current] & reachable - seen, key=order):
+                seen.add(neighbour)
+                following.append(neighbour)
+        for neighbour in following:
+            if len(visited) >= limit:
+                break
+            visited.append(neighbour)
+        frontier = following
+    if layer:
+        # Layer filtering keeps matching nodes reachable through filtered-out ones.
+        for identity in sorted(reachable - set(visited), key=order):
+            if len(visited) >= limit:
+                break
+            visited.append(identity)
+    kept = set(visited)
+    if len(reachable) > len(kept):
+        truncation.append({"reason": "NODE_LIMIT", "limit": limit, "available": len(reachable)})
+    candidates = [e for e in all_edges
+                  if e["source"] in kept and e["target"] in kept
+                  and (not edge_type or e["classification"] == edge_type)]
+    candidates.sort(key=lambda e: (focus_id not in {e["source"], e["target"]}, not e["is_hotspot"],
+                                   e["classification"], e["source_name"].casefold(),
+                                   e["target_name"].casefold(), e["id"]))
+    edges = candidates[:edge_limit]
+    if len(candidates) > len(edges):
+        truncation.append({"reason": "EDGE_LIMIT", "limit": edge_limit, "available": len(candidates)})
+    degree_in, degree_out = Counter(), Counter()
+    for edge in all_edges:
+        degree_out[edge["source"]] += 1
+        degree_in[edge["target"]] += 1
+    result_nodes = [{**nodes[n], "fan_in": degree_in[n], "fan_out": degree_out[n],
+                     "risk": nodes[n]["highest_risk"], "is_focus": n == focus_id}
+                    for n in sorted(kept, key=order)]
+    return {
+        **base,
+        "nodes": result_nodes,
+        "edges": [copy.deepcopy(e) for e in edges],
+        "total_nodes": len(result_nodes),
+        "total_edges": len(edges),
+        "reachable_nodes": len(reachable),
+        "available_edges": len(candidates),
+        "truncated": bool(truncation),
+        "truncation": truncation,
     }
 
 
 def search_project(prepared: PreparedProjection, query: str, limit: int = 20) -> dict:
     """Multi-category instant search across forms, packages, tables, hotspots, rules, and findings."""
-    q = (query or "").strip().casefold()
+    if not isinstance(query, str) or len(query) > MAX_SEARCH_QUERY or "\0" in query:
+        raise ProjectError(f"Search query must be text of at most {MAX_SEARCH_QUERY} characters")
+    if type(limit) is not int or not 1 <= limit <= MAX_SEARCH_LIMIT:
+        raise ProjectError(f"Search limit must be an integer between 1 and {MAX_SEARCH_LIMIT}")
+    meta = {"project_id": prepared.key.project_id, "limit": limit, **_page_meta(prepared)}
+    q = query.strip().casefold()
     if not q:
-        return {
-            "query": query,
-            "total": 0,
-            "results": [],
-            **_page_meta(prepared),
-        }
+        return {"query": query, "total": 0, "results": [], **meta}
 
     scored_results = []
 
@@ -1264,184 +1376,76 @@ def search_project(prepared: PreparedProjection, query: str, limit: int = 20) ->
             return 20
         return 0
 
-    # 1. Forms
     for row in prepared.rows.get("forms", ()):
         name = row.get("name", "")
-        module = row.get("module", "")
-        score = _score(name, module)
+        score = _score(name, row.get("module", ""))
         if score > 0:
-            scored_results.append(
-                (
-                    score,
-                    {
-                        "id": row["id"],
-                        "category": "forms",
-                        "category_label": "Form Module",
-                        "title": name,
-                        "subtitle": f"Forms Module · {row.get('findings', 0)} findings · Risk: {row.get('highest_risk', 'None')}",
-                        "risk": row.get("highest_risk", "UNKNOWN"),
-                        "action": {
-                            "view": "system-map",
-                            "focus": row["id"],
-                            "target_id": row["id"],
-                        },
-                    },
-                )
-            )
-
-    # 2. Packages
+            scored_results.append((score, {
+                "id": row["id"], "category": "forms", "category_label": "Form Module",
+                "title": name,
+                "subtitle": f"Forms module · {row.get('findings', 0)} findings",
+                "risk": row.get("highest_risk", "UNKNOWN"),
+                "action": {"view": "system-map", "focus": row["id"], "target_id": row["id"]},
+            }))
     for row in prepared.rows.get("packages", ()):
         name = row.get("name", "")
         score = _score(name)
         if score > 0:
-            scored_results.append(
-                (
-                    score,
-                    {
-                        "id": row["id"],
-                        "category": "packages",
-                        "category_label": "Database Package",
-                        "title": name,
-                        "subtitle": f"Database Package · {row.get('subprograms', 0)} subprograms",
-                        "risk": row.get("highest_risk", "UNKNOWN"),
-                        "action": {
-                            "view": "inventory",
-                            "category": "packages",
-                            "target_id": row["id"],
-                        },
-                    },
-                )
-            )
-
-    # 3. Tables
-    for row in prepared.rows.get("tables", ()):
-        name = row.get("name", "")
-        score = _score(name)
-        if score > 0:
-            scored_results.append(
-                (
-                    score,
-                    {
-                        "id": row["id"],
-                        "category": "tables",
-                        "category_label": "Database Table",
-                        "title": name,
-                        "subtitle": f"Database Table · {row.get('columns', 0)} columns",
-                        "risk": row.get("highest_risk", "UNKNOWN"),
-                        "action": {
-                            "view": "inventory",
-                            "category": "tables",
-                            "target_id": row["id"],
-                        },
-                    },
-                )
-            )
-
-    # 4. Views
-    for row in prepared.rows.get("views", ()):
-        name = row.get("name", "")
-        score = _score(name)
-        if score > 0:
-            scored_results.append(
-                (
-                    score,
-                    {
-                        "id": row["id"],
-                        "category": "views",
-                        "category_label": "Database View",
-                        "title": name,
-                        "subtitle": "Database View",
-                        "risk": row.get("highest_risk", "UNKNOWN"),
-                        "action": {
-                            "view": "inventory",
-                            "category": "views",
-                            "target_id": row["id"],
-                        },
-                    },
-                )
-            )
-
-    # 5. Hotspots
+            scored_results.append((score, {
+                "id": row["id"], "category": "packages", "category_label": "Database Package",
+                "title": name,
+                "subtitle": f"Database package · {row.get('subprograms', 0)} subprograms",
+                "risk": row.get("highest_risk", "UNKNOWN"),
+                "action": {"view": "inventory", "category": "packages", "target_id": row["id"]},
+            }))
+    for category, label in (("tables", "Database Table"), ("views", "Database View")):
+        for row in prepared.rows.get(category, ()):
+            name = row.get("name", "")
+            score = _score(name)
+            if score > 0:
+                scored_results.append((score, {
+                    "id": row["id"], "category": category, "category_label": label,
+                    "title": name, "subtitle": label,
+                    "risk": row.get("highest_risk", "UNKNOWN"),
+                    "action": {"view": "inventory", "category": category, "target_id": row["id"]},
+                }))
     for row in prepared.rows.get("hotspots", ()):
         title = row.get("title", "")
-        pattern = row.get("pattern_name", "")
-        loc = row.get("location", "")
-        score = _score(title, f"{pattern} {loc}")
+        score = _score(title, f"{row.get('label', '')} {row.get('module', '')}")
         if score > 0:
-            scored_results.append(
-                (
-                    score,
-                    {
-                        "id": row["id"],
-                        "category": "hotspots",
-                        "category_label": "Architectural Hotspot",
-                        "title": title,
-                        "subtitle": f"{pattern} · {loc}",
-                        "risk": row.get("severity", "HIGH"),
-                        "action": {
-                            "view": "overview",
-                            "hotspot_id": row["id"],
-                            "target_id": row["id"],
-                        },
-                    },
-                )
-            )
-
-    # 6. Business Rules
+            scored_results.append((score, {
+                "id": row["id"], "category": "hotspots", "category_label": "Hotspot candidate",
+                "title": title,
+                "subtitle": f"{row.get('label', '')} · {row.get('severity', '')} severity candidate",
+                "risk": row.get("severity", "UNKNOWN"),
+                "action": {"view": "inventory", "category": "hotspots", "target_id": row["id"]},
+            }))
     for row in prepared.rows.get("business_rules", ()):
-        name = row.get("name", "")
-        mod = row.get("module", "")
-        score = _score(name, mod)
+        name, module = row.get("name", ""), row.get("module", "")
+        score = _score(name, module)
         if score > 0:
-            scored_results.append(
-                (
-                    score,
-                    {
-                        "id": row["id"],
-                        "category": "business_rules",
-                        "category_label": "Business Rule",
-                        "title": name,
-                        "subtitle": f"Business Rule · {mod}",
-                        "risk": row.get("risk", "UNKNOWN"),
-                        "action": {
-                            "view": "inventory",
-                            "category": "business_rules",
-                            "target_id": row["id"],
-                        },
-                    },
-                )
-            )
-
-    # 7. Findings
+            scored_results.append((score, {
+                "id": row["id"], "category": "business_rules", "category_label": "Business Rule",
+                "title": name, "subtitle": f"Business rule candidate · {module}",
+                "risk": row.get("risk", "UNKNOWN"),
+                "action": {"view": "inventory", "category": "business_rules", "target_id": row["id"]},
+            }))
     for row in prepared.rows.get("findings", ()):
-        name = row.get("name", "")
-        mod = row.get("module", "")
-        reason = row.get("reason", "")
-        fid = row.get("id", "")
-        score = _score(f"{mod} {name}", f"{reason} {fid}")
+        name, module, fid = row.get("name", ""), row.get("module", ""), row.get("id", "")
+        score = _score(f"{module} {name}", f"{row.get('reason', '')} {fid}")
         if score > 0:
-            scored_results.append(
-                (
-                    score,
-                    {
-                        "id": fid,
-                        "category": "findings",
-                        "category_label": "Modernization Finding",
-                        "title": f"{mod} · {name}",
-                        "subtitle": f"Finding · Risk: {row.get('risk', '')} · {reason}",
-                        "risk": row.get("risk", "UNKNOWN"),
-                        "action": {"view": "review", "finding_id": fid, "target_id": fid},
-                    },
-                )
-            )
+            scored_results.append((score, {
+                "id": fid, "category": "findings", "category_label": "Modernization Finding",
+                "title": f"{module} · {name}",
+                "subtitle": f"Finding · Risk: {row.get('risk', '')}",
+                "risk": row.get("risk", "UNKNOWN"),
+                "action": {"view": "review", "finding_id": fid, "target_id": fid},
+            }))
 
-    scored_results.sort(key=lambda x: (-x[0], x[1]["category"], x[1]["title"]))
-    total = len(scored_results)
-    results = [item for _, item in scored_results[:limit]]
-
+    scored_results.sort(key=lambda x: (-x[0], x[1]["category"], x[1]["title"], x[1]["id"]))
     return {
         "query": query,
-        "total": total,
-        "results": results,
-        **_page_meta(prepared),
+        "total": len(scored_results),
+        "results": [item for _, item in scored_results[:limit]],
+        **meta,
     }

@@ -31,6 +31,33 @@ SUPPORTED_TARGET_PROFILES: tuple[TargetProfile, ...] = (
     TargetProfile(platform="UNSELECTED", version="none", representation="none"),
     TargetProfile(platform="Generic Modernization", version="1.0", representation="Neutral Backlog"),
 )
+UNSELECTED_TARGET = SUPPORTED_TARGET_PROFILES[1]
+GENERIC_TARGET = SUPPORTED_TARGET_PROFILES[2]
+
+# The one server-side table every adapter (UI, HTTP, CLI) resolves a creation
+# choice through. UNSELECTED is a legitimate state: analysis, review and
+# reports work without an implementation target.
+TARGET_CHOICES: dict[str, TargetProfile] = {
+    "unselected": UNSELECTED_TARGET,
+    "apex": SUPPORTED_TARGET_PROFILES[0],
+    "generic": GENERIC_TARGET,
+}
+TARGET_CHOICE_DETAILS = (
+    {"id": "unselected", "label": "Analyze my Forms estate",
+     "description": "Understand architecture before choosing a target. No implementation target is selected."},
+    {"id": "apex", "label": "Modernize to Oracle APEX",
+     "description": "Assessment plus the reviewed Oracle APEX generation path."},
+    {"id": "generic", "label": "Target-neutral assessment package",
+     "description": "Assessment plus a non-code modernization package. No executable code is generated."},
+)
+
+
+def target_from_choice(value, *, default: str = "apex") -> TargetProfile:
+    """Resolve a creation choice; unknown or malformed choices fail closed."""
+    choice = default if value is None else value
+    if not isinstance(choice, str) or choice not in TARGET_CHOICES:
+        raise ProjectError("Choose a supported target strategy: " + ", ".join(TARGET_CHOICES))
+    return TARGET_CHOICES[choice]
 
 
 @dataclass(frozen=True)

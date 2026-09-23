@@ -138,12 +138,12 @@ class ProjectService:
                                         expected_revision=expected_revision)
 
     def system_map(self, *, focus=None, depth=2, layer=None, edge_type=None,
-                   limit=100, freshness=None) -> dict:
+                   limit=100, edge_limit=200, freshness=None) -> dict:
         prepared = self._prepared_projection(freshness)
         if prepared is None:
             raise ProjectError("Analyze the project before opening System Map")
-        return project_system_map(prepared, focus=focus, depth=depth,
-                                  layer=layer, edge_type=edge_type, limit=limit)
+        return project_system_map(prepared, focus=focus, depth=depth, layer=layer,
+                                  edge_type=edge_type, limit=limit, edge_limit=edge_limit)
 
     def search(self, query: str, *, limit: int = 20, freshness=None) -> dict:
         prepared = self._prepared_projection(freshness)

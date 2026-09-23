@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored synthetic sources. No customer or proprietary Oracle module. -->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="INTAKE" Title="Synthetic intake desk">
+    <Block Name="WORK" QueryDataSourceName="WORK_ITEMS">
+      <Item Name="ITEM_ID" ItemType="Text Item" DataType="Number"/>
+      <Item Name="LABEL" ItemType="Text Item" DataType="Char"/>
+      <Item Name="CLOSE" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN UPDATE work_items SET status = 'CLOSED' WHERE item_id = :work.item_id; :GLOBAL.current_item := :work.item_id; CALL_FORM('REVIEWS'); END;"/>
+      </Item>
+      <Item Name="NOTE" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN work_api.log_note(:work.item_id, 'checked'); END;"/>
+      </Item>
+      <Item Name="STAGE" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN INSERT INTO staging_rows (row_id) VALUES (:work.item_id); END;"/>
+      </Item>
+      <Item Name="GHOST" ItemType="Push Button">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN -- :GLOBAL.ghost_flag := 1;&#10; :work.label := ':GLOBAL.ghost_flag'; close_item; END;"/>
+      </Item>
+    </Block>
+    <ProgramUnit Name="CLOSE_ITEM" ProgramUnitType="Procedure" ProgramUnitText="PROCEDURE close_item IS BEGIN NULL; END;"/>
+  </FormModule>
+</Module>
