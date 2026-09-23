@@ -7,6 +7,7 @@ import pytest
 from formslang.ui.modernization_generation import GENERATION_PROJECT_JS
 from formslang.ui.modernization_project import PROJECT_JS
 from formslang.ui.modernization_review import REVIEW_PROJECT_JS
+from formslang.ui.modernization_visual import VISUAL_PROJECT_JS
 from tests.test_project_ui_behavior import DOM, NODE
 
 pytestmark = pytest.mark.skipif(NODE is None, reason='Node needed for JavaScript behavior tests')
@@ -14,7 +15,7 @@ pytestmark = pytest.mark.skipif(NODE is None, reason='Node needed for JavaScript
 
 def run_js(tmp_path, script):
     path = tmp_path / 'estate-ui.cjs'
-    path.write_text(DOM + PROJECT_JS + REVIEW_PROJECT_JS + GENERATION_PROJECT_JS + '\n(async()=>{\n' + script +
+    path.write_text(DOM + PROJECT_JS + VISUAL_PROJECT_JS + REVIEW_PROJECT_JS + GENERATION_PROJECT_JS + '\n(async()=>{\n' + script +
                     "\n})().then(()=>console.log('COMPLETE')).catch(e=>{console.error(e);process.exitCode=1;});",
                     encoding='utf-8')
     result = subprocess.run([NODE, str(path)], capture_output=True, text=True, timeout=60, check=False)

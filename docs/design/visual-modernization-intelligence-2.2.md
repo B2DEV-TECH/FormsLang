@@ -127,6 +127,41 @@ presentation-mode switch reuses it. A count the server did not send is shown
 as "Not observed", never as zero. If the visual request fails, the saved
 Overview stays usable and says why.
 
+### System Map
+
+The System Map moved from the 2.1 project bundle into the visual layer. It
+opens on the whole estate by lane. A search result, a drawer or a hotspot
+opens the focus view on any node, not only a Form. Coordinates, lanes and
+labels come from the server layout. The browser does not compute its own
+positions: a response without a layout is placed in lane columns in the order
+it arrived.
+
+- Toolbar: find in this view, view mode, focus Form, depth (focus view only),
+  lens, relationship filter, layer filter, Fit, Reset, Legend, Refresh and the
+  presentation mode.
+- Lenses (Architecture, Data access, Shared logic, Hotspots, Review), the
+  highlighted lane and the in-map search only dim what they do not select.
+  None of them calls the server or hides a returned node.
+- Pan and zoom: the canvas scrolls, dragging pans, and there are buttons for
+  zoom and for pan in each direction. Only Ctrl or Cmd with the mouse wheel
+  zooms; the wheel alone scrolls the page. Smooth panning is off under
+  `prefers-reduced-motion`. A minimap shows the visible part.
+- Keyboard: every node is a tab stop. Arrow keys move within a column or to
+  the nearest node in the next one, and Enter inspects. The relationship table
+  lists the same content for keyboard and screen-reader review.
+- Inferred relationships are drawn dashed and labelled as candidates.
+  Unresolved references are drawn dashed in their own colour. Hotspot links
+  and the node badge say "candidate", and the drawer says candidates are not
+  verdicts.
+- The drawer has six sections: Identity, Architecture, Modernization
+  attention, Review, Evidence and Actions. Detail comes from
+  `system-map/node`. It is bound to the project, the analysis revision and the
+  selected node, so a late answer for another node is discarded. It lists
+  findings by name and never shows source text.
+- Truncation says what is shown and how to reach the rest, with thousands
+  separators: "Showing 100 of 4,812 nodes in this view. Refocus, search or
+  filter to explore the rest."
+
 ## Boundaries (non-negotiable)
 
 - Investigation groups organize review work. They are not migration waves,
@@ -150,7 +185,7 @@ The log is updated per phase with the commit and what was verified.
 |---|---|---|
 | A | Visual projection, labels, layout, graph memo, tests | done: `tests/test_project_visualization.py` (19 cases) plus HTTP route coverage |
 | B | Overview command center, Exec/Tech view | done: `formslang/ui/modernization_visual.py` (tokens, mode, command center), `tests/test_visual_ui_behavior.py` (9 cases) |
-| C | System Map 2.2 | not started |
+| C | System Map 2.2 | done: System Map moved into `modernization_visual.py` (estate view, lenses, pan/zoom, minimap, keyboard, six-section drawer), `tests/test_visual_ui_behavior.py` (+12 cases), 2.1 Edge acceptance rerun |
 | D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | not started |
 | E | Report visuals (static SVG) | not started |
 | F | Lab walkthrough | not started |
