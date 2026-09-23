@@ -1,7 +1,9 @@
 # FormsLang Modernization Model (IR) Specification
 
-**Repository:** `B2DEV-TECH/FormsLang`  
-**Horizon:** `FormsLang 2.2`  
+> **Status:** future design (experimental code only). The IR is not authoritative in 2.1 and does not govern review, invalidation or generation; the persisted assessment remains the source of truth. String mappings are not proof of semantic equivalence.
+
+**Repository:** `B2DEV-TECH/FormsLang`\
+**Horizon:** `FormsLang 2.2`\
 **Authoritative Reference:** [docs/superpowers/specs/2026-09-21-formslang-modernization-intelligence-platform-spec.md](2026-09-21-formslang-modernization-intelligence-platform-spec.md) §15–§18, §37–§41
 
 ---
@@ -106,9 +108,9 @@ Modernization Intents are **target-neutral**. They express the architectural goa
 
 ---
 
-## 3. Lossless 2.0 Recommendation Compatibility Mapping
+## 3. 2.0 Recommendation Compatibility Mapping (not lossless)
 
-FormsLang 2.0 recommendations must map losslessly to the new Modernization Model. Existing project databases and review records must remain valid without destructive rewrites:
+Existing project databases and review records must remain valid without destructive rewrites. The mapping below is a string correspondence, not proof of semantic equivalence; a value with no mapping (for example `WRAP_AS_API`) stays `UNKNOWN` and keeps its raw legacy value:
 
 | FormsLang 2.0 Recommendation | Modernization Intent (Target-Neutral) | APEX 26.1 Target Recommendation | Generic Modernization Recommendation |
 | :--- | :--- | :--- | :--- |

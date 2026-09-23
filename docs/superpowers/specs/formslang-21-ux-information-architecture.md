@@ -1,7 +1,9 @@
 # FormsLang 2.1 UX & Information Architecture Specification
 
-**Repository:** `B2DEV-TECH/FormsLang`  
-**Phase:** `FormsLang 2.1 (Phase 0 UX Foundation)`  
+> **Status:** design direction. FormsLang 2.1 keeps the existing navigation (Overview, System Map, Inventory, Review, Dependencies, Generate, Reports) and adds target-neutral onboarding; the grouped Estate, Ownership, Plan and Policy workspaces below are not implemented.
+
+**Repository:** `B2DEV-TECH/FormsLang`\
+**Phase:** `FormsLang 2.1 (Phase 0 UX Foundation)`\
 **Authoritative Reference:** [docs/superpowers/specs/2026-09-21-formslang-modernization-intelligence-platform-spec.md](2026-09-21-formslang-modernization-intelligence-platform-spec.md) §5–§8, §12–§14, §18–§20, §29–§30
 
 ---

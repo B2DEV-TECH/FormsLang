@@ -12,43 +12,59 @@
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-2E7D32" alt="PRs welcome"></a>
 </p>
 
-## Oracle Forms Modernization Intelligence Platform
+## Oracle Forms Modernization Intelligence
 
 > **Before you migrate Oracle Forms, understand what you're actually migrating.**
 
-FormsLang maps Oracle Forms and database source together to reveal dependencies, duplicated business-rule candidates, API ownership, architecture risk, modernization hotspots, and reviewable modernization decisions before implementation begins.
-
 **Understand first. Modernize second.**
+
+FormsLang analyzes Oracle Forms and database source together, locally and
+without AI, to show what an estate contains, where its dependencies cross
+layers, which structures deserve architectural attention, and what evidence
+backs each conclusion. People review and record the decisions; FormsLang keeps
+them. Oracle APEX is the first supported implementation path. Open source,
+Apache-2.0 licensed — see [LICENSE](LICENSE).
 
 **Automate what is safe. Assist what is complex. Escalate what requires human judgment.**
 
 ![Real project Overview using synthetic source](assets/screenshots/project-overview-2.png)
 
-Actual FormsLang Workbench capture using synthetic source, not a mockup
+Actual FormsLang 2.0 Workbench capture using synthetic source, not a mockup
 or customer application.
 
-**FormsLang evolves beyond Forms-to-APEX into a target-neutral Modernization Intelligence Platform.**
-Whether your eventual destination is Oracle APEX, Java / Spring, .NET, React with modern APIs, or database-centric refactoring, FormsLang provides deep discovery and architectural review before a single line of code is rewritten.
+### Release status
 
-### The Five Questions of Modernization Intelligence
-
-| Dimension | Question | FormsLang Intelligence Capability |
+| Status | Version | What it contains |
 |---|---|---|
-| **UNDERSTAND** | *What do I have?* | Estate Inventory, cross-layer dependency mapping, and interactive 4-tier SVG System Map |
-| **ASSESS** | *What matters?* | The 4 Architectural Hotspots (API bypass, duplicated rules, global state, ownership conflict) and logarithmic *Start Here* priority ranking |
-| **DECIDE** | *What should happen?* | 6-Layer Modernization Model (Facts → Signals → Intent → Target Recommendation → Human Decision → Generation Eligibility), 4-tier finding review, and Architecture Policy Engine |
-| **PLAN** | *How do we modernize it?* | Sequenced 3-Wave Migration Strategy (Foundations → Core Domain Services → Coupled Redesign) and Architecture Decision Records (ADRs) |
-| **DELIVER** | *What can safely move forward?* | Pluggable Target Adapters (Oracle APEX 26.1 with offline SQLcl syntax verification, Generic Modernization neutral backlogs & deliverables, or fail-closed UNSELECTED safety) |
+| **Released** | [2.0.0](https://github.com/B2DEV-TECH/FormsLang/releases/latest) | Corporate project workflow: inventory, dependencies, prioritized review, reviewed Oracle APEX 26.1 / APEXlang generation, offline SQLcl validation, reports. The installers on the releases page are 2.0.0. |
+| **In development** (this branch, not released) | 2.1 Estate Intelligence | Target-neutral projects (*Analyze my Forms estate*), evidence-backed hotspot candidates, a module-level System Map, project search, suggested investigation groups, and executive/technical assessment reports that work before any target technology is chosen. |
+| **Future** | 2.2+ | Ideas only, not implemented: an authoritative target-neutral modernization model, enforced architecture policy, dependency-aware planning, and further implementation targets. See [roadmap](docs/roadmap-2.md). |
+
+Exact accepted versions, test results and limitations are in
+[quality acceptance](docs/quality-acceptance.md).
+
+### What 2.1 Estate Intelligence answers (in development)
+
+| Question | What FormsLang shows | Evidence boundary |
+|---|---|---|
+| **Understand** — what do I have? | Estate size, source coverage, freshness, Forms, triggers, packages, tables and views; module-level dependencies in the System Map | Static analysis of supplied Forms2XML and SQL/PL/SQL; unsupplied objects stay visibly unresolved |
+| **Assess** — what matters? | Hotspot candidates — *possible API bypass*, *duplicated business-rule candidate*, *global state coupling* — and a *Start Here* list that says why each item is first | Each candidate lists its evidence and what that evidence cannot establish; candidates are not verdicts |
+| **Decide** — what needs an architectural decision? | Review separates observed evidence, structural interpretation, the engine's proposed recommendation and the recorded human decision, with append-only history | Engine recommendations stay *proposed* until a person decides |
+
+Reports and the target-neutral assessment package carry the same findings,
+risks, review states and human decisions as Review. They contain no invented
+cost, schedule, ROI or migration percentage, and exclude source bodies, view
+SQL and private notes unless explicitly requested.
 
 ### Try the project workflow
 
-1. Install FormsLang from the [latest release](https://github.com/B2DEV-TECH/FormsLang/releases/latest) (Windows MSI or setup `.exe`) and launch it. For development or source use, run this checkout with `pip install -e .` then `formslang workbench`.
-2. Choose **Explore Demo Project**, or **New Project** for your own estate.
-3. Select Forms2XML and related database source folders, choosing your Target Strategy (**Oracle APEX 26.1**, **Generic Modernization**, or **UNSELECTED** for discovery-only).
+1. Install FormsLang 2.0.0 from the [latest release](https://github.com/B2DEV-TECH/FormsLang/releases/latest) (Windows MSI or setup `.exe`) and launch it. To try the 2.1 Estate Intelligence work in progress, run this branch from source with `pip install -e .` then `formslang workbench`.
+2. Choose **Explore Demo Project**, or **New Project** for your own estate. On this branch, **Analyze my Forms estate** creates a project with no implementation target; **Modernize to Oracle APEX** keeps the 2.0 path.
+3. Select Forms2XML and related database source folders.
 4. **Analyze** without AI, database credentials or mandatory account setup in local mode.
-5. Explore **Overview Cockpit**, the interactive **System Map**, and **Estate Inventory**; use `Ctrl+K` / `⌘K` Omnibox for instant global search.
-6. Open **Modernization Review** to sign off on architectural findings (Facts, Inference, Intent, and Decisions); configure **Architecture Policies** to enforce organizational standards.
-7. Generate target-specific deliverables (APEXlang 26.1 application packages or Generic Backlogs, Wave Schedules & ADRs), validate offline with SQLcl, and export executive modernization dossiers and pitch decks.
+5. Read **Overview** and **Inventory**, open the **System Map**, then **Start Priority Review**.
+6. For APEX projects, review architecture, prerequisites and executable code separately; **Generate** eligible scope and **Validate** explicitly with supported SQLcl tooling.
+7. **Export** executive and technical assessment reports or the complete package.
 
 The machine handles repetitive discovery and triage; Oracle specialists retain
 architecture, business intent, security and UAT responsibilities. No hours/cost
@@ -59,6 +75,7 @@ discovery is not semantic parsing: unsupported binaries need an appropriate
 representation, and explicit Forms2XML orchestration requires separately installed
 Oracle tooling. Generation currently produces one independent eligible module
 application per run, not an automatic merged estate. AUTO is not generation-ready.
+FormsLang does not generate Java, .NET, React or any target other than Oracle APEX.
 
 [Corporate user guide](docs/user-guide/README.md) · [Forms to APEX workflow](docs/forms-to-apex.md) ·
 [Security/privacy](docs/user-guide/12-security-and-privacy.md) ·

@@ -1,7 +1,9 @@
 # FormsLang Target Adapter Architecture Specification
 
-**Repository:** `B2DEV-TECH/FormsLang`  
-**Horizon:** `FormsLang 2.5 → 2.6`  
+> **Status:** future design (experimental code only). Production APEX generation in 2.1 does not run through `TargetAdapter`; the target-neutral assessment package is built from the delivery snapshot. No Java, .NET, React or external adapter exists.
+
+**Repository:** `B2DEV-TECH/FormsLang`\
+**Horizon:** `FormsLang 2.5 → 2.6`\
 **Authoritative Reference:** [docs/superpowers/specs/2026-09-21-formslang-modernization-intelligence-platform-spec.md](2026-09-21-formslang-modernization-intelligence-platform-spec.md) §23–§28, §61–§63
 
 ---
@@ -66,7 +68,7 @@ class TargetAdapter(Protocol):
 
     def capabilities(self) -> dict[str, bool]:
         """Declared adapter capabilities.
-        
+
         Examples:
             - supports_code_generation: bool
             - supports_offline_validation: bool
@@ -79,7 +81,7 @@ class TargetAdapter(Protocol):
         self, intent: str, context: dict[str, Any]
     ) -> dict[str, Any]:
         """Maps a target-neutral Modernization Intent to a target-specific recommendation.
-        
+
         Returns:
             - recommendation: target-specific action code (e.g. 'MOVE_TO_PLSQL_API')
             - target_component_kind: suggested target construct (e.g. 'validation')
@@ -92,7 +94,7 @@ class TargetAdapter(Protocol):
         self, module_id: str, project_state: dict[str, Any]
     ) -> dict[str, Any]:
         """Evaluates whether a module satisfies all target-specific delivery gates.
-        
+
         Returns:
             - eligible: bool
             - blockers: list of unresolved architectural blockers
@@ -104,7 +106,7 @@ class TargetAdapter(Protocol):
         self, module_id: str, reviewed_scope: dict[str, Any], output_path: str
     ) -> dict[str, Any]:
         """Generates target-specific delivery artifacts.
-        
+
         Returns:
             - manifest: dictionary of generated files with SHA-256 member hashes
             - package_path: absolute path to delivered archive or document bundle
@@ -115,7 +117,7 @@ class TargetAdapter(Protocol):
         self, package_path: str, context: dict[str, Any]
     ) -> dict[str, Any]:
         """Performs target-specific syntax or schema validation.
-        
+
         Returns:
             - valid: bool
             - engine_name: name of validator (e.g. 'Oracle SQLcl APEXlang Compiler')

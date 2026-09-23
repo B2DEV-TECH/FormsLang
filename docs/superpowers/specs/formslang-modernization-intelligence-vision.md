@@ -1,8 +1,10 @@
 # FormsLang: Modernization Intelligence Platform Vision
 
-**Repository:** `B2DEV-TECH/FormsLang`  
-**Current Baseline:** `FormsLang 2.0.0`  
-**Horizon:** `FormsLang 2.1 → 3.0`  
+> **Status:** long-term vision, not a product description. Released: 2.0.0. In development: 2.1 Estate Intelligence. Everything beyond 2.1 is future work.
+
+**Repository:** `B2DEV-TECH/FormsLang`\
+**Current Baseline:** `FormsLang 2.0.0`\
+**Horizon:** `FormsLang 2.1 → 3.0`\
 **Authoritative Reference:** [docs/superpowers/specs/2026-09-21-formslang-modernization-intelligence-platform-spec.md](2026-09-21-formslang-modernization-intelligence-platform-spec.md)
 
 ---
@@ -160,7 +162,7 @@ To preserve focus and engineering integrity, the following are explicit non-goal
   * Scalable dependency navigation and server-side global search foundations.
 * **FormsLang 2.2 — Modernization Model (IR):**
   * Decoupling observed facts from structural signals and target-neutral modernization intents.
-  * Lossless bidirectional compatibility mapping with existing 2.0 recommendations.
+  * Compatibility mapping for existing 2.0 recommendations; unmapped values (for example `WRAP_AS_API`) stay `UNKNOWN` with their raw legacy value.
   * Invalidation matrix and multi-revision fencing.
 * **FormsLang 2.3 — Architecture & Planning:**
   * Bounded interactive System Map (neighborhood expansion, edge filtering).

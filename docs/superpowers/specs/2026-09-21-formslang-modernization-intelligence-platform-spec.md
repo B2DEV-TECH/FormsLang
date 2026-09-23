@@ -1,5 +1,7 @@
 # FormsLang 2.1 → 3.0
 
+> **Status:** long-term specification for 2.1 → 3.0. It is **not** a description of implemented behavior. FormsLang 2.1 (in development) delivers Estate Intelligence only; see `docs/roadmap-2.md` for what is in scope and what remains future.
+
 # Oracle Forms Modernization Intelligence Platform
 
 ## Authoritative Product, Architecture, UX and Delivery Specification

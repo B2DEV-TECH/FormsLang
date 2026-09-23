@@ -1,7 +1,9 @@
 # FormsLang 2.1 Estate Intelligence Design Specification
 
-**Repository:** `B2DEV-TECH/FormsLang`  
-**Milestone:** `FormsLang 2.1`  
+> **Status (PR #11 remediation):** in development for FormsLang 2.1, not released. Sections 3 and 5 were revised to match the implementation: hotspots are projections of the saved Blueprint, severities are bounded by evidence, and projections stay in memory (no persisted projection table). See `formslang/hotspots.py`.
+
+**Repository:** `B2DEV-TECH/FormsLang`\
+**Milestone:** `FormsLang 2.1`\
 **Authoritative Reference:** [docs/superpowers/specs/2026-09-21-formslang-modernization-intelligence-platform-spec.md](2026-09-21-formslang-modernization-intelligence-platform-spec.md) §11–§13, §31–§32, §88–§89
 
 ---
@@ -41,44 +43,51 @@ Estate metrics are strictly computed from Level 1 Observed Facts. The engine **n
 
 ## 3. Hotspot Engine Contracts
 
-In accordance with §88, every hotspot is defined by a strict contract. No hotspot is introduced merely for dashboard aesthetics.
+Every hotspot is a *candidate for architecture review*, never a verdict. It is
+derived from the persisted Blueprint -- the engine's structural signal codes
+(`[CODE]` statement prefixes), typed edges, resolved symbolic references and
+stored unit attributes. The detectors never re-parse source. Fewer trustworthy
+candidates are preferred to many aggressive ones.
 
-### 3.1 Hotspot 1: `API_BYPASS_CANDIDATE` (Direct DML Hotspot)
-* **Architectural Problem:** A Form trigger directly executes `INSERT`, `UPDATE`, or `DELETE` on table $T$, bypassing an existing database package $P$ that already owns write operations on $T$. In a modern web application, this causes critical business logic or audit omissions.
-* **Source Evidence Required:**
-  1. Module trigger AST contains a DML statement referencing table $T$.
-  2. Database source contains a package procedure/function $P.M()$ referencing table $T$ with DML.
-  3. Package $P$ is called by at least one other module or trigger in the estate.
-* **Deterministic Detection Algorithm:**
-  $$\text{Bypass}(M, U, T) = \text{HasDML}(U, T) \land \exists P \in \text{DBPackages} : \text{HasDML}(P, T) \land \neg \text{Calls}(U, P)$$
-* **Severity Policy:** `CRITICAL`.
-* **False-Positive Boundary:** If table $T$ is an unconstrained temporary scratch table (`TMP_*`, `GTT_*`) without package coverage, classify as `DIRECT_DML_UNOWNED` (Severity: `MEDIUM`), not `API_BYPASS`.
-* **UI Projection:** Highlighted with red badge, direct side-by-side comparison showing Form trigger SQL vs existing Package API procedure signature.
+### 3.1 `API_BYPASS_CANDIDATE` — "Possible API bypass"
+* **Evidence contract:** the engine signal `DIRECT_DML_BYPASSES_API` on a Forms
+  unit; the unit's `WRITES` edge resolves to a supplied `TABLE`; at least one
+  packaged `SUBPROGRAM_BODY` also writes that table; the unit does not call it.
+* **What it does not prove:** co-writing shows two layers write one table. It
+  does not prove the package is the authoritative owner. The package is shown
+  as a *potential existing API owner*.
+* **Severity rule:** `MEDIUM` for co-writing only; `HIGH` when the co-writing
+  subprogram carries measurably more guards (locking, explicit failure,
+  affected-row checks). Never `CRITICAL` from this evidence alone; the unit's
+  own measured risk stays visible on its finding.
+* **Negative controls:** the unit calls the subprogram; the reference is
+  unresolved; a same-named table from another source; no package writes the
+  table. Table naming (`TMP_*`, `GTT_*`) is not treated as proof of anything.
 
-### 3.2 Hotspot 2: `DUPLICATED_RULE_CLUSTER`
-* **Architectural Problem:** Identical or structurally isomorphic validation rules (e.g. credit limit, discount threshold, date validation) are implemented independently across multiple Forms triggers rather than centralized in a database package or service.
-* **Source Evidence Required:**
-  1. Two or more distinct program units or triggers in different modules.
-  2. AST subtrees containing comparison predicates (`>`, `<`, `BETWEEN`, `IN`, regex) matching with tree isomorphism score $\ge 0.90$.
-* **Deterministic Detection Algorithm:**
-  $$\text{Cluster}(U_1, U_2) \iff \text{AST_Distance}(U_1.\text{pred}, U_2.\text{pred}) \le \theta_{\text{iso}} \land \text{TargetTable}(U_1) = \text{TargetTable}(U_2)$$
-* **Severity Policy:** `HIGH`.
-* **False-Positive Boundary:** Generic UI boilerplates (e.g. `IF :P_ITEM IS NULL THEN RAISE FORM_TRIGGER_FAILURE;`) are filtered out via semantic stop-lists.
-* **UI Projection:** Grouped rule card displaying the $N$ occurrences, highlighting differences in threshold constants or error messages.
+### 3.2 `DUPLICATED_RULE_CLUSTER` — "Duplicated business-rule candidate"
+* **Evidence contract:** engine signals `LOGIC_DUPLICATED_QUERY`, `_FORMULA` or
+  `_PREDICATE` naming the same packaged subprogram.
+* **What it does not prove:** the match is structural (query shape, arithmetic
+  skeleton, literal set), not semantic equivalence; local variations may be
+  legitimate. No AST-similarity score is computed.
+* **Severity rule:** `MEDIUM` for copies in one module; `HIGH` for two or more.
 
-### 3.3 Hotspot 3: `GLOBAL_STATE_COUPLING`
-* **Architectural Problem:** Legacy Forms relying on `:GLOBAL.*` variables to pass state across modules or coordinate multi-form workflows. In stateless web architectures (APEX, Spring, React), this breaks bookmarking, multi-tab browsing, and session isolation.
-* **Source Evidence Required:** Read or write operations against `:GLOBAL.<name>` across two or more separate modules.
-* **Deterministic Detection Algorithm:**
-  $$\text{Coupled}(M_1, M_2, G) \iff (\text{Writes}(M_1, G) \land \text{Reads}(M_2, G)) \lor (\text{Reads}(M_1, G) \land \text{Writes}(M_2, G))$$
-* **Severity Policy:** `MEDIUM` (elevated to `HIGH` if combined with cross-module navigation `CALL_FORM`).
-* **UI Projection:** Dependency edge marked with state bag icon; recommendation to introduce explicit session state or URL parameters.
+### 3.3 `GLOBAL_STATE_COUPLING`
+* **Evidence contract:** Forms units in two or more modules reference the same
+  `:GLOBAL` variable (the lexer already excludes comments and literals).
+* **What it does not prove:** runtime order, initialization and lifetime. A
+  unit that both assigns and reads a variable is recorded as a reference, so
+  observed writers are a lower bound.
+* **Severity rule:** `MEDIUM` when shared; `HIGH` when one module is observed
+  assigning it and a different module references it.
 
-### 3.4 Hotspot 4: `CROSS_LAYER_OWNERSHIP_CONFLICT`
-* **Architectural Problem:** Both the Forms trigger and a database trigger/constraint enforce different, conflicting validation constraints on the same column (e.g. Form allows discount up to 25%, but DB constraint enforces max 20%).
-* **Source Evidence Required:** Form trigger predicate evaluating column $C$ compared against DB check constraint or DB trigger predicate on $C$ where boundary values diverge.
-* **Severity Policy:** `CRITICAL`.
-* **UI Projection:** Warning card flagged as `BLOCKED_UNTIL_HUMAN_RESOLUTION`.
+### 3.4 Not in 2.1: cross-layer ownership conflict
+The earlier draft described divergent Form/database constraints. The engine
+does not emit a conflict signal (it emits `MIRRORS_SCHEMA_CONSTRAINT` when a
+trigger *agrees* with a CHECK constraint), so no such hotspot is reported.
+
+Identities are SHA-256 digests of the hotspot type and its anchoring Blueprint
+identities, independent of process, hash seed and input order.
 
 ---
 
@@ -95,14 +104,14 @@ $$\text{PriorityScore}(F) = \text{BaseSeverity}(F) \times \left(1.0 + 0.2 \times
 
 ## 5. Performance Budgets & Scale Guarantees
 
-FormsLang must remain blazingly fast on enterprise estates containing 500+ Forms and 5,000+ dependencies.
+Budgets are targets, not measured guarantees, for enterprise estates containing 500+ Forms and 5,000+ dependencies.
 
 | Operation | Performance Budget (Warm Cache) | Strategy |
 | :--- | :---: | :--- |
-| **Cockpit Overview Projection** | $< 100\text{ ms}$ | Pre-aggregated projection table updated on analysis commit. |
-| **Inventory First Page (50 items)** | $< 250\text{ ms}$ | Server-side pagination & SQLite index on `(project_id, category)`. |
-| **Filtered Inventory Search** | $< 500\text{ ms}$ | Bounded multi-column indices without unindexed table scans. |
+| **Cockpit Overview Projection** | $< 100\text{ ms}$ | In-memory projection cached per assessment and review revision (no persisted projection table; measure before persisting). |
+| **Inventory First Page (50 items)** | $< 250\text{ ms}$ | Server-side pagination over the cached projection. |
+| **Filtered Inventory Search** | $< 500\text{ ms}$ | Bounded query text and page size over the cached projection. |
 | **Finding Detail Drawer** | $< 300\text{ ms}$ | Content-addressed fetch of exact finding record and evidence refs. |
 | **Global Search Query (`Ctrl+K`)** | $< 500\text{ ms}$ | Bounded server-side query returning top 20 matches. |
-| **Architecture Neighborhood Graph** | $< 750\text{ ms}$ | Breadth-first search limited to depth $\le 2$ from focus node. |
+| **Architecture Neighborhood Graph** | $< 750\text{ ms}$ | Module-level fold of the Blueprint graph; independent node, relationship and selector budgets with truncation metadata. |
 | **Cold Project Reopen** | $< 2.0\text{ s}$ | Single-pass schema verification and metadata load. |
