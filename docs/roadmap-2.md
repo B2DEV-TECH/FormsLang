@@ -1,16 +1,15 @@
 # Roadmap after FormsLang 2.0
 
-**Released:** FormsLang 2.0.0 — the corporate project workflow with reviewed
-Oracle APEX 26.1 / APEXlang generation.
-**In development:** FormsLang 2.1 — Estate Intelligence (not released; no
-installer contains it).
+**Released:** FormsLang 2.1.0 — Estate Intelligence, on top of FormsLang
+2.0.0, the corporate project workflow with reviewed Oracle APEX 26.1 /
+APEXlang generation.
 **Motto:** *Understand first. Modernize second.*
 
 Planned does not mean implemented. Only a published release, recorded in
 [quality acceptance](quality-acceptance.md), establishes what an installer
 contains.
 
-## 2.1 Estate Intelligence — in development
+## 2.1 Estate Intelligence — released in 2.1.0
 
 Goal: before a team modernizes Oracle Forms, FormsLang is the first tool they
 run, and it is useful before the target technology is chosen.
