@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-FormsLang 2.1 Estate Intelligence is in development on the PR #11 branch. Not
-released; no installer contains it.
+## [2.1.0] - 2026-09-23
+
+FormsLang 2.1 Estate Intelligence makes the project workflow useful before a
+target technology is chosen: understand the estate, find what deserves
+architectural attention, and record decisions against saved evidence.
 
 ### Added
 
@@ -29,6 +32,38 @@ released; no installer contains it.
 - The *duplicated logic* priority factor now requires a `LOGIC_DUPLICATED_*`
   engine signal; the `DUPLICATES_LOGIC` edge the builder also draws for a DML
   bypass no longer implies it.
+
+### Security and correctness
+
+- Estate Intelligence is a projection over the saved Blueprint; hotspot and
+  duplicated-rule identities are SHA-256 digests, stable across
+  `PYTHONHASHSEED` values.
+- The target-neutral assessment package and reports are built from one
+  reviewed, revision-fenced snapshot, deterministically, with an internal
+  manifest hashing every member.
+- Integration-point names derived from HOST / URL / USER_EXIT literals (for
+  example a connect string) are replaced by a neutral label and a stable
+  reference in delivery packages and reports; the local UI keeps the name.
+  2.0.0 exported those names verbatim; export again any 2.0.0 report that may
+  contain one.
+- Experimental adapters fail closed: missing inputs raise before anything is
+  written, an unavailable validator is NOT_VALIDATED, and an unselected target
+  never resolves to the target-neutral package.
+- Projects created by 2.0.0 open unchanged; no historical row is rewritten.
+
+### Fixed
+
+- Opening a project took its exclusive worker lock briefly on every request, even
+  when no interrupted job needed recovery. Two requests on the same project could
+  then collide, and Reports, Generate or a source freshness check failed with
+  *Another project operation is active*. Recovery now takes the lock only when an
+  interrupted job exists.
+- A project job reached its terminal status while its worker still held the
+  project lock; a client acting on that status could meet the same error. The job
+  status route now answers only after the worker has returned.
+- The Workbench conversion job stopped reporting `running` before the final
+  run record was persisted, so a poller could read a finished job whose last
+  run still said `running`.
 
 ### Not in this release
 
@@ -1347,7 +1382,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.6.0...v2.0.0
 [1.6.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.4.0...v1.5.0
