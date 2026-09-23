@@ -9,7 +9,6 @@ import pytest
 
 from formslang import rbac
 from formslang.architecture_policy import (
-    DIRECT_DML_ALLOW_DIRECT,
     DIRECT_DML_MANUAL_REVIEW,
     DIRECT_DML_PREFER_EXISTING_OWNER,
     GLOBAL_STATE_BLOCK,
@@ -127,83 +126,35 @@ def test_policy_evaluator_global_state_and_database_api():
     assert "PKG_CUSTOMERS" in res_api["recommendation"]
 
 
-def test_project_service_policy_lifecycle(tmp_path: Path):
+def test_policy_is_not_a_2_1_product_surface(tmp_path: Path, capsys):
+    """Policy is an experimental library: configuring it must not look enforceable."""
     intake = ProjectIntake(tmp_path / "data", tmp_path / "config")
     created = intake.create_demo(destination=tmp_path / "demo_proj")
     pid = created["project"]["id"]
-
-    access = intake.access(pid, rbac.RUN_CONVERSION)
-    service = ProjectService(access, authorize=lambda: access)
-
-    # Initial policy
-    policy_info = service.architecture_policy()
-    assert policy_info["has_project_override"] is False
-    assert policy_info["effective"]["direct_dml"]["when_existing_owner"] == DIRECT_DML_PREFER_EXISTING_OWNER
-
-    # Update policy
-    updated = service.update_architecture_policy({
-        "direct_dml": {
-            "when_existing_owner": DIRECT_DML_ALLOW_DIRECT,
-        }
-    })
-    assert updated["has_project_override"] is True
-    assert updated["effective"]["direct_dml"]["when_existing_owner"] == DIRECT_DML_ALLOW_DIRECT
-    assert updated["provenance"]["direct_dml.when_existing_owner"] == "PROJECT"
-
-
-def test_project_http_policy_endpoints(tmp_path: Path):
-    intake = ProjectIntake(tmp_path / "data", tmp_path / "config")
-    created = intake.create_demo(destination=tmp_path / "http_proj")
-    pid = created["project"]["id"]
-
+    service = ProjectService(intake.access(pid, rbac.RUN_CONVERSION))
+    try:
+        assert not hasattr(service, "architecture_policy")
+        assert not hasattr(service, "update_architecture_policy")
+    finally:
+        service.close()
     handler = ProjectHTTP(workbench=None)
-
-    # GET policy
-    status, body = handler._dispatch("GET", f"/api/v2/projects/{pid}/policy", {}, {}, intake)
-    assert status == 200
-    assert "effective" in body
-    assert body["has_project_override"] is False
-
-    # PUT policy
-    update_payload = {
-        "direct_dml": {
-            "when_existing_owner": DIRECT_DML_MANUAL_REVIEW,
-        }
-    }
-    status_put, body_put = handler._dispatch("PUT", f"/api/v2/projects/{pid}/policy", {}, update_payload, intake)
-    assert status_put == 200
-    assert body_put["has_project_override"] is True
-    assert body_put["effective"]["direct_dml"]["when_existing_owner"] == DIRECT_DML_MANUAL_REVIEW
+    for method, body in (("GET", {}), ("PUT", {"direct_dml": {"when_existing_owner": "allow_direct"}})):
+        status, _ = handler._dispatch(method, f"/api/v2/projects/{pid}/policy", {}, body, intake)
+        assert status == 404
+    with pytest.raises(SystemExit):
+        main(["project", "policy", str(tmp_path / "demo_proj"), "--json"])
+    capsys.readouterr()
 
 
-def test_cli_policy_and_search(tmp_path: Path, capsys):
+def test_cli_search_is_bounded(tmp_path: Path, capsys):
     proj_dir = str(tmp_path / "cli_proj")
-    rc_demo = main(["project", "demo", proj_dir, "--json"])
-    assert rc_demo == 0
+    assert main(["project", "demo", proj_dir, "--json"]) == 0
     capsys.readouterr()
-
-    # CLI policy inspection
-    rc = main(["project", "policy", proj_dir, "--json"])
-    assert rc == 0
-    captured = capsys.readouterr()
-    data = json.loads(captured.out)
-    assert "effective" in data
-
-    # CLI policy update
-    rc_set = main(["project", "policy", proj_dir, "--set", "direct_dml.when_existing_owner=allow_direct", "--json"])
-    assert rc_set == 0
-    captured_set = capsys.readouterr()
-    data_set = json.loads(captured_set.out)
-    assert data_set["effective"]["direct_dml"]["when_existing_owner"] == "allow_direct"
-
-    # Analyze project before search
-    rc_analyze = main(["project", "analyze", proj_dir])
-    assert rc_analyze in (0, 1)
+    assert main(["project", "analyze", proj_dir]) in (0, 1)
     capsys.readouterr()
-
-    # CLI search
-    rc_search = main(["project", "search", proj_dir, "--query", "CUSTOMERS", "--json"])
-    assert rc_search == 0
-    captured_search = capsys.readouterr()
-    search_data = json.loads(captured_search.out)
-    assert "results" in search_data
+    assert main(["project", "search", proj_dir, "--query", "CUSTOMERS", "--limit", "5", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "results" in data and len(data["results"]) <= 5
+    with pytest.raises(SystemExit):
+        main(["project", "search", proj_dir, "--query", "CUSTOMERS", "--limit", "1000"])
+    capsys.readouterr()

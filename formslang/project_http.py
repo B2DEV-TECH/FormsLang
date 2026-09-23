@@ -254,7 +254,7 @@ class ProjectHTTP:
         if tail == ['convert'] and method == 'POST':
             return 200, intake.convert(pid, body.get('source_id'), expected_configuration=body.get('expected_configuration'),
                                       confirmed=body.get('confirmed', False))
-        action = rbac.RUN_CONVERSION if method in {'POST', 'PUT'} else rbac.VIEW_PROJECT
+        action = rbac.RUN_CONVERSION if method == 'POST' else rbac.VIEW_PROJECT
         if len(tail) == 2 and tail[0] == 'reports' and method == 'GET':
             action = rbac.EXPORT_PROJECT
         if ((tail == ['generation'] and method == 'POST')
@@ -365,11 +365,6 @@ class ProjectHTTP:
                     raise ProjectError('Search requires integer limit') from exc
                 freshness = self._freshness(service)
                 return 200, service.search(search_query, limit=limit, freshness=freshness)
-            if tail == ['policy']:
-                if method == 'GET':
-                    return 200, service.architecture_policy()
-                if method == 'PUT':
-                    return 200, service.update_architecture_policy(body)
             if tail == ['inventory'] and method == 'GET':
                 freshness = self._freshness(service)
                 return 200, service.inventory(**_inventory_query(query), freshness=freshness)

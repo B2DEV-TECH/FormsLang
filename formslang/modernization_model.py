@@ -1,7 +1,11 @@
-"""Modernization Model (IR) specification, taxonomy, and multi-revision matrix.
+"""Modernization Model (IR) -- EXPERIMENTAL foundation for a future release.
 
-Pure Python standard library implementation of the 6-level modernization IR
-and multi-revision invalidation matrix for target-neutral modernization.
+Status in FormsLang 2.1: not authoritative and not wired into the product. The
+persisted project assessment (Blueprint + review ledger) remains the single
+source of truth; Estate Intelligence is a projection of it (``hotspots``,
+``project_projection``). Nothing here governs invalidation, review or
+generation. The mappings are string correspondences, not proof of semantic
+equivalence, and a value with no mapping stays ``UNKNOWN``.
 """
 
 from __future__ import annotations
@@ -72,7 +76,7 @@ ELIGIBILITY_STATUS = frozenset({
 })
 
 # ---------------------------------------------------------------------------
-# Lossless Bidirectional Mapping Table (§3)
+# Legacy recommendation correspondence (§3) -- not lossless; unmapped values stay UNKNOWN
 # ---------------------------------------------------------------------------
 
 LEGACY_TO_INTENT: dict[str, str] = {
@@ -115,7 +119,7 @@ INTENT_TO_GENERIC: dict[str, str] = {
 
 
 def map_legacy_recommendation_to_intent(legacy: str) -> str:
-    """Losslessly map 2.0 recommendation to target-neutral Modernization Intent."""
+    """Map a 2.0 recommendation to an intent; values without a mapping stay UNKNOWN."""
     normalized = str(legacy).strip().upper()
     return LEGACY_TO_INTENT.get(normalized, "UNKNOWN")
 
@@ -126,7 +130,9 @@ def map_intent_to_target_recommendation(intent: str, target_platform: str) -> st
     platform = str(target_platform).strip()
     if platform == "Oracle APEX":
         return INTENT_TO_APEX.get(normalized_intent, "MANUAL_REVIEW")
-    return INTENT_TO_GENERIC.get(normalized_intent, "MANUAL_ARCHITECTURE_REVIEW")
+    if platform == "Generic Modernization":
+        return INTENT_TO_GENERIC.get(normalized_intent, "MANUAL_ARCHITECTURE_REVIEW")
+    raise ValueError(f"No recommendation mapping for target platform: {platform or 'none'}")
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +439,7 @@ def apply_stale_decision_preservation(
 
 def model_from_finding(finding: dict[str, Any], assessment: dict[str, Any] | None = None) -> ModernizationIntent:
     """Constructs a ModernizationIntent from a legacy finding dict."""
-    legacy_rec = finding.get("recommendation", "MANUAL_REVIEW")
+    legacy_rec = finding.get("recommendation", "UNKNOWN")
     intent_kind = map_legacy_recommendation_to_intent(legacy_rec)
 
     # Extract Level 1 facts
@@ -455,16 +461,17 @@ def model_from_finding(finding: dict[str, Any], assessment: dict[str, Any] | Non
     )
 
     # Extract Level 2 signal
-    signal_kind = finding.get("signal_kind") or finding.get("hotspot_type") or "ORPHANED_LOGIC"
+    # Missing or unmapped evidence stays unknown; it is never a named signal.
+    signal_kind = finding.get("signal_kind") or finding.get("hotspot_type") or "UNKNOWN"
     if signal_kind not in SIGNALS:
-        signal_kind = "ORPHANED_LOGIC"
+        signal_kind = "UNKNOWN"
 
     signal = StructuralSignal(
         id=f"sig:{finding.get('id', 'unknown')}",
         kind=signal_kind,
-        severity=finding.get("severity", "MEDIUM"),
+        severity=finding.get("severity", "UNKNOWN"),
         priority_score=float(finding.get("priority_score", 0.0)),
-        fan_in=int(finding.get("fan_in", 1)),
+        fan_in=int(finding.get("fan_in", 0)),
         factors=list(finding.get("priority_factors", [])),
         facts=facts,
         summary=finding.get("summary", "") or finding.get("title", ""),

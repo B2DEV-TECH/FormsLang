@@ -1,4 +1,4 @@
-"""Target adapters package for FormsLang Modernization Intelligence Platform."""
+"""Built-in target adapters (experimental foundation; see target_adapter.py)."""
 
 from __future__ import annotations
 

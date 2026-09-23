@@ -1,10 +1,13 @@
-"""Target-neutral Architecture Policy Engine.
+"""Architecture policy -- EXPERIMENTAL library for a future FormsLang release.
 
-Implements Sections 21, 22, and 71 of the FormsLang 2.1-3.0 Specification:
-- Separation of Observed Facts, Default Policy, Organization Policy, Project Overrides, and Human Decision.
-- Hierarchical resolution: Default -> Organization -> Project.
-- Explicit policy provenance on architectural recommendations (Fact + Policy = Intent/Recommendation).
-- Multi-revision invalidation support: Policy updates invalidate target interpretations without mutating observed facts.
+Status in FormsLang 2.1: not part of the product. No UI, HTTP route or CLI
+command configures a policy, and no recommendation, review or generation path
+consults it. Organization-level policy is not implemented. The resolver and
+evaluator below are kept, with their tests, as a foundation for later work.
+
+Design intent (not yet enforced anywhere): observed facts stay immutable, a
+policy may only make interpretations stricter or change a stated preference,
+and every interpreted recommendation would carry its policy provenance.
 """
 
 from __future__ import annotations

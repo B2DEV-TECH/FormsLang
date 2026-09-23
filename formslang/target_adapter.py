@@ -1,6 +1,9 @@
-"""Target Adapter protocol and registry specification.
+"""Target adapter protocol and static registry -- EXPERIMENTAL foundation.
 
-Pure Python standard library implementation of the TargetAdapter protocol (§106, §24-§28).
+Status in FormsLang 2.1: production APEX generation does not run through this
+registry (see ``adapters.apex``); the target-neutral assessment package calls
+its adapter directly from ``ProjectGenerationService``. Resolution requires a
+complete supported profile. There is no external or dynamic adapter loading.
 """
 
 from __future__ import annotations
@@ -100,38 +103,39 @@ class TargetAdapter(Protocol):
 # ---------------------------------------------------------------------------
 
 _REGISTRY: dict[str, TargetAdapter] = {}
-_PLATFORM_MAP: dict[str, TargetAdapter] = {}
+_PROFILES: dict[TargetProfile, TargetAdapter] = {}
+# Aliases name one documented complete profile each; nothing else is inferred.
+_ALIASES = {
+    "apex": TargetProfile("Oracle APEX", "26.1", "APEXlang"),
+    "oracle_apex": TargetProfile("Oracle APEX", "26.1", "APEXlang"),
+    "generic": TargetProfile("Generic Modernization", "1.0", "Neutral Backlog"),
+}
 
 
 def register_adapter(adapter: TargetAdapter) -> None:
-    """Register a target adapter statically in core."""
+    """Register a built-in target adapter under its complete profile."""
     _REGISTRY[adapter.id] = adapter
-    _PLATFORM_MAP[adapter.target_profile.platform.upper()] = adapter
+    _PROFILES[adapter.target_profile] = adapter
 
 
 def get_target_adapter(target: TargetProfile | str) -> TargetAdapter:
-    """Retrieve the registered TargetAdapter for a profile or identifier."""
+    """Resolve an adapter by complete profile, registered id or documented alias."""
     _ensure_builtin_adapters_registered()
     if isinstance(target, TargetProfile):
-        platform_key = target.platform.strip().upper()
-        if platform_key in _PLATFORM_MAP:
-            return _PLATFORM_MAP[platform_key]
-        raise ProjectError(f"No target adapter registered for target platform: {target.platform}")
-
-    query = str(target).strip()
-    if query in _REGISTRY:
-        return _REGISTRY[query]
-    upper_query = query.upper()
-    if upper_query in _PLATFORM_MAP:
-        return _PLATFORM_MAP[upper_query]
-
-    # Check aliases
-    if upper_query in {"APEX", "ORACLE_APEX", "ORACLE APEX"}:
-        return _PLATFORM_MAP["ORACLE APEX"]
-    if upper_query in {"GENERIC", "GENERIC_MODERNIZE", "GENERIC MODERNIZATION"}:
-        return _PLATFORM_MAP["GENERIC MODERNIZATION"]
-
-    raise ProjectError(f"Unknown target adapter identifier: {target}")
+        profile = target
+    elif isinstance(target, str) and target in _REGISTRY:
+        return _REGISTRY[target]
+    elif isinstance(target, str) and target.strip().lower() in _ALIASES:
+        profile = _ALIASES[target.strip().lower()]
+    else:
+        raise ProjectError(f"Unknown target adapter identifier: {target}")
+    if profile.platform == "UNSELECTED":
+        raise ProjectError("No implementation target is selected; no target adapter applies.")
+    adapter = _PROFILES.get(profile)
+    if adapter is None:
+        raise ProjectError("Unsupported target profile: "
+                           f"{profile.platform} {profile.version} / {profile.representation}")
+    return adapter
 
 
 def list_target_adapters() -> list[TargetAdapter]:

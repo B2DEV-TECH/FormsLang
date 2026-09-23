@@ -1,7 +1,10 @@
-"""Oracle APEX 26.1 Target Adapter implementation.
+"""Oracle APEX 26.1 target adapter -- EXPERIMENTAL, not the production path.
 
-Preserves 100% of existing APEXlang generation, layout geometry,
-and offline SQLcl validation capabilities (§106, §3.2).
+FormsLang 2.1 generates APEXlang only through ``ProjectGenerationService``,
+which applies the review, code-approval, target-plan, source and size gates
+and calls the existing exporter directly. This adapter is not wired into that
+path. Its public methods fail closed: missing inputs raise, and an unavailable
+validator is reported as NOT_VALIDATED, never as success.
 """
 
 from __future__ import annotations
@@ -11,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ..modernization_model import map_intent_to_target_recommendation
-from ..project_model import TargetProfile
+from ..project_model import ProjectError, TargetProfile
 
 
 class Apex26TargetAdapter:
@@ -90,37 +93,27 @@ class Apex26TargetAdapter:
         """Generates APEXlang delivery package."""
         from .. import apexlang, store
 
-        out_dir = Path(output_path)
-        out_dir.mkdir(parents=True, exist_ok=True)
-
         session_db_path = reviewed_scope.get("session_db_path")
         module_obj = reviewed_scope.get("module_obj")
-
-        if session_db_path and module_obj:
-            session_store = store.Store(Path(session_db_path), reconcile_jobs=False)
-            try:
-                result = apexlang.export_apexlang(
-                    session_store,
-                    module_obj,
-                    out_dir / "apexlang",
-                    {"alias": "module-" + module_id[:20], "ai_layout": False},
-                )
-                manifest_data = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-                return {
-                    "manifest": manifest_data,
-                    "package_path": str(result.zip_path),
-                }
-            finally:
-                session_store.close()
-
-        # Fallback manifest creation if direct objects not passed
-        manifest = {"files": {}, "module_id": module_id, "platform": "Oracle APEX"}
-        manifest_path = out_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        return {
-            "manifest": manifest,
-            "package_path": str(manifest_path),
-        }
+        if not session_db_path or module_obj is None:
+            raise ProjectError("APEX generation requires a prepared, reviewed module session; nothing was generated.")
+        out_dir = Path(output_path)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        session_store = store.Store(Path(session_db_path), reconcile_jobs=False)
+        try:
+            result = apexlang.export_apexlang(
+                session_store,
+                module_obj,
+                out_dir / "apexlang",
+                {"alias": "module-" + module_id[:20], "ai_layout": False},
+            )
+            manifest_data = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+            return {
+                "manifest": manifest_data,
+                "package_path": str(result.zip_path),
+            }
+        finally:
+            session_store.close()
 
     def validate_deliverables(
         self, package_path: str, context: dict[str, Any] | None = None
@@ -129,25 +122,32 @@ class Apex26TargetAdapter:
         from .. import apeximport
 
         path = Path(package_path)
+        if not path.is_file():
+            return {"valid": False, "status": "NOT_VALIDATED", "available": None,
+                    "engine_name": "Oracle SQLcl APEXlang Compiler",
+                    "diagnostics": ["Package not found; nothing was validated."]}
         version = apeximport.sqlcl_version()
         if not version:
-            return {
-                "valid": True,  # Non-blocking when SQLcl not installed locally
-                "engine_name": "Oracle SQLcl APEXlang Compiler",
-                "diagnostics": ["SQLcl not found in environment; syntax check skipped."],
-            }
+            # Validator unavailable is not validation success.
+            return {"valid": False, "status": "NOT_VALIDATED", "available": False,
+                    "engine_name": "Oracle SQLcl APEXlang Compiler",
+                    "diagnostics": ["SQLcl is not available; the package was not validated."]}
 
         try:
             verdict = apeximport.run_import(path, validate_only=True)
             positive = "Validation successful." in verdict.stdout
             return {
                 "valid": verdict.ok and positive,
+                "status": "VALIDATED" if verdict.ok and positive else "VALIDATION_FAILED",
+                "available": True,
                 "engine_name": f"Oracle SQLcl ({version})",
                 "diagnostics": [verdict.stdout.strip()] if verdict.stdout else [],
             }
         except (ValueError, OSError) as exc:
             return {
                 "valid": False,
+                "status": "NOT_VALIDATED",
+                "available": True,
                 "engine_name": "Oracle SQLcl APEXlang Compiler",
                 "diagnostics": [str(exc)],
             }

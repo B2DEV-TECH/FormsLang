@@ -104,7 +104,7 @@ def test_taxonomy_data_structures_roundtrip():
     assert GenerationEligibility.from_dict(eligibility.to_dict()) == eligibility
 
 
-def test_legacy_recommendation_lossless_mapping():
+def test_legacy_recommendation_correspondence():
     assert len(LEGACY_TO_INTENT) == 7
     expected_mappings = {
         "MOVE_TO_PLSQL_API": "CENTRALIZE_EXISTING_OWNER",
@@ -258,3 +258,18 @@ def test_stale_decision_preservation():
 def test_invalid_event_raises_error():
     with pytest.raises(ValueError, match="Unknown invalidation trigger event"):
         evaluate_invalidation_matrix("UNKNOWN_EVENT", current_revisions={})
+
+
+def test_unmapped_values_and_missing_evidence_stay_unknown():
+    """Experimental IR: no fabricated signal, severity, fan-in or platform fallback."""
+    import pytest
+
+    assert map_legacy_recommendation_to_intent("WRAP_AS_API") == "UNKNOWN"
+    assert map_legacy_recommendation_to_intent("SOMETHING_NEW") == "UNKNOWN"
+    for platform in ("UNSELECTED", "Java", ""):
+        with pytest.raises(ValueError):
+            map_intent_to_target_recommendation("PRESERVE_EXISTING_OWNER", platform)
+    intent = model_from_finding({"id": "f1"})
+    assert intent.kind == "UNKNOWN"
+    (signal,) = intent.signals
+    assert signal["kind"] == "UNKNOWN" and signal["severity"] == "UNKNOWN" and signal["fan_in"] == 0
