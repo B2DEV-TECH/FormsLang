@@ -1,7 +1,7 @@
 // Actual generation UI/API/SQLite/exporter. No substituted responses or bytes.
 export async function generationChecks({evaluate,click,clickSelector,value,wait,check,screenshot,pick,folder}){
-  await click('project-home');await wait(()=>evaluate(`!!document.getElementById('project-new')`),'generation onboarding');
-  await click('project-new');await value('project-name','Synthetic generation acceptance');await click('project-next');
+  await click('project-home');await wait(()=>evaluate(`!!document.getElementById('project-new-apex')`),'generation onboarding');
+  await click('project-new-apex');await value('project-name','Synthetic generation acceptance');await click('project-next');
   await click('project-forms');await pick(folder);await wait(()=>evaluate(`projectUI.draft.preview!==null`),'generation discovery');
   await click('project-next');await click('project-next');await click('project-next');
   await wait(()=>evaluate(`projectUI.view==='overview'&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'`),'generation assessment');

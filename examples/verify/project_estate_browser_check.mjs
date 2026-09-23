@@ -1,0 +1,53 @@
+// FormsLang 2.1 Estate Intelligence through the real UI, API and SQLite store.
+// A target-neutral project is created in the browser, analysed from synthetic
+// Forms XML + PL/SQL, inspected, reviewed, reported and reopened.
+export async function estateChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send,pick,forms,database}){
+  await click('project-home');await wait(()=>evaluate(`!!document.getElementById('project-new-estate')`),'estate onboarding');
+  await click('project-new-estate');await value('project-name','Estate intelligence acceptance');await click('project-next');
+  await click('project-forms');await pick(forms);await wait(()=>evaluate(`projectUI.draft.preview!==null&&projectUI.draft.sources.length===1`),'estate forms preview');
+  await click('project-database');await pick(database);await wait(()=>evaluate(`projectUI.draft.preview!==null&&projectUI.draft.sources.length===2`),'estate database preview');
+  await click('project-next');await wait(()=>evaluate(`!!document.querySelector('input[name="project-target"][value="unselected"]')`),'estate strategy');
+  check('2.1 Analyze my Forms estate selects no target',await evaluate(`document.querySelector('input[name="project-target"][value="unselected"]').checked`));
+  await screenshot('estate-strategy.png');
+  await click('project-next');await click('project-next');
+  await wait(()=>evaluate(`projectUI.view==='overview'&&projectUI.summary?.project.name==='Estate intelligence acceptance'&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'`),'estate Overview');
+  const id=await evaluate('projectUI.activeId');
+  check('2.1 server persisted UNSELECTED',await evaluate(`projectUI.summary.project.target_platform==='UNSELECTED'&&projectUI.overview.project.target.platform==='UNSELECTED'`));
+  check('2.1 UNSELECTED is a legitimate state',await evaluate(`document.getElementById('project-content').textContent.includes('Assessment only')&&!document.getElementById('project-error').textContent`));
+  check('2.1 Overview estate metrics',await evaluate(`projectUI.overview.inventory.forms_modules===3&&projectUI.overview.inventory.database_packages===1&&projectUI.overview.inventory.tables===3&&projectUI.overview.inventory.triggers>0`),await evaluate('projectUI.overview.inventory'));
+  check('2.1 hotspot candidates from real evidence',await evaluate(`projectUI.overview.hotspots.total===3&&document.querySelectorAll('[data-hotspot-evidence]').length===3&&document.getElementById('project-hotspots').textContent.includes('not verdicts')`),await evaluate('projectUI.overview.hotspots.by_type'));
+  check('2.1 Start Here explains its order',await evaluate(`document.getElementById('project-priority').textContent.includes('Why:')`));
+  await screenshot('estate-overview.png');
+  await clickSelector('[data-hotspot-evidence]');
+  await wait(()=>evaluate(`document.getElementById('modal').classList.contains('show')&&document.getElementById('modal-body').textContent.includes('What this evidence cannot establish')`),'hotspot evidence');
+  check('2.1 metric to hotspot to evidence',await evaluate(`projectUI.inventoryState.category==='hotspots'&&document.getElementById('modal-body').textContent.includes('Architecture review required')`));
+  await click('project-detail-close');
+  await clickSelector('[data-project-section="system-map"]');await wait(()=>evaluate(`projectUI.view==='system-map'&&!!systemMapState.data`),'System Map');
+  const intake=await evaluate(`systemMapState.data.available_forms.find(f=>f.name==='INTAKE')?.id||''`);
+  check('2.1 System Map selector lists Forms',!!intake,intake);
+  await evaluate(`(()=>{const select=document.getElementById('system-map-focus');select.value=${JSON.stringify(intake)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await wait(()=>evaluate(`systemMapState.data?.focus===${JSON.stringify(intake)}`),'INTAKE focus');
+  check('2.1 Form focus exposes component writes',await evaluate(`systemMapState.data.edges.some(e=>e.source===${JSON.stringify(intake)}&&e.target_name==='WORK_ITEMS'&&e.classification==='WRITES'&&e.is_hotspot)`));
+  check('2.1 map has a keyboard and table path',await evaluate(`document.querySelectorAll('.map-node[tabindex="0"]').length>1&&!!document.querySelector('[data-edge-inspect]')`));
+  await screenshot('estate-system-map.png');
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'k',code:'KeyK',modifiers:2,windowsVirtualKeyCode:75});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'k',code:'KeyK',modifiers:2,windowsVirtualKeyCode:75});
+  await wait(()=>evaluate(`!document.getElementById('global-search-container').hidden&&document.activeElement?.id==='global-search-input'`),'search dialog');
+  await value('global-search-input','WORK_ITEMS');
+  await wait(()=>evaluate(`globalSearch.results.length>0`),'search results');
+  check('2.1 search is bound to the open project',await evaluate(`globalSearch.results.every(r=>r.project_id===${JSON.stringify(id)})`));
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await wait(()=>evaluate(`document.getElementById('global-search-container').hidden`),'search closed');
+  await clickSelector('[data-project-section="overview"]');await wait(()=>evaluate(`projectUI.view==='overview'&&!!document.querySelector('[data-hotspot-review]')`),'Overview again');
+  await clickSelector('[data-hotspot-review]');await wait(()=>evaluate(`!!document.getElementById('project-review-defer')`),'hotspot finding in Review');
+  check('2.1 Review separates evidence, interpretation, recommendation and decision',await evaluate(`['1. Observed evidence','2. Structural interpretation','3. Recommendation','4. Human decision'].every(t=>document.getElementById('project-review-detail').textContent.includes(t))`));
+  await click('project-review-defer');await wait(()=>evaluate(`document.getElementById('project-review-detail').textContent.includes('Deferred')`),'deferred decision');
+  await clickSelector('[data-project-section="generate"]');await wait(()=>evaluate(`projectUI.generationState?.data&&document.getElementById('project-generation-body').textContent.includes('estate assessment')`),'target-neutral Generate');
+  check('2.1 no code generation without a target',await evaluate(`!document.getElementById('project-generation-run')&&!document.getElementById('project-generation-package')`));
+  const executive=await evaluate(`(async()=>{const r=await api('/api/v2/projects/${id}/reports');const q=new URLSearchParams({...r.binding,include_notes:'0',include_artifacts:'0'});const response=await fetch('/api/v2/projects/${id}/reports/executive?'+q,{credentials:'same-origin'});return {status:response.status,text:await response.text()};})()`);
+  check('2.1 executive report without a target',executive.status===200&&executive.text.includes('Target not selected')&&executive.text.includes('Possible API bypass')&&executive.text.includes('Areas to Investigate First'),executive.status);
+  await click('project-home');await wait(()=>evaluate(`!!document.querySelector('[data-project-open="${id}"]')`),'estate in recent projects');
+  check('2.1 recent project shows assessment-only strategy',await evaluate(`document.getElementById('project-recents').textContent.includes('Assessment only')`));
+  await clickSelector(`[data-project-open="${id}"]`);
+  await wait(()=>evaluate(`projectUI.view==='overview'&&projectUI.activeId===${JSON.stringify(id)}&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'`),'reopened estate');
+  check('2.1 reopen keeps UNSELECTED and the review',await evaluate(`projectUI.summary.project.target_platform==='UNSELECTED'&&projectUI.overview.review_progress.total>0&&projectUI.overview.hotspots.total===3`));
+}
