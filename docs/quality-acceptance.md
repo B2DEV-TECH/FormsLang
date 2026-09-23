@@ -1398,3 +1398,150 @@ repository still comes from synthetic fixtures rather than a production estate.
 Manual product validation remains documented separately in
 [manual-validation-2.0.md](manual-validation-2.0.md) and is not superseded by
 this section.
+
+## 2.1.0 verification (2026-09-23, America/Sao_Paulo)
+
+FormsLang 2.1.0 is published. This section records the release evidence; the
+2.0.0 section above and every earlier section are unchanged.
+
+Release: <https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.1.0>.
+Annotated tag `v2.1.0` (tag object `39a6c26`) targets
+`a74e66f6aab0bb859c60081a47b7a5983857abce`. `main` was fast-forwarded to that
+commit (PR #12), so the tested candidate and the release commit are the same
+SHA, not merely the same tree. The tag was created once and is not moved or
+recreated.
+
+### Post-merge failure that started the release work
+
+After PR #11 merged, `main` CI run
+[35852655549](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35852655549)
+failed only in *corporate project browser acceptance (Edge)*. Locally, 5 of 11
+runs of that acceptance failed before any change. The causes were all present in
+2.0.0, and the post-merge run only exposed them:
+
+- Every project open ran interrupted-job recovery under the exclusive worker
+  lock, even with no interrupted job, so a concurrent request could collide
+  with a real operation and get *Another project operation is active* (409).
+- A project job reported a terminal status before its worker released the
+  project lock, so the next operation could still collide with it.
+- The Workbench conversion job cleared `running` before persisting its run.
+- The project wizard rendered its load areas outside step 3.
+- The browser scripts waited on a weaker condition than the state they then
+  used.
+
+Fixes are in `a5fab86` and `a74e66f`, each with regression tests. Recovery now
+runs only when the open's own connection sees a `QUEUED`/`RUNNING` job
+(`test_opening_a_project_without_unfinished_jobs_leaves_the_worker_lock_free`,
+red before the fix and green after it). No retry, sleep, skip, `xfail` or
+`continue-on-error` was added, and no assertion was weakened.
+
+One intermediate fix was withdrawn. The first version of the recovery pre-check
+(in `a5fab86`) opened a second store connection before taking the lock. On PR
+CI run [35863071647](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35863071647)
+it produced a 500 under a running analysis on Windows. `a74e66f` restored
+`ProjectJobManager.recover()` byte-for-byte and moved the check onto the
+connection the open already holds. That run's installer acceptance
+([35863082187](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35863082187),
+on `e252641`) passed but is **superseded**; none of its binaries were published.
+
+### Exact-candidate CI (`a74e66f`)
+
+PR CI run [35868718443](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35868718443):
+**13/13 green**. It covers ruff, deterministic showcase export, SQLcl
+`apex validate` without a database, workbench and corporate project browser
+acceptance (Edge), and pytest on ubuntu-latest and windows-latest for Python
+3.10–3.13.
+
+| Job | Result |
+|---|---|
+| pytest ubuntu py3.10 / 3.11 / 3.12 / 3.13 | 1761 passed, 5 skipped each (4:42 / 5:38 / 6:21 / 6:44) |
+| pytest windows py3.10 / 3.11 / 3.13 | 1766 passed each (33:15 / 31:38 / 26:12) |
+| pytest windows py3.12 | 1766 passed (45:42), attempt 2, see below |
+
+The Ubuntu skips are Windows-only regressions (NTFS junctions, extended paths,
+sharing violations); Windows runners run the full suite.
+
+Attempt 1 of the Windows py3.12 job was **cancelled by the release engineer**
+after 68 minutes because it looked hung. The log shows it was still
+progressing: it had passed 93% of the suite with no failure. It was slow, not
+failing. Only that job was re-run (attempt 2) on the same SHA, and it passed.
+The other 12 jobs are attempt-1 results.
+
+`main` push CI on the same commit: run
+[35882935833](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35882935833),
+**13/13 green** on the first attempt (Windows pytest 1766 passed on each of py3.10–3.13, 28–48 min; Ubuntu 1761 passed, 5 skipped).
+
+Installer acceptance run
+[35868719888](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35868719888)
+on `a74e66f` (the build job checked out `a74e66f6aab0…`) passed with
+**baseline 2.0.0 → 2.1.0**:
+
+- `PASS: nsis clean install, upgrade 2.0.0 -> 2.1.0, project workflow, uninstall and reinstall with preserved state`;
+- `PASS: msi clean install, upgrade 2.0.0 -> 2.1.0, project workflow, uninstall and reinstall with preserved state`;
+- in both jobs, `PASS: installed desktop creates its native window and starts its engine`.
+
+Published assets. These are the `installers-2.1.0` artifact of that run; nothing
+was rebuilt for publication:
+
+| Asset | Size (bytes) | SHA-256 |
+|---|---|---|
+| `FormsLang_2.1.0_x64-setup.exe` | 14,679,067 | `5060dec0eefa2a6af7c6fd126a372eb686647e2b5fd9ae4675aedd8737396440` |
+| `FormsLang_2.1.0_x64_en-US.msi` | 15,790,080 | `db8e6c6ab4743784d890996c2c696ec8e8c1e5f5101ddc87ddf983350cdf2dbe` |
+
+The installers are unsigned, as 2.0.0's were.
+
+### Local regression (Windows 11 Pro 10.0.26200, Python 3.12.10)
+
+- `python -m pytest -q` on `a74e66f`: **1761 passed, 5 skipped** in 875.75 s.
+  The skips are symlink tests that need privileges this machine does not grant.
+- `ruff check .` clean, and `git diff --check` clean.
+- Corporate project browser acceptance (Edge): 4/4 consecutive passes on
+  `a74e66f`, after 12/12 on the first fix set. Workbench browser acceptance
+  (Edge): 101/101.
+- SQLcl offline `apex validate` (APEXlang 26.1.0+3102): OK. Re-exporting from
+  the same session is byte-identical.
+- The frozen modernization benchmark is unchanged. All 24 blobs, 23 under
+  `benchmark/baselines/` plus `expected/modernization-ground-truth.json`, have
+  the same Git blob hashes at `v2.1.0` as at `v2.0.0`.
+
+### Backward compatibility with real 2.0.0 projects
+
+Four projects were created by an installed-from-source `v2.0.0` checkout. They
+cover an analyzed CURRENT project, a corporate assessment, an unanalyzed
+cancellation project and a generation project. Each was then opened and driven
+by 2.1.0 over HTTP: summary, a freshness job, overview, inventory, review
+queue, System Map, search, generation overview, assessment, reports, and every
+report format plus the package. Result: **46/46 checks passed**. No historical
+row changed in any table, the descriptors and existing files are unchanged, and
+the only new row per project is the `project_job` row of the freshness job the
+check itself ran.
+
+### Disclosure check
+
+A finding named after a `HOST`, URL or `USER_EXIT` literal was exported to
+reports and packages in 2.0.0. A probe project with such literals, including a
+connect string, was exported in 22 formats from 2.1.0. No literal appeared in
+any file content, file name, member name or archive metadata. The same probe
+against 2.0.0 found the literals in the technical HTML, the backlog CSV/JSON,
+the dependency map, the inventory and `analysis.json`. By design, the local
+authorized UI still shows the real name.
+
+### Known limitations and follow-ups (not blockers)
+
+- `test_project_descriptor_concurrency` can fail on Windows runners with
+  *database is locked*. It failed on `main` before this release (e.g. run
+  [35520425767](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35520425767))
+  and on superseded run 35863071647. It did not fail on the release commit.
+  The cause is SQLite busy-handler contention between the store's open check
+  and 1-second writers. As decided for 2.0.0, `project_store` timeouts were
+  not changed under release pressure.
+- Windows pytest duration varies widely on hosted runners (26–68 minutes for the
+  same suite).
+- Opening Reports while a freshness job is still running can return a 409 that
+  the UI recovers from.
+- Installers are not code-signed.
+
+Every limitation recorded for 2.0.0 still applies. Forms2XML is required, and
+binaries are not semantically parsed. Generation produces independent module
+applications. Offline SQLcl validation is structural evidence, not runtime
+equivalence. Every figure here comes from synthetic fixtures.
