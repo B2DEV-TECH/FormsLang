@@ -501,7 +501,12 @@ function systemMapLaneOf(node) {
 // is placed in lane columns in the order it arrived; nothing is invented.
 function systemMapGeometry(d) {
   const layout = d.layout;
-  if (layout && layout.positions) return { positions: layout.positions, columns: layout.columns || [], w: layout.node_width || 184, h: layout.node_height || 54, width: layout.width || 900, height: layout.height || 480, cycles: new Set(layout.cycle_nodes || []) };
+  if (layout && layout.positions) {
+    // Coerced once here: every SVG attribute below is built from these numbers.
+    const positions = {};
+    Object.entries(layout.positions).forEach(([id, p]) => { positions[id] = { x: Number(p.x) || 0, y: Number(p.y) || 0 }; });
+    return { positions, columns: layout.columns || [], w: Number(layout.node_width) || 184, h: Number(layout.node_height) || 54, width: Number(layout.width) || 900, height: Number(layout.height) || 480, cycles: new Set(layout.cycle_nodes || []) };
+  }
   const lanes = ['APPLICATION', 'SHARED_LOGIC', 'DATA', 'INTEGRATION'], positions = {}, rows = [0, 0, 0, 0];
   d.nodes.forEach(n => { const c = Math.max(0, lanes.indexOf(systemMapLaneOf(n))); positions[n.id] = { x: 28 + c * 248, y: 68 + rows[c]++ * 68 }; });
   const columns = lanes.map((id, c) => ({ id, label: id, x: 28 + c * 248, width: 184, count: rows[c] }));
@@ -575,7 +580,8 @@ function systemMapSvg(d) {
     const classes = ['map-edge', 'visual-map-edge', `edge-${esc(String(e.classification).toLowerCase())}`,
       e.is_hotspot ? 'is-hotspot' : '', e.level && e.level !== 'FACT' ? 'is-candidate' : '',
       systemMapState.selectedEdge?.id === e.id ? 'is-selected' : '', emphasis && !emphasis.edges.has(e.id) ? 'is-dim' : ''].filter(Boolean).join(' ');
-    return `<g class="${classes}" data-edge-id="${esc(e.id)}"><title>${esc(names.get(e.source) || e.source_name)} ${esc(systemMapRelationshipLabel(e.classification))} ${esc(names.get(e.target) || e.target_name)} (${Number(e.count)})</title><path class="visual-map-hit" d="${path}" /><path class="visual-map-line" d="${path}" stroke-width="${width}" marker-end="url(#visual-map-arrow)" /></g>`;
+    // Pointer shortcut only; the relationship table below is the keyboard and screen-reader path.
+    return `<g class="${classes}" data-edge-id="${esc(e.id)}" aria-hidden="true"><title>${esc(names.get(e.source) || e.source_name)} ${esc(systemMapRelationshipLabel(e.classification))} ${esc(names.get(e.target) || e.target_name)} (${Number(e.count)})</title><path class="visual-map-hit" d="${path}" /><path class="visual-map-line" d="${path}" stroke-width="${width}" marker-end="url(#visual-map-arrow)" /></g>`;
   }).join('');
   const nodes = d.nodes.map(n => {
     const p = g.positions[n.id];
@@ -587,7 +593,7 @@ function systemMapSvg(d) {
     const meta = systemMapState.lens === 'REVIEW' && Number(review.total) > 0
       ? `${Number(review.open)} open · ${Number(review.stale)} stale · ${Number(review.decided)} decided`
       : `${systemMapTypeLabel(n)} · ${findings} ${findings === 1 ? 'finding' : 'findings'}`;
-    const label = [n.name, systemMapTypeLabel(n), systemMapLaneLabel(systemMapLaneOf(n)), `${findings} findings`, hotspots ? `${hotspots} hotspot candidates` : '',
+    const label = [n.name, systemMapTypeLabel(n), systemMapLaneLabel(systemMapLaneOf(n)), `${findings} findings`, n.highest_risk && n.highest_risk !== 'NONE' ? `highest risk ${n.highest_risk}` : '', hotspots ? `${hotspots} hotspot candidates` : '',
       n.unresolved || n.layer === 'UNRESOLVED' ? 'unresolved reference' : '', n.status === 'CANDIDATE' ? 'candidate, not observed structure' : '', cycle ? 'in a cycle with the focus' : '', n.id === focus ? 'focus' : ''].filter(Boolean).join(', ');
     const badge = hotspots ? `<g class="visual-map-badge" transform="translate(${g.w - 38},6)"><rect width="32" height="16" rx="3" /><text x="16" y="12" text-anchor="middle">◆ ${hotspots}</text></g>` : '';
     return `<g class="${classes}" data-node-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(label)}" transform="translate(${Number(p.x)},${Number(p.y)})"><title>${esc(n.name)}</title><rect class="visual-map-card" data-risk="${esc(n.highest_risk || n.risk || 'NONE')}" width="${g.w}" height="${g.h}" rx="8" /><text class="visual-map-name" x="10" y="21">${cycle ? '↻ ' : ''}${esc(trim(n.name, hotspots ? 20 : 24))}</text><text class="visual-map-meta" x="10" y="40">${esc(trim(meta, 30))}</text>${badge}</g>`;
@@ -704,7 +710,8 @@ function renderProjectSystemMap() {
   if (!d) stage = '<p style="padding:24px;">Loading system architecture map…</p>';
   else if (!d.nodes || !d.nodes.length) stage = '<p style="padding:24px;">No architecture nodes match the current view and filters.</p>';
   else stage = `<div id="system-map-svg-host">${systemMapSvg(d)}</div>`;
-  const controls = d && d.nodes?.length ? `<div class="visual-map-controls" role="group" aria-label="Zoom and pan">${projectButton('system-map-zoom-out', '−')}${projectButton('system-map-zoom-in', '+')}${projectButton('system-map-pan-left', '←')}${projectButton('system-map-pan-up', '↑')}${projectButton('system-map-pan-down', '↓')}${projectButton('system-map-pan-right', '→')}</div>${systemMapMinimap(d)}` : '';
+  const controls = d && d.nodes?.length ? `<div class="visual-map-controls" role="group" aria-label="Zoom and pan">${[['zoom-out', '−', 'Zoom out'], ['zoom-in', '+', 'Zoom in'], ['pan-left', '←', 'Pan left'], ['pan-up', '↑', 'Pan up'], ['pan-down', '↓', 'Pan down'], ['pan-right', '→', 'Pan right']]
+      .map(([id, glyph, name]) => `<button type="button" class="btn" id="system-map-${id}" aria-label="${name}" title="${name}">${glyph}</button>`).join('')}</div>${systemMapMinimap(d)}` : '';
   const hint = '<p class="visual-map-hint">Drag or use the arrow buttons to pan; Ctrl + mouse wheel zooms. The wheel alone scrolls the page.</p>';
   $('project-content').innerHTML = `${projectSectionNav('system-map')}<header>${visualBackButton()}<h2 id="project-step-title" tabindex="-1">System Map</h2><p>Module-level architecture: each Form includes its blocks, items, triggers and program units; each package includes its subprograms. Containment is not drawn as a dependency.</p></header>${systemMapToolbar(d)}<p id="system-map-search-status" class="visual-map-hint" aria-live="polite"></p>${systemMapLegend()}${systemMapNotes(d)}<div class="project-system-map-split"><div class="visual-map-stage"><div class="project-system-map-canvas visual-map-canvas" id="system-map-canvas">${stage}</div>${controls}${hint}</div><aside class="system-map-drawer" id="system-map-drawer" aria-label="System map inspector" aria-live="polite">${systemMapDrawerHtml(d)}</aside></div>${d && d.edges?.length ? systemMapTable(d) : ''}`;
   projectBindSectionNav();
@@ -1206,7 +1213,7 @@ function visualRenderHotspots() {
   else if (!d.estate_total) body = '<p class="project-empty">The saved assessment has no hotspot candidates. That is an observation about the supplied sources, not a clean bill of health.</p>';
   else {
     const cards = (d.items || []).map(visualHotspotCard).join('') || '<p class="project-empty">No hotspot candidates match these filters.</p>';
-    const page = d.total > d.limit ? `<div class="project-actions"><button class="btn" id="visual-hotspot-prev" ${d.offset === 0 ? 'disabled' : ''}>Previous</button><span>${d.offset + 1}–${Math.min(d.total, d.offset + d.limit)} of ${Number(d.total)}</span><button class="btn" id="visual-hotspot-next" ${d.offset + d.limit >= d.total ? 'disabled' : ''}>Next</button></div>` : '';
+    const page = d.total > d.limit ? `<div class="project-actions"><button class="btn" id="visual-hotspot-prev" ${d.offset === 0 ? 'disabled' : ''}>Previous</button><span>${Number(d.offset) + 1}–${Math.min(Number(d.total), Number(d.offset) + Number(d.limit))} of ${Number(d.total)}</span><button class="btn" id="visual-hotspot-next" ${d.offset + d.limit >= d.total ? 'disabled' : ''}>Next</button></div>` : '';
     body = `<p class="visual-boundary" role="note">${esc(d.boundary)}</p><p aria-live="polite">Showing ${(d.items || []).length} of ${Number(d.total)} matching candidates (${Number(d.estate_total)} in the estate).</p>${cards}${page}${visualHotspotMatrix(d.matrix)}`;
   }
   $('project-content').innerHTML = `${projectSectionNav('hotspots')}${visualPageHead('Hotspot Explorer', 'Structural patterns in the saved assessment that deserve an architect\'s attention, with the evidence behind each one and its limits.')}${visualHotspotFilters(d)}<div id="visual-hotspot-body">${body}</div>`;

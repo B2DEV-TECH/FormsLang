@@ -244,7 +244,7 @@ def test_executive_mode_relabels_the_map_without_refetching(tmp_path):
 api=mapApi(mapData());await projectSystemMapOpen();const before=mapCalls.length;
 visualSetMode('executive');
 const html=$('project-content').innerHTML;
-assert.match(html,/Shared services and state · 1/);assert.match(html,/aria-label="INTAKE, Application module, Application modules, 2 findings, 1 hotspot candidates"/);
+assert.match(html,/Shared services and state · 1/);assert.match(html,/aria-label="INTAKE, Application module, Application modules, 2 findings, highest risk HIGH, 1 hotspot candidates"/);
 assert.match(html,/>Changes data</);assert.match(html,/<title>INTAKE Uses service ORDER_API \(1\)<\/title>/);
 assert.equal(mapCalls.length,before,'a presentation change never refetches');
 ''')
@@ -275,6 +275,17 @@ assert.equal($('system-map-canvas').scrollTop,20);
 $('system-map-canvas').scrollLeft=7;
 await loadProjectSystemMap();
 assert.equal($('system-map-canvas').scrollLeft,7,'a refresh of the same layout keeps where the user scrolled');
+''')
+
+def test_map_controls_risk_and_edges_are_accessible_without_colour_or_pointer(tmp_path):
+    run_map(tmp_path, r'''
+api=mapApi(()=>mapData({layout:{...mapData().layout,positions:{...mapData().layout.positions,'form:A':{x:'28" onload="x',y:68}}}}));
+await projectSystemMapOpen();
+const html=$('project-content').innerHTML;
+for(const name of ['Zoom out','Zoom in','Pan left','Pan up','Pan down','Pan right'])assert.match(html,new RegExp(`aria-label="${name}"`));
+assert.match(html,/aria-label="INTAKE, Form, [^"]*, 2 findings, highest risk HIGH, 1 hotspot candidates"/,'risk is announced, not only coloured');
+assert.match(html,/data-edge-id="e1" aria-hidden="true"/,'edges point to the table as the accessible path');
+assert.ok(!html.includes('onload'),'layout numbers are coerced before they reach SVG attributes');
 ''')
 
 def test_truncation_copy_names_what_is_shown_and_how_to_reach_the_rest(tmp_path):
