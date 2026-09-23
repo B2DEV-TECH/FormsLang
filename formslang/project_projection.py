@@ -1204,6 +1204,19 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+def module_relationships(prepared: PreparedProjection) -> list[dict]:
+    """Every module-level relationship, allowlisted for delivery (no evidence text)."""
+    graph = _architecture_graph(prepared)
+    nodes = graph["nodes"]
+    rows = [{
+        "source": edge["source_name"], "source_layer": nodes[edge["source"]]["layer"],
+        "target": edge["target_name"], "target_layer": nodes[edge["target"]]["layer"],
+        "relationship": edge["classification"], "count": edge["count"], "level": edge["level"],
+        "hotspot_ids": list(edge["hotspot_ids"]),
+    } for edge in graph["edges"]]
+    return sorted(rows, key=lambda r: (r["source"].casefold(), r["relationship"], r["target"].casefold()))
+
+
 def digest_text(value) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]

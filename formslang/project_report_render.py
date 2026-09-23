@@ -8,6 +8,8 @@ import html
 import io
 import re
 
+from .estate_triage import investigation_markdown
+from .project_reports import GENERIC_ARTIFACT_KIND as GENERIC_KIND
 from .project_reports import json_bytes
 from .project_review import STATES
 from .report import _CSS
@@ -17,6 +19,9 @@ LIMITATIONS = [
     'AUTO describes intervention, not generation authorization, effort or project duration.',
     'Review, code approval, generation and validation are separate states.',
     'Generated output is a selected-module scope, not proof of complete migration.',
+    'Hotspots are candidates for architecture review derived from static structure, not verdicts.',
+    'Investigation groups order review work; they are not a migration schedule, effort or readiness estimate.',
+    'No cost, schedule, ROI or migration-percentage estimate is made.',
     'Offline syntax validation is not runtime equivalence, security acceptance or UAT.',
     'Source bodies, credentials and private reviewer identifiers are not part of these reports.',
     'No automatic DDL, import or deployment occurs. Oracle does not endorse this product.',
@@ -83,11 +88,11 @@ def page(title, snapshot, sections):
         'td{overflow-wrap:anywhere}section{break-inside:auto}thead{display:table-header-group}'
         '@media print{body,.card{background:white;color:black}.wrap{padding:0;max-width:none}th,.sub{color:#333}a{color:black}h2{break-after:avoid}}'
         f'</style></head><body><main class="wrap"><h1>{escape(title)}</h1>'
-        f'<p class="sub">{escape(o["project"]["name"])} · {escape(o["project"]["target"])}</p>'
+        f'<p class="sub">{escape(o["project"]["name"])} · {escape(target_label(o["project"]["target"]))}</p>'
         f'<p><strong>Saved assessment: {escape(a["freshness"])} / {escape(a["status"])}</strong></p>'
         '<p>This deliverable records the saved assessment and its human decisions. It is not a migration-complete or runtime-parity claim.</p>'
         + ''.join(sections) + section('Provenance', pairs(meta))
-        + '<footer>FormsLang — Oracle Forms to APEX Modernization Workbench. No external resources or scripts are required.</footer></main></body></html>').encode('utf-8')
+        + '<footer>FormsLang — Oracle Forms modernization assessment. No external resources or scripts are required.</footer></main></body></html>').encode('utf-8')
 
 
 def csv_bytes(rows, columns):
@@ -154,89 +159,97 @@ def build_files(snapshot, *, include_notes, artifact_files):
               section('Modernization Direction', pairs({LABELS.get(k, k): v for k, v in o['recommendation_distribution'].items()})),
               section('Automation / Intervention Distribution', pairs(o['intervention_distribution']) +
                       '<p>Based on modernization categories, not effort or project-duration estimation. AUTO is not generation-ready.</p>')]
-    artifact_rows = []
-    validations = {v['artifact_id']: v for v in snapshot['validation_evidence']}
-    exclusions = {e['artifact_id']: e['reason'] for e in snapshot['exclusions']}
-    for artifact in snapshot['artifacts']:
-        validation = validations.get(artifact['artifact_id'], {})
-        artifact_rows.append({'artifact_id': artifact['artifact_id'], 'source_id': artifact['source_id'],
-            'sha256': artifact['sha256'], 'created_at': artifact['created_at'],
-            'validation_status': ('Not Validated' if exclusions.get(artifact['artifact_id']) == 'ARTIFACT_INTEGRITY'
-                                  else validation.get('status', 'Not Validated')),
-            'validation': validation, 'inclusion': exclusions.get(artifact['artifact_id'], 'Included'),
-            'analysis_revision': artifact['analysis_revision'], 'review_revision': artifact['review_revision'],
-            'target_revision': artifact['target_revision'], 'code_revision': artifact['code_revision'],
-            'excluded_source_ids': artifact.get('excluded_source_ids', [])})
+    artifact_rows = [artifact_row(a, snapshot) for a in snapshot['artifacts']]
     generation = section('Generation Readiness', '<p>Not assessed by report export. Use Generate for current eligibility. Existing artifacts below are historical byte-bound evidence, not authorization to deploy.</p>' +
-        table(artifact_rows, [('source_id', 'Scope'), ('artifact_id', 'Artifact'), ('inclusion', 'Package inclusion')]))
-    validation = section('Validation Status', table(artifact_rows, [('artifact_id', 'Artifact'), ('validation_status', 'Recorded syntax status')]) +
-                         '<p>Validation applies only to the recorded hash; edited files and runtime behavior are not covered.</p>')
+        table(artifact_rows, [('source_id', 'Scope'), ('artifact_kind', 'Artifact kind'), ('artifact_id', 'Artifact'), ('inclusion', 'Package inclusion')]))
+    validation = section('Validation Status', table(artifact_rows, [('artifact_id', 'Artifact'), ('validation_status', 'Recorded validation status')]) +
+                         '<p>Validation applies only to the recorded hash; edited files and runtime behavior are not covered. '
+                         'An assessment-package check verifies structure and integrity, not architecture or target syntax.</p>')
     limitations = section('Known Limitations', '<ul>' + ''.join(f'<li>{escape(v)}</li>' for v in LIMITATIONS) + '</ul>')
-    critical = [b for b in backlog if b['Risk'] == 'CRITICAL']
-    executive = page('Executive Assessment', snapshot, [
-        section('Executive Summary', '<p>FormsLang inventories and triages observed legacy structure so specialists can focus on architectural and business decisions. Counts below describe analyzed evidence, not the completeness of an unknown estate.</p>'),
-        *common, section('Critical Findings', table(critical, [('Module', 'Module'), ('Component', 'Component'),
+    hotspots = list(rows.get('hotspots', ()))
+    groups = snapshot['investigation_groups']
+    critical = [b for b in backlog if b['Risk'] == 'CRITICAL' and b['Review Status'] not in {'Accepted', 'Changed'}]
+    hotspot_section = section('Architectural Hotspot Candidates',
+        '<p>Candidates for architecture review derived from saved structural evidence. A candidate is not a verdict; '
+        'each lists what its evidence cannot establish.</p>' +
+        table(hotspots, [('label', 'Candidate'), ('severity', 'Severity'), ('title', 'Subject'), ('statement', 'Observed evidence')]))
+    first = [m for g in groups['groups'] if g['id'] in {'INVESTIGATE_FIRST', 'ARCHITECTURE_DECISIONS'}
+             for m in ({**item, 'group': g['name']} for item in g['modules'])]
+    areas = section('Areas to Investigate First', f'<p>{escape(groups["disclaimer"])}</p>' +
+        table(first, [('group', 'Group'), ('module', 'Module'), ('unresolved', 'Unresolved findings'),
+                      ('hotspot_candidates', 'Hotspot candidates'), ('reasons', 'Reasons')]))
+    executive = page('Executive Modernization Assessment', snapshot, [
+        section('Executive Summary', '<p>FormsLang inventories and triages observed legacy structure so specialists can focus on architectural and business decisions. Counts below describe analyzed evidence, not the completeness of an unknown estate. No cost, schedule or migration-percentage estimate is made.</p>'),
+        *common, hotspot_section,
+        section('Unresolved Critical Findings', table(critical, [('Module', 'Module'), ('Component', 'Component'),
             ('Recommendation', 'Engine recommendation'), ('Review Status', 'Review status')])),
-        section('Architecture Summary', '<p>Target: Oracle APEX applications supported by reviewed PL/SQL/database boundaries. Recommendations remain proposals until reviewed; no synthesized runtime equivalence is claimed.</p>'),
+        areas,
+        section('Architecture Summary', f'<p>{escape(architecture_summary(o["project"]["target"]))}</p>'),
         section('Human Decisions Required', pairs(o['review_progress']) + pairs(o['priority'])), generation, validation,
-        limitations, section('Recommended Next Steps', '<ol><li>Resolve missing representations and stale source.</li><li>Review critical and manual decisions with business owners.</li><li>Confirm database/security prerequisites and code approvals.</li><li>Generate eligible scope, validate syntax, then test behavior and UAT.</li></ol>'),
+        limitations, section('Recommended Next Steps', '<ol>' + ''.join(f'<li>{escape(step)}</li>' for step in next_steps(o['project']['target'])) + '</ol>'),
         section('Methodology', '<p>Deterministic static analysis, persisted evidence, human review overlays and source fingerprints. No calibrated labor, cost or duration estimate is provided.</p>')])
     inventory_sections = []
     for key, title in [('forms', 'Forms Structure'), ('libraries', 'Library Representations'), ('packages', 'Database Packages'),
                        ('routines', 'Procedures and Functions'), ('tables', 'Tables'), ('views', 'Views')]:
         inventory_sections.append(section(title, table(rows[key], [('name', 'Name'), ('source_type', 'Type'),
             ('findings', 'Findings'), ('highest_risk', 'Highest risk')])))
-    technical = page('Technical Assessment', snapshot, [*common, *inventory_sections,
-        section('Cross-layer Dependencies', table(rows['dependencies'], [('source', 'Source'), ('target', 'Target'), ('relationship', 'Relationship')])),
+    hotspot_evidence = section('Hotspot Evidence', ''.join(
+        f'<article><h3>{escape(h["title"])} ({escape(h["severity"])} {escape(h["label"])})</h3><p>{escape(h["statement"])}</p>'
+        + pairs(h['evidence']) + '<p>Uncertainty:</p><ul>' + ''.join(f'<li>{escape(u)}</li>' for u in h['uncertainty']) + '</ul>'
+        + f'<p>Findings: {escape(h["finding_ids"])} · Evidence references: {len(h["evidence_refs"])} · Graph edges: {len(h["edge_refs"])}</p>'
+        + f'<p>{escape(h["recommended_action"])}</p></article>' for h in hotspots)
+        or '<p>No hotspot candidates were derived from the saved evidence.</p>')
+    technical = page('Technical Modernization Assessment', snapshot, [*common, *inventory_sections,
+        section('Module Relationships', '<p>Module-level dependencies: a Form includes its blocks, items, triggers and program units; a package includes its subprograms.</p>' +
+                table(snapshot['relationships'], [('source', 'Source'), ('relationship', 'Relationship'), ('target', 'Target'),
+                                                  ('target_layer', 'Target layer'), ('count', 'Observations'), ('level', 'Evidence level')])),
+        section('Cross-layer Dependencies (component level)', table(rows['dependencies'], [('source', 'Source'), ('target', 'Target'), ('relationship', 'Relationship')])),
+        hotspot_evidence,
         section('Business Rule Candidates', table(rows['business_rules'], [('name', 'Candidate'), ('module', 'Module'), ('candidate_kind', 'Evidence category')])),
-        section('Duplicate Logic / API Ownership', table([r for r in rows['findings'] if r['evidence_factors']],
-                [('name', 'Component'), ('module', 'Module'), ('evidence_factors', 'Observed factors')])),
-        section('Modernization Findings / APEX Target Mapping', table(backlog, [('ID', 'Finding'), ('Module', 'Module'),
+        section('Engine Evidence Factors', table([r for r in rows['findings'] if r['evidence_factors']],
+                [('name', 'Component'), ('module', 'Module'), ('evidence_factors', 'Observed factors'), ('signals', 'Engine signals')])),
+        section('Modernization Findings and Engine Suggestions', f'<p>{escape(suggestion_note(o["project"]["target"]))}</p>' + table(backlog, [('ID', 'Finding'), ('Module', 'Module'),
             ('Recommendation', 'Engine recommendation'), ('Human Decision', 'Human decision'), ('Risk', 'Risk'),
-            ('Review Status', 'Review'), ('Target', 'Suggested target'), ('Reason', 'Reason')])),
-        section('Database Prerequisites', '<p>Review observed object identities, supported row keys, APIs, permissions and security behavior in Generate. No database change is applied by this report.</p>'),
+            ('Review Status', 'Review'), ('Target', 'Engine suggestion'), ('Reason', 'Reason')])),
+        section('Database Prerequisites', '<p>Review observed object identities, supported row keys, APIs, permissions and security behavior before any implementation. No database change is applied by this report.</p>'),
         section('Unresolved Decisions', table(unresolved, [('ID', 'Finding'), ('Review Status', 'Status'), ('Recommendation', 'Direction')])),
         generation, validation, limitations])
     risk = page('Risk Report', snapshot, [section('Risk Distribution', pairs(o['risk_distribution'])),
         section('Observed Findings', table(backlog, [('ID', 'Finding'), ('Module', 'Module'), ('Risk', 'Risk'),
                 ('Recommendation', 'Direction'), ('Review Status', 'Review')])), limitations])
     inventory = {key: [{k: v for k, v in row.items() if not k.startswith('_')} for row in category] for key, category in rows.items()}
-    architecture = '# Proposed target architecture\n\nEngine suggestions, not deployed architecture.\n\n' + '\n'.join(
+    architecture = '# Engine target suggestions\n\nEngine suggestions, not a target decision or deployed architecture.\n\n' + '\n'.join(
         f'- {markdown(b["ID"])}: {markdown(b["Target"])} ({markdown(b["Review Status"])})' for b in backlog)
     candidates = '# Refactoring candidates — review required\n\nNo executable SQL is generated by this report.\n\n' + '\n'.join(
         f'- {markdown(b["ID"])}: {markdown(b["Recommendation"])} — {markdown(b["Reason"])}' for b in backlog
         if b['Recommendation'] in {'REFACTOR', 'MOVE_TO_PLSQL_API'})
-
-    # -----------------------------------------------------------------------
-    # Phase 2.3 Knowledge Asset Engine Deliverables
-    # -----------------------------------------------------------------------
-    waves_json = _build_waves_json(rows)
-    waves_md = _build_waves_markdown(snapshot, o, waves_json)
-    adrs_md = _build_adrs_markdown(o, decisions)
-    dossier_md = _build_dossier_markdown(o, rows, backlog, waves_md, adrs_md)
-    pitch_deck_html = _build_pitch_deck_html(o, rows, backlog, waves_json)
+    records = decision_records(decisions, hotspots)
+    records_md = decision_records_markdown(o, records)
+    groups_md = investigation_markdown(groups, markdown)
+    dossier_md = dossier_markdown(o, rows, backlog, hotspots, groups_md, records_md)
 
     files = {
-        'README.md': ('# Modernization package\n\nStart with assessment/executive-summary.html.\n'
-            'Technical reports, backlog and decision metadata share one saved snapshot.\n'
-            'APEXlang is present only when explicitly requested and verified.\n'
-            'This is not a complete migration or permission to deploy. See manifest exclusions.\n'
+        'README.md': ('# Modernization assessment package\n\nStart with assessment/executive-summary.html.\n'
+            'Technical reports, backlog, hotspot candidates, investigation groups and decision records share one saved snapshot.\n'
+            'Generated artifacts are present only when explicitly requested and verified.\n'
+            'This is not a complete migration, a schedule or permission to deploy. See manifest exclusions.\n'
             + ('Sensitive human notes included by explicit request.\n' if include_notes else 'Human notes and source bodies excluded.\n')).encode(),
         'assessment/executive-summary.html': executive, 'assessment/technical-assessment.html': technical,
         'assessment/risk-report.html': risk, 'assessment/application-inventory.json': json_bytes(inventory),
-        'assessment/migration-pitch-deck.html': pitch_deck_html.encode('utf-8'),
+        'assessment/hotspot-candidates.json': json_bytes({'metadata': provenance, 'rows': hotspots}),
         'dossier/modernization-dossier.md': dossier_md.encode('utf-8'),
-        'architecture/migration-waves.md': waves_md.encode('utf-8'),
-        'architecture/migration-waves.json': json_bytes(waves_json),
-        'architecture/architectural-decisions.md': adrs_md.encode('utf-8'),
+        'architecture/investigation-groups.md': groups_md.encode('utf-8'),
+        'architecture/investigation-groups.json': json_bytes(groups),
+        'architecture/module-relationships.json': json_bytes(snapshot['relationships']),
         'architecture/target-architecture.md': architecture.encode(),
         'architecture/dependency-map.json': json_bytes(inventory['dependencies']),
         'architecture/modernization-decisions.json': json_bytes({'metadata': provenance, 'rows': decisions}),
-        'database/prerequisites.md': '# Database prerequisites — review required\n\nConfirm observed tables, columns, row keys, APIs, grants and security in Generate. No DDL is executed.\n'.encode(),
+        'database/prerequisites.md': '# Database prerequisites — review required\n\nConfirm observed tables, columns, row keys, APIs, grants and security before implementation. No DDL is executed.\n'.encode(),
         'database/refactoring-candidates.md': candidates.encode(),
         'backlog/modernization-backlog.csv': csv_bytes(backlog, columns),
         'backlog/modernization-backlog.json': json_bytes({'metadata': provenance, 'rows': backlog}),
         'review/decisions.json': json_bytes({'metadata': provenance, 'rows': decisions}), 'review/unresolved-decisions.csv': csv_bytes(unresolved, columns),
+        'review/decision-records.md': records_md.encode('utf-8'),
         'evidence/analysis.json': json_bytes({'disclosure': 'Structural projection only; source bodies and private identities excluded.',
             'engine_identity': snapshot['engine_identity'], 'source_manifest': snapshot['source_manifest'],
             'assessment': o['assessment'], 'findings': inventory['findings'], 'warnings': o['warnings']}),
@@ -252,175 +265,147 @@ def build_files(snapshot, *, include_notes, artifact_files):
     return files
 
 
-def _build_waves_json(rows):
-    forms = rows.get('forms', [])
-    findings = rows.get('findings', [])
-    wave1, wave2, wave3 = [], [], []
-    for f in forms:
-        name = f.get('name')
-        f_findings = [it for it in findings if it.get('module') == name]
-        max_risk = f.get('highest_risk', 'LOW')
-        has_bypass = any('bypass' in str(it.get('evidence_factors', '')).lower() for it in f_findings)
-        if max_risk in {'CRITICAL', 'HIGH'} or has_bypass:
-            wave3.append({'module': name, 'reason': 'High complexity / API bypass / critical risk', 'findings_count': len(f_findings)})
-        elif len(f_findings) > 2 or max_risk == 'MEDIUM':
-            wave2.append({'module': name, 'reason': 'Moderate complexity / standard service dependencies', 'findings_count': len(f_findings)})
-        else:
-            wave1.append({'module': name, 'reason': 'Independent module / quick win', 'findings_count': len(f_findings)})
-    return {
-        'wave_1_foundations': {'name': 'Wave 1: Independent Foundations', 'modules': wave1},
-        'wave_2_services': {'name': 'Wave 2: Core Domain Services', 'modules': wave2},
-        'wave_3_coupled': {'name': 'Wave 3: Coupled Hotspots & Redesign', 'modules': wave3},
-    }
+def artifact_row(artifact, snapshot):
+    """Explicit per-kind artifact contract; nothing is fabricated for a missing field."""
+    validations = {v['artifact_id']: v for v in snapshot['validation_evidence']}
+    exclusions = {e['artifact_id']: e['reason'] for e in snapshot['exclusions']}
+    identity = artifact['artifact_id']
+    validation = validations.get(identity, {})
+    status = ('Not Validated' if exclusions.get(identity) == 'ARTIFACT_INTEGRITY'
+              else validation.get('status', 'Not Validated'))
+    row = {'artifact_id': identity, 'sha256': artifact['sha256'], 'created_at': artifact['created_at'],
+           'validation_status': status, 'validation': validation,
+           'inclusion': exclusions.get(identity, 'Included'),
+           'analysis_revision': artifact['analysis_revision'], 'review_revision': artifact['review_revision']}
+    if artifact.get('artifact_kind') == GENERIC_KIND:
+        # A target-neutral package has no module scope, target plan or code revision.
+        return {**row, 'artifact_kind': GENERIC_KIND, 'source_id': 'Estate assessment (all modules)',
+                'snapshot_revision': artifact['snapshot_revision'],
+                'target_revision': 'Not applicable', 'code_revision': 'Not applicable',
+                'excluded_source_ids': []}
+    return {**row, 'artifact_kind': 'apex-application', 'source_id': artifact['source_id'],
+            'target_revision': artifact['target_revision'], 'code_revision': artifact['code_revision'],
+            'excluded_source_ids': artifact.get('excluded_source_ids', [])}
 
 
-def _build_waves_markdown(snapshot, o, waves):
-    w1, w2, w3 = waves['wave_1_foundations']['modules'], waves['wave_2_services']['modules'], waves['wave_3_coupled']['modules']
-    lines = [
-        '# Migration Waves Roadmap',
-        '',
-        f"**Project:** {o['project']['name']}  ",
-        f"**Target:** {display(o['project']['target'])}  ",
-        '',
-        '## Wave 1: Independent Foundations (Quick Wins)',
-        f'Total Modules: {len(w1)}',
-        '',
-        *[f"- **{m['module']}**: {m['reason']} ({m['findings_count']} findings)" for m in w1],
-        '',
-        '## Wave 2: Core Domain Services',
-        f'Total Modules: {len(w2)}',
-        '',
-        *[f"- **{m['module']}**: {m['reason']} ({m['findings_count']} findings)" for m in w2],
-        '',
-        '## Wave 3: Coupled Hotspots & Redesign',
-        f'Total Modules: {len(w3)}',
-        '',
-        *[f"- **{m['module']}**: {m['reason']} ({m['findings_count']} findings)" for m in w3],
-        '',
-    ]
+def target_label(target):
+    platform = target.get('platform', '') if isinstance(target, dict) else ''
+    if platform == 'UNSELECTED':
+        return 'Target not selected (assessment only)'
+    if platform == 'Generic Modernization':
+        return 'Target-neutral assessment (no code generation)'
+    return ' '.join(str(target.get(k, '')) for k in ('platform', 'version', 'representation')).strip()
+
+
+def architecture_summary(target):
+    platform = target.get('platform', '') if isinstance(target, dict) else ''
+    if platform == 'Oracle APEX':
+        return ('Target: Oracle APEX applications supported by reviewed PL/SQL/database boundaries. '
+                'Recommendations remain proposals until reviewed; no synthesized runtime equivalence is claimed.')
+    return ('No implementation technology is decided by this assessment. It describes the observed estate, '
+            'its dependencies and the decisions it requires, independent of the eventual target.')
+
+
+def suggestion_note(target):
+    platform = target.get('platform', '') if isinstance(target, dict) else ''
+    if platform == 'Oracle APEX':
+        return 'Engine suggestions for the selected Oracle APEX target; each remains a proposal until reviewed.'
+    return ('The analysis engine phrases suggestions for Oracle APEX, the first supported implementation path. '
+            'For this project they are hints, not a target decision.')
+
+
+def next_steps(target):
+    steps = ['Resolve missing representations and stale source.',
+             'Review hotspot candidates and critical findings with architects and business owners.',
+             'Record decisions in Review; generated suggestions stay PROPOSED until a person decides.']
+    platform = target.get('platform', '') if isinstance(target, dict) else ''
+    if platform == 'Oracle APEX':
+        steps += ['Confirm database/security prerequisites and code approvals.',
+                  'Generate eligible scope, validate syntax, then test behavior and UAT.']
+    else:
+        steps += ['Choose the implementation technology using this evidence; the assessment does not choose it.']
+    return steps
+
+
+def decision_records(decisions, hotspots):
+    """Recorded human decisions and clearly PROPOSED generated items, never mixed."""
+    records = []
+    for decision in decisions:
+        history = decision['history']
+        status = decision['review_status']
+        if not history and status == 'Pending':
+            continue
+        latest = history[0] if history else {}
+        records.append({
+            'kind': 'RECORDED', 'finding_id': decision['finding_id'],
+            'engine_recommendation': decision['engine_recommendation'],
+            'human_decision': decision['human_decision'],
+            'review_status': status,
+            'applicable': status != 'Needs Revalidation',
+            'latest_action': latest.get('action'), 'decided_at': latest.get('timestamp'),
+            'history_events': len(history),
+        })
+    for hotspot in hotspots:
+        records.append({
+            'kind': 'PROPOSED', 'hotspot_id': hotspot['id'], 'title': hotspot['title'],
+            'context': hotspot['statement'], 'decision': 'Not decided — architecture review required.',
+            'finding_ids': list(hotspot['finding_ids']), 'uncertainty': list(hotspot['uncertainty']),
+            'evidence_references': len(hotspot['evidence_refs']) + len(hotspot['edge_refs']),
+        })
+    return records
+
+
+def decision_records_markdown(o, records):
+    lines = ['# Decision records', '',
+             f"**Project:** {markdown(o['project']['name'])}  ",
+             f"**Assessment:** {markdown(o['assessment']['freshness'])}  ", '',
+             'Recorded entries come from the append-only review ledger. PROPOSED entries are generated from',
+             'hotspot evidence; they are not decisions and carry no approval.', '',
+             '## Recorded human decisions', '']
+    recorded = [r for r in records if r['kind'] == 'RECORDED']
+    if not recorded:
+        lines += ['No human decisions have been recorded for this snapshot.', '']
+    for r in recorded:
+        lines += [f"### {markdown(r['finding_id'])}",
+                  f"- Engine recommendation: {markdown(r['engine_recommendation'])}",
+                  f"- Human decision: {markdown(r['human_decision'] or 'none')}",
+                  f"- Review status: {markdown(r['review_status'])}"
+                  + ('' if r['applicable'] else ' (earlier decision no longer applies to current evidence)'),
+                  f"- Ledger events: {r['history_events']}", '']
+    lines += ['## PROPOSED architecture decisions (generated)', '']
+    proposed = [r for r in records if r['kind'] == 'PROPOSED']
+    if not proposed:
+        lines += ['No hotspot candidates require a proposed decision.', '']
+    for r in proposed:
+        lines += [f"### PROPOSED: {markdown(r['title'])}", f"- Context: {markdown(r['context'])}",
+                  f"- Decision: {markdown(r['decision'])}",
+                  f"- Related findings: {markdown(', '.join(r['finding_ids']) or 'none')}",
+                  *(f"- Uncertainty: {markdown(u)}" for u in r['uncertainty']), '']
     return '\n'.join(lines)
 
 
-def _build_adrs_markdown(o, decisions):
+def dossier_markdown(o, rows, backlog, hotspots, groups_md, records_md):
     lines = [
-        '# Architectural Decision Records (ADRs)',
-        '',
-        f"**Project:** {o['project']['name']}  ",
-        f"**Status:** {o['assessment']['freshness']}  ",
-        '',
-    ]
-    approved_decisions = [d for d in decisions if d.get('review_status') in {'Accepted', 'Changed'}]
-    if not approved_decisions:
-        lines.append('No human architectural decisions have been signed off yet. Proposed recommendations are tracked in the modernization backlog.')
-        lines.append('')
-    for idx, d in enumerate(approved_decisions, 1):
-        lines.extend([
-            f"## ADR-{idx:03d}: Decision for {d['finding_id']}",
-            f"**Engine Recommendation:** {d.get('engine_recommendation', 'N/A')}  ",
-            f"**Human Decision:** {d.get('human_decision', 'N/A')}  ",
-            f"**Review Status:** {d.get('review_status', 'Pending')}  ",
-            '',
-            '### Context & Consequences',
-            'Decision recorded in immutable project event store. Enforces architectural ownership boundary.',
-            '',
-        ])
-    return '\n'.join(lines)
-
-
-def _build_dossier_markdown(o, rows, backlog, waves_md, adrs_md):
-    lines = [
-        f"# Modernization Dossier: {o['project']['name']}",
-        '',
-        '> **Oracle Forms Modernization Intelligence Platform**  ',
-        '> *"Understand first. Modernize second."*',
-        '',
-        '## Chapter 1: Executive Estate Scorecard',
-        '',
-        f"- **Project Name:** {o['project']['name']}",
-        f"- **Target Profile:** {display(o['project']['target'])}",
-        f"- **Assessment Freshness:** {o['assessment']['freshness']}",
-        f"- **Forms Modules:** {len(rows.get('forms', []))}",
-        f"- **Database Packages:** {len(rows.get('packages', []))}",
-        f"- **Database Tables & Views:** {len(rows.get('tables', [])) + len(rows.get('views', []))}",
-        f"- **Total Modernization Findings:** {len(backlog)}",
-        '',
-        '## Chapter 2: Estate Inventory & Risk Profile',
-        '',
-        *[f"- **{k}:** {v}" for k, v in o['risk_distribution'].items()],
-        '',
-        '## Chapter 3: Architectural Hotspots & Anti-Patterns',
-        '',
-        'Hotspot analysis isolates UI DML bypasses, duplicated trigger logic, and global variable coupling.',
-        '',
-        *[f"- **{b['ID']}** ({b['Module']}): {b['Reason']} (Risk: {b['Risk']})" for b in backlog if b['Risk'] in {'CRITICAL', 'HIGH'}][:20],
-        '',
-        '## Chapter 4: Target-Neutral Modernization Backlog',
-        '',
-        f'Total Backlog Items: {len(backlog)}',
-        '',
-        *[f"- **{b['ID']}** [{b['Module']} / {b['Component']}]: {b['Recommendation']} -> Suggested Target: {b['Target']} (Status: {b['Review Status']})" for b in backlog[:30]],
-        '',
-        '## Chapter 5: 3-Wave Phased Migration Roadmap',
-        '',
-        waves_md,
-        '',
-        '## Chapter 6: Governance & Architectural Decisions',
-        '',
-        adrs_md,
-        '',
-        '## Chapter 7: Limitations & Delivery Guarantees',
-        '',
-        *[f"- {lim}" for lim in LIMITATIONS],
-        '',
+        f"# Modernization assessment dossier: {markdown(o['project']['name'])}", '',
+        '> Understand first. Modernize second.', '',
+        '## 1. Scope and freshness', '',
+        f"- Target: {markdown(target_label(o['project']['target']))}",
+        f"- Assessment: {markdown(o['assessment']['freshness'])} · analysed {markdown(o['assessment']['assessment_timestamp'])}",
+        f"- Analysis revision: {markdown(o['assessment']['analysis_revision'])}", '',
+        '## 2. Estate inventory', '',
+        *[f"- {markdown(str(k).replace('_', ' '))}: {markdown(v)}" for k, v in o['inventory'].items()], '',
+        '## 3. Risk distribution', '',
+        *[f"- {markdown(k)}: {v}" for k, v in o['risk_distribution'].items()], '',
+        '## 4. Architectural hotspot candidates', '',
+        *([f"- **{markdown(h['label'])}** ({markdown(h['severity'])}): {markdown(h['statement'])}" for h in hotspots]
+          or ['No hotspot candidates were derived from the saved evidence.']), '',
+        '## 5. Suggested investigation groups', '', groups_md, '',
+        '## 6. Decisions', '', records_md, '',
+        '## 7. Findings', '', f'Total findings: {len(backlog)}', '',
+        *[f"- **{markdown(b['ID'])}** [{markdown(b['Module'])} / {markdown(b['Component'])}]: engine "
+          f"{markdown(b['Recommendation'])}; human {markdown(b['Human Decision'] or 'none')}; "
+          f"status {markdown(b['Review Status'])}; risk {markdown(b['Risk'])}" for b in backlog[:200]],
+        *(['', f'Showing 200 of {len(backlog)} findings; see backlog/modernization-backlog.csv.'] if len(backlog) > 200 else []),
+        '', '## 8. Limitations', '', *[f"- {markdown(lim)}" for lim in LIMITATIONS], '',
     ]
     return '\n'.join(lines)
-
-
-def _build_pitch_deck_html(o, rows, backlog, waves):
-    css = _CSS + """
-    .slide-deck { display: grid; gap: 32px; max-width: 1000px; margin: 0 auto; }
-    .slide-card { background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; padding: 32px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-    .slide-header { font-size: 20px; font-weight: 700; color: #1f2328; border-bottom: 2px solid #0969da; padding-bottom: 12px; margin-bottom: 20px; }
-    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin: 16px 0; }
-    .metric-box { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 8px; padding: 16px; text-align: center; }
-    .metric-num { font-size: 28px; font-weight: 800; color: #0969da; }
-    .metric-lbl { font-size: 12px; color: #57609a; text-transform: uppercase; margin-top: 4px; }
-    """
-    html_parts = [
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">',
-        f'<title>Migration Pitch Deck - {escape(o["project"]["name"])}</title>',
-        f'<style>{css}</style></head><body><div class="slide-deck">',
-        # Slide 1
-        '<div class="slide-card"><div class="slide-header">Executive Summary: Estate Modernization Scorecard</div>',
-        f'<p><strong>Application:</strong> {escape(o["project"]["name"])} | <strong>Target:</strong> {escape(display(o["project"]["target"]))}</p>',
-        '<div class="metric-grid">',
-        f'<div class="metric-box"><div class="metric-num">{len(rows.get("forms", []))}</div><div class="metric-lbl">Forms Modules</div></div>',
-        f'<div class="metric-box"><div class="metric-num">{len(rows.get("packages", []))}</div><div class="metric-lbl">DB Packages</div></div>',
-        f'<div class="metric-box"><div class="metric-num">{len(backlog)}</div><div class="metric-lbl">Total Findings</div></div>',
-        f'<div class="metric-box"><div class="metric-num">{len([b for b in backlog if b["Risk"]=="CRITICAL"])}</div><div class="metric-lbl">Critical Risks</div></div>',
-        '</div><p>FormsLang platform triage isolates high-value business logic from mechanical form controls.</p></div>',
-        # Slide 2
-        '<div class="slide-card"><div class="slide-header">Architectural Hotspots & Anti-Patterns</div>',
-        '<p>Direct UI DML bypasses and duplicated trigger clusters represent the highest risk to cloud migration.</p>',
-        '<ul>',
-        *[f'<li><strong>{escape(b["ID"])}</strong> ({escape(b["Module"])}): {escape(b["Reason"])}</li>' for b in backlog if b['Risk'] in {'CRITICAL', 'HIGH'}][:8],
-        '</ul></div>',
-        # Slide 3
-        '<div class="slide-card"><div class="slide-header">Modernization Phasing: 3-Wave Delivery Strategy</div>',
-        '<p>Prioritized sequencing decouples dependencies before UI transformation:</p>',
-        '<ul>',
-        f'<li><strong>Wave 1: Independent Foundations:</strong> {len(waves["wave_1_foundations"]["modules"])} modules</li>',
-        f'<li><strong>Wave 2: Core Domain Services:</strong> {len(waves["wave_2_services"]["modules"])} modules</li>',
-        f'<li><strong>Wave 3: Coupled Hotspots & Redesign:</strong> {len(waves["wave_3_coupled"]["modules"])} modules</li>',
-        '</ul></div>',
-        # Slide 4
-        '<div class="slide-card"><div class="slide-header">Governance & Delivery Checklist</div>',
-        '<p>All modernization actions adhere to the 8 Product Doctrines: understand first, preserve database owners, fail-closed generation.</p>',
-        '<ul>',
-        '<li>Verify database service boundaries and PL/SQL package encapsulations.</li>',
-        '<li>Obtain human sign-off on critical architectural decisions.</li>',
-        '<li>Execute offline syntax validation prior to test deployment.</li>',
-        '</ul></div>',
-        '</div></body></html>',
-    ]
-    return ''.join(html_parts)

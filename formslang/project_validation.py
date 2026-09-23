@@ -14,27 +14,27 @@ def validate_artifact(generation, artifact_id):
     service = generation.service
     service._job_authority(rbac.EXPORT_PROJECT)
     with project_worker_lock(service.access.root):
-        data = generation.download(artifact_id)
+        payload = generation.download(artifact_id)
+        data = getattr(payload, 'body', payload)
         fingerprint = hashlib.sha256(data).hexdigest()
-        descriptor = service.open()
-        if descriptor.target.platform == "Generic Modernization":
-            from .target_adapter import get_target_adapter
-            adapter = get_target_adapter("Generic Modernization")
-            with tempfile.TemporaryDirectory(prefix='formslang-validate-') as temporary:
-                package = Path(temporary) / 'application.apex.zip'
-                package.write_bytes(data)
-                verdict = adapter.validate_deliverables(str(package))
-                result = {
-                    'artifact_id': artifact_id,
-                    'artifact_sha256': fingerprint,
-                    'tool_version': '1.0',
-                    'mode': 'generic-deliverables-validation',
-                    'timestamp': now(),
-                    'status': 'Validated' if verdict['valid'] else 'Validation Failed',
-                    'exit_code': 0 if verdict['valid'] else 1,
-                    'message': 'Generic modernization package integrity verified.' if verdict['valid'] else '; '.join(verdict['diagnostics']),
-                    'limitation': 'Deliverables schema and checksum validation; not runtime testing.',
-                }
+        if generation._artifact_metadata(artifact_id).get('artifact_kind'):
+            # A target-neutral package has no target syntax: check its declared
+            # structure, member hashes and references, and say only that.
+            from .adapters.generic import PACKAGE_SCHEMA, validate_package
+            verdict = validate_package(data)
+            result = {
+                'artifact_id': artifact_id,
+                'artifact_sha256': fingerprint,
+                'tool_version': PACKAGE_SCHEMA,
+                'mode': 'package-structure',
+                'timestamp': now(),
+                'status': 'Package Verified' if verdict['valid'] else 'Package Invalid',
+                'exit_code': None,
+                'message': ('Assessment package structure, member hashes and references verified.'
+                            if verdict['valid'] else '; '.join(verdict['diagnostics'])[:4000]),
+                'limitation': ('Structure and integrity only; not SQLcl syntax, architecture acceptance '
+                               'or runtime testing.'),
+            }
         else:
             version = apeximport.sqlcl_version()
             result = {'artifact_id': artifact_id, 'artifact_sha256': fingerprint,

@@ -1,362 +1,365 @@
-"""Generic Modernization Target Adapter implementation.
+"""Target-neutral assessment package (the "Generic Modernization" target).
 
-Produces target-neutral discovery assets, backlog stories,
-architectural decision packages, and wave roadmaps (§106, §4).
+The package is built exclusively from the normalized delivery snapshot that
+Overview, Review and Reports already share (``ProjectReportService.capture``).
+It never reads raw Blueprint entities, so it cannot lose module identity, risk,
+review state or human decisions, and it cannot distribute source bodies, view
+SQL, reviewer notes or host paths: every field crosses an explicit allowlist.
+
+Semantics that must survive export:
+
+* the engine recommendation stays the engine's, labelled ``PROPOSED``;
+* a recorded human decision is shown next to it, never instead of it;
+* review status, staleness and unresolved state are carried as recorded;
+* missing evidence stays ``UNKNOWN`` -- never a safer-looking default.
+
+The archive is deterministic for one logical snapshot: members are sorted,
+timestamps and permissions fixed, and ``manifest.json`` inside the archive
+hashes every other member. The archive's own digest is recorded outside it.
 """
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import io
 import json
+import stat
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
-from ..modernization_model import map_intent_to_target_recommendation
-from ..project_model import TargetProfile, canonical_json
+from ..project_model import GENERIC_TARGET, ProjectError, TargetProfile
+
+PACKAGE_SCHEMA = "formslang-assessment-package/1"
+PACKAGE_NAME = "assessment-package.zip"
+ESTATE_SCOPE = "all"
+MANIFEST = "manifest.json"
+MEMBERS = (
+    "README.md",
+    "assessment/findings.json",
+    "assessment/findings.csv",
+    "assessment/hotspot-candidates.json",
+    "assessment/investigation-groups.json",
+    "assessment/investigation-groups.md",
+    "assessment/decision-records.json",
+    "assessment/decision-records.md",
+    "assessment/interface-catalog.json",
+)
+FINDING_COLUMNS = (
+    "finding_id", "finding_revision", "module", "component", "source_type", "observed_risk",
+    "intervention", "engine_recommendation", "engine_recommendation_status", "engine_suggestion",
+    "human_decision", "review_status", "stale", "unresolved", "signals", "hotspot_ids",
+    "evidence_refs",
+)
+RISKS = frozenset({"CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"})
+REVIEW_STATUSES = frozenset({"Pending", "Accepted", "Changed", "Needs Review", "Deferred",
+                             "Needs Revalidation"})
+MAX_MEMBERS = 32
+MAX_MEMBER_BYTES = 64 * 1024 * 1024
+MAX_TOTAL_BYTES = 128 * 1024 * 1024
+LIMITATIONS = [
+    "Target-neutral assessment material. No executable code is generated.",
+    "Engine recommendations are PROPOSED until a human decision is recorded.",
+    "Hotspots are candidates for architecture review, not verdicts.",
+    "Investigation groups are not a migration schedule, effort or readiness estimate.",
+    "Package validation checks structure and integrity only, not architecture or target syntax.",
+    "Source bodies, view SQL, reviewer notes and host paths are not included.",
+]
+
+
+def _unknown(value):
+    return value if isinstance(value, str) and value.strip() else "UNKNOWN"
+
+
+def finding_rows(snapshot: dict) -> list[dict]:
+    """One allowlisted row per finding, joined to its recorded review state."""
+    from ..project_review import STATES
+
+    decisions = {d["finding_id"]: d for d in snapshot["decisions"]}
+    rows = []
+    for row in snapshot["inventory"]["findings"]:
+        decision = decisions.get(row["id"], {})
+        state = row.get("review_state", "PENDING")
+        rows.append({
+            "finding_id": row["id"],
+            "finding_revision": row.get("finding_revision") or decision.get("finding_revision"),
+            "module": _unknown(row.get("module")),
+            "component": _unknown(row.get("name")),
+            "source_type": _unknown(row.get("source_type")),
+            "observed_risk": row.get("risk") if row.get("risk") in RISKS else "UNKNOWN",
+            "intervention": _unknown(row.get("intervention")),
+            "engine_recommendation": _unknown(row.get("recommendation")),
+            "engine_recommendation_status": "PROPOSED",
+            "engine_suggestion": row.get("target") or "",
+            "human_decision": decision.get("human_decision"),
+            "review_status": STATES.get(state, "Needs Review"),
+            "stale": state == "STALE",
+            "unresolved": state not in {"APPROVE", "MODIFY"},
+            "signals": list(row.get("signals", ())),
+            "hotspot_ids": list(row.get("hotspot_ids", ())),
+            "evidence_refs": list(row.get("evidence_refs", ())),
+        })
+    return sorted(rows, key=lambda r: r["finding_id"])
+
+
+def interface_catalog(snapshot: dict) -> dict:
+    """Database interface identities and module relationships -- never definitions."""
+    inventory = snapshot["inventory"]
+    return {
+        "packages": [{"name": r["name"], "specification": r.get("spec"), "body": r.get("body"),
+                      "subprograms": r.get("subprograms"), "findings": r.get("findings"),
+                      "highest_risk": r.get("highest_risk")} for r in inventory["packages"]],
+        "tables": [{"name": r["name"], "columns": r.get("columns"), "constraints": r.get("constraints"),
+                    "findings": r.get("findings"), "highest_risk": r.get("highest_risk")}
+                   for r in inventory["tables"]],
+        "views": [{"name": r["name"], "findings": r.get("findings"), "highest_risk": r.get("highest_risk")}
+                  for r in inventory["views"]],
+        "module_relationships": snapshot["relationships"],
+    }
+
+
+def _zip(members: dict[str, bytes]) -> bytes:
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in sorted(members):
+            entry = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            entry.external_attr = 0o644 << 16
+            entry.create_system = 3
+            archive.writestr(entry, members[name])
+    return stream.getvalue()
+
+
+def build_package(snapshot: dict) -> tuple[bytes, dict]:
+    """Deterministic package bytes and the manifest recorded inside them."""
+    from ..estate_triage import investigation_markdown
+    from ..project_report_render import (
+        csv_bytes,
+        decision_records,
+        decision_records_markdown,
+        markdown,
+        public_value,
+    )
+    from ..project_reports import SNAPSHOT_SCHEMA, json_bytes
+
+    if not isinstance(snapshot, dict) or snapshot.get("schema") != SNAPSHOT_SCHEMA:
+        raise ProjectError("The assessment package requires the normalized delivery snapshot.")
+    snapshot = public_value(snapshot)
+    overview = snapshot["overview"]
+    findings = finding_rows(snapshot)
+    hotspots = list(snapshot["inventory"]["hotspots"])
+    groups = snapshot["investigation_groups"]
+    records = decision_records(snapshot["decisions"], hotspots)
+    provenance = {
+        "project_id": overview["project"]["id"],
+        "project_name": overview["project"]["name"],
+        "target": overview["project"]["target"],
+        "formslang_version": snapshot["formslang_version"],
+        "snapshot_revision": snapshot["snapshot_revision"],
+        **{key: overview["assessment"][key] for key in (
+            "analysis_revision", "source_revision", "review_revision", "assessment_timestamp", "freshness")},
+    }
+    members = {
+        "README.md": (
+            b"# Target-neutral modernization assessment package\n\n"
+            b"Built from one saved FormsLang assessment snapshot. Start with assessment/findings.csv\n"
+            b"and assessment/decision-records.md. Engine recommendations are PROPOSED; recorded\n"
+            b"human decisions appear beside them. No executable code, schedule or estimate is included.\n"
+        ),
+        "assessment/findings.json": json_bytes({"metadata": provenance, "rows": findings}),
+        "assessment/findings.csv": csv_bytes(findings, list(FINDING_COLUMNS)),
+        "assessment/hotspot-candidates.json": json_bytes({"metadata": provenance, "rows": hotspots}),
+        "assessment/investigation-groups.json": json_bytes(groups),
+        "assessment/investigation-groups.md": investigation_markdown(groups, markdown).encode("utf-8"),
+        "assessment/decision-records.json": json_bytes({"metadata": provenance, "rows": records}),
+        "assessment/decision-records.md": decision_records_markdown(overview, records).encode("utf-8"),
+        "assessment/interface-catalog.json": json_bytes(interface_catalog(snapshot)),
+    }
+    manifest = {
+        "schema": PACKAGE_SCHEMA,
+        "scope": ESTATE_SCOPE,
+        "provenance": provenance,
+        "limitations": LIMITATIONS,
+        "counts": {"findings": len(findings), "hotspot_candidates": len(hotspots),
+                   "recorded_decisions": sum(r["kind"] == "RECORDED" for r in records),
+                   "proposed_decisions": sum(r["kind"] == "PROPOSED" for r in records)},
+        "covers": "every archive member except manifest.json",
+        "files": {name: hashlib.sha256(data).hexdigest() for name, data in sorted(members.items())},
+    }
+    members[MANIFEST] = json_bytes(manifest)
+    return _zip(members), manifest
+
+
+def _safe_member(name: str) -> bool:
+    path = PurePosixPath(name)
+    return (bool(name) and not path.is_absolute() and ".." not in path.parts and "\\" not in name
+            and ":" not in name and not name.startswith("/") and "\0" not in name)
+
+
+def validate_package(data: bytes) -> dict:
+    """Inspect a package without extracting it; every failure is a diagnostic."""
+    diagnostics: list[str] = []
+
+    def fail(message):
+        diagnostics.append(message)
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        return {"valid": False, "diagnostics": [f"Not a readable ZIP archive: {exc}"]}
+    with archive:
+        entries = archive.infolist()
+        names = [e.filename for e in entries]
+        if len(entries) > MAX_MEMBERS:
+            fail(f"Too many members: {len(entries)} > {MAX_MEMBERS}")
+        if len(set(names)) != len(names):
+            fail("Duplicate archive members")
+        total = 0
+        for entry in entries:
+            total += entry.file_size
+            if not _safe_member(entry.filename):
+                fail(f"Unsafe member path: {entry.filename!r}")
+            if stat.S_ISLNK(entry.external_attr >> 16):
+                fail(f"Symbolic link member: {entry.filename}")
+            if entry.flag_bits & 0x1:
+                fail(f"Encrypted member: {entry.filename}")
+            if entry.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}:
+                fail(f"Unsupported compression: {entry.filename}")
+            if entry.file_size > MAX_MEMBER_BYTES:
+                fail(f"Member exceeds size limit: {entry.filename}")
+        if total > MAX_TOTAL_BYTES:
+            fail("Package exceeds decompressed size limit")
+        expected = set(MEMBERS) | {MANIFEST}
+        if set(names) != expected:
+            missing, extra = sorted(expected - set(names)), sorted(set(names) - expected)
+            fail(f"Package members differ from the contract: missing {missing}, unexpected {extra}")
+        if diagnostics:
+            return {"valid": False, "diagnostics": diagnostics}
+        content = {name: archive.read(name) for name in names}
+    documents = {}
+    for name, value in content.items():
+        if name.endswith(".json"):
+            try:
+                documents[name] = json.loads(value.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                fail(f"Malformed JSON in {name}: {exc}")
+    if diagnostics:
+        return {"valid": False, "diagnostics": diagnostics}
+    manifest = documents[MANIFEST]
+    if not isinstance(manifest, dict) or manifest.get("schema") != PACKAGE_SCHEMA:
+        return {"valid": False, "diagnostics": ["Unsupported or missing manifest schema"]}
+    files = manifest.get("files")
+    if not isinstance(files, dict) or set(files) != set(MEMBERS):
+        fail("Manifest does not cover exactly the package members")
+    else:
+        for name, digest in files.items():
+            if hashlib.sha256(content[name]).hexdigest() != digest:
+                fail(f"Hash mismatch for {name}")
+    findings = documents["assessment/findings.json"]
+    rows = findings.get("rows") if isinstance(findings, dict) else None
+    hotspots_doc = documents["assessment/hotspot-candidates.json"]
+    hotspots = hotspots_doc.get("rows") if isinstance(hotspots_doc, dict) else None
+    groups = documents["assessment/investigation-groups.json"]
+    records_doc = documents["assessment/decision-records.json"]
+    records = records_doc.get("rows") if isinstance(records_doc, dict) else None
+    if not isinstance(rows, list):
+        fail("findings.json must hold a rows list")
+        rows = []
+    if not isinstance(hotspots, list):
+        fail("hotspot-candidates.json must hold a rows list")
+        hotspots = []
+    if not isinstance(records, list):
+        fail("decision-records.json must hold a rows list")
+        records = []
+    if not isinstance(groups, dict) or not isinstance(groups.get("groups"), list):
+        fail("investigation-groups.json must hold a groups list")
+        groups = {"groups": []}
+    finding_ids, hotspot_ids = set(), set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != set(FINDING_COLUMNS):
+            fail("A finding row does not match the declared columns")
+            continue
+        finding_ids.add(row["finding_id"])
+        if row["observed_risk"] not in RISKS:
+            fail(f"Unknown risk value in {row['finding_id']}")
+        if row["review_status"] not in REVIEW_STATUSES:
+            fail(f"Unknown review status in {row['finding_id']}")
+        if row["engine_recommendation_status"] != "PROPOSED":
+            fail(f"Engine recommendation must stay PROPOSED in {row['finding_id']}")
+    for hotspot in hotspots:
+        if not isinstance(hotspot, dict) or not isinstance(hotspot.get("id"), str):
+            fail("A hotspot row has no identity")
+            continue
+        hotspot_ids.add(hotspot["id"])
+        if set(hotspot.get("finding_ids", [])) - finding_ids:
+            fail(f"Hotspot {hotspot['id']} references unknown findings")
+    for row in rows:
+        if isinstance(row, dict) and set(row.get("hotspot_ids", [])) - hotspot_ids:
+            fail(f"Finding {row.get('finding_id')} references unknown hotspots")
+    for record in records:
+        if not isinstance(record, dict) or record.get("kind") not in {"RECORDED", "PROPOSED"}:
+            fail("A decision record has an unknown kind")
+        elif record["kind"] == "RECORDED" and record.get("finding_id") not in finding_ids:
+            fail("A recorded decision references an unknown finding")
+    counts = manifest.get("counts", {})
+    if counts.get("findings") != len(rows) or counts.get("hotspot_candidates") != len(hotspots):
+        fail("Manifest counts disagree with package content")
+    return {"valid": not diagnostics, "diagnostics": diagnostics}
 
 
 class GenericModernizationAdapter:
-    """Target adapter for Generic Modernization (neutral backlog, waves, ADRs)."""
+    """Target-neutral assessment package. Experimental adapter surface for 2.1.
+
+    Production generation calls ``generate_deliverables`` through
+    ``ProjectGenerationService``; there is no second generation pipeline.
+    """
 
     id: str = "generic_modernize"
-    display_name: str = "Generic Modernization"
-    target_version: str = "1.0"
-    target_profile: TargetProfile = TargetProfile(
-        platform="Generic Modernization", version="1.0", representation="Neutral Backlog"
-    )
+    display_name: str = "Target-neutral assessment package"
+    target_version: str = GENERIC_TARGET.version
+    target_profile: TargetProfile = GENERIC_TARGET
 
     def capabilities(self) -> dict[str, bool]:
         return {
             "supports_code_generation": False,
             "supports_offline_validation": True,
             "supports_layout_fidelity": False,
-            "supports_wave_planning": True,
+            "supports_wave_planning": False,
             "supports_backlog_export": True,
         }
 
-    def interpret_intent(
-        self, intent: str, context: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        rec = map_intent_to_target_recommendation(intent, "Generic Modernization")
-        component_kinds = {
-            "PRESERVE_EXISTING_SERVICE_BOUNDARY": "database_api_or_domain_service",
-            "REPLACE_WITH_WEB_FRAMEWORK_NATIVE": "web_client_validation",
-            "PRESERVE": "database_stored_logic",
-            "EXTRACT_TO_BACKEND_SERVICE": "rest_service_or_backend_bean",
-            "REDESIGN_STATE_OR_WORKFLOW": "stateless_workflow_orchestration",
-            "MANUAL_ARCHITECTURE_REVIEW": "architecture_review_item",
-            "DECOMMISSION_OR_RETIRE": "none",
-            "RESOLVE_CROSS_LAYER_CONFLICT": "cross_layer_governance_item",
-            "MIGRATE_CONCURRENCY_MODEL": "optimistic_locking_protocol",
-            "AUDIT_SECURITY_BOUNDARY": "security_perimeter_audit",
-        }
-        rationales = {
-            "PRESERVE_EXISTING_SERVICE_BOUNDARY": "Reuse existing database package or service layer without rewriting it.",
-            "REPLACE_WITH_WEB_FRAMEWORK_NATIVE": "Replace client-side mechanical triggers with standard web framework features.",
-            "PRESERVE": "Preserve authoritative database objects in the database layer.",
-            "EXTRACT_TO_BACKEND_SERVICE": "Extract business logic trapped in UI triggers into modern backend REST services or beans.",
-            "REDESIGN_STATE_OR_WORKFLOW": "Redesign stateful, multi-screen legacy workflows into stateless modern cloud patterns.",
-            "MANUAL_ARCHITECTURE_REVIEW": "Engage enterprise architect to define target strategy for high-risk business logic.",
-            "DECOMMISSION_OR_RETIRE": "Retire obsolete or dead code without porting.",
-        }
-        return {
-            "recommendation": rec,
-            "target_component_kind": component_kinds.get(rec, "architecture_review_item"),
-            "rationale": rationales.get(rec, "Target-neutral modernization action."),
-            "native_opportunity": False,
-        }
+    def interpret_intent(self, intent: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        raise ProjectError("Target-neutral packages keep the engine recommendation; no intent mapping is applied.")
 
-    def evaluate_eligibility(
-        self, module_id: str, project_state: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Generic modernization is always eligible as long as the project is analyzed."""
-        blockers: list[dict[str, Any]] = []
-        warnings: list[dict[str, Any]] = []
+    def evaluate_eligibility(self, module_id: str, project_state: dict[str, Any]) -> dict[str, Any]:
+        blockers = []
+        if module_id != ESTATE_SCOPE:
+            blockers.append({"code": "SCOPE_NOT_SUPPORTED",
+                             "message": "The assessment package covers the whole analyzed estate."})
+        if not project_state.get("snapshot"):
+            blockers.append({"code": "NO_SNAPSHOT", "message": "Analyze the project first."})
+        return {"eligible": not blockers, "blockers": blockers, "warnings": []}
 
-        blueprint = project_state.get("blueprint", {})
-        entities = blueprint.get("entities", [])
-        if not entities and not project_state.get("source_manifest"):
-            blockers.append({
-                "code": "NO_ANALYZED_MODULES",
-                "message": "Analyze project sources before generating modern architectural deliverables.",
-            })
+    def generate_deliverables(self, module_id: str, reviewed_scope: dict[str, Any],
+                              output_path: str) -> dict[str, Any]:
+        if module_id != ESTATE_SCOPE:
+            raise ProjectError("The assessment package scope must be the explicit whole estate ('all').")
+        data, manifest = build_package(reviewed_scope.get("snapshot"))
+        output = Path(output_path)
+        output.mkdir(parents=True, exist_ok=True)
+        package = output / PACKAGE_NAME
+        package.write_bytes(data)
+        return {"manifest": manifest, "package_path": str(package),
+                "sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data)}
 
-        return {
-            "eligible": len(blockers) == 0,
-            "blockers": blockers,
-            "warnings": warnings,
-        }
-
-    def generate_deliverables(
-        self, module_id: str, reviewed_scope: dict[str, Any], output_path: str
-    ) -> dict[str, Any]:
-        """Generates target-neutral architectural deliverables:
-
-        1. modernization_backlog.csv & modernization_backlog.json
-        2. architectural_decisions.md & architectural_decisions.json
-        3. migration_waves.md & migration_waves.json
-        4. system_interface_catalog.json
-        5. manifest.json
-        """
-        out_dir = Path(output_path)
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        assessment = reviewed_scope.get("assessment", {})
-        blueprint = assessment.get("blueprint", {})
-        findings = blueprint.get("findings", [])
-        entities = blueprint.get("entities", [])
-        edges = blueprint.get("edges", [])
-
-        # Filter to selected module if specified and not empty
-        if module_id and module_id not in {"*", "all"}:
-            module_findings = [f for f in findings if f.get("source_id") == module_id or f.get("module") == module_id]
-            if module_findings:
-                findings = module_findings
-
-        # 1. Generate Modernization Backlog
-        backlog_items = []
-        csv_buffer = io.StringIO()
-        csv_writer = csv.writer(csv_buffer)
-        csv_writer.writerow([
-            "ID", "Module", "Type", "Intent", "TargetRecommendation",
-            "Severity", "PriorityScore", "Summary", "Location", "Status",
-        ])
-
-        for idx, f in enumerate(findings, 1):
-            fid = f.get("id", f"item-{idx}")
-            mod = f.get("form") or f.get("module") or module_id
-            rec = f.get("recommendation", "MANUAL_REVIEW")
-            from ..modernization_model import map_legacy_recommendation_to_intent
-            intent = map_legacy_recommendation_to_intent(rec)
-            target_rec = self.interpret_intent(intent)["recommendation"]
-            sev = f.get("severity", "MEDIUM")
-            score = f.get("priority_score", 0.0)
-            summary = f.get("summary") or f.get("title") or "Modernization finding"
-            loc = f.get("location") or f.get("block") or "Form Root"
-
-            item = {
-                "id": fid,
-                "module": mod,
-                "intent": intent,
-                "target_recommendation": target_rec,
-                "severity": sev,
-                "priority_score": score,
-                "summary": summary,
-                "location": loc,
-                "epic": f"Modernize {mod}",
-                "acceptance_criteria": [
-                    f"Decouple logic from legacy Oracle Form trigger at {loc}.",
-                    f"Implement target pattern: {target_rec}.",
-                    "Validate data mutation integrity against database constraints.",
-                ],
-            }
-            backlog_items.append(item)
-            csv_writer.writerow([
-                fid, mod, f.get("type", "FINDING"), intent, target_rec,
-                sev, score, summary, loc, "PROPOSED",
-            ])
-
-        (out_dir / "modernization_backlog.json").write_text(
-            canonical_json(backlog_items), encoding="utf-8"
-        )
-        (out_dir / "modernization_backlog.csv").write_text(
-            csv_buffer.getvalue(), encoding="utf-8"
-        )
-
-        # 2. Architectural Decisions (ADR format)
-        adrs = []
-        adr_md_lines = [
-            "# Architecture Decision Records (ADRs)",
-            "",
-            f"Project: {assessment.get('project_id', 'Modernization Project')}",
-            f"Generated: {assessment.get('analyzed_at', 'current')}",
-            "",
-        ]
-        decisions_list = reviewed_scope.get("decisions", [])
-        if not decisions_list:
-            # Synthesize recommended ADRs from top intents
-            grouped_by_intent: dict[str, list[dict[str, Any]]] = {}
-            for item in backlog_items:
-                grouped_by_intent.setdefault(item["intent"], []).append(item)
-
-            for intent_name, items in grouped_by_intent.items():
-                adr_id = f"ADR-{len(adrs) + 1:03d}"
-                adr = {
-                    "id": adr_id,
-                    "title": f"Adopt {intent_name} strategy for {len(items)} components",
-                    "status": "PROPOSED",
-                    "context": f"{len(items)} legacy trigger/procedural blocks require modernization under intent {intent_name}.",
-                    "decision": f"Apply target pattern '{self.interpret_intent(intent_name)['recommendation']}' across identified modules.",
-                    "consequences": "Enforces single authoritative boundary and reduces UI-tier business logic fragmentation.",
-                    "affected_components": [it["id"] for it in items[:10]],
-                }
-                adrs.append(adr)
-                adr_md_lines.extend([
-                    f"## {adr['id']}: {adr['title']}",
-                    f"**Status:** {adr['status']}  ",
-                    f"**Context:** {adr['context']}  ",
-                    f"**Decision:** {adr['decision']}  ",
-                    f"**Consequences:** {adr['consequences']}  ",
-                    "",
-                ])
-        else:
-            for idx, d in enumerate(decisions_list, 1):
-                adr_id = f"ADR-{idx:03d}"
-                adr = {
-                    "id": adr_id,
-                    "title": f"Architectural Decision for {d.get('item_id', 'component')}",
-                    "status": "ACCEPTED" if d.get("disposition") == "KEEP" else "MODIFIED",
-                    "context": f"Review sign-off by {d.get('reviewer', 'Architect')}.",
-                    "decision": f"Disposition: {d.get('disposition')}. Notes: {d.get('notes', 'None')}.",
-                    "consequences": "Preserves audit trail in immutable ledger.",
-                }
-                adrs.append(adr)
-                adr_md_lines.extend([
-                    f"## {adr['id']}: {adr['title']}",
-                    f"**Status:** {adr['status']}  ",
-                    f"**Decision:** {adr['decision']}  ",
-                    "",
-                ])
-
-        (out_dir / "architectural_decisions.json").write_text(
-            canonical_json(adrs), encoding="utf-8"
-        )
-        (out_dir / "architectural_decisions.md").write_text(
-            "\n".join(adr_md_lines), encoding="utf-8"
-        )
-
-        # 3. Migration Waves Planning (§106.4)
-        form_entities = [e for e in entities if e.get("type") == "FORM"]
-        wave1, wave2, wave3 = [], [], []
-        for fe in form_entities:
-            f_name = fe.get("name") or fe.get("module") or fe.get("id")
-            # Modules with API bypasses or high findings go to later waves
-            f_findings = [b for b in backlog_items if b["module"] == f_name]
-            max_score = max((b["priority_score"] for b in f_findings), default=0.0)
-            if max_score > 70 or any(b["intent"] == "CENTRALIZE_EXISTING_OWNER" for b in f_findings):
-                wave3.append({"form": f_name, "reason": "High complexity / API bypass candidates", "items": len(f_findings)})
-            elif len(f_findings) > 2 or max_score > 30:
-                wave2.append({"form": f_name, "reason": "Moderate complexity / standard service dependencies", "items": len(f_findings)})
-            else:
-                wave1.append({"form": f_name, "reason": "Independent module / quick win", "items": len(f_findings)})
-
-        waves_data = {
-            "wave_1_foundations": {"name": "Wave 1: Independent Foundations", "modules": wave1},
-            "wave_2_services": {"name": "Wave 2: Core Domain Services", "modules": wave2},
-            "wave_3_coupled": {"name": "Wave 3: Coupled Hotspots & Redesign", "modules": wave3},
-        }
-        (out_dir / "migration_waves.json").write_text(
-            canonical_json(waves_data), encoding="utf-8"
-        )
-
-        waves_md = [
-            "# Modernization Migration Waves",
-            "",
-            "## Wave 1: Independent Foundations (Quick Wins)",
-            f"Total Modules: {len(wave1)}",
-            *[f"- **{m['form']}**: {m['reason']} ({m['items']} findings)" for m in wave1],
-            "",
-            "## Wave 2: Core Domain Services",
-            f"Total Modules: {len(wave2)}",
-            *[f"- **{m['form']}**: {m['reason']} ({m['items']} findings)" for m in wave2],
-            "",
-            "## Wave 3: Coupled Hotspots & Redesign",
-            f"Total Modules: {len(wave3)}",
-            *[f"- **{m['form']}**: {m['reason']} ({m['items']} findings)" for m in wave3],
-            "",
-        ]
-        (out_dir / "migration_waves.md").write_text(
-            "\n".join(waves_md), encoding="utf-8"
-        )
-
-        # 4. System Interface Catalog
-        db_entities = [e for e in entities if e.get("type") in {"TABLE", "PACKAGE", "PACKAGE_SPEC", "PACKAGE_BODY", "VIEW"}]
-        call_edges = [ed for ed in edges if ed.get("type") in {"CALLS", "WRITES", "DIRECT_DML"}]
-        interface_catalog = {
-            "database_objects": db_entities,
-            "system_interactions": call_edges,
-            "inferred_service_boundaries": [
-                {
-                    "target_service": e.get("name"),
-                    "type": e.get("type"),
-                    "consumers": [c.get("source") for c in call_edges if c.get("target") == e.get("name")],
-                }
-                for e in db_entities if e.get("type") in {"PACKAGE", "PACKAGE_SPEC"}
-            ],
-        }
-        (out_dir / "system_interface_catalog.json").write_text(
-            canonical_json(interface_catalog), encoding="utf-8"
-        )
-
-        # 5. Build ZIP bundle for uniform download & export compatibility
-        zip_path = out_dir / "application.apex.zip"
-        manifest_files: dict[str, str] = {}
-
-        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for p in sorted(out_dir.rglob("*")):
-                if p.is_file() and p.name != "application.apex.zip":
-                    rel = p.relative_to(out_dir).as_posix()
-                    file_bytes = p.read_bytes()
-                    file_sha = hashlib.sha256(file_bytes).hexdigest()
-                    manifest_files[rel] = file_sha
-                    archive.writestr(rel, file_bytes)
-
-        manifest = {
-            "schema_version": "generic-modernization/1",
-            "module_id": module_id,
-            "target_platform": "Generic Modernization",
-            "files": manifest_files,
-            "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
-        }
-        (out_dir / "manifest.json").write_text(
-            canonical_json(manifest), encoding="utf-8"
-        )
-
-        return {
-            "manifest": manifest,
-            "package_path": str(zip_path),
-        }
-
-    def validate_deliverables(
-        self, package_path: str, context: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Validates manifest integrity, checksums, and schema of generic deliverables."""
+    def validate_deliverables(self, package_path: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         path = Path(package_path)
         if not path.is_file():
-            return {
-                "valid": False,
-                "engine_name": "FormsLang Generic Modernization Validator",
-                "diagnostics": [f"Deliverables package not found at: {path}"],
-            }
+            return {"valid": False, "status": "NOT_VALIDATED", "engine_name": "FormsLang package check",
+                    "diagnostics": ["Package not found."]}
+        verdict = validate_package(path.read_bytes())
+        return {**verdict, "status": "PACKAGE_VERIFIED" if verdict["valid"] else "PACKAGE_INVALID",
+                "engine_name": "FormsLang package check"}
 
-        diagnostics: list[str] = []
-        try:
-            with zipfile.ZipFile(path, "r") as archive:
-                names = archive.namelist()
-                required = {"modernization_backlog.json", "migration_waves.json"}
-                missing = required - set(names)
-                if missing:
-                    diagnostics.append(f"Missing required deliverable files: {sorted(missing)}")
 
-                # Validate JSON parseability
-                for item in names:
-                    if item.endswith(".json"):
-                        try:
-                            json.loads(archive.read(item).decode("utf-8"))
-                        except (json.JSONDecodeError, UnicodeDecodeError) as err:
-                            diagnostics.append(f"Malformed JSON in {item}: {err}")
-
-            return {
-                "valid": len(diagnostics) == 0,
-                "engine_name": "FormsLang Generic Modernization Validator",
-                "diagnostics": diagnostics,
-            }
-        except (zipfile.BadZipFile, OSError) as exc:
-            return {
-                "valid": False,
-                "engine_name": "FormsLang Generic Modernization Validator",
-                "diagnostics": [f"Corrupt zip archive: {exc}"],
-            }
+__all__ = ["PACKAGE_NAME", "PACKAGE_SCHEMA", "GenericModernizationAdapter", "build_package", "validate_package"]

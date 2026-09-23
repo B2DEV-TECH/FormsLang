@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import shutil
 import sqlite3
 import tempfile
 import uuid
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -26,7 +28,7 @@ from .project_generation_policy import (
 from .project_jobs import now
 from .project_lock import project_worker_lock
 from .project_manifest import source_revision
-from .project_model import ProjectError, RevisionConflict, canonical_json
+from .project_model import GENERIC_TARGET, ProjectError, RevisionConflict, canonical_json
 from .project_review import ProjectReviewService, _binding, _fence, safe_excerpt
 from .project_sources import stage_sources
 from .project_store import contained_path
@@ -398,53 +400,8 @@ class ProjectGenerationService:
         descriptor = self.service.open()
         if descriptor.target.platform == 'UNSELECTED':
             raise ProjectError('Target strategy is unselected. Select an implementation target (e.g. Oracle APEX) to generate deliverables.')
-        if descriptor.target.platform == 'Generic Modernization':
-            from .target_adapter import get_target_adapter
-            adapter = get_target_adapter('Generic Modernization')
-            self.service._job_authority(rbac.EXPORT_PROJECT)
-            with project_worker_lock(self.service.access.root):
-                assessment, fresh = self._snapshot()
-                _fence(assessment, request)
-                if fresh['status'] != 'CURRENT':
-                    raise RevisionConflict('Refresh the source assessment before generating deliverables.')
-                directory = self._path('artifacts')
-                directory.mkdir(exist_ok=True)
-                with tempfile.TemporaryDirectory(prefix='stage-generic-', dir=directory) as staging:
-                    deliverables = adapter.generate_deliverables(
-                        module_id='all',
-                        reviewed_scope={'assessment': assessment},
-                        output_path=str(Path(staging) / 'output'),
-                    )
-                    self._verify(assessment, request, rbac.EXPORT_PROJECT)
-                    artifact_id = uuid.uuid4().hex
-                    destination = self._path('artifacts/' + artifact_id)
-                    destination.mkdir()
-                    out_src = Path(staging) / 'output'
-                    shutil.copytree(out_src, destination / 'apexlang')
-                    data = Path(deliverables['package_path']).read_bytes()
-                    with (destination / 'application.apex.zip').open('xb') as output:
-                        output.write(data)
-                    metadata = {
-                        **_binding(assessment),
-                        'artifact_id': artifact_id,
-                        'status': 'Generated',
-                        'validation_status': 'Not Validated',
-                        'created_at': now(),
-                        'target': assessment['target'],
-                        'sha256': hashlib.sha256(data).hexdigest(),
-                        'size_bytes': len(data),
-                        'policy': POLICY_VERSION,
-                        'mode': 'generic-modernization-package',
-                        'files': {
-                            p.relative_to(destination / 'apexlang').as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                            for p in sorted((destination / 'apexlang').rglob('*')) if p.is_file()
-                        },
-                        'limitations': ['Architectural deliverables package; executable code generation not applicable.'],
-                    }
-                    with self._publication(assessment, request, rbac.EXPORT_PROJECT) as db:
-                        db.execute('INSERT INTO project_artifact VALUES (?,?,?)',
-                            (artifact_id, metadata['created_at'], canonical_json(metadata)))
-                    return metadata
+        if descriptor.target == GENERIC_TARGET:
+            return self._generate_assessment_package(request)
 
         with self._operation(request, rbac.EXPORT_PROJECT) as assessment:
             target_platform = assessment.get('target', {}).get('platform')
@@ -513,19 +470,98 @@ class ProjectGenerationService:
                         session.db.rollback()
             return metadata
 
+    def _generate_assessment_package(self, request):
+        """Publish a target-neutral assessment package from the normalized snapshot.
+
+        The same snapshot feeds Overview, Review and Reports; the package gets the
+        same revision fencing, source verification and staged publication as an
+        APEX artifact, but no module scope, target plan or code revision -- those
+        concepts do not apply and are not fabricated.
+        """
+        from .adapters.generic import (
+            ESTATE_SCOPE,
+            PACKAGE_NAME,
+            PACKAGE_SCHEMA,
+            GenericModernizationAdapter,
+        )
+        from .project_reports import GENERIC_ARTIFACT_KIND, ProjectReportService
+
+        allowed = {'project_id', 'analysis_revision', 'source_revision', 'review_revision', 'scope'}
+        if not isinstance(request, dict) or set(request) - allowed or request.get('scope', ESTATE_SCOPE) != ESTATE_SCOPE:
+            raise ProjectError('The assessment package covers the whole analyzed estate; send only its revision binding.')
+        self.service._job_authority(rbac.EXPORT_PROJECT)
+        with project_worker_lock(self.service.access.root):
+            snapshot, assessment, fresh = ProjectReportService(self.service).capture()
+            _fence(assessment, request)
+            if fresh['status'] != 'CURRENT':
+                raise RevisionConflict('Refresh the source assessment before generating the assessment package.')
+            # The package describes the assessment and its review, not the list of
+            # artifacts generated so far; its revision must not change per run.
+            snapshot['snapshot_revision'] = digest({k: v for k, v in snapshot.items()
+                                                    if k not in {'artifacts', 'validation_evidence', 'target_plans'}})
+            directory = self._path('artifacts')
+            directory.mkdir(exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix='stage-assessment-', dir=directory) as staging:
+                result = GenericModernizationAdapter().generate_deliverables(
+                    ESTATE_SCOPE, {'snapshot': snapshot}, staging)
+                data = Path(result['package_path']).read_bytes()
+            if len(data) > MAX_ARTIFACT_BYTES:
+                raise ProjectError('Assessment package exceeds the artifact size limit.')
+            self._verify(assessment, request, rbac.EXPORT_PROJECT)
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                files = {name: hashlib.sha256(archive.read(name)).hexdigest() for name in sorted(archive.namelist())}
+            artifact_id = uuid.uuid4().hex
+            destination = self._path('artifacts/' + artifact_id)
+            destination.mkdir()
+            with (destination / PACKAGE_NAME).open('xb') as output:
+                output.write(data)
+            metadata = {
+                **_binding(assessment),
+                'artifact_id': artifact_id,
+                'artifact_kind': GENERIC_ARTIFACT_KIND,
+                'schema': PACKAGE_SCHEMA,
+                'scope': ESTATE_SCOPE,
+                'package_name': PACKAGE_NAME,
+                'snapshot_revision': snapshot['snapshot_revision'],
+                'status': 'Generated',
+                'validation_status': 'Not Validated',
+                'created_at': now(),
+                'target': assessment['target'],
+                'sha256': hashlib.sha256(data).hexdigest(),
+                'size_bytes': len(data),
+                'policy': POLICY_VERSION,
+                'mode': 'assessment-package',
+                'files': files,
+                'limitations': ['Target-neutral assessment package; executable code generation does not apply.'],
+            }
+            with self._publication(assessment, request, rbac.EXPORT_PROJECT) as db:
+                db.execute('INSERT INTO project_artifact VALUES (?,?,?)',
+                           (artifact_id, metadata['created_at'], canonical_json(metadata)))
+            return metadata
+
     def download(self, artifact_id):
         self.service._job_authority(rbac.EXPORT_PROJECT)
-        return self._artifact_bytes(artifact_id)
+        data = self._artifact_bytes(artifact_id)
+        metadata = self._artifact_metadata(artifact_id)
+        if metadata.get('artifact_kind'):
+            from .project_reports import ProjectDownload
+            return ProjectDownload(data, metadata['package_name'], 'application/zip')
+        return data
 
-    def _artifact_bytes(self, artifact_id):
-        """Caller authorizes before acquiring a write transaction."""
+    def _artifact_metadata(self, artifact_id):
         if not isinstance(artifact_id, str) or not re.fullmatch('[a-f0-9]{32}', artifact_id):
             raise LookupError('Artifact not found')
         row = self.store.session.db.execute('SELECT metadata_json FROM project_artifact WHERE artifact_id=?', (artifact_id,)).fetchone()
         if row is None:
             raise LookupError('Artifact not found')
-        metadata = json.loads(row[0])
+        return json.loads(row[0])
+
+    def _artifact_bytes(self, artifact_id):
+        """Caller authorizes before acquiring a write transaction."""
+        metadata = self._artifact_metadata(artifact_id)
         root = self._path('artifacts/' + artifact_id)
+        if metadata.get('artifact_kind'):
+            return self._package_bytes(artifact_id, metadata)
         actual = {p.relative_to(root / 'apexlang').as_posix()
                   for p in (root / 'apexlang').rglob('*') if p.is_file()}
         if actual != set(metadata['files']):
@@ -540,5 +576,19 @@ class ProjectGenerationService:
             raise RevisionConflict('Artifact size changed; prior validation no longer applies.')
         data = archive.read_bytes()
         if len(data) > MAX_ARTIFACT_BYTES or hashlib.sha256(data).hexdigest() != metadata['sha256']:
+            raise RevisionConflict('Artifact bytes changed; prior validation no longer applies.')
+        return data
+
+    def _package_bytes(self, artifact_id, metadata):
+        """A single-archive artifact: the recorded digest binds the exact bytes."""
+        from .project_reports import GENERIC_ARTIFACT_KIND
+
+        if metadata['artifact_kind'] != GENERIC_ARTIFACT_KIND or not re.fullmatch(r'[a-z0-9-]+\.zip', metadata.get('package_name', '')):
+            raise ProjectError('Unsupported artifact kind.')
+        archive = self._path(f"artifacts/{artifact_id}/{metadata['package_name']}")
+        if not archive.is_file() or archive.stat().st_size > MAX_ARTIFACT_BYTES:
+            raise RevisionConflict('Artifact size changed; prior validation no longer applies.')
+        data = archive.read_bytes()
+        if hashlib.sha256(data).hexdigest() != metadata['sha256']:
             raise RevisionConflict('Artifact bytes changed; prior validation no longer applies.')
         return data
