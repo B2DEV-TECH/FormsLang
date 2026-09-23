@@ -253,7 +253,7 @@ The log is updated per phase with the commit and what was verified.
 | D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | done: `module-360` and `hotspots` routes, UI in `modernization_visual.py`, `tests/test_visual_ui_behavior.py` (+12 cases), estate Edge acceptance 82 of 82 |
 | E | Report visuals (static SVG) | done: executive and technical reports, `tests/test_generic_assessment_journey.py::test_report_visuals_are_static_redacted_and_deterministic` (canaries, no script or URL, determinism across reopen) |
 | F | Lab walkthrough | done: `examples/verify/project_showcase_browser_check.mjs` walks the lab through the real UI (15 checks, part of the Edge acceptance run, 97 of 97), `docs/modernization-lab-walkthrough.md` with five captures from that run |
-| G | Hardening, Edge acceptance, measurements, docs | not started |
+| G | Hardening, Edge acceptance, measurements, docs | done: see Hardening below. Local `pytest` 1821 passed, 5 skipped on `754581a`; Edge acceptance 102 of 102 including four viewports; 100/500-Form measurements below |
 
 ## Measurements
 
@@ -262,3 +262,62 @@ Only measured results are written here.
 - Baseline before any change: `python -m pytest -q` on `b54934b` gave 1761
   passed, 5 skipped in 876 s. Environment: Windows 11 Pro 10.0.26200, Python
   3.12.10.
+- Scale, `examples/verify/project_corporate_scale.py` on `754581a` (the script
+  change measured here is the only difference), single local runs on an idle
+  machine, Windows 11 Pro 10.0.26200, Python 3.12.10. The fixture is the 2.1
+  synthetic estate: one display-only control module and modules with 12
+  validation triggers calling a shared package. It produces no hotspot
+  candidates, so the Hotspot Explorer timing is the empty-result path.
+
+  | Measurement (ms) | 100 Forms | 500 Forms |
+  |---|---:|---:|
+  | Warm Overview (2.1) | 268.359 | 2012.748 |
+  | Visual overview | 330.110 | 1846.264 |
+  | System Map, estate view | 277.014 | 1758.540 |
+  | System Map, focus on the busiest Form | 292.303 | 1982.067 |
+  | System Map node detail | 278.785 | 1758.727 |
+  | Hotspot Explorer | 299.454 | 1718.124 |
+  | Module 360 | 267.369 | 1946.114 |
+  | Inventory first page (2.1) | 270.912 | 1711.095 |
+  | Executive report with figures | 1788.103 | 9913.557 |
+  | Package report | 2027.750 | 10552.778 |
+
+  The estate view drew 100 of 104 nodes (99 of 101 relationships) at 100
+  Forms and 100 of 504 nodes (99 of 501) at 500 Forms: it is bounded and says
+  so. The focus view drew 100 nodes and 99 relationships in both. The 2.2
+  projections cost the same as the 2.1 Overview and Inventory in the same run;
+  the shared projection read dominates. Peak process memory was 307,265,536
+  bytes (100 Forms) and 759,078,912 bytes (500 Forms). The 2.1 record on this
+  machine had 636,481,536 bytes for 500 Forms, a different run on a different
+  commit; the difference is recorded, not explained.
+- SQLcl is not installed on this machine, so no local offline `apex validate`
+  ran for 2.2. The 2.2 work does not change the APEX generation path; the
+  release evidence is the repository CI job that downloads SQLcl and runs the
+  offline validation with its positive and negative controls.
+
+## Hardening (Phase G)
+
+- System Map: a new focus layout opens centred on the focus node instead of
+  the far-left callers. Edge checks the focus node is inside the canvas.
+- Viewports: Overview, System Map, Hotspots and Module 360 fit 1920x1080,
+  1440x900, 1366x768 and 390x844 without page-level horizontal scroll (Edge).
+- Accessibility: zoom and pan buttons have names; a node's label states its
+  highest risk, which was carried by colour alone; relationship groups are
+  hidden from assistive technology because the relationship table inspects the
+  same edges by keyboard. Layout numbers are coerced before they reach SVG
+  attributes. A review of every HTML and SVG sink found no unescaped
+  untrusted value, no `foreignObject`, no link and no inline handler.
+- Disclosure: a Form with a `HOST` command and a `WEB.SHOW_DOCUMENT` URL shows
+  the literal on the authorized local map; the executive and technical
+  reports, their figures and every package member show only the omitted-literal
+  label (`tests/test_project_reports.py`).
+- 2.1 compatibility: a project created and analysed by the `v2.1.0` code
+  opened in 2.2 as CURRENT with the same analysis revision, no reanalysis, and
+  served the visual overview, System Map (55 nodes), Hotspot Explorer (6),
+  Module 360, an executive report with both figures and a Review decision.
+
+## Follow-ups (not in 2.2)
+
+- P1 review funnel, P1 distribution bars and a dependency/path explorer were
+  deliberately left out of 2.2.
+- The corporate theme references an undefined `--amber` token (pre-existing).

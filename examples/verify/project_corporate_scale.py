@@ -100,6 +100,21 @@ def main():
         fresh = service.freshness()
         summary = measure('cold_overview', lambda: service.overview(freshness=fresh))
         measure('warm_overview', lambda: service.overview(freshness=fresh))
+        # 2.2 visual projections over the same saved assessment.
+        measure('visual_overview', lambda: service.visual_overview(freshness=fresh))
+        estate = measure('system_map_estate', lambda: service.system_map(view='ESTATE', freshness=fresh))
+        # Focus the Form with the most outbound relationships, not the display-only control module.
+        focus = max((n for n in estate['nodes'] if n['type'] == 'FORM'), key=lambda n: (n['fan_out'], n['id']))['id']
+        focused = measure('system_map_focus', lambda: service.system_map(focus=focus, freshness=fresh))
+        measure('system_map_node', lambda: service.system_map_node(focus, freshness=fresh))
+        hotspots = measure('hotspot_explorer', lambda: service.hotspot_explorer(freshness=fresh))
+        measure('module_360', lambda: service.module_view(node=focus, freshness=fresh))
+        result['visual'] = {'estate_nodes_shown': len(estate['nodes']), 'estate_edges_shown': len(estate['edges']),
+                            'estate_nodes_total': estate['total_estate_nodes'], 'estate_edges_total': estate['total_estate_edges'],
+                            'focus_nodes_shown': len(focused['nodes']), 'focus_edges_shown': len(focused['edges']),
+                            'hotspots_total': hotspots['total']}
+        if not estate['edges'] or len(focused['nodes']) < 2:
+            raise AssertionError('System Map measurement did not exercise relationships: ' + json.dumps(result['visual']))
         result['inventory'] = summary['inventory']
         if summary['inventory']['forms_modules'] != args.forms:
             raise AssertionError('Module count mismatch')
@@ -126,6 +141,8 @@ def main():
             'rationale': 'Synthetic display-only control, no data writes; authentication reviewed for fixture.'}})
         artifact = measure('generation_one_display_module', lambda: service.generate({**detail['binding'], 'scopes': [detail]}))
         report = service.report_overview()
+        executive = measure('report_executive', lambda: service.report_export('executive', report['binding']))
+        result['executive_report_bytes'] = len(executive.body)
         delivery = measure('report_package', lambda: service.report_export('package', report['binding'], include_artifacts=True))
         result.update(package_bytes=len(delivery.body), artifact_bytes=artifact['size_bytes'],
                       analysis_revision=assessment['analysis_revision'], process_peak_bytes=peak_memory())
