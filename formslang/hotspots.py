@@ -292,11 +292,22 @@ def detect_duplicated_rule_clusters(blueprint: dict, estate: _Estate | None = No
         codes = signal_codes(finding) & set(DUPLICATION_CODES)
         if not codes:
             continue
-        owner = str(finding.get("suggested_target", "")).strip().upper()
-        if not owner:
-            continue
-        clusters[owner]["units"].add(finding.get("entity"))
-        clusters[owner]["codes"].update(codes)
+        unit = finding.get("entity")
+        suggested = str(finding.get("suggested_target", "")).strip().upper()
+        # The recommendation carries only the strongest signal's target, so the
+        # duplicated subprogram is read from the unit's DUPLICATES_LOGIC edges.
+        # A DML bypass draws the same edge kind to the table's co-writer, which
+        # is then the suggested target; that edge is not a duplication.
+        excluded = suggested if "DIRECT_DML_BYPASSES_API" in signal_codes(finding) else ""
+        owners = {str(estate.entity(e.get("target")).get("name", "")).upper()
+                  for e in estate.out.get(unit, ()) if e.get("type") == "DUPLICATES_LOGIC"}
+        owners.discard(excluded)
+        owners.discard("")
+        if not owners and suggested and not excluded:
+            owners = {suggested}
+        for owner in owners:
+            clusters[owner]["units"].add(unit)
+            clusters[owner]["codes"].update(codes)
     hotspots = []
     for owner, data in sorted(clusters.items()):
         units = sorted(u for u in data["units"] if u in estate.entities)

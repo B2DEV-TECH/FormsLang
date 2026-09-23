@@ -89,9 +89,10 @@ def _operation(args):
                 return service.generation_task(args.source, args.task), 0
             if command == 'validate':
                 result = service.generation_validate(args.artifact)
-                return result, 0 if result['status'] == 'Validated' else 1
+                return result, 0 if result['status'] in {'Validated', 'Package Verified'} else 1
             if command == 'download':
-                data = service.generation_download(args.artifact)
+                payload = service.generation_download(args.artifact)
+                data = getattr(payload, 'body', payload)
                 with Path(args.output).open('xb') as output:
                     output.write(data)
                 return {'artifact_id': args.artifact, 'size_bytes': len(data), 'saved': True}, 0

@@ -287,3 +287,23 @@ def test_http_overview_map_and_search_come_from_the_real_assessment(project_serv
     assert client.get(f"/api/v2/projects/{pid}/search?query={'x' * 201}").status == 400
     found = client.get(f"/api/v2/projects/{pid}/search?query=work&limit=3").json
     assert len(found["results"]) <= 3 and found["project_id"] == pid
+
+
+def test_duplicated_rule_owner_comes_from_the_duplication_not_the_top_signal(tmp_path):
+    """A unit that both bypasses an API and copies a formula joins the formula's cluster."""
+    source = tmp_path / "estate"
+    shutil.copytree(ESTATE, source)
+    totals = source / "forms" / "totals.xml"
+    totals.write_text(totals.read_text(encoding="utf-8").replace(
+        "BEGIN :total.net", "BEGIN UPDATE work_items SET status = 'TOTALLED' WHERE item_id = 1; :total.net"),
+        encoding="utf-8")
+    _, _, service = open_estate(tmp_path, source / "forms", source / "database")
+    try:
+        _, rows = hotspots_of(service)
+        clusters = {r["evidence"]["database_subprogram"]: r for r in rows
+                    if r["hotspot_type"] == HOTSPOT_DUPLICATED_RULE}
+        assert set(clusters) == {"WORK_API.NET_AMOUNT"}
+        assert clusters["WORK_API.NET_AMOUNT"]["evidence"]["modules"] == ["REVIEWS", "TOTALS"]
+        assert clusters["WORK_API.NET_AMOUNT"]["edge_refs"]
+    finally:
+        service.close()

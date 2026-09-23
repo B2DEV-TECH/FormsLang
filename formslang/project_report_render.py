@@ -280,8 +280,14 @@ def artifact_row(artifact, snapshot):
     if artifact.get('artifact_kind') == GENERIC_KIND:
         # A target-neutral package has no module scope, target plan or code revision.
         return {**row, 'artifact_kind': GENERIC_KIND, 'source_id': 'Estate assessment (all modules)',
-                'snapshot_revision': artifact['snapshot_revision'],
+                'assessment_snapshot_revision': artifact['assessment_snapshot_revision'],
                 'target_revision': 'Not applicable', 'code_revision': 'Not applicable',
+                'excluded_source_ids': []}
+    if not all(key in artifact for key in ('source_id', 'target_revision', 'code_revision')):
+        # A record whose kind is not declared and whose APEX fields are absent is
+        # reported as unsupported; nothing is inferred for it.
+        return {**row, 'artifact_kind': 'unsupported', 'source_id': 'Not recorded',
+                'target_revision': 'Not recorded', 'code_revision': 'Not recorded',
                 'excluded_source_ids': []}
     return {**row, 'artifact_kind': 'apex-application', 'source_id': artifact['source_id'],
             'target_revision': artifact['target_revision'], 'code_revision': artifact['code_revision'],

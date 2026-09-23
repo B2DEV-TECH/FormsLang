@@ -155,7 +155,8 @@ def build_package(snapshot: dict) -> tuple[bytes, dict]:
         "project_name": overview["project"]["name"],
         "target": overview["project"]["target"],
         "formslang_version": snapshot["formslang_version"],
-        "snapshot_revision": snapshot["snapshot_revision"],
+        # Covers the assessment and review, not earlier artifacts; Reports use a wider revision.
+        "assessment_snapshot_revision": snapshot["snapshot_revision"],
         **{key: overview["assessment"][key] for key in (
             "analysis_revision", "source_revision", "review_revision", "assessment_timestamp", "freshness")},
     }

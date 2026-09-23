@@ -1090,15 +1090,20 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
     for identity, entity in sorted(entities.items()):
         if entity.get("type") == "FORM" and entity.get("module"):
             form_by_module.setdefault(entity["module"], identity)
+    def package_key(entity, name):
+        # Same-named packages from different source roots stay distinct, as in Inventory.
+        module = _logical_name(entity.get("module"))
+        return (module.split("/", 1)[0].casefold() if "/" in module else "", name.upper())
+
     packages = {}
     for identity, entity in sorted(entities.items()):
         if entity.get("type") in {"PACKAGE_SPEC", "PACKAGE_BODY"}:
-            name = _text(entity.get("name"), 500).upper()
-            current = packages.get(name)
+            key = package_key(entity, _text(entity.get("name"), 500))
+            current = packages.get(key)
             # One package node; the specification represents it when supplied.
             if current is None or (entity.get("type") == "PACKAGE_SPEC"
                                    and entities[current].get("type") != "PACKAGE_SPEC"):
-                packages[name] = identity
+                packages[key] = identity
     owners = {}
 
     def owner(identity, seen=()):
@@ -1114,9 +1119,9 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
                     and target in entities and target not in seen):
                 result = owner(target, (*seen, identity))
             elif etype in {"PACKAGE_SPEC", "PACKAGE_BODY"}:
-                result = packages.get(_text(entity.get("name"), 500).upper(), identity)
+                result = packages.get(package_key(entity, _text(entity.get("name"), 500)), identity)
             elif etype in _PACKAGE_MEMBERS:
-                result = packages.get(_text(attributes.get("package"), 500).upper(), identity)
+                result = packages.get(package_key(entity, _text(attributes.get("package"), 500)), identity)
             elif etype in _OWN_NODE_TYPES:
                 result = identity
             else:
@@ -1204,13 +1209,18 @@ def _architecture_graph(prepared: PreparedProjection) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-def module_relationships(prepared: PreparedProjection) -> list[dict]:
-    """Every module-level relationship, allowlisted for delivery (no evidence text)."""
+def module_relationships(prepared: PreparedProjection, *, rename=None) -> list[dict]:
+    """Every module-level relationship, allowlisted for delivery (no evidence text).
+
+    ``rename`` maps node identities whose names must not leave the workstation
+    (for example literal integration targets) to a neutral label.
+    """
     graph = _architecture_graph(prepared)
     nodes = graph["nodes"]
+    rename = rename or {}
     rows = [{
-        "source": edge["source_name"], "source_layer": nodes[edge["source"]]["layer"],
-        "target": edge["target_name"], "target_layer": nodes[edge["target"]]["layer"],
+        "source": rename.get(edge["source"], edge["source_name"]), "source_layer": nodes[edge["source"]]["layer"],
+        "target": rename.get(edge["target"], edge["target_name"]), "target_layer": nodes[edge["target"]]["layer"],
         "relationship": edge["classification"], "count": edge["count"], "level": edge["level"],
         "hotspot_ids": list(edge["hotspot_ids"]),
     } for edge in graph["edges"]]
@@ -1272,7 +1282,8 @@ def system_map(
         focus_id = min(nodes)
     selector = forms[:MAP_MAX_SELECTOR]
     if focus_id and nodes.get(focus_id, {}).get("type") == "FORM" and all(f["id"] != focus_id for f in selector):
-        selector = [*selector, nodes[focus_id]]
+        # Keep the current focus selectable without exceeding the budget.
+        selector = [*selector[:MAP_MAX_SELECTOR - 1], nodes[focus_id]]
     truncation = []
     if len(forms) > MAP_MAX_SELECTOR:
         truncation.append({"reason": "SELECTOR_LIMIT", "limit": MAP_MAX_SELECTOR, "available": len(forms)})

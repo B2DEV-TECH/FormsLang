@@ -522,7 +522,7 @@ class ProjectGenerationService:
                 'schema': PACKAGE_SCHEMA,
                 'scope': ESTATE_SCOPE,
                 'package_name': PACKAGE_NAME,
-                'snapshot_revision': snapshot['snapshot_revision'],
+                'assessment_snapshot_revision': snapshot['snapshot_revision'],
                 'status': 'Generated',
                 'validation_status': 'Not Validated',
                 'created_at': now(),

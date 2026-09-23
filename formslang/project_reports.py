@@ -29,6 +29,13 @@ FORMAT_PATHS = {
     'decision-records-md': 'review/', 'decisions': 'review/',
     'backlog-csv': 'backlog/', 'backlog-json': 'backlog/',
 }
+LITERAL_NAMED_TYPES = frozenset({'INTEGRATION_POINT'})
+
+
+def literal_label(identity):
+    return 'Integration target (literal omitted; ref ' + str(identity).rsplit(':', 1)[-1][:8] + ')'
+
+
 HOTSPOT_FIELDS = ('id', 'hotspot_type', 'label', 'classification', 'severity', 'title', 'statement',
                   'module', 'finding_ids', 'evidence', 'evidence_refs', 'edge_refs', 'uncertainty',
                   'recommended_action')
@@ -129,12 +136,26 @@ class ProjectReportService:
             row['dependencies'] = list(finding.get('dependencies', []))
             row['finding_revision'] = finding['revision']
             row['evidence_refs'] = sorted(e for e in finding.get('evidence', []) if isinstance(e, str))[:20]
+        # Some entities are named after a source literal (OS commands, URLs,
+        # user exits). Their names stay in the authorized local UI only.
+        literal = {e['id']: literal_label(e['id']) for e in assessment['blueprint']['entities']
+                   if e.get('type') in LITERAL_NAMED_TYPES}
+        for row in (*rows['findings'], *rows['business_rules']):
+            if row.get('entity_id') in literal:
+                row['name'] = literal[row['entity_id']]
+        rows['dependencies'] = tuple(
+            {**row, 'source': literal.get(row['source_id'], row['source']),
+             'target': literal.get(row['target_id'], row['target'])} for row in rows['dependencies'])
+        overview_data = copy.deepcopy(prepared.overview_data)
+        by_id = {row['id']: row['name'] for row in rows['findings']}
+        for item in overview_data['priority']['start_here']:
+            item['name'] = by_id.get(item['id'], item['name'])
         # Hotspots cross the delivery boundary through an explicit allowlist.
         rows['hotspots'] = tuple({key: copy.deepcopy(h[key]) for key in HOTSPOT_FIELDS}
                                  for h in rows['hotspots'])
         snapshot = {'schema': SNAPSHOT_SCHEMA, 'formslang_version': __version__,
-            'overview': prepared.overview_data, 'inventory': rows,
-            'relationships': module_relationships(prepared),
+            'overview': overview_data, 'inventory': rows,
+            'relationships': module_relationships(prepared, rename=literal),
             'investigation_groups': investigation_groups(rows['findings'], rows['hotspots']),
             'decisions': _decisions(assessment, annotations), 'artifacts': artifacts,
             'validation_evidence': validations, 'target_plans': plans,
@@ -162,6 +183,9 @@ class ProjectReportService:
             reason = None
             if artifact.get('artifact_kind') == GENERIC_ARTIFACT_KIND:
                 reason = self._generic_artifact(generation, snapshot, assessment, artifact, include, files)
+            elif artifact.get('artifact_kind') or not all(
+                    key in artifact for key in ('source_id', 'target_revision', 'code_revision')):
+                reason = 'ARTIFACT_KIND_UNSUPPORTED'
             elif not include:
                 reason = 'ARTIFACTS_NOT_REQUESTED'
             elif (snapshot['overview']['assessment']['freshness'] != 'CURRENT'

@@ -35,7 +35,7 @@ from formslang.project_service import ProjectService
 
 ESTATE = Path(__file__).parent / "fixtures" / "estate"
 CANARIES = ("CANARY_VIEW_LITERAL", "CANARY_SOURCE_BODY", "CANARY_PRIVATE_NOTE", "CANARY_RATIONALE",
-            "C:\\private\\canary")
+            "C:\\private\\canary", "tigerSECRET", "K3YCANARY")
 
 
 def canary_estate(root: Path) -> Path:
@@ -47,6 +47,11 @@ def canary_estate(root: Path) -> Path:
     intake.write_text(intake.read_text(encoding="utf-8").replace(
         "BEGIN INSERT INTO staging_rows", "BEGIN /* CANARY_SOURCE_BODY */ INSERT INTO staging_rows"),
         encoding="utf-8")
+    # Integration literals name graph entities; they are source, not identifiers.
+    totals = root / "forms" / "totals.xml"
+    totals.write_text(totals.read_text(encoding="utf-8").replace(
+        "BEGIN :total.net", "BEGIN HOST('sqlplus scott/tigerSECRET@prod @purge.sql'); "
+        "WEB.SHOW_DOCUMENT('https://intra.example/api?apikey=K3YCANARY'); :total.net"), encoding="utf-8")
     return root
 
 
@@ -334,3 +339,42 @@ def test_package_bytes_do_not_depend_on_hash_seed_or_clock(journey):
         shas.add(done.stdout.split()[0])
     assert len(shas) == 1
     journey.service = journey.open()
+
+
+def test_cli_generates_downloads_and_verifies_the_package(journey, monkeypatch, capsys, tmp_path):
+    from formslang.cli import main
+
+    monkeypatch.setenv("FORMSLANG_DATA_DIR", str(journey.tmp / "data"))
+    monkeypatch.setenv("FORMSLANG_CONFIG_DIR", str(journey.tmp / "config"))
+    root = journey.tmp / "data" / "projects" / journey.pid
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps(journey.binding()), encoding="utf-8")
+    journey.service.close()
+    try:
+        assert main(["project", "generation", "generate", str(root), "--request", str(request), "--json"]) == 0
+        artifact = json.loads(capsys.readouterr().out)["artifact_id"]
+        output = tmp_path / "assessment-package.zip"
+        assert main(["project", "generation", "download", str(root), "--artifact", artifact,
+                     "--output", str(output), "--json"]) == 0
+        capsys.readouterr()
+        assert validate_package(output.read_bytes())["valid"] is True
+        assert main(["project", "generation", "validate", str(root), "--artifact", artifact, "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)["status"] == "Package Verified"
+    finally:
+        journey.service = journey.open()
+
+
+def test_reports_disclose_unsupported_artifact_records_instead_of_crashing(journey):
+    """Records written by the pre-remediation Generic path carry no module scope."""
+    legacy = {**journey.binding(), "artifact_id": "a" * 32, "status": "Generated",
+              "validation_status": "Not Validated", "created_at": "2026-09-21T00:00:00+00:00",
+              "target": {}, "sha256": "0" * 64, "size_bytes": 0, "mode": "generic-modernization-package",
+              "files": {}}
+    with journey.service._store._write() as db:
+        db.execute("INSERT INTO project_artifact VALUES (?,?,?)",
+                   (legacy["artifact_id"], legacy["created_at"], json.dumps(legacy)))
+    assert b"Executive Modernization Assessment" in journey.export("executive").body
+    manifest = json.loads(members(journey.export("package", include_artifacts=True).body)["manifest.json"])
+    assert {"artifact_id": "a" * 32, "reason": "ARTIFACT_KIND_UNSUPPORTED"} in manifest["exclusions"]
+    (row,) = manifest["artifacts"]
+    assert row["source_id"] == "Not recorded" and row["artifact_kind"] == "unsupported"

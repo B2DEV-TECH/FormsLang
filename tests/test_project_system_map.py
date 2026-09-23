@@ -165,6 +165,19 @@ def test_selector_keeps_a_focus_beyond_the_selector_budget():
     prepared = prepared_from(high_volume_estate(forms=260, tables=1))
     result = system_map(prepared, focus="form:F259", depth=1)
     assert result["available_forms"][-1] == {"id": "form:F259", "name": "F259"}
+    assert len(result["available_forms"]) == MAP_MAX_SELECTOR == result["selector"]["shown"]
+
+
+def test_same_named_packages_from_different_roots_stay_distinct():
+    estate = small_estate()
+    estate["entities"].append({"id": "spec:api2", "type": "PACKAGE_SPEC", "name": "API",
+                               "module": "other/api.pks", "attributes": {}})
+    estate["entities"][8]["module"] = "db/api.pks"
+    estate["entities"][9]["module"] = "db/api.pkb"
+    estate["entities"][10]["module"] = "db/api.pks"
+    estate["edges"].append(edge("k2", "CALLS", "trg_open", "spec:api2"))
+    result = system_map(prepared_from(estate), focus="form:ORDERS", depth=3)
+    assert [n["name"] for n in result["nodes"]].count("API") == 2
 
 
 @pytest.mark.parametrize("kwargs", [
