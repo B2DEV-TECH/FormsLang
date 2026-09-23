@@ -116,15 +116,6 @@ class ProjectJobManager:
 
     def recover(self):
         fresh = self._authorize(rbac.VIEW_PROJECT)
-        # Every project open calls this. Only an interrupted QUEUED/RUNNING row needs
-        # the worker lock; taking it unconditionally made concurrent readers collide
-        # with real operations, which then failed with ProjectBusy.
-        store = ProjectStore.open(fresh.root)
-        try:
-            if store.session.db.execute("SELECT 1 FROM project_job WHERE status IN ('QUEUED','RUNNING') LIMIT 1").fetchone() is None:
-                return []
-        finally:
-            store.close()
         try:
             with project_worker_lock(fresh.root):
                 store = ProjectStore.open(fresh.root)

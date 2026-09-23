@@ -91,7 +91,10 @@ class ProjectService:
         self._require(rbac.VIEW_PROJECT)
         if self._store is None:
             self._store = ProjectStore.open(self.access.root)
-            if self.access.org_id is None or self._authorize_callback is not None:
+            # Recovery needs the exclusive worker lock. Taking it on every open made
+            # concurrent requests collide with real operations (ProjectBusy), so
+            # only a QUEUED/RUNNING row, read on this connection, triggers it.
+            if (self.access.org_id is None or self._authorize_callback is not None) and self._store.has_unfinished_jobs():
                 from .project_jobs import ProjectJobManager
                 authorize = lambda: self._job_authority(rbac.VIEW_PROJECT)
                 ProjectJobManager(authorize(), authorize).recover()

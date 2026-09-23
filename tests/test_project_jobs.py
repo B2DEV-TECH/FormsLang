@@ -43,16 +43,21 @@ def test_open_or_recover_cannot_cancel_live_worker(job_manager):
     assert job_manager.get(lease.job_id)['status'] == 'COMPLETED'
 
 
-def test_recover_without_interrupted_jobs_leaves_the_worker_lock_free(job_manager, monkeypatch):
-    # Every project open recovers; holding the lock there made concurrent operations
-    # fail with ProjectBusy although nothing needed recovery.
+def test_opening_a_project_without_unfinished_jobs_leaves_the_worker_lock_free(job_manager, monkeypatch):
+    # Every authorized request opens the project; recovering there took the lock and
+    # made concurrent operations fail with ProjectBusy although nothing needed it.
     from formslang import project_jobs
+    from formslang.project_service import ProjectService
     with job_manager.claim('ANALYZE', expected_revision=None, expected_configuration=0) as lease:
         lease.finish('COMPLETED')
     taken = []
     lock = project_jobs.project_worker_lock
     monkeypatch.setattr(project_jobs, 'project_worker_lock', lambda root, **k: taken.append(root) or lock(root, **k))
-    assert job_manager.recover() == []
+    service = ProjectService(job_manager.access)
+    try:
+        assert service.open().id == 'a' * 32
+    finally:
+        service.close()
     assert taken == []
 
 

@@ -308,6 +308,10 @@ class ProjectStore:
                 'diagnostics_total': db.execute('SELECT count(*) FROM project_discovery_diagnostic WHERE run_id=?', (identity,)).fetchone()[0],
                 'offset': offset, 'limit': limit}
 
+    def has_unfinished_jobs(self) -> bool:
+        return self.session.db.execute(
+            "SELECT 1 FROM project_job WHERE status IN ('QUEUED','RUNNING') LIMIT 1").fetchone() is not None
+
     def descriptor(self) -> ProjectDescriptor:
         row = self.session.db.execute("SELECT descriptor_json FROM modernization_project WHERE id=1").fetchone()
         if not row:
