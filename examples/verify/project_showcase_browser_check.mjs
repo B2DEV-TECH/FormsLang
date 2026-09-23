@@ -3,7 +3,7 @@
 // PL/SQL, analysed by the engine and traversed Estate -> Start Here -> hotspot
 // -> System Map -> Review -> human decision -> architecture -> reports. Every
 // expectation below is read from product state; nothing is staged.
-export async function showcaseChecks({evaluate,click,clickSelector,value,wait,check,screenshot,pick,forms,database}){
+export async function showcaseChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send,pick,forms,database}){
   await click('project-home');await wait(()=>evaluate(`!!document.getElementById('project-new-estate')`),'showcase onboarding');
   await click('project-new-estate');await value('project-name','Legacy Order Management lab');await click('project-next');
   await click('project-forms');await pick(forms);await wait(()=>evaluate(`projectUI.draft.preview!==null&&projectUI.draft.sources.length===1`),'lab forms preview');
@@ -38,6 +38,7 @@ export async function showcaseChecks({evaluate,click,clickSelector,value,wait,ch
   const path=await evaluate(`(()=>{const d=systemMapState.data,name=id=>d.nodes.find(n=>n.id===id)?.name;return d.edges.map(e=>[name(e.source),e.classification,name(e.target),!!e.is_hotspot].join(' '));})()`);
   check('showcase map shows the Form writing the table directly',path.includes('APPROVALS WRITES LOM_ORDERS true'),path);
   check('showcase map shows the package API writing the same table',path.includes('LOM_ORDER_API WRITES LOM_ORDERS true'),path);
+  check('showcase map opens with the focus node in view',await evaluate(`(()=>{const c=document.getElementById('system-map-canvas').getBoundingClientRect(),n=document.querySelector('[data-node-id="${form}"]').getBoundingClientRect();return n.left>=c.left&&n.right<=c.right;})()`));
   check('showcase map keeps the return context',await evaluate(`document.getElementById('visual-back')?.textContent.includes('Hotspot')`));
   await screenshot('showcase-3-system-map.png');
 
@@ -68,4 +69,21 @@ export async function showcaseChecks({evaluate,click,clickSelector,value,wait,ch
   check('showcase reports contain no active SVG content',!/<script|foreignObject|onload=/i.test(reports.executive.text+reports.technical.text));
   await clickSelector('[data-project-section="reports"]');await wait(()=>evaluate(`projectUI.view==='reports'&&!!projectUI.reportsState?.data`),'Reports');
   await screenshot('showcase-6-reports.png');
+
+  // 8. The 2.2 views at the release viewports: no page-level horizontal scroll.
+  const initial=await evaluate('({width:innerWidth,height:innerHeight})');
+  const views=[
+    ['overview',async()=>{await clickSelector('[data-project-section="overview"]');await wait(()=>evaluate(`projectUI.view==='overview'&&!!document.getElementById('visual-board')?.textContent`),'Overview at viewport');}],
+    ['system-map',async()=>{await clickSelector('[data-project-section="system-map"]');await wait(()=>evaluate(`projectUI.view==='system-map'&&!!systemMapState.data`),'System Map at viewport');}],
+    ['hotspots',async()=>{await clickSelector('[data-project-section="hotspots"]');await wait(()=>evaluate(`projectUI.view==='hotspots'&&!!visualUI.hotspots.data`),'Hotspots at viewport');}],
+    ['module-360',async()=>{await clickSelector(`[data-hotspot-module="${form}"]`);await wait(()=>evaluate(`projectUI.view==='module-360'&&!!visualUI.module.data`),'Module 360 at viewport');}],
+  ];
+  for(const [width,height] of [[1920,1080],[1440,900],[1366,768],[390,844]]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+    await wait(()=>evaluate(`innerWidth===${width}`),`viewport ${width}`);
+    const overflow=[];
+    for(const [name,open] of views){await open();const wide=await evaluate('document.documentElement.scrollWidth-innerWidth');if(wide>1)overflow.push(`${name}+${wide}px`);if(width===1920&&name==='system-map')await screenshot('showcase-map-1920.png');if(width===390)await screenshot(`showcase-${name}-390.png`);}
+    check(`showcase 2.2 views fit ${width}x${height} without page scroll`,overflow.length===0,overflow);
+  }
+  await send('Emulation.setDeviceMetricsOverride',{width:initial.width,height:initial.height,deviceScaleFactor:1,mobile:false});
 }

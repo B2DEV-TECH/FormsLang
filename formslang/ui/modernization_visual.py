@@ -459,8 +459,11 @@ async function loadProjectSystemMap() {
     if (systemMapState.selectedEdge) systemMapState.selectedEdge = data.edges.find(e => e.id === systemMapState.selectedEdge.id) || null;
     // A new layout starts at 100%; a refresh of the same view keeps the reader's zoom.
     const key = [data.view, data.focus, data.layer_filter, data.edge_filter, data.analysis_revision].join('|');
-    if (key !== systemMapState.layoutKey) { systemMapState.layoutKey = key; systemMapState.zoom = 1; }
+    const fresh = key !== systemMapState.layoutKey;
+    if (fresh) { systemMapState.layoutKey = key; systemMapState.zoom = 1; }
     renderProjectSystemMap();
+    // A new focus layout opens on the focus column, not on its far-left callers.
+    if (fresh && data.view === 'FOCUS' && data.focus) systemMapCenterOn(data.focus);
   } catch (e) {
     if (projectCurrent(c) && request === systemMapState.request) projectError(e.message);
   }
@@ -799,6 +802,16 @@ function systemMapFit() {
   systemMapState.zoom = Math.max(0.1, Math.min(1, (width - 16) / g.width, (height - 16) / g.height));
   systemMapRedraw();
   if (canvas) { canvas.scrollLeft = 0; canvas.scrollTop = 0; }
+  systemMapUpdateMinimap();
+}
+
+function systemMapCenterOn(id) {
+  const d = systemMapState.data, canvas = $('system-map-canvas');
+  if (!d || !canvas) return;
+  const g = systemMapGeometry(d), p = g.positions[id], zoom = systemMapState.zoom;
+  if (!p) return;
+  canvas.scrollLeft = Math.max(0, (p.x + g.w / 2) * zoom - (canvas.clientWidth || 0) / 2);
+  canvas.scrollTop = Math.max(0, p.y * zoom - 48);
   systemMapUpdateMinimap();
 }
 

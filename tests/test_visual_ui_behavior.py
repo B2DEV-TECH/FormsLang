@@ -264,6 +264,19 @@ assert.ok(!html.includes('id="system-map-depth" disabled'));
 ''')
 
 
+def test_a_new_focus_layout_opens_centred_on_the_focus_node(tmp_path):
+    run_map(tmp_path, r'''
+const focusLayout={...mapData().layout,mode:'FOCUS',columns:[{id:'IN_1',label:'Reaches focus (1 hop)',x:28,width:184,count:1},{id:'FOCUS',label:'Focus',x:276,width:184,count:1}]};
+api=mapApi(()=>mapData({view:'FOCUS',focus:'pkg:P',layout:focusLayout}));
+$('system-map-canvas').clientWidth=400;
+await projectSystemMapOpen({focus:'pkg:P'});
+assert.equal($('system-map-canvas').scrollLeft,(276+92)-200,'the focus column is centred');
+assert.equal($('system-map-canvas').scrollTop,20);
+$('system-map-canvas').scrollLeft=7;
+await loadProjectSystemMap();
+assert.equal($('system-map-canvas').scrollLeft,7,'a refresh of the same layout keeps where the user scrolled');
+''')
+
 def test_truncation_copy_names_what_is_shown_and_how_to_reach_the_rest(tmp_path):
     run_map(tmp_path, r'''
 api=mapApi(mapData({truncation:[{reason:'NODE_LIMIT',limit:100,available:4812},{reason:'EDGE_LIMIT',limit:200,available:12050},{reason:'SELECTOR_LIMIT',limit:250,available:900}]}));

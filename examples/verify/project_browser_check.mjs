@@ -127,7 +127,7 @@ try{
   const {estateChecks}=await import('./project_estate_browser_check.mjs');
   await estateChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send,pick,forms:config.estate_forms,database:config.estate_database});
   const {showcaseChecks}=await import('./project_showcase_browser_check.mjs');
-  await showcaseChecks({evaluate,click,clickSelector,value,wait,check,screenshot,pick,forms:config.lab_forms,database:config.lab_database});
+  await showcaseChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send,pick,forms:config.lab_forms,database:config.lab_database});
   await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
   await sleep(300);check('tablet no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
   check('reduced motion preference retained',await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`));
