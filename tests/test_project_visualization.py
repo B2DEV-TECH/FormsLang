@@ -35,6 +35,7 @@ from formslang.project_visualization import (
     labels_catalog,
     report_estate_svg,
     report_matrix_svg,
+    visual_node,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -262,6 +263,18 @@ def test_visual_overview_counts_are_observed_and_bounded():
     assert "percent" not in text and "progress" not in text
     for claim in FORBIDDEN_CLAIMS:
         assert claim not in text
+
+
+def test_engine_derived_rule_candidates_are_candidates_not_observed_structure():
+    rule = visual_node(node("r", "Conditional rejection candidate: API.X", "OTHER", "BUSINESS_RULE"),
+                       fan_in=1, fan_out=0)
+    assert rule["status"] == "CANDIDATE"
+    assert rule["presentation_type"] == {"technical": "Business rule candidate",
+                                         "executive": "Business rule candidate"}
+    # An unknown type is neither promoted to a service nor to a candidate.
+    other = visual_node(node("o", "X", "OTHER", "SOMETHING_NEW"), fan_in=0, fan_out=0)
+    assert (other["status"], other["lane"]) == ("OBSERVED", "INTEGRATION")
+    assert visual_node(node("u", "Y", "UNRESOLVED", "ROUTINE_REFERENCE"), fan_in=1, fan_out=0)["status"] == "UNRESOLVED"
 
 
 def test_attention_matrix_is_bounded_and_ordered():

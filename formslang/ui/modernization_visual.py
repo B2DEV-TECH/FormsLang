@@ -107,6 +107,8 @@ VISUAL_PROJECT_STYLE = r'''
   .visual-map-card[data-risk="HIGH"] { stroke:var(--risk-high);stroke-width:1.8; }
   .visual-map-card[data-risk="MEDIUM"] { stroke:var(--risk-medium); }
   .visual-map-node.is-unresolved .visual-map-card { fill:none;stroke:var(--fl-status-unresolved);stroke-dasharray:5 4; }
+  .visual-map-node.is-candidate .visual-map-card { stroke:var(--fl-status-candidate);stroke-dasharray:2 3; }
+  .visual-legend-node.is-candidate { stroke:var(--fl-status-candidate);stroke-dasharray:2 3; }
   .visual-map-node.is-focus .visual-map-card { fill:var(--surface-2);stroke:var(--gold);stroke-width:3; }
   .visual-map-node.is-selected .visual-map-card { stroke:var(--gold);stroke-width:3.2; }
   .visual-map-node:focus { outline:none; }
@@ -574,13 +576,13 @@ function systemMapSvg(d) {
     if (!p) return '';
     const hotspots = Number(n.hotspot_count) || 0, findings = Number(n.findings_count) || 0, cycle = g.cycles.has(n.id);
     const classes = ['map-node', 'visual-map-node', n.id === focus ? 'is-focus' : '', systemMapState.selectedNode?.id === n.id ? 'is-selected' : '',
-      n.unresolved || n.layer === 'UNRESOLVED' ? 'is-unresolved' : '', emphasis && !emphasis.nodes.has(n.id) ? 'is-dim' : ''].filter(Boolean).join(' ');
+      n.unresolved || n.layer === 'UNRESOLVED' ? 'is-unresolved' : '', n.status === 'CANDIDATE' ? 'is-candidate' : '', emphasis && !emphasis.nodes.has(n.id) ? 'is-dim' : ''].filter(Boolean).join(' ');
     const review = n.review_summary || {};
     const meta = systemMapState.lens === 'REVIEW' && Number(review.total) > 0
       ? `${Number(review.open)} open · ${Number(review.stale)} stale · ${Number(review.decided)} decided`
       : `${systemMapTypeLabel(n)} · ${findings} ${findings === 1 ? 'finding' : 'findings'}`;
     const label = [n.name, systemMapTypeLabel(n), systemMapLaneLabel(systemMapLaneOf(n)), `${findings} findings`, hotspots ? `${hotspots} hotspot candidates` : '',
-      n.unresolved || n.layer === 'UNRESOLVED' ? 'unresolved reference' : '', cycle ? 'in a cycle with the focus' : '', n.id === focus ? 'focus' : ''].filter(Boolean).join(', ');
+      n.unresolved || n.layer === 'UNRESOLVED' ? 'unresolved reference' : '', n.status === 'CANDIDATE' ? 'candidate, not observed structure' : '', cycle ? 'in a cycle with the focus' : '', n.id === focus ? 'focus' : ''].filter(Boolean).join(', ');
     const badge = hotspots ? `<g class="visual-map-badge" transform="translate(${g.w - 38},6)"><rect width="32" height="16" rx="3" /><text x="16" y="12" text-anchor="middle">◆ ${hotspots}</text></g>` : '';
     return `<g class="${classes}" data-node-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(label)}" transform="translate(${Number(p.x)},${Number(p.y)})"><title>${esc(n.name)}</title><rect class="visual-map-card" data-risk="${esc(n.highest_risk || n.risk || 'NONE')}" width="${g.w}" height="${g.h}" rx="8" /><text class="visual-map-name" x="10" y="21">${cycle ? '↻ ' : ''}${esc(trim(n.name, hotspots ? 20 : 24))}</text><text class="visual-map-meta" x="10" y="40">${esc(trim(meta, 30))}</text>${badge}</g>`;
   }).join('');
@@ -602,6 +604,7 @@ function systemMapLegend() {
     <li><svg width="36" height="10" aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" class="visual-legend-line is-candidate" /></svg> Inferred relationship (candidate)</li>
     <li><svg width="36" height="10" aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" class="visual-legend-line is-hotspot" /></svg> Linked to a hotspot candidate</li>
     <li><svg width="36" height="16" aria-hidden="true"><rect x="1" y="1" width="34" height="14" rx="3" class="visual-legend-node is-unresolved" /></svg> Referenced but not found in the supplied sources</li>
+    <li><svg width="36" height="16" aria-hidden="true"><rect x="1" y="1" width="34" height="14" rx="3" class="visual-legend-node is-candidate" /></svg> Engine-derived candidate (for example a business rule candidate), not observed structure</li>
     <li><span class="visual-legend-badge">◆ n</span> Hotspot candidates on the node</li>
     <li><span class="visual-legend-badge">↻</span> Reaches the focus and is reached from it (a cycle)</li>
     <li>Node border: highest risk of the node's findings</li>

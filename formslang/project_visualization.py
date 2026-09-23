@@ -35,7 +35,7 @@ LANES = (
     ("APPLICATION", "Application", "Application modules"),
     ("SHARED_LOGIC", "Shared logic and state", "Shared services and state"),
     ("DATA", "Data", "Data objects"),
-    ("INTEGRATION", "Integration and unresolved", "External and unresolved references"),
+    ("INTEGRATION", "Integration, unresolved and other", "External, unresolved and other references"),
 )
 LANE_IDS = tuple(lane for lane, _, _ in LANES)
 _DATA_TYPES = frozenset({"TABLE", "VIEW", "SEQUENCE_REFERENCE"})
@@ -56,7 +56,10 @@ TYPE_LABELS = {
     "MENU": ("Menu module", "Application menu"),
     "MENU_REFERENCE": ("Menu module", "Application menu"),
     "INTEGRATION_POINT": ("Integration point", "External integration"),
+    "BUSINESS_RULE": ("Business rule candidate", "Business rule candidate"),
 }
+# Engine-derived entities that are candidates, not observed structure.
+CANDIDATE_TYPES = frozenset({"BUSINESS_RULE"})
 UNRESOLVED_LABELS = ("Unresolved reference", "Unresolved reference")
 OTHER_LABELS = ("Other component", "Other component")
 
@@ -144,7 +147,8 @@ def visual_node(node: dict, *, fan_in: int, fan_out: int) -> dict:
         **{k: v for k, v in node.items() if k != "review"},
         "presentation_type": type_labels(node["layer"], node["type"]),
         "lane": lane_of(node["layer"], node["type"]),
-        "status": "UNRESOLVED" if unresolved else "OBSERVED",
+        "status": ("UNRESOLVED" if unresolved else
+                   "CANDIDATE" if node["type"] in CANDIDATE_TYPES else "OBSERVED"),
         "unresolved": unresolved,
         "dependency_count": fan_in + fan_out,
         "review_summary": review_summary(node.get("review")),

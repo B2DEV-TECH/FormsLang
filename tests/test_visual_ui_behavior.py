@@ -30,7 +30,7 @@ const visualData={
     {lane:'APPLICATION',technical:'Application',executive:'Application modules',count:2,types:[{type:'FORM',count:2,technical:'Form',executive:'Application module'}]},
     {lane:'SHARED_LOGIC',technical:'Shared logic and state',executive:'Shared services and state',count:1,types:[{type:'PACKAGE',count:1,technical:'PL/SQL package',executive:'Shared PL/SQL service'}]},
     {lane:'DATA',technical:'Data',executive:'Data objects',count:3,types:[{type:'TABLE',count:2,technical:'Table',executive:'Data object'},{type:'VIEW',count:1,technical:'View',executive:'Data object'}]},
-    {lane:'INTEGRATION',technical:'Integration and unresolved',executive:'External and unresolved references',count:0,types:[]}],
+    {lane:'INTEGRATION',technical:'Integration, unresolved and other',executive:'External, unresolved and other references',count:0,types:[]}],
   relationships:{CALLS:1,WRITES:2},
   matrix:{types:[],rows:[],total_modules:0,truncated:false,classification:'CANDIDATE'},
   board:{schema:'formslang-investigation-groups/1',boundary:'Investigation groups organize review work. They are not migration waves, dependency order, effort estimates or readiness claims.',
@@ -169,7 +169,7 @@ assert.equal(new Set(words).size,5);assert.equal(visualStatus('BOGUS"'),visualSt
 
 MAP_SETUP = r'''
 const lanes=[{id:'APPLICATION',technical:'Application',executive:'Application modules'},{id:'SHARED_LOGIC',technical:'Shared logic and state',executive:'Shared services and state'},
-  {id:'DATA',technical:'Data',executive:'Data objects'},{id:'INTEGRATION',technical:'Integration and unresolved',executive:'External and unresolved references'}];
+  {id:'DATA',technical:'Data',executive:'Data objects'},{id:'INTEGRATION',technical:'Integration, unresolved and other',executive:'External, unresolved and other references'}];
 const mapLabels={lanes,relationships:{WRITES:{technical:'Writes',executive:'Changes data'},CALLS:{technical:'Calls',executive:'Uses service'}},
   statuses:{OBSERVED:'Observed in the supplied sources',CANDIDATE:'Candidate that needs architecture review',PROPOSED:'Engine proposal, not a decision',DECIDED:'Human decision recorded',UNRESOLVED:'Referenced but not found in the supplied sources'}};
 const typeLabels={FORM:['Form','Application module'],PACKAGE:['PL/SQL package','Shared PL/SQL service'],TABLE:['Table','Data object'],UNKNOWN:['Unresolved reference','Unresolved reference']};
@@ -222,6 +222,20 @@ assert.match(html,/class="map-edge visual-map-edge edge-calls is-candidate" data
 assert.match(html,/class="map-node visual-map-node is-unresolved" data-node-id="ref:X"/);
 assert.match(html,/Relationship table \(2\)/);assert.match(html,/Ctrl \+ mouse wheel zooms\. The wheel alone scrolls the page\./);
 assert.match(html,/id="system-map-legend" class="visual-map-legend" hidden/);
+''')
+
+
+def test_rule_candidate_nodes_are_drawn_as_candidates(tmp_path):
+    run_map(tmp_path, r'''
+const d=mapData();
+d.nodes.push(node('rule:R','Conditional rejection candidate: ORDER_API.X','UNKNOWN','OTHER','INTEGRATION',{status:'CANDIDATE',presentation_type:{technical:'Business rule candidate',executive:'Business rule candidate'}}));
+d.layout.positions['rule:R']={x:772,y:136};
+api=mapApi(d);
+await projectSystemMapOpen();
+const html=$('project-content').innerHTML;
+assert.match(html,/class="map-node visual-map-node is-candidate" data-node-id="rule:R"/);
+assert.match(html,/aria-label="[^"]*candidate, not observed structure/);
+assert.ok(!/is-candidate" data-node-id="form:A"/.test(html),'observed nodes stay observed');
 ''')
 
 

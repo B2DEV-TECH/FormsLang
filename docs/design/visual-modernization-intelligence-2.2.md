@@ -153,6 +153,11 @@ it arrived.
   Unresolved references are drawn dashed in their own colour. Hotspot links
   and the node badge say "candidate", and the drawer says candidates are not
   verdicts.
+- Business rule candidates are entities the engine derived, not observed
+  structure. They carry the CANDIDATE status and are drawn with a dashed
+  candidate border. They sit in the fourth lane, "Integration, unresolved and
+  other", which also holds every type the map does not classify. The lane
+  never promotes those types to a service.
 - The drawer has six sections: Identity, Architecture, Modernization
   attention, Review, Evidence and Actions. Detail comes from
   `system-map/node`. It is bound to the project, the analysis revision and the
