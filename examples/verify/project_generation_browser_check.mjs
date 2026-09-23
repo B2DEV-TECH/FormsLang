@@ -40,7 +40,7 @@ export async function generationChecks({evaluate,click,clickSelector,value,wait,
   check('E validation records mode and exact artifact hash',validation.mode==='offline-syntax'&&validation.artifact_sha256===first.sha256,validation);
   await screenshot('generation-artifact.png');
   await click('project-home');await wait(()=>evaluate(`!!document.querySelector('[data-project-open="${project}"]')`),'generated recent project');
-  await clickSelector(`[data-project-open="${project}"]`);await wait(()=>evaluate(`projectUI.view==='overview'&&!projectUI.jobId`),'generated project reopened');
+  await clickSelector(`[data-project-open="${project}"]`);await wait(()=>evaluate(`projectUI.view==='overview'&&!projectUI.jobId&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'generated project reopened');
   await clickSelector('[data-project-section="generate"]');await wait(()=>evaluate(`projectUI.generationState?.data?.artifacts.length===1`),'saved artifacts reopened');
   check('E reopened artifact identity is unchanged',await evaluate('projectUI.generationState.data.artifacts[0].artifact_id')===first.artifact_id);
   check('E Generate keyboard and status semantics',await evaluate(`document.getElementById('project-generation-status').getAttribute('role')==='status'&&document.querySelector('[data-project-section="generate"]').getAttribute('aria-current')==='page'`));

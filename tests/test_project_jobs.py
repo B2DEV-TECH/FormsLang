@@ -43,6 +43,19 @@ def test_open_or_recover_cannot_cancel_live_worker(job_manager):
     assert job_manager.get(lease.job_id)['status'] == 'COMPLETED'
 
 
+def test_recover_without_interrupted_jobs_leaves_the_worker_lock_free(job_manager, monkeypatch):
+    # Every project open recovers; holding the lock there made concurrent operations
+    # fail with ProjectBusy although nothing needed recovery.
+    from formslang import project_jobs
+    with job_manager.claim('ANALYZE', expected_revision=None, expected_configuration=0) as lease:
+        lease.finish('COMPLETED')
+    taken = []
+    lock = project_jobs.project_worker_lock
+    monkeypatch.setattr(project_jobs, 'project_worker_lock', lambda root, **k: taken.append(root) or lock(root, **k))
+    assert job_manager.recover() == []
+    assert taken == []
+
+
 def test_foreign_job_is_not_readable_or_cancellable(job_manager):
     with pytest.raises(LookupError):
         job_manager.get('b'*32)

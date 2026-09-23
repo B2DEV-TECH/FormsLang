@@ -997,6 +997,23 @@ def test_job_state_carries_the_last_run_after_a_normal_completion(server):
     assert done["last_run"]["done"] == 1
 
 
+def test_a_finished_job_is_persisted_before_it_stops_reporting_running(server, monkeypatch):
+    # A poller that sees running=False must already read the final run record.
+    base, wb = server
+    seen = []
+    finish = wb.store.finish_job_run
+
+    def recording_finish(run_id, status):
+        seen.append(wb.job_state()["running"])
+        finish(run_id, status)
+
+    monkeypatch.setattr(wb.store, "finish_job_run", recording_finish)
+    status, _ = _post(base, "/api/propose", {"task_id": wb.store.task_ids()[0]})
+    assert status == 200
+    assert _wait_for_job(wb)["last_run"]["status"] == "completed"
+    assert seen == [True]
+
+
 def test_a_refusal_stays_readable_with_a_body_attached(server):
     """A refusal that answers without emptying the socket gets the
     connection reset on the way back, and the client sees a dropped

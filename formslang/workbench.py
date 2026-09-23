@@ -1098,12 +1098,17 @@ class Workbench:
             status = JOB_CRASHED
         finally:
             with self._lock:
-                self.job["running"] = False
                 self.job["current"] = ""
                 self.job["current_id"] = ""
                 self.job["queue"] = []
-            self._sync_job_run(run_id)
-            self.store.finish_job_run(run_id, status)
+            # Persist the final record before announcing the stop: a poller
+            # that sees running=False must already read this run's outcome.
+            try:
+                self._sync_job_run(run_id)
+                self.store.finish_job_run(run_id, status)
+            finally:
+                with self._lock:
+                    self.job["running"] = False
 
     def _merge_behavior(self, task_id: str, result: Proposal) -> None:
         """Fold the model's reading of the behaviour into the stored analysis.

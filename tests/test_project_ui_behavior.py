@@ -93,6 +93,23 @@ await startProjectAnalysis(); assert.equal(projectUI.activeId,null);
 ''')
 
 
+def test_late_strategy_list_does_not_rebuild_the_name_step(tmp_path):
+    # Rebuilding step 1 replaces the inputs: typed text and the inline error state
+    # would be lost. Only the strategy step renders the list, so only it re-renders.
+    run_js(tmp_path, r'''
+const areas=deferred();api=path=>{assert.equal(path,'/api/v2/source-areas');return areas.promise;};
+newProject('apex');const loading=projectLoadAreas();
+$('project-name').value='  ';projectNext();
+let renders=0;const render=renderProjectWizard;renderProjectWizard=()=>{renders++;render();};
+areas.resolve({local:true,areas:[],target_choices:[{id:'apex',label:'Oracle APEX',description:'d'}]});await loading;
+assert.equal(renders,0);assert.equal(projectUI.draft.step,1);
+assert.equal($('project-name').attrs['aria-invalid'],'true');assert.ok(projectTargetChoices().length);
+projectUI.areas=null;projectUI.draft.step=3;const later=deferred();api=()=>later.promise;const reload=projectLoadAreas();
+later.resolve({local:true,areas:[],target_choices:[{id:'apex',label:'Oracle APEX',description:'d'}]});await reload;
+assert.equal(renders,1);assert.match($('project-content').innerHTML,/value="apex"/);
+''')
+
+
 def test_late_discovery_cannot_populate_another_screen(tmp_path):
     run_js(tmp_path, r'''
 newProject();projectUI.draft.sources=[{root_id:'x',kind:'forms',area_id:'x',relative_path:''}];

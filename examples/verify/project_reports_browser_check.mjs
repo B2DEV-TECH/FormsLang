@@ -27,7 +27,7 @@ export async function reportChecks({evaluate,click,clickSelector,wait,check,scre
   check('F modernization ZIP downloaded from real service',archive[0]===0x50&&archive[1]===0x4b&&archive.length>1000);
   await screenshot('reports-delivery.png');
   await click('project-home');await wait(()=>evaluate(`!!document.querySelector('[data-project-open="${project}"]')`),'delivery recent project');
-  await clickSelector(`[data-project-open="${project}"]`);await wait(()=>evaluate(`projectUI.view==='overview'&&!projectUI.jobId`),'delivery reopen');
+  await clickSelector(`[data-project-open="${project}"]`);await wait(()=>evaluate(`projectUI.view==='overview'&&!projectUI.jobId&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'delivery reopen');
   await clickSelector('[data-project-section="reports"]');await wait(()=>evaluate(`!!projectUI.reportsState?.data`),'reopened reports');
   check('F reports reopen the same persisted snapshot',await evaluate('projectUI.reportsState.data.binding.snapshot_revision')===binding.snapshot_revision);
 }

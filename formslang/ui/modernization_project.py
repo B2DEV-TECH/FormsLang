@@ -88,7 +88,7 @@ function projectNext() {
 }
 async function projectLoadAreas() {
   const c=projectContext();
-  try {const data=await api('/api/v2/source-areas');if(!projectCurrent(c))return;projectUI.areas=data;if(projectUI.view==='wizard')renderProjectWizard();return data;}
+  try {const data=await api('/api/v2/source-areas');if(!projectCurrent(c))return;projectUI.areas=data;if(projectUI.view==='wizard'&&projectUI.draft?.step===3)renderProjectWizard();return data;}
   catch(e){if(projectCurrent(c))projectError(e.message);}
 }
 async function previewSources(offset=0,details=false) {

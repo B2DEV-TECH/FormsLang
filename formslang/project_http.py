@@ -14,6 +14,7 @@ from urllib.parse import unquote
 
 from . import authstore, config, rbac
 from .project_intake import ProjectIdentity, ProjectIntake
+from .project_jobs import TERMINAL
 from .project_model import (
     TARGET_CHOICE_DETAILS,
     TARGET_CHOICES,
@@ -106,7 +107,7 @@ class ProjectHTTP:
         acknowledgement = queue.Queue(maxsize=1)
         stop = threading.Event()
         accepted = threading.Event()
-        record = {'stop': stop, 'intake': intake, 'pid': pid, 'job_id': None}
+        record = {'stop': stop, 'intake': intake, 'pid': pid, 'job_id': None, 'settled': threading.Event()}
 
         def started(job_id):
             record['job_id'] = job_id
@@ -129,6 +130,7 @@ class ProjectHTTP:
             finally:
                 with self._lock:
                     self._workers.pop(threading.current_thread(), None)
+                record['settled'].set()
 
         worker = threading.Thread(target=run, daemon=True, name='formslang-project-job')
         with self._lock:
@@ -159,6 +161,15 @@ class ProjectHTTP:
                     pass
         for worker, _ in workers:
             worker.join(timeout=1)
+
+    def _settle(self, pid, job_id, timeout=10):
+        # A job reaches its terminal status while the worker still holds the project
+        # lock. Answer only once that worker has returned, so a client that sees the
+        # job finish can start the next operation without meeting ProjectBusy.
+        with self._lock:
+            events = [r['settled'] for r in self._workers.values() if r['pid'] == pid and r['job_id'] == job_id]
+        for event in events:
+            event.wait(timeout)
 
     @staticmethod
     def _freshness(service):
@@ -394,6 +405,8 @@ class ProjectHTTP:
                 job_id = tail[1]
                 if len(tail) == 2 and method == 'GET':
                     result = service.job(job_id)
+                    if result['status'] in TERMINAL:
+                        self._settle(pid, job_id)
                     offset, limit = _page(query)
                     row = service._store.session.db.execute('SELECT metadata_json FROM project_analysis_run WHERE job_id=?', (job_id,)).fetchone()
                     if row:

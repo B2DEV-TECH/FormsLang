@@ -246,6 +246,38 @@ def test_saved_assessment_freshness_and_relink_routes(project_server, project_so
         'selection': selected, 'expected_configuration': 0}).status == 409
 
 
+def test_a_finished_job_has_released_the_project_before_it_reports_done(project_server, project_sources, monkeypatch):
+    # A client that sees the job finish must be able to start the next locked
+    # operation; the worker still holds the lock between finish() and return.
+    from formslang import project_jobs
+    client, _ = project_server
+    pid, _ = create_project(client, project_sources[2].parent)
+    job = client.post(f'/api/v2/projects/{pid}/analyze', {'expected_revision': None, 'expected_configuration': 0})
+    assert client.wait_job(pid, job.json['job_id'])['status'] == 'COMPLETED'
+    finished, release = threading.Event(), threading.Event()
+    finish = project_jobs.JobLease.finish
+    def held(self, status, *a, **k):
+        finish(self, status, *a, **k)
+        if status == 'COMPLETED':
+            finished.set()
+            assert release.wait(10)
+    monkeypatch.setattr(project_jobs.JobLease, 'finish', held)
+    fresh = client.post(f'/api/v2/projects/{pid}/freshness', {})
+    assert finished.wait(10)
+    seen, done = {}, threading.Event()
+    def poll_then_report():
+        seen['job'] = client.get(f'/api/v2/projects/{pid}/jobs/{fresh.json["job_id"]}').json['status']
+        seen['reports'] = client.get(f'/api/v2/projects/{pid}/reports').status
+        done.set()
+    poller = threading.Thread(target=poll_then_report)
+    poller.start()
+    # The status request must not answer while the worker still holds the lock.
+    assert not done.wait(1)
+    release.set()
+    poller.join(10)
+    assert seen == {'job': 'COMPLETED', 'reports': 200}
+
+
 def test_running_job_progress_cancel_and_project_switch_are_scoped(project_server, project_sources, monkeypatch):
     from formslang import project_analysis
     client, _ = project_server
