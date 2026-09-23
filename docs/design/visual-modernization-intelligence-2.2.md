@@ -104,6 +104,29 @@ evidence are identical.
 The view mode is remembered for the browser session (`sessionStorage`) and is
 never stored in the project database.
 
+### UI layer
+
+`formslang/ui/modernization_visual.py` is loaded after the 2.1 project bundle.
+The 2.1 screens reach it only through `typeof` guards, so they still run
+without it. It defines:
+
+- design tokens (`--fl-*`), mapped onto the corporate theme variables, so light
+  and dark themes keep working;
+- the presentation mode, stored in `sessionStorage` under
+  `formslang.presentationMode`. A blocked storage leaves the mode in memory for
+  the page;
+- the Overview command center: an assessment record with the mode toggle and
+  one primary action, Estate at a Glance, Source Coverage, Architecture
+  Attention, the Modernization Journey and the Investigation Board.
+
+The static half of the command center renders from the 2.1 `overview`
+payload. The estate, journey and board are filled from `overview/visual`.
+That response is keyed by project, analysis revision, review revision and
+freshness: a review decision refetches it without re-analysis, and a
+presentation-mode switch reuses it. A count the server did not send is shown
+as "Not observed", never as zero. If the visual request fails, the saved
+Overview stays usable and says why.
+
 ## Boundaries (non-negotiable)
 
 - Investigation groups organize review work. They are not migration waves,
@@ -126,7 +149,7 @@ The log is updated per phase with the commit and what was verified.
 | Phase | Scope | State |
 |---|---|---|
 | A | Visual projection, labels, layout, graph memo, tests | done: `tests/test_project_visualization.py` (19 cases) plus HTTP route coverage |
-| B | Overview command center, Exec/Tech view | not started |
+| B | Overview command center, Exec/Tech view | done: `formslang/ui/modernization_visual.py` (tokens, mode, command center), `tests/test_visual_ui_behavior.py` (9 cases) |
 | C | System Map 2.2 | not started |
 | D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | not started |
 | E | Report visuals (static SVG) | not started |
