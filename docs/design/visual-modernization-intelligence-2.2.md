@@ -208,6 +208,24 @@ same snapshot produces the same bytes. Each figure has a `<title>` and a
 caption, and the tables that follow list the same content as text. The
 figure keeps its own light panel so it reads the same on screen and on paper.
 
+### Lab walkthrough
+
+The modernization lab is the visual demo. The acceptance run creates the
+project in the browser from `forms/xml` and `database` without `seed/`, and
+follows Estate, Start Here, an API bypass candidate, the System Map, Review, a
+deferred decision, Module 360 and the reports. Every expectation is read
+from product state. The lab sources, benchmark baselines and ground truth are
+unchanged. The seed scripts are data, not schema: with them the assessment
+is Incomplete and Review refuses decisions, which is the intended behaviour.
+
+Two findings from the walkthrough were fixed in the UI:
+
+- The visual views showed module ids with their source-root prefix. They now
+  show the file name, with the full id as a tooltip; the technical identity
+  row in Module 360 and the map drawer keeps the full id.
+- The Review architecture context now counts deferred findings, so a Defer
+  is visible without leaving Review.
+
 ## Boundaries (non-negotiable)
 
 - Investigation groups organize review work. They are not migration waves,
@@ -234,7 +252,7 @@ The log is updated per phase with the commit and what was verified.
 | C | System Map 2.2 | done: System Map moved into `modernization_visual.py` (estate view, lenses, pan/zoom, minimap, keyboard, six-section drawer), `tests/test_visual_ui_behavior.py` (+12 cases), 2.1 Edge acceptance rerun |
 | D | Module 360, Hotspot Explorer, investigation board, review context, cross-navigation | done: `module-360` and `hotspots` routes, UI in `modernization_visual.py`, `tests/test_visual_ui_behavior.py` (+12 cases), estate Edge acceptance 82 of 82 |
 | E | Report visuals (static SVG) | done: executive and technical reports, `tests/test_generic_assessment_journey.py::test_report_visuals_are_static_redacted_and_deterministic` (canaries, no script or URL, determinism across reopen) |
-| F | Lab walkthrough | not started |
+| F | Lab walkthrough | done: `examples/verify/project_showcase_browser_check.mjs` walks the lab through the real UI (15 checks, part of the Edge acceptance run, 97 of 97), `docs/modernization-lab-walkthrough.md` with five captures from that run |
 | G | Hardening, Edge acceptance, measurements, docs | not started |
 
 ## Measurements

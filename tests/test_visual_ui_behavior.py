@@ -490,13 +490,28 @@ assert.ok(!html.includes('data-matrix-module="UNKNOWN"'));assert.match(html,/dat
 def test_hotspot_filters_reload_from_the_server_and_empty_estate_says_so(tmp_path):
     run_d(tmp_path, r'''
 api=dApi();await visualHotspotsOpen({module:'intake.xml'});
-assert.match(dCalls.at(-1),/&module=intake\.xml$/);assert.match($('project-content').innerHTML,/Module: <b>intake\.xml<\/b>/);
+assert.match(dCalls.at(-1),/&module=intake\.xml$/);assert.match($('project-content').innerHTML,/Module: <b><span title="intake\.xml">intake\.xml<\/span><\/b>/);
 $('visual-hotspot-type').value='GLOBAL_STATE_COUPLING';$('visual-hotspot-type').onchange();await tick();
 assert.match(dCalls.at(-1),/type=GLOBAL_STATE_COUPLING/);assert.match(dCalls.at(-1),/module=intake\.xml/);
 $('visual-hotspot-clear-module').onclick();await tick();assert.ok(!dCalls.at(-1).includes('module='));
 api=dApi({hotspots:()=>hotspotData({items:[],total:0,estate_total:0,matrix:{types:[],rows:[],total_modules:0,truncated:false}})});
 await visualHotspotsOpen({});
 assert.match($('project-content').innerHTML,/has no hotspot candidates\. That is an observation about the supplied sources, not a clean bill of health\./);
+''')
+
+
+def test_module_ids_are_shown_by_file_name_with_the_full_id_as_tooltip(tmp_path):
+    run_d(tmp_path, r'''
+const id='0f1e2d3c4b5a/forms/INTAKE.xml';
+api=dApi({hotspots:()=>{const d=hotspotData();d.items[0].module=id;d.matrix.rows=[{module:id,total:1,cells:[1,0]}];return d;}});
+await visualHotspotsOpen({module:id});
+const html=$('project-content').innerHTML;
+assert.match(html,/Module: <b><span title="0f1e2d3c4b5a\/forms\/INTAKE\.xml">INTAKE\.xml<\/span><\/b>/);
+assert.match(html,/<th scope="row"><span title="0f1e2d3c4b5a\/forms\/INTAKE\.xml">INTAKE\.xml<\/span><\/th>/);
+assert.match(html,/Possible API bypass · <span title="0f1e2d3c4b5a\/forms\/INTAKE\.xml">INTAKE\.xml<\/span>/);
+// The full id still drives filtering: only the label is shortened.
+assert.match(html,/data-matrix-module="0f1e2d3c4b5a\/forms\/INTAKE\.xml"/);
+assert.equal((html.match(/>0f1e2d3c4b5a\//g)||[]).length,0,'the source-root hash is never the visible text');
 ''')
 
 
@@ -554,10 +569,14 @@ await visualReviewContext({id:'f2'});
 assert.match(dCalls.at(-1),/\/module-360\?finding=f2$/);
 let html=$('visual-review-context').innerHTML;
 assert.match(html,/Architecture context:<\/b> INTAKE · Form · 0 incoming · 2 outgoing relationships/);
-assert.match(html,/data-status="CANDIDATE"/);assert.match(html,/1 hotspot candidate\(s\)/);assert.match(html,/1 of 2 findings decided/);
+assert.match(html,/data-status="CANDIDATE"/);assert.match(html,/1 hotspot candidate\(s\)/);assert.match(html,/1 of 2 findings decided<\/p>/);
 assert.match(html,/id="visual-review-module" data-id="form:A"/);assert.match(html,/id="visual-review-map" data-id="form:A"/);
 slow.resolve(moduleData({node:node('form:Z','STALE ANSWER','FORM','FORM','APPLICATION')}));await first;
 assert.ok(!$('visual-review-context').innerHTML.includes('STALE ANSWER'));
+// A deferred finding is not a decided one; the context says so after the decision.
+api=dApi({module:()=>moduleData({node:node('form:A','INTAKE','FORM','FORM','APPLICATION',{review_summary:{total:2,decided:1,open:0,stale:0,deferred:1}})})});
+await visualReviewContext({id:'f2'});assert.match($('visual-review-context').innerHTML,/1 of 2 findings decided · 1 deferred<\/p>/);
+api=dApi();await visualReviewContext({id:'f2'});
 // Opening Module 360 from Review offers the way back to Review.
 $('visual-review-module').onclick();await tick();await tick();
 assert.equal(projectUI.view,'module-360');assert.match($('project-content').innerHTML,/Back to Review/);
