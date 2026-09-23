@@ -264,7 +264,9 @@ def test_priority_queue_exposes_factors_and_reconciles_with_overview(assessment_
     assert queue["rows"][0]["priority_factors"][0] == "UNRESOLVED_CRITICAL"
     assert "MANUAL_INTERVENTION" in queue["rows"][0]["priority_factors"]
     assert "API_BYPASS" in queue["rows"][0]["priority_factors"]
-    assert "DUPLICATED_LOGIC" in queue["rows"][0]["priority_factors"]
+    # The builder draws DUPLICATES_LOGIC for a DML bypass too; only a
+    # LOGIC_DUPLICATED_* signal code is evidence of duplicated logic.
+    assert "DUPLICATED_LOGIC" not in queue["rows"][0]["priority_factors"]
     assert "CROSS_MODULE_IMPACT" in queue["rows"][0]["priority_factors"]
 
 

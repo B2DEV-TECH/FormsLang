@@ -15,6 +15,7 @@ from .project_model import (
     ProjectDescriptor,
     ProjectError,
     SourceRoot,
+    TargetProfile,
     descriptor_to_dict,
     validate_descriptor,
 )
@@ -23,12 +24,16 @@ from .project_projection import (
     inventory_page,
     prepare_projection,
     projection_key,
+    search_project,
 )
 from .project_projection import (
     inventory_detail as project_inventory_detail,
 )
 from .project_projection import (
     overview as project_overview,
+)
+from .project_projection import (
+    system_map as project_system_map,
 )
 from .project_store import ProjectStore
 from .projects import ProjectAccess
@@ -66,12 +71,14 @@ class ProjectService:
         return resolved
 
     def create(self, name: str, *, roots: tuple[SourceRoot, ...] = (),
-               description: str = "", client_label: str = "", project_id: str | None = None) -> ProjectDescriptor:
+               description: str = "", client_label: str = "", project_id: str | None = None,
+               target: TargetProfile | None = None) -> ProjectDescriptor:
         self._require(rbac.CREATE_PROJECT)
         if self.access.org_id is not None and (project_id is None or self._authorize_callback is None):
             raise ProjectError("Authenticated creation requires the project intake adapter")
         descriptor = ProjectDescriptor(id=project_id if project_id is not None else uuid.uuid4().hex, name=name, source_roots=roots,
-                                       description=description, client_label=client_label)
+                                       description=description, client_label=client_label,
+                                       target=target if target is not None else TargetProfile())
         validate_descriptor(descriptor)
         for root in roots:
             self._source(self.access.root / root.path)
@@ -129,6 +136,20 @@ class ProjectService:
             raise ProjectError("Analyze the project before opening Inventory")
         return project_inventory_detail(prepared, category, item_id,
                                         expected_revision=expected_revision)
+
+    def system_map(self, *, focus=None, depth=2, layer=None, edge_type=None,
+                   limit=100, edge_limit=200, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening System Map")
+        return project_system_map(prepared, focus=focus, depth=depth, layer=layer,
+                                  edge_type=edge_type, limit=limit, edge_limit=edge_limit)
+
+    def search(self, query: str, *, limit: int = 20, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before searching")
+        return search_project(prepared, query, limit=limit)
 
     def _job_authority(self, action=rbac.RUN_CONVERSION):
         self._require(action)

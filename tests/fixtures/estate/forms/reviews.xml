@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored synthetic sources. No customer or proprietary Oracle module. -->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="REVIEWS" Title="Synthetic review desk">
+    <Block Name="REVIEW" QueryDataSourceName="WORK_ITEMS">
+      <Item Name="ITEM_ID" ItemType="Text Item" DataType="Number"/>
+      <Item Name="GROSS" ItemType="Text Item" DataType="Number"/>
+      <Item Name="NET" ItemType="Text Item" DataType="Number">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN :review.net := :review.gross * 0.9 - 5; END;"/>
+      </Item>
+      <Trigger Name="PRE-QUERY" TriggerText="BEGIN :review.item_id := :GLOBAL.current_item; END;"/>
+    </Block>
+  </FormModule>
+</Module>

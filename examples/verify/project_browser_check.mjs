@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const root=path.resolve(process.argv[2]),config=JSON.parse(await fs.readFile(path.join(root,'state.json'),'utf8'));
-const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + code-reviewed notice generation + 250 cancellation modules',scope:'Phase C/D/E/F/G real assessment, review/code governance, generation/validation, delivery, reopen, stale source and demo'};
+const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase + orders DDL + bundled dispatch demo + code-reviewed notice generation + 250 cancellation modules',scope:'Phase C/D/E/F/G real assessment, review/code governance, generation/validation, delivery, reopen, stale source, demo and 2.1 target-neutral Estate Intelligence'};
 const allowedOrigins=new Set([new URL(config.url).origin]),requests=[];
 let socket,sequence=0;const pending=new Map();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -31,9 +31,11 @@ try{
   socket=new WebSocket(page.webSocketDebuggerUrl);await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});
   socket.onmessage=event=>{const message=JSON.parse(event.data);if(message.id){const item=pending.get(message.id);if(!item)return;pending.delete(message.id);if(message.error)item.reject(Error(JSON.stringify(message.error)));else item.resolve(message.result);}else if(message.method==='Runtime.exceptionThrown')result.exceptions.push(message.params.exceptionDetails);else if(message.method==='Network.requestWillBeSent')requests.push(message.params.request.url);};
   await send('Runtime.enable');await send('Page.enable');await send('Network.enable');await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await send('Page.navigate',{url:config.url});
-  await wait(()=>evaluate(`!!document.getElementById('project-new')`),'project landing');
+  await wait(()=>evaluate(`!!document.getElementById('project-new-apex')`),'project landing');
+  check('onboarding offers the three 2.1 paths',await evaluate(`['project-new-estate','project-new-apex','project-demo'].every(id=>!!document.getElementById(id))&&document.getElementById('project-content').textContent.includes('What do you want to do?')`));
+  await screenshot('onboarding.png');
   check('local first launch without account',await evaluate(`document.body.classList.contains('project-mode')`));
-  await click('project-new');await click('project-next');
+  await click('project-new-apex');await click('project-next');
   check('blank name inline error and focus',await evaluate(`document.activeElement.id==='project-name'&&document.getElementById('project-name').getAttribute('aria-invalid')==='true'`));
   check('name error associated and labelled',await evaluate(`document.getElementById('project-name').getAttribute('aria-describedby')==='project-error'&&!!document.querySelector('label[for="project-name"]')`));
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
@@ -45,7 +47,8 @@ try{
     await click('project-folder-select');await wait(()=>evaluate(`!document.getElementById('modal').classList.contains('show')&&projectUI.draft.preview!==null&&projectUI.draft.sources.length===${kind==='forms'?1:2}`),'discovery preview');
   }
   check('real preview inventory',await evaluate(`projectUI.draft.preview.inventory.forms.parseable===1&&projectUI.draft.preview.inventory.database.tables===1`),await evaluate('projectUI.draft.preview.inventory'));
-  await click('project-next');check('target from backend',await evaluate(`document.getElementById('project-content').textContent.includes('26.1')&&document.getElementById('project-content').textContent.includes('APEXlang')`));
+  await click('project-next');await wait(()=>evaluate(`projectUI.areas?.target_choices?.length===3&&!!document.querySelector('input[name="project-target"]')`),'strategies from backend');
+  check('strategy choices come from the server and APEX is preselected',await evaluate(`document.querySelector('input[name="project-target"][value="apex"]').checked&&document.getElementById('project-content').textContent.includes('Analyze my Forms estate')`));
   await screenshot('target.png');await click('project-next');await click('project-next');
   await wait(()=>evaluate(`projectUI.view==='overview'&&projectUI.summary?.project.analysis_revision&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'`),'saved assessment Overview and freshness');
   check('assessment current',await evaluate(`projectUI.summary.freshness.status==='CURRENT'&&projectUI.overview.assessment.freshness==='CURRENT'`));
@@ -97,7 +100,7 @@ try{
   check('partial failure retains valid form',await evaluate(`projectUI.summary.inventory.forms.analyzed===1&&document.getElementById('project-saved-content').textContent.includes('bad.xml')`));await screenshot('partial-failure.png');
   const cancelFolder=owned(path.join(root,'sources/cancel-forms'));await fs.mkdir(cancelFolder);
   for(let i=0;i<250;i++)await fs.writeFile(owned(path.join(cancelFolder,`form-${i}.xml`)),`<Module><FormModule Name="CANCEL_${i}"><Trigger Name="WHEN-NEW-FORM-INSTANCE" TriggerText="null;"/></FormModule></Module>`);
-  await click('project-home');await click('project-new');await value('project-name','Cancellation acceptance');await click('project-next');await click('project-forms');await pick(cancelFolder);
+  await click('project-home');await click('project-new-estate');await value('project-name','Cancellation acceptance');await click('project-next');await click('project-forms');await pick(cancelFolder);
   await wait(()=>evaluate(`projectUI.draft.preview!==null&&projectUI.draft.sources.length===1`),'cancel estate preview');await click('project-next');await click('project-next');await click('project-next');
   await wait(()=>evaluate(`projectUI.view==='progress'&&!!document.getElementById('project-cancel')`),'cancellable progress');
   check('labelled progress and live status',await evaluate(`document.getElementById('project-progress').getAttribute('role')==='progressbar'&&document.getElementById('project-progress').getAttribute('aria-label')==='Analysis progress'&&document.getElementById('project-status').getAttribute('aria-live')==='polite'`));
@@ -121,6 +124,8 @@ try{
   await generationChecks({evaluate,click,clickSelector,value,wait,check,screenshot,pick,folder:config.generation});
   const {reportChecks}=await import('./project_reports_browser_check.mjs');
   await reportChecks({evaluate,click,clickSelector,wait,check,screenshot,send,root});
+  const {estateChecks}=await import('./project_estate_browser_check.mjs');
+  await estateChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send,pick,forms:config.estate_forms,database:config.estate_database});
   await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
   await sleep(300);check('tablet no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
   check('reduced motion preference retained',await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`));

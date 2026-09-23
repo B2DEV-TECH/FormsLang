@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored synthetic sources. No customer or proprietary Oracle module. -->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="TOTALS" Title="Synthetic totals desk">
+    <Block Name="TOTAL" QueryDataSourceName="WORK_ITEMS">
+      <Item Name="GROSS" ItemType="Text Item" DataType="Number"/>
+      <Item Name="NET" ItemType="Text Item" DataType="Number">
+        <Trigger Name="WHEN-VALIDATE-ITEM" TriggerText="BEGIN :total.net := :total.gross * 0.9 - 5; END;"/>
+      </Item>
+    </Block>
+  </FormModule>
+</Module>

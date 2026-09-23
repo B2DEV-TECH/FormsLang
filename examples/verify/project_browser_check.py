@@ -85,12 +85,15 @@ def main():
     shutil.copyfile(REPO / 'tests/fixtures/project-generation/notice.xml', generation / 'notice.xml')
     shutil.copyfile(REPO / 'tests/fixtures/showcase/module.xml', forms / 'orders.xml')
     (database / 'orders.sql').write_text('create table orders (id number primary key);', encoding='utf-8')
+    estate = run / 'sources/estate'
+    shutil.copytree(REPO / 'tests/fixtures/estate', estate)
     server_process, server_stop, server_port = _start_server(run)
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         debug_port = reservation.getsockname()[1]
     (run / 'state.json').write_text(json.dumps({'url': f'http://127.0.0.1:{server_port}',
-        'debug_port': debug_port, 'forms': str(forms), 'database': str(database), 'generation': str(generation)}), encoding='utf-8')
+        'debug_port': debug_port, 'forms': str(forms), 'database': str(database), 'generation': str(generation),
+        'estate_forms': str(estate / 'forms'), 'estate_database': str(estate / 'database')}), encoding='utf-8')
     hidden = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     edge = node = None
     print(f'Project browser evidence: {run}', flush=True)
@@ -103,10 +106,10 @@ def main():
                 creationflags=hidden, stdout=log, stderr=log)
             node = subprocess.Popen([args.node, str(Path(__file__).with_suffix('.mjs')), str(run)],
                                     creationflags=hidden, stdout=node_log, stderr=node_log)
-            deadline = time.monotonic() + 240
+            deadline = time.monotonic() + 300
             while node.poll() is None:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError('Project browser acceptance exceeded four minutes')
+                    raise TimeoutError('Project browser acceptance exceeded five minutes')
                 if (run / 'restart.request').exists() and not (run / 'restart.ready').exists():
                     previous_pid = server_process.pid
                     _stop_server(server_process, server_stop)

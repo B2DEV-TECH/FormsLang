@@ -14,7 +14,15 @@ from urllib.parse import unquote
 
 from . import authstore, config, rbac
 from .project_intake import ProjectIdentity, ProjectIntake
-from .project_model import ProjectBusy, ProjectError, RevisionConflict, TargetProfile
+from .project_model import (
+    TARGET_CHOICE_DETAILS,
+    TARGET_CHOICES,
+    ProjectBusy,
+    ProjectError,
+    RevisionConflict,
+    TargetProfile,
+    target_from_choice,
+)
 from .project_projection import ProjectionCache
 from .project_service import ProjectService
 
@@ -188,13 +196,16 @@ class ProjectHTTP:
             return 200, {'selection': intake.select_source(body.get('path', ''), body.get('kind', 'forms'))}
         if parts == ['source-areas'] and method == 'GET':
             target = asdict(TargetProfile())
+            choices = [{**item, 'profile': asdict(TARGET_CHOICES[item['id']])} for item in TARGET_CHOICE_DETAILS]
             if intake.identity:
-                return 200, {'local': False, 'target_profile': target, 'areas': [{'id': key, 'name': key} for key in intake._host_areas()]}
+                return 200, {'local': False, 'target_profile': target, 'target_choices': choices,
+                             'areas': [{'id': key, 'name': key} for key in intake._host_areas()]}
             intake._local()
             with intake._metadata() as metadata:
                 areas = [{'id': key, 'name': value['path']} for key, value in metadata['areas'].items()
                          if value['actor'] == intake._local()]
-            return 200, {'local': True, 'target_profile': target, 'areas': areas, 'browse_root': str(self.workbench.browse_root)}
+            return 200, {'local': True, 'target_profile': target, 'target_choices': choices, 'areas': areas,
+                         'browse_root': str(self.workbench.browse_root)}
         if len(parts) == 3 and parts[0] == 'source-areas' and parts[2] == 'browse' and method == 'GET':
             return 200, intake.browse(parts[1], query.get('relative', ''))
         if parts == ['discovery-preview'] and method == 'POST':
@@ -207,14 +218,17 @@ class ProjectHTTP:
             if method == 'GET':
                 return 200, {'projects': intake.list_recent()}
             if method == 'POST':
+                # Historical clients omit the target and keep the 2.0 APEX default;
+                # the onboarding UI always sends an explicit, server-validated choice.
                 return 201, intake.create(body.get('name', ''), body.get('sources'),
-                    description=body.get('description', ''), client_label=body.get('client_label', ''))
+                    description=body.get('description', ''), client_label=body.get('client_label', ''),
+                    target=target_from_choice(body.get('target')))
         if parts == ['projects', 'open'] and method == 'POST':
             if intake.identity:
                 return 200, intake._summary(body.get('project_id'))
             return 200, intake.open_locator(body.get('locator', ''))
         if parts == ['projects', 'demo'] and method == 'POST':
-            return 201, intake.create_demo()
+            return 201, intake.create_demo(target=target_from_choice(body.get('target')))
         if len(parts) < 2 or parts[0] != 'projects' or not re.fullmatch('[a-f0-9]{32}', parts[1]):
             return 404, {'error': 'Project route not found'}
         pid = parts[1]
@@ -324,6 +338,33 @@ class ProjectHTTP:
             if tail == ['overview'] and method == 'GET':
                 freshness = self._freshness(service)
                 return 200, {'overview': service.overview(freshness=freshness)}
+            if tail == ['system-map'] and method == 'GET':
+                focus = query.get('focus') or None
+                if set(query) - {'focus', 'depth', 'limit', 'edge_limit', 'layer', 'edge_type'}:
+                    raise ProjectError('Unknown System Map query')
+                try:
+                    depth = int(query.get('depth', 2))
+                    limit = int(query.get('limit', 100))
+                    edge_limit = int(query.get('edge_limit', 200))
+                except (TypeError, ValueError) as exc:
+                    raise ProjectError('System map requires integer depth and limits') from exc
+                layer = query.get('layer') or None
+                edge_type = query.get('edge_type') or None
+                freshness = self._freshness(service)
+                return 200, service.system_map(
+                    focus=focus, depth=depth, layer=layer, edge_type=edge_type,
+                    limit=limit, edge_limit=edge_limit, freshness=freshness,
+                )
+            if tail == ['search'] and method == 'GET':
+                if set(query) - {'query', 'q', 'limit'} or {'query', 'q'} <= set(query):
+                    raise ProjectError('Use one search query parameter and an optional limit')
+                search_query = query.get('query') or query.get('q') or ''
+                try:
+                    limit = int(query.get('limit', 20))
+                except (TypeError, ValueError) as exc:
+                    raise ProjectError('Search requires integer limit') from exc
+                freshness = self._freshness(service)
+                return 200, service.search(search_query, limit=limit, freshness=freshness)
             if tail == ['inventory'] and method == 'GET':
                 freshness = self._freshness(service)
                 return 200, service.inventory(**_inventory_query(query), freshness=freshness)

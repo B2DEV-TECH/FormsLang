@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+FormsLang 2.1 Estate Intelligence is in development on the PR #11 branch. Not
+released; no installer contains it.
+
+### Added
+
+- Target-neutral projects: *Analyze my Forms estate* creates a project with no
+  implementation target from the UI, HTTP and CLI; the choice is validated on the
+  server and survives reopen. A target-neutral assessment package is available as
+  a non-code deliverable.
+- Hotspot candidates derived from the saved Blueprint (possible API bypass,
+  duplicated business-rule candidate, global state coupling), each with an
+  evidence contract, severity rule and uncertainty statement.
+- Module-level System Map with independent node, relationship and selector
+  budgets; bounded project search.
+- Executive/technical assessment report sections, suggested investigation groups
+  and decision records (recorded vs. PROPOSED).
+
+### Changed
+
+- The *duplicated logic* priority factor now requires a `LOGIC_DUPLICATED_*`
+  engine signal; the `DUPLICATES_LOGIC` edge the builder also draws for a DML
+  bypass no longer implies it.
+
+### Not in this release
+
+- The modernization IR, architecture policy and target adapter registry are
+  experimental library code with no product surface. There is no migration-wave
+  planning, cost or schedule estimation, and no target other than Oracle APEX.
+
 ## [2.0.0] - 2026-09-21
 
 FormsLang 2.0 transforms FormsLang into an Oracle Forms → Oracle APEX

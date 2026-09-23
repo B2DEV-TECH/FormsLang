@@ -26,6 +26,40 @@ class TargetProfile:
     representation: str = "APEXlang"
 
 
+SUPPORTED_TARGET_PROFILES: tuple[TargetProfile, ...] = (
+    TargetProfile(platform="Oracle APEX", version="26.1", representation="APEXlang"),
+    TargetProfile(platform="UNSELECTED", version="none", representation="none"),
+    TargetProfile(platform="Generic Modernization", version="1.0", representation="Neutral Backlog"),
+)
+UNSELECTED_TARGET = SUPPORTED_TARGET_PROFILES[1]
+GENERIC_TARGET = SUPPORTED_TARGET_PROFILES[2]
+
+# The one server-side table every adapter (UI, HTTP, CLI) resolves a creation
+# choice through. UNSELECTED is a legitimate state: analysis, review and
+# reports work without an implementation target.
+TARGET_CHOICES: dict[str, TargetProfile] = {
+    "unselected": UNSELECTED_TARGET,
+    "apex": SUPPORTED_TARGET_PROFILES[0],
+    "generic": GENERIC_TARGET,
+}
+TARGET_CHOICE_DETAILS = (
+    {"id": "unselected", "label": "Analyze my Forms estate",
+     "description": "Understand architecture before choosing a target. No implementation target is selected."},
+    {"id": "apex", "label": "Modernize to Oracle APEX",
+     "description": "Assessment plus the reviewed Oracle APEX generation path."},
+    {"id": "generic", "label": "Target-neutral assessment package",
+     "description": "Assessment plus a non-code modernization package. No executable code is generated."},
+)
+
+
+def target_from_choice(value, *, default: str = "apex") -> TargetProfile:
+    """Resolve a creation choice; unknown or malformed choices fail closed."""
+    choice = default if value is None else value
+    if not isinstance(choice, str) or choice not in TARGET_CHOICES:
+        raise ProjectError("Choose a supported target strategy: " + ", ".join(TARGET_CHOICES))
+    return TARGET_CHOICES[choice]
+
+
 @dataclass(frozen=True)
 class SourceRoot:
     id: str
@@ -71,7 +105,7 @@ def validate_descriptor(value: ProjectDescriptor) -> None:
         raise ProjectError("Unsupported project format")
     if value.store != "project.session.db":
         raise ProjectError("Invalid project store location")
-    if not isinstance(value.target, TargetProfile) or value.target != TargetProfile():
+    if not isinstance(value.target, TargetProfile) or value.target not in SUPPORTED_TARGET_PROFILES:
         raise ProjectError("Unsupported target profile")
     if value.analysis_revision is not None:
         _text(value.analysis_revision, "analysis_revision", 64)
@@ -120,9 +154,15 @@ def descriptor_from_dict(payload: dict) -> ProjectDescriptor:
     values = {k: v for k, v in payload.items() if k not in {
         "source_roots", "target_platform", "target_version", "target_representation",
     }}
-    project = ProjectDescriptor(**values, source_roots=tuple(SourceRoot(**r) for r in roots),
-        target=TargetProfile(payload.get("target_platform", "Oracle APEX"),
-                             payload.get("target_version", "26.1"),
-                             payload.get("target_representation", "APEXlang")))
+    raw_platform = payload.get("target_platform", "Oracle APEX")
+    raw_version = payload.get("target_version")
+    raw_rep = payload.get("target_representation")
+    if isinstance(raw_platform, str) and raw_platform.upper() == "UNSELECTED":
+        target = TargetProfile("UNSELECTED", raw_version or "none", raw_rep or "none")
+    elif raw_platform == "Generic Modernization":
+        target = TargetProfile("Generic Modernization", raw_version or "1.0", raw_rep or "Neutral Backlog")
+    else:
+        target = TargetProfile(raw_platform, raw_version or "26.1", raw_rep or "APEXlang")
+    project = ProjectDescriptor(**values, source_roots=tuple(SourceRoot(**r) for r in roots), target=target)
     validate_descriptor(project)
     return project

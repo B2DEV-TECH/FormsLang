@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import authstore, config, rbac
 from .project_intake import ProjectIntake
-from .project_model import ProjectError, TargetProfile
+from .project_model import TARGET_CHOICES, ProjectError, TargetProfile, target_from_choice
 from .project_projection import CATEGORIES, INTERVENTIONS, RECOMMENDATIONS, RISK_LEVELS, SORTS
 from .project_service import ProjectService
 
@@ -43,8 +43,10 @@ def _operation(args):
     if operation == 'create':
         sources = [intake.select_source(path, kind) for kind in ('forms', 'database', 'supporting')
                    for path in getattr(args, kind)]
+        target_profile = target_from_choice(getattr(args, 'target', 'apex'))
         return intake.create(args.name, sources, description=args.description,
-                             client_label=args.client, destination=args.project), 0
+                             client_label=args.client, destination=args.project,
+                             target=target_profile), 0
     path = Path(args.project)
     locator = path if path.name == 'project.json' else path / '.formslang/project.json'
     summary = intake.open_locator(locator)
@@ -57,13 +59,15 @@ def _operation(args):
             raise ProjectError('Unknown source root; use project info to list root IDs')
         selection = intake.select_source(args.path, root['kind'])
         return intake.relink(pid, args.root, selection, expected_configuration=summary['configuration_revision']), 0
-    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory'} else rbac.RUN_CONVERSION
+    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory', 'search'} else rbac.RUN_CONVERSION
     authorize = lambda: intake.access(pid, action)
     service = ProjectService(authorize(), authorize=authorize)
     try:
         descriptor = service.open()
         preconditions = {'expected_revision': descriptor.analysis_revision,
                          'expected_configuration': summary['configuration_revision']}
+        if operation == 'search':
+            return service.search(args.query, limit=args.limit), 0
         if operation == 'report':
             state = service.report_overview()
             if args.format == 'status':
@@ -85,9 +89,10 @@ def _operation(args):
                 return service.generation_task(args.source, args.task), 0
             if command == 'validate':
                 result = service.generation_validate(args.artifact)
-                return result, 0 if result['status'] == 'Validated' else 1
+                return result, 0 if result['status'] in {'Validated', 'Package Verified'} else 1
             if command == 'download':
-                data = service.generation_download(args.artifact)
+                payload = service.generation_download(args.artifact)
+                data = getattr(payload, 'body', payload)
                 with Path(args.output).open('xb') as output:
                     output.write(data)
                 return {'artifact_id': args.artifact, 'size_bytes': len(data), 'saved': True}, 0
@@ -243,6 +248,8 @@ def add_project_parser(subparsers):
             command.add_argument('--client', default='')
             for kind in ('forms', 'database', 'supporting'):
                 command.add_argument('--' + kind, action='append', default=[], help='source folder; repeat for additional roots')
+            command.add_argument('--target', choices=list(TARGET_CHOICES), default='apex',
+                                 help='target modernization strategy (default: apex)')
             command.add_argument('--target-apex', choices=[TargetProfile().version], default=TargetProfile().version)
         elif name == 'relink':
             command.add_argument('--root', required=True, help='stable source root ID from project info')
@@ -260,3 +267,11 @@ def add_project_parser(subparsers):
             command.add_argument('--offset', type=int, default=0)
             command.add_argument('--limit', type=int, choices=range(1, 201), default=50)
             command.add_argument('--revision')
+
+    search_cmd = commands.add_parser('search', help='search project estate, system map, business rules, and findings')
+    search_cmd.add_argument('project', help='project directory or .formslang/project.json descriptor')
+    search_cmd.add_argument('--query', required=True, help='search query string')
+    search_cmd.add_argument('--limit', type=int, choices=range(1, 51), default=20, metavar='1-50',
+                            help='maximum results to return (1-50)')
+    search_cmd.add_argument('--json', action='store_true', help='machine-readable stdout')
+    search_cmd.set_defaults(func=run_project)

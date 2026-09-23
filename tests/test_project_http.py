@@ -508,3 +508,36 @@ def test_cli_summary_and_inventory_reconcile_with_http(project_server, capsys):
         f'/api/v2/projects/{pid}/inventory?category=findings&risk=HIGH&revision={revision}'
     ).json
     assert cli_inventory == http_inventory
+
+
+def test_system_map_and_search_http_endpoints(project_server):
+    client, _ = project_server
+    pid = analyze_demo(client)
+
+    # Test system-map endpoint
+    map_res = client.get(f'/api/v2/projects/{pid}/system-map')
+    assert map_res.status == 200, map_res.json
+    assert 'nodes' in map_res.json
+    assert 'edges' in map_res.json
+    assert 'available_forms' in map_res.json
+    assert map_res.json['total_nodes'] > 0
+
+    # Test system-map with depth and layer filters
+    map_filtered = client.get(f'/api/v2/projects/{pid}/system-map?depth=1&layer=FORM')
+    assert map_filtered.status == 200
+    assert map_filtered.json['depth'] == 1
+
+    # Test system-map invalid parameter
+    bad_map = client.get(f'/api/v2/projects/{pid}/system-map?depth=not_an_int')
+    assert bad_map.status == 400
+
+    # Test search endpoint
+    search_res = client.get(f'/api/v2/projects/{pid}/search?query=shipments')
+    assert search_res.status == 200, search_res.json
+    assert 'results' in search_res.json
+    assert search_res.json['total'] > 0
+    assert any('shipments' in r['title'].casefold() for r in search_res.json['results'])
+
+    # Test search invalid limit
+    bad_search = client.get(f'/api/v2/projects/{pid}/search?limit=not_an_int')
+    assert bad_search.status == 400
