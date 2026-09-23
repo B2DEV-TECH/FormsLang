@@ -307,3 +307,47 @@ def test_duplicated_rule_owner_comes_from_the_duplication_not_the_top_signal(tmp
         assert clusters["WORK_API.NET_AMOUNT"]["edge_refs"]
     finally:
         service.close()
+
+
+def test_module_360_and_hotspot_explorer_come_from_the_real_assessment(estate):
+    forms = {f["name"]: f["id"] for f in estate.system_map()["available_forms"]}
+    by_node = estate.module_view(node=forms["INTAKE"])
+    by_module = estate.module_view(module=by_node["module"])
+    assert by_node == by_module and by_node["node"]["id"] == forms["INTAKE"]
+    assert by_node["module"].endswith("intake.xml")
+    assert {c["type"] for c in by_node["composition"]} >= {"TRIGGER", "BLOCK"}
+    assert "FORM" not in {c["type"] for c in by_node["composition"]}
+    outbound = {(n["name"], n["classification"]): n for n in by_node["neighbours"]["outbound"]["items"]}
+    assert outbound[("WORK_ITEMS", "WRITES")]["is_hotspot"]
+    assert outbound[("WORK_API", "CALLS")]["presentation_label"]["executive"] == "Uses service"
+    assert sum(by_node["risk_distribution"].values()) == by_node["findings_total"]
+    assert "not a migration plan" in by_node["boundary"]
+    # A finding opens the module it folds into.
+    finding = by_node["findings"][0]["id"]
+    assert estate.module_view(finding=finding)["node"]["id"] == forms["INTAKE"]
+    for bad in ({}, {"module": "nope.xml"}, {"node": "nope"}, {"finding": "nope"},
+                {"module": "x", "node": forms["INTAKE"]}):
+        with pytest.raises(ProjectError):
+            estate.module_view(**bad)
+
+    explorer = estate.hotspot_explorer()
+    assert explorer["total"] == explorer["estate_total"] == 3
+    assert explorer["classification"] == "CANDIDATE" and "not verdicts" in explorer["boundary"]
+    by_type = {h["hotspot_type"]: h for h in explorer["items"]}
+    bypass = by_type[HOTSPOT_API_BYPASS]
+    assert bypass["uncertainty"] and bypass["statement"]
+    assert bypass["evidence"]["table"] == "WORK_ITEMS"
+    assert bypass["evidence"]["potential_existing_api_owners"] == {"values": ["WORK_API.CLOSE_ITEM"], "total": 1}
+    assert "INTAKE" in {n["name"] for n in bypass["nodes"]} and bypass["nodes_total"] >= 1
+    assert explorer["matrix"]["classification"] == "CANDIDATE"
+    only_high = estate.hotspot_explorer(severity="HIGH")
+    assert {h["severity"] for h in only_high["items"]} == {"HIGH"} and only_high["estate_total"] == 3
+    one = estate.hotspot_explorer(hotspot_type=HOTSPOT_GLOBAL_STATE)
+    assert [h["hotspot_type"] for h in one["items"]] == [HOTSPOT_GLOBAL_STATE]
+    module = bypass["module"]
+    assert all(h["module"] == module for h in estate.hotspot_explorer(module=module)["items"])
+    paged = estate.hotspot_explorer(limit=1, offset=1)
+    assert len(paged["items"]) == 1 and paged["items"][0]["id"] == explorer["items"][1]["id"]
+    for bad in ({"hotspot_type": "nope"}, {"severity": "LOW"}, {"limit": 0}, {"limit": 51}, {"offset": -1}):
+        with pytest.raises(ProjectError):
+            estate.hotspot_explorer(**bad)

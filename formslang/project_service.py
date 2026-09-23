@@ -27,7 +27,13 @@ from .project_projection import (
     search_project,
 )
 from .project_projection import (
+    hotspot_explorer as project_hotspot_explorer,
+)
+from .project_projection import (
     inventory_detail as project_inventory_detail,
+)
+from .project_projection import (
+    module_view as project_module_view,
 )
 from .project_projection import (
     overview as project_overview,
@@ -164,6 +170,20 @@ class ProjectService:
         if prepared is None:
             raise ProjectError("Analyze the project before opening System Map")
         return project_system_map_node(prepared, node_id)
+
+    def module_view(self, *, module=None, node=None, finding=None, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening Module 360")
+        return project_module_view(prepared, module=module, node=node, finding=finding)
+
+    def hotspot_explorer(self, *, hotspot_type=None, severity=None, module=None,
+                         offset=0, limit=50, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening Hotspots")
+        return project_hotspot_explorer(prepared, hotspot_type=hotspot_type, severity=severity,
+                                        module=module, offset=offset, limit=limit)
 
     def search(self, query: str, *, limit: int = 20, freshness=None) -> dict:
         prepared = self._prepared_projection(freshness)

@@ -579,6 +579,20 @@ def test_system_map_and_search_http_endpoints(project_server):
     assert visual.status == 200, visual.json
     assert [lane['lane'] for lane in visual.json['visual']['estate']] == [
         'APPLICATION', 'SHARED_LOGIC', 'DATA', 'INTEGRATION']
+    form_id = map_res.json['available_forms'][0]['id']
+    module = client.get(f'/api/v2/projects/{pid}/module-360?node={quote(form_id, safe="")}')
+    assert module.status == 200, module.json
+    assert module.json['node']['id'] == form_id and 'composition' in module.json
+    by_name = client.get(f'/api/v2/projects/{pid}/module-360?module={quote(module.json["module"], safe="")}')
+    assert by_name.status == 200 and by_name.json['node']['id'] == form_id
+    assert client.get(f'/api/v2/projects/{pid}/module-360').status == 400
+    assert client.get(f'/api/v2/projects/{pid}/module-360?node=x&module=y').status == 400
+    assert client.get(f'/api/v2/projects/{pid}/module-360?module=nope.xml').status == 400
+    hotspots = client.get(f'/api/v2/projects/{pid}/hotspots?limit=5')
+    assert hotspots.status == 200, hotspots.json
+    assert hotspots.json['classification'] == 'CANDIDATE' and hotspots.json['limit'] <= 5
+    assert client.get(f'/api/v2/projects/{pid}/hotspots?type=nope').status == 400
+    assert client.get(f'/api/v2/projects/{pid}/hotspots?extra=1').status == 400
 
     # Test search endpoint
     search_res = client.get(f'/api/v2/projects/{pid}/search?query=shipments')

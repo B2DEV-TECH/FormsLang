@@ -375,6 +375,20 @@ class ProjectHTTP:
                     raise ProjectError('System Map node requires only an id')
                 freshness = self._freshness(service)
                 return 200, service.system_map_node(query['id'], freshness=freshness)
+            if tail == ['module-360'] and method == 'GET':
+                if len(query) != 1 or not set(query) <= {'module', 'node', 'finding'}:
+                    raise ProjectError('Module 360 requires exactly one of module, node or finding')
+                freshness = self._freshness(service)
+                return 200, service.module_view(**query, freshness=freshness)
+            if tail == ['hotspots'] and method == 'GET':
+                if set(query) - {'type', 'severity', 'module', 'offset', 'limit'}:
+                    raise ProjectError('Unknown hotspot query')
+                offset, limit = _page(query)
+                freshness = self._freshness(service)
+                return 200, service.hotspot_explorer(
+                    hotspot_type=query.get('type') or None, severity=query.get('severity') or None,
+                    module=query.get('module') or None, offset=offset, limit=min(limit, 50),
+                    freshness=freshness)
             if tail == ['search'] and method == 'GET':
                 if set(query) - {'query', 'q', 'limit'} or {'query', 'q'} <= set(query):
                     raise ProjectError('Use one search query parameter and an optional limit')

@@ -28,6 +28,9 @@ from .project_visualization import (
     investigation_board,
     journey,
     labels_catalog,
+    lane_of,
+    relationship_labels,
+    type_labels,
     visual_edge,
     visual_node,
 )
@@ -1497,6 +1500,161 @@ def system_map_node(prepared: PreparedProjection, node_id: str) -> dict:
                       "review_state": r["review_state"], "hotspot_ids": list(r.get("hotspot_ids", ()))}
                      for r in findings[:MAP_NODE_MAX_ITEMS]],
         "findings_total": len(findings),
+        "labels": labels_catalog(),
+        **_page_meta(prepared),
+    }
+
+
+MODULE_MAX_NEIGHBOURS = 20
+HOTSPOT_EXPLORER_MAX = 50
+_EVIDENCE_MAX_VALUES = 10
+MODULE_BOUNDARY = ("Module 360 lists what the supplied sources show about one module. "
+                   "It is not a migration plan, an effort estimate or a readiness verdict.")
+HOTSPOT_BOUNDARY = ("Hotspot candidates are derived from saved structural evidence. They need "
+                    "architecture review; they are not verdicts, defects or migration priorities.")
+
+
+def _module_node(prepared, graph, *, module=None, node=None, finding=None):
+    nodes, owners = graph["nodes"], graph["owners"]
+    if sum(value is not None for value in (module, node, finding)) != 1:
+        raise ProjectError("Module 360 needs exactly one of module, node or finding")
+    for value in (module, node, finding):
+        if value is not None and (not isinstance(value, str) or not value or len(value) > 500):
+            raise ProjectError("Module 360 selector must be bounded text")
+    if node is not None:
+        if node not in nodes:
+            raise ProjectError("Unknown System Map node")
+        return node
+    if finding is not None:
+        row = next((r for r in prepared.rows.get("findings", ()) if r["id"] == finding), None)
+        if row is None:
+            raise ProjectError("Unknown finding")
+        identity = owners.get(row.get("entity_id"))
+        if identity is None:
+            raise ProjectError("The finding is not placed on the System Map")
+        return identity
+    # A logical module is the Form that carries it; a module without a Form stays unknown.
+    forms = sorted(i for i, n in nodes.items() if n["layer"] == "FORM" and n["module"] == module)
+    if not forms:
+        raise ProjectError("Unknown module")
+    return forms[0]
+
+
+def _neighbours(graph, node_id, direction):
+    nodes, outbound = graph["nodes"], direction == "outbound"
+    rows = []
+    for edge in graph["edges"]:
+        if (edge["source"] if outbound else edge["target"]) != node_id:
+            continue
+        other = nodes[edge["target"] if outbound else edge["source"]]
+        rows.append({
+            "id": other["id"], "name": other["name"], "type": other["type"], "layer": other["layer"],
+            "presentation_type": type_labels(other["layer"], other["type"]),
+            "lane": lane_of(other["layer"], other["type"]),
+            "unresolved": other["layer"] == "UNRESOLVED",
+            "classification": edge["classification"],
+            "presentation_label": relationship_labels(edge["classification"]),
+            "status": "OBSERVED" if edge["level"] == "FACT" else "CANDIDATE",
+            "count": edge["count"], "is_hotspot": edge["is_hotspot"], "edge_id": edge["id"],
+        })
+    rows.sort(key=lambda r: (not r["is_hotspot"], -r["count"], r["name"].casefold(), r["id"],
+                             r["classification"]))
+    return {"items": rows[:MODULE_MAX_NEIGHBOURS], "total": len(rows)}
+
+
+def module_view(prepared: PreparedProjection, *, module=None, node=None, finding=None) -> dict:
+    """Module 360: one module's identity, composition, architecture, attention and review.
+
+    Every figure is an observed count from this analysis revision. No source
+    text: findings carry names, risk, recommendation and review state only.
+    """
+    graph = _architecture_graph(prepared)
+    node_id = _module_node(prepared, graph, module=module, node=node, finding=finding)
+    detail = system_map_node(prepared, node_id)
+    owners = graph["owners"]
+    entities = _unique((prepared.raw_blueprint or {}).get("entities", []))
+    composition = Counter(_text(entity.get("type"), 100) for identity, entity in entities.items()
+                          if identity != node_id and owners.get(identity) == node_id)
+    findings = [r for r in prepared.rows.get("findings", ())
+                if owners.get(r.get("entity_id")) == node_id]
+    rule_ids = {r["id"] for r in prepared.rows.get("business_rules", ())}
+    return {
+        **detail,
+        "module": graph["nodes"][node_id]["module"],
+        "composition": [{"type": t, "count": c} for t, c in sorted(composition.items())],
+        "neighbours": {"inbound": _neighbours(graph, node_id, "inbound"),
+                       "outbound": _neighbours(graph, node_id, "outbound")},
+        "risk_distribution": dict(sorted(Counter(r["risk"] for r in findings).items())),
+        "recommendation_distribution": dict(sorted(Counter(r["recommendation"] for r in findings).items())),
+        "business_rule_candidates": sum(r["id"] in rule_ids for r in findings),
+        "boundary": MODULE_BOUNDARY,
+    }
+
+
+def _bounded_evidence(evidence):
+    result = {}
+    if not isinstance(evidence, dict):
+        return result
+    for key, value in sorted(evidence.items()):
+        if isinstance(value, (list, tuple)):
+            result[_text(key, 100)] = {"values": [_text(v, 200) for v in value[:_EVIDENCE_MAX_VALUES]],
+                                       "total": len(value)}
+        elif isinstance(value, (int, float, bool)) or value is None:
+            result[_text(key, 100)] = value
+        else:
+            result[_text(key, 100)] = _text(value, 300)
+    return result
+
+
+def hotspot_explorer(prepared: PreparedProjection, *, hotspot_type=None, severity=None,
+                     module=None, offset=0, limit=HOTSPOT_EXPLORER_MAX) -> dict:
+    """Hotspot candidates with why they were noticed and what the evidence cannot prove."""
+    if hotspot_type is not None and hotspot_type not in HOTSPOT_TYPES:
+        raise ProjectError("Unknown hotspot type")
+    if severity is not None and severity not in HOTSPOT_SEVERITIES:
+        raise ProjectError("Unknown hotspot severity")
+    if module is not None and (not isinstance(module, str) or not module or len(module) > 500):
+        raise ProjectError("Hotspot module filter must be bounded text")
+    offset = _bounded_int(offset, "offset", 0, 1_000_000)
+    limit = _bounded_int(limit, "limit", 1, HOTSPOT_EXPLORER_MAX)
+    graph = _architecture_graph(prepared)
+    nodes, owners = graph["nodes"], graph["owners"]
+    hotspots = prepared.rows.get("hotspots", ())
+    selected = [h for h in hotspots
+                if (hotspot_type is None or h["hotspot_type"] == hotspot_type)
+                and (severity is None or h["severity"] == severity)
+                and (module is None or _logical_name(h.get("module")) == module)]
+    selected.sort(key=lambda h: (h["severity"] != "HIGH", _logical_name(h.get("module")).casefold(),
+                                 h["title"].casefold(), h["id"]))
+    items = []
+    for h in selected[offset:offset + limit]:
+        placed = sorted({owners.get(e) for e in h.get("affected_entities", ())} - {None},
+                        key=lambda i: (nodes[i]["name"].casefold(), i))
+        items.append({
+            **_hotspot_summary(h),
+            "uncertainty": list(h["uncertainty"]),
+            "evidence": _bounded_evidence(h.get("evidence")),
+            "nodes": [{"id": i, "name": nodes[i]["name"], "type": nodes[i]["type"],
+                       "layer": nodes[i]["layer"],
+                       "presentation_type": type_labels(nodes[i]["layer"], nodes[i]["type"])}
+                      for i in placed[:MODULE_MAX_NEIGHBOURS]],
+            "nodes_total": len(placed),
+        })
+    return {
+        "items": items,
+        "total": len(selected),
+        "offset": offset,
+        "limit": limit,
+        "estate_total": len(hotspots),
+        "by_type": dict(sorted(Counter(h["hotspot_type"] for h in hotspots).items())),
+        "by_severity": {s: sum(h["severity"] == s for h in hotspots) for s in HOTSPOT_SEVERITIES},
+        "types": [{"id": t, "label": HOTSPOT_LABELS.get(t, t)} for t in HOTSPOT_TYPES],
+        "severities": list(HOTSPOT_SEVERITIES),
+        "matrix": attention_matrix([{**h, "module": _logical_name(h.get("module"))} for h in hotspots],
+                                   list(HOTSPOT_TYPES), HOTSPOT_LABELS),
+        "filters": {"hotspot_type": hotspot_type, "severity": severity, "module": module},
+        "classification": "CANDIDATE",
+        "boundary": HOTSPOT_BOUNDARY,
         "labels": labels_catalog(),
         **_page_meta(prepared),
     }
