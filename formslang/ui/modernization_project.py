@@ -53,7 +53,7 @@ function newProject(target) {
   renderProjectWizard();
   if(!projectUI.areas)projectLoadAreas();
 }
-function projectButton(id,label,primary=false){return `<button type="button" class="btn ${primary?'primary':''}" id="${id}">${esc(label)}</button>`;}
+function projectButton(id,label,primary=false,name=''){const named=name?` aria-label="${esc(name)}" title="${esc(name)}"`:'';return `<button type="button" class="btn ${primary?'primary':''}" id="${id}"${named}>${esc(label)}</button>`;}
 function projectStats(inventory={}) {
   const f=inventory.forms||{},d=inventory.database||{};
   const counts=[['Forms candidates',f.discovered],['Forms XML supported',f.parseable],['Forms analyzed',f.analyzed],['FMB needing XML',f.fmb_without_xml],['Database packages',d.packages],['Tables',d.tables],['Views',d.views],['Source warnings',inventory.warnings]];
