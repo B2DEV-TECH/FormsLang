@@ -6,8 +6,7 @@ tests pin current behaviour. They do not endorse it. A later phase that
 closes a gap on purpose changes the test and the committed inventory together.
 
 Phase 1 changes nothing in `formslang/`. The three engine defects in §1
-predate 2.3 and ship in 2.2.0. They are reported here for a separate
-decision.
+predate 2.3 and ship in 2.2.0. The decisions taken at review close §1.
 
 ## 1. Engine defects found while measuring (pre-existing in 2.2.0)
 
@@ -50,23 +49,31 @@ parsed, so there is no `SUBPROGRAM_BODY` and no `IMPLEMENTS` edge.
 `DatabaseProject.package_specs` and `package_bodies` are keyed by bare name
 (`formslang/database.py:654`, `:660`). Two `ORDER_API` packages in different
 schemas become one, and the last file parsed wins. With sorted paths that is
-the `sales_*` file.
+the `sales_*` file. Tables and views are keyed the same way:
+`parse_create_table` drops the schema prefix (`formslang/database.py:580`).
 
 - **Measured effect (Case C).** One `PACKAGE_SPEC ORDER_API`. The call without
   a schema, `ORDER_API.SUBMIT`, is `RESOLVED_TO_DATABASE_OBJECT` to that single
   survivor, and nothing marks the ambiguity. The schema-qualified calls stay
-  `SYMBOLIC_REFERENCE`, so they do resolve to the right place: nowhere.
+  `SYMBOLIC_REFERENCE`: nothing wrong is claimed, but nothing is resolved.
 - **Consequence for the contract.** The spec requires that "aresta ambígua
   exibe alternativas sem se fixar numa delas". The explorer cannot meet this
-  from 2.2 facts. It must not present the 2.2 resolution of an unqualified
-  name as resolved, whenever a same-named object may exist in another schema.
-  It shows the call site as observed and the target as not verifiable.
+  from 2.2 facts. Because the collapse leaves no trace, the
+  contract presents **every** 2.1/2.2 database resolution as
+  `LEGACY_RESOLVED`, "não verificável quanto a schemas homônimos", until a
+  schema-aware re-analysis
+  ([contract §5.1](contract-ecosystem-1.md#51-legacy-database-resolution-2122-snapshots)).
+  The call site stays observed.
 - **Test.** `test_gap_case_c_same_named_packages_in_two_schemas_collapse_into_one`.
 
-**Recommendation.** Decide G-DML separately from 2.3, as a 2.2.x candidate. It
-affects the existing hotspot output, not only the explorer. G-SCHEMA-BODY and
-G-SCHEMA-COLLIDE belong to phase 2, where resolution with schema becomes part
-of the contract.
+**Decisions (review of PR #17, 2026-09-24).**
+
+- **G-DML** is fixed in a separate 2.2.x pull request, with regression tests
+  for `UPDATE` after `THEN` and for `MERGE`. It is a correctness defect in
+  hotspots that have already been published.
+- **G-SCHEMA-BODY and G-SCHEMA-COLLIDE** are fixed in phase 2. The fix keeps
+  the schema and records ambiguities. Existing assessments are not rewritten;
+  they stay under the legacy-resolution rule.
 
 ## 2. Contract gaps (facts 2.2 does not record)
 

@@ -88,18 +88,19 @@ Clicking `BT_APPROVE → LOM_ORDERS` opens the relation inspector.
 BT_APPROVE (gatilho WHEN-BUTTON-PRESSED)  →  altera dados  →  LOM_ORDERS
 
 O que vimos
-  O código do botão contém um UPDATE em LOM_ORDERS. A tabela LOM_ORDERS
-  está nas fontes de banco analisadas. (Escritas identificadas; a lista
-  pode estar incompleta — ver Detalhes técnicos.)
+  O código do botão contém um UPDATE em LOM_ORDERS. O nome coincidiu com a
+  tabela LOM_ORDERS das fontes de banco analisadas (resolução legada — não
+  verificável quanto a schemas homônimos nesta revisão). (Escritas
+  identificadas; a lista pode estar incompleta — ver Detalhes técnicos.)
 O que isso sugere investigar
   Existe um package (LOM_ORDER_API) que também escreve em LOM_ORDERS. Este
   gatilho não o chama. É um candidato a "bypass" — ver o sinal abaixo.
 O que isto não prova
   Não prova que o UPDATE executa sempre, nem qual dos dois caminhos é o dono
-  correto da escrita.
+  correto da escrita, nem que não exista outra LOM_ORDERS em outro schema.
 
   [Ver por quê]   Abrir em Review   Seguir LOM_ORDERS ▸
-  ▸ Detalhes técnicos: WRITES · FACT · RESOLVED_TO_DATABASE_OBJECT · evidência <id>
+  ▸ Detalhes técnicos: WRITES · FACT · RESOLVED_TO_DATABASE_OBJECT (legado) · evidência <id>
 ```
 
 - "Ver por quê" is the primary action. It shows the evidence id and, under the
@@ -113,8 +114,13 @@ O que isto não prova
   same trigger ([G-DML](gaps-and-capture.md#g-dml--update-right-after-then-is-not-recorded-as-a-write)).
   Until that is fixed, the inspector must not word the list of writes as
   complete ("todas as escritas"). It says "escritas identificadas".
+- **Legacy resolution.** Every 2.2 database resolution is shown as legacy and
+  not verifiable against same-named objects in other schemas
+  ([contract §5.1](contract-ecosystem-1.md#51-legacy-database-resolution-2122-snapshots)).
+  The text says the name *matched* a table. It never says the table is
+  confirmed.
 - **Seguir o próximo nó** (optional): "Seguir LOM_ORDERS" moves the focus there,
-  on an explicit action only. The breadcrumb becomes
+  on an explicit action only. The legacy caveat stays visible on that node. The breadcrumb becomes
   `Projeto › APPROVALS › LOM_ORDERS`, and "Voltar" restores the Form, the
   selection and the expansion.
 
@@ -137,6 +143,7 @@ O que isto não prova
 "fluxo de execução", "processo de negócio", "sempre executa", "caminho do
 usuário", "tela usada pelo operador", "canvas visível" (for a value whose
 origin is not verifiable), "todas as escritas" (while G-DML is open),
+"resolvido" or "confirmado" for a legacy database resolution,
 "migração x%", scores. The evaluation checks this directly, through the exit
 question on execution.
 

@@ -262,7 +262,28 @@ def persisted(bp: dict) -> dict:
 # Demonstration cases, traced through the persisted edges only.
 # ---------------------------------------------------------------------------
 
-def _outgoing(bp, entity_id, *, skip=("INVOKES_BUILTIN",)):
+# Contract ecosystem/1 §5.1. The 2.1/2.2 engines key packages and tables by bare
+# name, so a same-named object in another schema is dropped before the Blueprint
+# is written (G-SCHEMA-COLLIDE). A resolution saved by such an engine cannot be
+# checked for that collision. Only an engine that keeps the schema may present
+# it as resolved; no released engine does, and phase 2 defines the flag.
+DATABASE_REFERENCE_TYPES = {"TABLE_OR_VIEW_REFERENCE", "ROUTINE_REFERENCE", "PACKAGE_REFERENCE"}
+
+
+def explorer_resolution(target_type: str, raw_resolution: str, *, schema_aware: bool) -> dict | None:
+    """How the explorer presents a database reference target (contract §5 and §5.1)."""
+    if target_type not in DATABASE_REFERENCE_TYPES:
+        return None
+    if raw_resolution == "RESOLVED_TO_DATABASE_OBJECT":
+        if schema_aware:
+            return {"resolution": "RESOLVED"}
+        return {"resolution": "LEGACY_RESOLVED", "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE"}
+    if raw_resolution == "SYMBOLIC_REFERENCE":
+        return {"resolution": "UNRESOLVED"}
+    return None
+
+
+def _outgoing(bp, entity_id, *, skip=("INVOKES_BUILTIN",), schema_aware=False):
     names = {e["id"]: e for e in bp["entities"]}
     rows = []
     for edge in bp["edges"]:
@@ -277,6 +298,9 @@ def _outgoing(bp, entity_id, *, skip=("INVOKES_BUILTIN",)):
             "resolution": target.get("resolution") or target["attributes"].get("resolution") or "",
             "resolved_target": names[target["resolved_target"]]["name"] if target.get("resolved_target") else "",
         })
+        explorer = explorer_resolution(target["type"], rows[-1]["resolution"], schema_aware=schema_aware)
+        if explorer:
+            rows[-1]["explorer_resolution"] = explorer
     return sorted(rows, key=lambda r: (r["type"], r["target_type"], r["target"]))
 
 

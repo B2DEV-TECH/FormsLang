@@ -56,6 +56,9 @@
         "calls": {
           "CTL.BT_BILLING": [
             {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
               "level": "FACT",
               "resolution": "SYMBOLIC_REFERENCE",
               "resolved_target": "",
@@ -66,6 +69,9 @@
           ],
           "CTL.BT_SALES": [
             {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
               "level": "FACT",
               "resolution": "SYMBOLIC_REFERENCE",
               "resolved_target": "",
@@ -76,6 +82,10 @@
           ],
           "CTL.BT_UNQUALIFIED": [
             {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
               "level": "FACT",
               "resolution": "RESOLVED_TO_DATABASE_OBJECT",
               "resolved_target": "ORDER_API.SUBMIT",
@@ -275,6 +285,9 @@
         "triggers": {
           "BK_APPROVAL.BT_APPROVE": [
             {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
               "level": "FACT",
               "resolution": "SYMBOLIC_REFERENCE",
               "resolved_target": "",
@@ -283,6 +296,9 @@
               "type": "CALLS"
             },
             {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
               "level": "FACT",
               "resolution": "SYMBOLIC_REFERENCE",
               "resolved_target": "",
@@ -355,6 +371,10 @@
               "type": "REFERENCES"
             },
             {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
               "level": "FACT",
               "resolution": "RESOLVED_TO_DATABASE_OBJECT",
               "resolved_target": "LOM_ORDERS",
@@ -365,6 +385,9 @@
           ],
           "BK_APPROVAL.BT_REJECT": [
             {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
               "level": "FACT",
               "resolution": "SYMBOLIC_REFERENCE",
               "resolved_target": "",
@@ -373,6 +396,9 @@
               "type": "CALLS"
             },
             {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
               "level": "FACT",
               "resolution": "SYMBOLIC_REFERENCE",
               "resolved_target": "",
@@ -453,6 +479,10 @@
               "type": "REFERENCES"
             },
             {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
               "level": "FACT",
               "resolution": "RESOLVED_TO_DATABASE_OBJECT",
               "resolved_target": "LOM_ORDERS",
@@ -738,6 +768,9 @@
         ],
         "outgoing": [
           {
+            "explorer_resolution": {
+              "resolution": "UNRESOLVED"
+            },
             "level": "FACT",
             "resolution": "SYMBOLIC_REFERENCE",
             "resolved_target": "",

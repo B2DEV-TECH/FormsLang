@@ -197,6 +197,50 @@ def test_gap_case_c_same_named_packages_in_two_schemas_collapse_into_one(case_c)
     assert ref["resolution"] == "RESOLVED_TO_DATABASE_OBJECT"
 
 
+def test_case_c_legacy_resolution_of_the_unqualified_call_is_never_presented_as_resolved():
+    # Contract §5.1: 2.2 resolved ORDER_API.SUBMIT to the one package that survived the
+    # schema collapse. The explorer shows it as a legacy resolution whose schema collision
+    # cannot be checked, not as a confirmed link, until a schema-aware re-analysis.
+    calls = inv.inventory()["corpora"]["case_c"]["case"]["calls"]
+    [unqualified] = calls["CTL.BT_UNQUALIFIED"]
+    assert unqualified["resolution"] == "RESOLVED_TO_DATABASE_OBJECT"  # what 2.2 saved
+    assert unqualified["explorer_resolution"] == {
+        "resolution": "LEGACY_RESOLVED", "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE"}
+    for owner in ("CTL.BT_SALES", "CTL.BT_BILLING"):
+        [call] = calls[owner]
+        assert call["explorer_resolution"] == {"resolution": "UNRESOLVED"}
+
+
+def test_no_2_2_database_resolution_is_presented_as_resolved():
+    # Tables are keyed by bare name too (G-SCHEMA-COLLIDE), so the rule covers every
+    # database reference a 2.1/2.2 engine resolved, e.g. Case B's LOM_ORDERS writes.
+    data = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    seen = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "explorer_resolution" in node:
+                seen.append((node["resolution"], node["explorer_resolution"]["resolution"]))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(data)
+    assert ("RESOLVED_TO_DATABASE_OBJECT", "LEGACY_RESOLVED") in seen
+    assert all(explorer != "RESOLVED" for _, explorer in seen)
+    assert all(explorer == "LEGACY_RESOLVED" for raw, explorer in seen if raw == "RESOLVED_TO_DATABASE_OBJECT")
+
+
+def test_legacy_rule_lifts_only_for_a_schema_aware_engine_and_only_for_database_targets():
+    assert inv.explorer_resolution("ROUTINE_REFERENCE", "RESOLVED_TO_DATABASE_OBJECT",
+                                   schema_aware=True) == {"resolution": "RESOLVED"}
+    assert inv.explorer_resolution("TABLE_OR_VIEW_REFERENCE", "RESOLVED_TO_DATABASE_OBJECT",
+                                   schema_aware=False)["resolution"] == "LEGACY_RESOLVED"
+    assert inv.explorer_resolution("FORM_REFERENCE", "SYMBOLIC_REFERENCE", schema_aware=False) is None
+
+
 def test_gap_case_c_schema_qualified_package_body_loses_its_subprograms(case_c):
     _, bp = case_c
     assert [e["name"] for e in bp["entities"] if e["type"] == "PACKAGE_BODY"] == ["ORDER_API"]

@@ -47,6 +47,8 @@ Rules:
    `ORDER_API.SUBMIT` — as three distinct `ROUTINE_REFERENCE` ids. The contract
    keeps them apart. It does **not** inherit the 2.2 database-side collapse
    described in [gaps G-SCHEMA-COLLIDE and G-SCHEMA-BODY](gaps-and-capture.md).
+   The 2.2 resolution of the unqualified call is presented as a legacy
+   resolution (§5.1).
 3. An id is valid for one `analysis_revision`. A response never mixes
    revisions; a stale `expected_revision` is an explicit conflict.
 
@@ -62,7 +64,7 @@ Every relation the explorer returns has:
 | `type` | Normalised relation (e.g. `OPENS_FORM`, `CANVAS_IN_WINDOW`, `ITEM_PLACED_ON_CANVAS`). |
 | `raw_type` | The Blueprint edge type exactly as saved (e.g. `REFERENCES`). Never rewritten. |
 | `level` | Certainty of the **relation**: `OBSERVED` or `INFERRED` (§5). |
-| `resolution` | Certainty of the **target**: `RESOLVED`, `UNRESOLVED` or `NOT_APPLICABLE` (§5). |
+| `resolution` | Certainty of the **target**: `RESOLVED`, `LEGACY_RESOLVED`, `UNRESOLVED` or `NOT_APPLICABLE` (§5, §5.1). `LEGACY_RESOLVED` always carries `caveat = SCHEMA_COLLISION_NOT_VERIFIABLE`. |
 | `evidence_ids` | Evidence ids. A relation without usable evidence is never shown as `OBSERVED`. |
 | `analysis_revision`, `engine_version` | Of the snapshot that produced it. |
 
@@ -96,6 +98,7 @@ keeps its data or state family.
 |---|---|---|---|
 | `OBSERVED` | Edge `level = FACT` | "The source contains this declaration/call/reference." | "Execution always visits it." |
 | `INFERRED` / `CANDIDATE` | Edge `level = INFERENCE`; hotspot `classification = CANDIDATE` | "A deterministic rule inferred a possible link; here are its premises." | "The architecture is proven." |
+| `LEGACY_RESOLVED` | Database reference with `resolution = RESOLVED_TO_DATABASE_OBJECT`, saved by an engine without schema-aware resolution (every 2.1/2.2 snapshot) — §5.1 | "In this revision the name matched this object in the supplied sources; whether another schema has an object of the same name cannot be checked." | "Resolved", "confirmed", or that this is the only possible target. |
 | `UNRESOLVED` | Target is a `*_REFERENCE` with `resolution = SYMBOLIC_REFERENCE`, or no `resolution` and `missing` | "This source names a target that could not be resolved in the supplied sources." | "The target does not exist." |
 | `PROPOSED` | Engine recommendations and findings | "The engine suggested this." | "It was accepted." |
 | `DECIDED` | Review ledger (append-only) | "An identified reviewer recorded this decision for this revision." | "The decision guarantees runtime correctness." |
@@ -118,8 +121,51 @@ reference→database edges in every corpus. The projection shows the resolved
 object as the target's resolution, with the reference's evidence, and does not
 invent an edge.
 
-**Path search** never crosses an `UNRESOLVED` target as if it were a confirmed
-link. A path that reaches one ends there and is labelled partial.
+**Path search** never crosses an `UNRESOLVED` or `LEGACY_RESOLVED` target as
+if it were a confirmed link. A path that reaches one ends there and is
+labelled partial.
+
+### 5.1 Legacy database resolution (2.1/2.2 snapshots)
+
+The 2.1/2.2 engines key packages and tables by their bare name
+(`formslang/database.py:580`, `:654`, `:660`). When two schemas supply an
+object with the same name, one of them is dropped before the Blueprint is
+written, and nothing records that it happened (G-SCHEMA-COLLIDE). The saved
+`RESOLVED_TO_DATABASE_OBJECT` therefore cannot be checked for a collision:
+the snapshot looks the same whether or not a same-named object was lost.
+Case C shows the effect. `ORDER_API.SUBMIT`, called without a schema, is saved
+as resolved to the single `ORDER_API` that survived, although the sources
+supply `ORDER_API` in both `SALES_OWNER` and `BILLING_OWNER`.
+
+Rule, for every snapshot whose engine does not declare schema-aware resolution
+(§9):
+
+1. Every `TABLE_OR_VIEW_REFERENCE`, `ROUTINE_REFERENCE` or `PACKAGE_REFERENCE`
+   saved with `resolution = RESOLVED_TO_DATABASE_OBJECT` is presented as
+   `resolution = LEGACY_RESOLVED`, `caveat = SCHEMA_COLLISION_NOT_VERIFIABLE`.
+   The rule is applied to the whole snapshot. It is not limited to names where
+   a collision is known, because a snapshot cannot show where one occurred.
+2. The relation keeps its own level. An observed call stays `OBSERVED`; only
+   the target is qualified.
+3. The UI says "Resolução legada — não verificável quanto a schemas
+   homônimos nesta revisão" and names the matched object (`resolved_target`)
+   as the match found, not as the confirmed target. Under "Detalhes técnicos"
+   it shows the raw `RESOLVED_TO_DATABASE_OBJECT` unchanged.
+4. It is never counted as a confirmed link. Path search stops there (see
+   above). An inference built on it, such as an `api_bypass` candidate that
+   uses the resolved table, shows the same caveat on that premise.
+5. The user may still move the focus to the matched object on an explicit
+   action ("Seguir"). The caveat stays visible while that object is reached
+   through this reference.
+6. Only a re-analysis with an engine that preserves the schema lifts the
+   caveat. That engine records `RESOLVED` or `AMBIGUOUS_TARGET` with its
+   alternatives (§7). Old assessments are never rewritten or back-filled.
+
+The inventory computes this presentation as `explorer_resolution` for each
+relation in Cases A–C. `tests/test_ecosystem_phase1.py` pins it for Case C
+(`LEGACY_RESOLVED` for the unqualified call, `UNRESOLVED` for the two
+schema-qualified ones) and checks that no 2.2 resolution in any corpus is
+presented as `RESOLVED`.
 
 ## 6. Visual attributes: declared value versus default
 
@@ -163,7 +209,7 @@ kind, 2.2 records the following:
 | Literal Form not supplied | `FORM_NOT_SUPPLIED` | `OPENS_FORM` FACT to `FORM_REFERENCE` with `SYMBOLIC_REFERENCE`. |
 | Form chosen at runtime (`OPEN_FORM(:item)`) | `RUNTIME_TARGET` | **No node or edge.** Only a finding question ("Runtime target unresolved: OPEN_FORM") and risk factor `cross_module_unresolved`. |
 | Dynamic SQL (`FORMS_DDL`, `EXECUTE IMMEDIATE`) | `DYNAMIC_SQL` | **No node or edge.** Only risk factor `dynamic_sql` and behavior `UNCERTAIN`. |
-| Same name, several candidates | `AMBIGUOUS_TARGET` | **Not recorded**: 2.2 resolves an unqualified name to the one surviving package (G-SCHEMA-COLLIDE). |
+| Same name, several candidates | `AMBIGUOUS_TARGET` | **Not recorded**: 2.2 resolves an unqualified name to the one surviving package (G-SCHEMA-COLLIDE). Presented as `LEGACY_RESOLVED` (§5.1), never as resolved. |
 | Undeclared canvas/tab named by an item | `VISUAL_TARGET_NOT_DECLARED` | **No trace**: no edge, no reference node (item `GHOST`). |
 
 For the last four rows, the frontier cannot be drawn from saved facts in a
@@ -195,6 +241,10 @@ must record them.
   `blueprint/1` while the change is additive. None of this exists yet: the
   measured engine version is
   `blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:…`.
+- Schema-aware resolution (phase 2) is declared the same way, as
+  `schema_resolution_version: 1`. Without it, every database resolution is
+  presented under §5.1. The two capabilities are independent. A snapshot is
+  judged by what its own engine declared, never by the engine that opens it.
 - The **absence** of the capability identifies a 2.1/2.2 snapshot. Opening it
   never re-parses, never writes to SQLite and never back-fills links. What the
   explorer can show for it is exactly what the inventory measured:
