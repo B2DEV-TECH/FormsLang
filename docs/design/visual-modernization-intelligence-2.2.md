@@ -1,10 +1,10 @@
 # Visual Modernization Intelligence (2.2) — design record
 
-Status: **implementation complete — awaiting 2.2 release hardening**, on branch
+Status: **released in FormsLang 2.2.0**. Built on branch
 `codex/formslang-2.2-visual-intelligence` (from `main` `b54934b`, FormsLang
-2.1.0). No 2.2 release, tag or version bump exists yet. A section describes
-what exists in the branch, and anything not built or not verified is labelled
-so.
+2.1.0) and merged by PR #14. Release evidence is in
+[quality acceptance](../quality-acceptance.md). Anything not built or not
+verified is labelled so.
 
 ## Purpose
 

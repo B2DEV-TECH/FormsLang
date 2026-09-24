@@ -8,4 +8,6 @@ Default exports exclude source bodies and private human notes but retain technic
 
 The package manifest lists exact member hashes, revisions, validation evidence and exclusions. Unsupported or edited artifacts are excluded transparently, not regenerated. CSV neutralizes spreadsheet formulas; JSON preserves supported raw values subject to documented privacy redaction.
 
+The executive and technical reports carry two static SVG figures, the estate by lane and the module × hotspot-type matrix, drawn from the same snapshot. They contain no script, link or `foreignObject`, and never carry HOST, URL or connect-string literals.
+
 HTML is printable and viewable without FormsLang. There is no PDF requirement, issue-tracker upload or automatic publication. Files are downloaded as attachments, not rendered inside the privileged Workbench. See [package contract](../project-reports.md).

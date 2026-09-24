@@ -1,8 +1,8 @@
 # Roadmap after FormsLang 2.0
 
-**Released:** FormsLang 2.1.0 — Estate Intelligence, on top of FormsLang
-2.0.0, the corporate project workflow with reviewed Oracle APEX 26.1 /
-APEXlang generation.
+**Released:** FormsLang 2.2.0 — Visual Modernization Intelligence, on top of
+2.1.0 Estate Intelligence and 2.0.0, the corporate project workflow with
+reviewed Oracle APEX 26.1 / APEXlang generation.
 **Motto:** *Understand first. Modernize second.*
 
 Planned does not mean implemented. Only a published release, recorded in
@@ -33,6 +33,20 @@ ledger), with no second analysis engine or project store:
   (not a migration schedule), decision records and a target-neutral assessment
   package that preserve human decisions and exclude source bodies by default.
 
+## 2.2 Visual Modernization Intelligence — released in 2.2.0
+
+Goal: let a team see the estate's architecture from the saved evidence, with
+no new analysis claims.
+
+- Executive and Technical views: labels change, evidence does not.
+- Overview command center, Hotspot Explorer, System Map 2.2 with a focus view,
+  Module 360 and architecture context in Review.
+- Static SVG figures in the executive and technical reports.
+- Deliberately left out: a review funnel, distribution bars and a
+  dependency/path explorer.
+
+Design record: [visual-modernization-intelligence-2.2.md](design/visual-modernization-intelligence-2.2.md).
+
 ## Future — ideas, not commitments
 
 These appeared in the long-term specification. None is implemented as product
@@ -42,7 +56,7 @@ behavior; some have experimental library code that the product does not use.
   invalidation. Experimental code: `formslang/modernization_model.py`.
 - Enforced architecture policy with provenance (Default → Organization →
   Project). Experimental code: `formslang/architecture_policy.py`; no UI, HTTP
-  or CLI surface in 2.1.
+  or CLI surface in 2.2.
 - Dependency-aware modernization planning (sequencing, cycles, hold groups).
 - Extracting APEX generation behind the target adapter protocol without
   regression. Experimental code: `formslang/target_adapter.py`,

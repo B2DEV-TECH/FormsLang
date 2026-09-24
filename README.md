@@ -36,9 +36,10 @@ or customer application.
 
 | Status | Version | What it contains |
 |---|---|---|
+| **Released** | [2.2.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.2.0) — Visual Modernization Intelligence | Executive and Technical views of the same evidence, an Overview command center, a Hotspot Explorer, System Map 2.2 with a focus view, Module 360, architecture context in Review, and static SVG figures in the reports. Views only: no new analysis claims. Everything in 2.1.0 is kept. |
 | **Released** | [2.1.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.1.0) — Estate Intelligence | Target-neutral projects (*Analyze my Forms estate*), evidence-backed hotspot candidates, a module-level System Map, project search, suggested investigation groups, and executive/technical assessment reports that work before any target technology is chosen. Everything in 2.0.0 is kept. |
 | **Released** | [2.0.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.0.0) | Corporate project workflow: inventory, dependencies, prioritized review, reviewed Oracle APEX 26.1 / APEXlang generation, offline SQLcl validation, reports. |
-| **Future** | 2.2+ | Ideas only, not implemented: an authoritative target-neutral modernization model, enforced architecture policy, dependency-aware planning, and further implementation targets. See [roadmap](docs/roadmap-2.md). |
+| **Future** | 2.3+ | Ideas only, not implemented: an authoritative target-neutral modernization model, enforced architecture policy, dependency-aware planning, and further implementation targets. See [roadmap](docs/roadmap-2.md). |
 
 Exact accepted versions, test results and limitations are in
 [quality acceptance](docs/quality-acceptance.md).
@@ -58,11 +59,11 @@ SQL and private notes unless explicitly requested.
 
 ### Try the project workflow
 
-1. Install FormsLang 2.1.0 from the [latest release](https://github.com/B2DEV-TECH/FormsLang/releases/latest) (Windows MSI or setup `.exe`) and launch it. Installing over 2.0.0 keeps existing projects, reviews and artifacts.
+1. Install FormsLang 2.2.0 from the [latest release](https://github.com/B2DEV-TECH/FormsLang/releases/latest) (Windows MSI or setup `.exe`) and launch it. Installing over 2.1.0 keeps existing projects, reviews and artifacts.
 2. Choose **Analyze my Forms estate** for an assessment with no implementation target, **Modernize to Oracle APEX** for the reviewed APEX path, or **Explore Demo Project**.
 3. Select Forms2XML and related database source folders.
 4. **Analyze** without AI, database credentials or mandatory account setup in local mode.
-5. Read **Overview** and **Inventory**, open the **System Map**, then **Start Priority Review**.
+5. Read **Overview** and **Start Here**, open the **Hotspot Explorer**, the **System Map** and **Module 360**, then **Start Priority Review**. The Executive/Technical toggle changes labels only.
 6. For APEX projects, review architecture, prerequisites and executable code separately; **Generate** eligible scope and **Validate** explicitly with supported SQLcl tooling.
 7. **Export** executive and technical assessment reports or the complete package.
 
@@ -1345,9 +1346,9 @@ screenshots and results as the `workbench-browser-evidence` artifact.
       APEX 26.1. Single-record blocks whose items sit in one region, for
       now; without a confirmation the region is unchanged
 
-### Beyond 2.1: Oracle Forms Modernization Intelligence Platform (vision)
+### Beyond 2.2: Oracle Forms Modernization Intelligence Platform (vision)
 
-FormsLang 2.0 established the persistent project modernization workbench and 2.1 added Estate Intelligence. The documents below describe a longer-term direction, not the current product; only what [roadmap-2.md](docs/roadmap-2.md) lists as released is implemented:
+FormsLang 2.0 established the persistent project modernization workbench, 2.1 added Estate Intelligence and 2.2 added Visual Modernization Intelligence. The documents below describe a longer-term direction, not the current product; only what [roadmap-2.md](docs/roadmap-2.md) lists as released is implemented:
 
 > *"Before a team rewrites a single Oracle Form, FormsLang should be the first tool they run."*
 >
@@ -1361,7 +1362,7 @@ The full platform architecture is formally defined in the [authoritative specifi
 * **[Target Adapter Architecture](docs/superpowers/specs/formslang-target-adapter-design.md)** — Decoupled `TargetAdapter` boundary preserving native APEX 26.1 capabilities alongside the new *Generic Modernization Target*.
 * **[Estate Intelligence Design](docs/superpowers/specs/formslang-21-estate-intelligence-design.md)** — Modernization Cockpit Overview, deterministic Hotspot engine contracts (API Bypass, Duplicated Rules), "Start Here" explainable ranking, and scale budgets.
 
-For detailed release milestone progression (2.1 Estate Intelligence, 2.2 Modernization Model, 2.3 Architecture & Planning, 2.4 Policy, 2.5 Target Adapters, 2.6 Extension Model, 3.0 Intelligence Platform), see **[docs/roadmap-2.md](docs/roadmap-2.md)**.
+For what has been released and what remains an idea, see **[docs/roadmap-2.md](docs/roadmap-2.md)**.
 
 
 ## Community
@@ -1380,7 +1381,7 @@ other Oracle developers find it.
 
 ## Project status
 
-FormsLang **2.1.0 is the current stable release**, published from `main` and
+FormsLang **2.2.0 is the current stable release**, published from `main` and
 carried by the [releases](https://github.com/B2DEV-TECH/FormsLang/releases)
 page as Windows installers. The project-based modernization workflow above is
 the supported path.

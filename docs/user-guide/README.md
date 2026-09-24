@@ -1,6 +1,6 @@
 # FormsLang corporate user guide
 
-This guide describes the FormsLang 2.0 workflow. Release/installer evidence is recorded in [quality acceptance](../quality-acceptance.md).
+This guide describes the FormsLang 2.x project workflow, including the 2.2 visual views. Release/installer evidence is recorded in [quality acceptance](../quality-acceptance.md).
 
 1. [Getting started](01-getting-started.md)
 2. [Installation](02-installation.md)
