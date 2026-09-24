@@ -60,6 +60,9 @@ try {
 }
 python examples/verify/project_engine_check.py --engine (Join-Path $installDir 'formslang-engine.exe') --output (Join-Path $qaRoot 'project-acceptance')
 if ($LASTEXITCODE -ne 0) { throw 'Installed project/review/generation/delivery acceptance failed' }
+python examples/verify/installed_visual_check.py --engine (Join-Path $installDir 'formslang-engine.exe') --version $CandidateVersion --output (Join-Path $qaRoot 'visual-acceptance')
+if ($LASTEXITCODE -ne 0) { throw 'Installed Visual Modernization Intelligence journey failed' }
+Write-Output 'PASS: installed engine serves the 2.2 journey Overview -> Start Here -> Hotspot -> System Map -> Review -> Module 360 -> Reports'
 # Uninstall only the just-tested candidate on this disposable hosted runner.
 if ($Kind -eq 'msi') {
     $candidateAsset = (Resolve-Path "installer-assets/candidate/FormsLang_${CandidateVersion}_x64_en-US.msi").Path

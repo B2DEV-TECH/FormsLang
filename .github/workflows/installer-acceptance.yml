@@ -3,9 +3,10 @@ name: Installer acceptance
 # Manual. Builds the installers from the selected ref, then on separate
 # disposable Windows runners installs the previous release, saves a review
 # through it, upgrades to the freshly built candidate and verifies that the
-# review, the export and the native desktop survived. The candidate version
-# comes from the checkout; the baseline defaults to the latest published
-# release, so a candidate that is already published must name its baseline.
+# review, the export and the native desktop survived, then walks the 2.2 visual
+# journey on the installed engine. The candidate version comes from the
+# checkout; the baseline defaults to the latest published release, so a
+# candidate that is already published must name its baseline.
 on:
   workflow_dispatch:
     inputs:
@@ -37,6 +38,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build.outputs.artifact }}
