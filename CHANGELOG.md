@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-24
+
+FormsLang 2.2 Visual Modernization Intelligence lets a team see the
+architecture of a Forms estate from the evidence the engine already saved. It
+adds views, not analysis claims: no new detection rule, no AI dependency, no
+Python runtime dependency and no Node build chain.
+
+### Added
+
+- Executive and Technical views. A toggle changes presentation labels only
+  ("Shared PL/SQL service" / "PL/SQL package"); identities, counts and evidence
+  are identical. Executive mode also words hotspot evidence and Module 360
+  composition in plain language, with the engine code kept in the tooltip.
+  Technical mode shows the exact Oracle terms and engine signal codes. The
+  choice is kept for the browser session, never in the project.
+- Overview command center: Estate at a Glance by architectural lane, an
+  investigation board, source coverage and a journey panel, all read from the
+  saved assessment.
+- Hotspot Explorer: filters and a modules × hotspot-type matrix. Each candidate
+  says *Why FormsLang noticed this* and *What this does NOT prove*.
+- System Map 2.2: a deterministic, bounded estate view by lane that states its
+  truncation; a focus view with what reaches the node on the left and what it
+  reaches on the right, cycles flagged, opening centred on the focus; lenses,
+  pan/zoom, minimap, keyboard navigation, an inspector and a relationship table
+  as the accessible alternative.
+- Module 360: one module's composition, neighbours, hotspot candidates,
+  findings and review state. It is not a migration plan or a readiness verdict.
+- Review shows the finding's architecture context and decided/deferred counts,
+  and returns to Module 360 or the map with the context kept.
+- Executive and technical reports carry two static SVG figures, the estate by
+  lane and the attention matrix, built from the redacted delivery snapshot. They
+  contain no script, link or `foreignObject` and are byte-stable across reopen.
+- [Modernization lab walkthrough](docs/modernization-lab-walkthrough.md) with
+  screenshots from the browser acceptance run.
+
+### Security and correctness
+
+- Every HTML and SVG sink escapes untrusted text. Exported figures, their
+  `<title>` elements and every package member never carry HOST, URL or
+  connect-string literals; the authorized local map may show them, as in 2.1.
+- Engine-derived business-rule candidates are drawn as candidates, not as
+  observed structure. Observed, Candidate, Proposed, Human decision and
+  Unresolved stay visually distinct.
+- Map zoom and pan buttons have names, a node's risk is stated in its label
+  rather than by colour alone, and the 2.2 views fit 1920×1080, 1440×900,
+  1366×768 and 390×844 without page-level horizontal scroll.
+
+### Compatibility
+
+- Projects analysed by 2.1.0 open in 2.2 as CURRENT, with the same analysis
+  revision and no reanalysis. The 2.1 HTTP API fields are kept.
+
 ## [2.1.0] - 2026-09-23
 
 FormsLang 2.1 Estate Intelligence makes the project workflow useful before a
@@ -1382,7 +1434,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.6.0...v2.0.0
 [1.6.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.5.0...v1.6.0
