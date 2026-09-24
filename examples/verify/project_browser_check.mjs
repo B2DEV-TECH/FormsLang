@@ -6,7 +6,7 @@ const result={checks:[],exceptions:[],screenshots:[],fixture:'synthetic showcase
 const allowedOrigins=new Set([new URL(config.url).origin]),requests=[];
 let socket,sequence=0;const pending=new Map();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function wait(fn,name){const end=Date.now()+30000;while(Date.now()<end){if(await fn())return;await sleep(100);}throw Error('Timed out: '+name);}
+async function wait(fn,name,timeout=30000){const end=Date.now()+timeout;while(Date.now()<end){if(await fn())return;await sleep(100);}throw Error('Timed out: '+name);}
 function send(method,params={}){return new Promise((resolve,reject)=>{const id=++sequence;const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout '+method));},30000);pending.set(id,{resolve:r=>{clearTimeout(timer);resolve(r);},reject:e=>{clearTimeout(timer);reject(e);}});socket.send(JSON.stringify({id,method,params}));});}
 async function evaluate(expression){const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
 function check(name,passed,detail){result.checks.push({name,passed:!!passed,detail});if(!passed)throw Error(name+': '+JSON.stringify(detail));}
@@ -126,6 +126,8 @@ try{
   await reportChecks({evaluate,click,clickSelector,wait,check,screenshot,send,root});
   const {estateChecks}=await import('./project_estate_browser_check.mjs');
   await estateChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send,pick,forms:config.estate_forms,database:config.estate_database});
+  const {showcaseChecks}=await import('./project_showcase_browser_check.mjs');
+  await showcaseChecks({evaluate,click,clickSelector,value,wait,check,screenshot,send,pick,forms:config.lab_forms,database:config.lab_database});
   await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
   await sleep(300);check('tablet no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
   check('reduced motion preference retained',await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`));

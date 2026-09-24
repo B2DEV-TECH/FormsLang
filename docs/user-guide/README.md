@@ -31,3 +31,7 @@ Synthetic fixtures, captured through the real browser/API/Store acceptance path:
 
 The Review capture deliberately shows the concurrent-client safety test, not a
 successful approval. These captures do not demonstrate runtime Forms/APEX parity.
+
+The [modernization lab walkthrough](../modernization-lab-walkthrough.md) follows the
+fictional Legacy Order Management lab from the estate to a recorded human decision
+and the reports, through the same browser acceptance path.

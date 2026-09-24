@@ -87,13 +87,19 @@ def main():
     (database / 'orders.sql').write_text('create table orders (id number primary key);', encoding='utf-8')
     estate = run / 'sources/estate'
     shutil.copytree(REPO / 'tests/fixtures/estate', estate)
+    lab = run / 'sources/lab'
+    shutil.copytree(REPO / 'examples/modernization-lab/forms/xml', lab / 'forms')
+    # Schema source only: the lab's seed scripts load sample rows into a live
+    # database and are not part of the estate being assessed.
+    shutil.copytree(REPO / 'examples/modernization-lab/database', lab / 'database', ignore=shutil.ignore_patterns('seed'))
     server_process, server_stop, server_port = _start_server(run)
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         debug_port = reservation.getsockname()[1]
     (run / 'state.json').write_text(json.dumps({'url': f'http://127.0.0.1:{server_port}',
         'debug_port': debug_port, 'forms': str(forms), 'database': str(database), 'generation': str(generation),
-        'estate_forms': str(estate / 'forms'), 'estate_database': str(estate / 'database')}), encoding='utf-8')
+        'estate_forms': str(estate / 'forms'), 'estate_database': str(estate / 'database'),
+        'lab_forms': str(lab / 'forms'), 'lab_database': str(lab / 'database')}), encoding='utf-8')
     hidden = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     edge = node = None
     print(f'Project browser evidence: {run}', flush=True)

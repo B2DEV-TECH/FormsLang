@@ -30,6 +30,21 @@ export async function estateChecks({evaluate,click,clickSelector,value,wait,chec
   check('2.1 Form focus exposes component writes',await evaluate(`systemMapState.data.edges.some(e=>e.source===${JSON.stringify(intake)}&&e.target_name==='WORK_ITEMS'&&e.classification==='WRITES'&&e.is_hotspot)`));
   check('2.1 map has a keyboard and table path',await evaluate(`document.querySelectorAll('.map-node[tabindex="0"]').length>1&&!!document.querySelector('[data-edge-inspect]')`));
   await screenshot('estate-system-map.png');
+  // 2.2 Module 360, Hotspot Explorer and the return context, through real clicks.
+  await evaluate(`systemMapSelectNode(${JSON.stringify(intake)})`);
+  await wait(()=>evaluate(`!!document.getElementById('system-map-module-360')`),'Module 360 action');
+  await click('system-map-module-360');
+  await wait(()=>evaluate(`projectUI.view==='module-360'&&!!visualUI.module.data`),'Module 360');
+  check('2.2 Module 360 opens from the map drawer',await evaluate(`visualUI.module.data.node.name==='INTAKE'&&document.getElementById('project-content').textContent.includes('not a migration plan')&&document.getElementById('visual-back').textContent.includes('System Map')`));
+  check('2.2 Module 360 shows no source text',await evaluate(`!document.querySelector('#project-content pre')&&visualUI.module.data.neighbours.outbound.items.some(n=>n.name==='WORK_ITEMS'&&n.classification==='WRITES'&&n.is_hotspot)`));
+  await screenshot('visual-module-360.png');
+  await click('visual-module-hotspots');
+  await wait(()=>evaluate(`projectUI.view==='hotspots'&&!!visualUI.hotspots.data`),'Hotspot Explorer');
+  check('2.2 Hotspot Explorer explains why and what it does not prove',await evaluate(`(()=>{const t=document.getElementById('project-content').textContent,d=visualUI.hotspots.data;return t.includes('Why FormsLang noticed this')&&t.includes('What this does NOT prove')&&t.includes('not verdicts')&&d.total>0&&d.items.every(h=>h.module===visualUI.module.data.module&&h.uncertainty.length>0)&&d.estate_total===3;})()`));
+  await screenshot('visual-hotspots.png');
+  await click('visual-back');await wait(()=>evaluate(`projectUI.view==='module-360'&&!!visualUI.module.data`),'back to Module 360');
+  await click('visual-back');await wait(()=>evaluate(`projectUI.view==='system-map'&&!!systemMapState.data`),'back to System Map');
+  check('2.2 Back returns to the same map focus',await evaluate(`systemMapState.view==='FOCUS'&&systemMapState.focus===${JSON.stringify(intake)}&&!document.getElementById('visual-back')`));
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'k',code:'KeyK',modifiers:2,windowsVirtualKeyCode:75});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'k',code:'KeyK',modifiers:2,windowsVirtualKeyCode:75});
   await wait(()=>evaluate(`!document.getElementById('global-search-container').hidden&&document.activeElement?.id==='global-search-input'`),'search dialog');
   await value('global-search-input','WORK_ITEMS');
@@ -39,6 +54,12 @@ export async function estateChecks({evaluate,click,clickSelector,value,wait,chec
   await wait(()=>evaluate(`document.getElementById('global-search-container').hidden`),'search closed');
   await clickSelector('[data-project-section="overview"]');await wait(()=>evaluate(`projectUI.view==='overview'&&!!document.querySelector('[data-hotspot-review]')`),'Overview again');
   await clickSelector('[data-hotspot-review]');await wait(()=>evaluate(`!!document.getElementById('project-review-defer')`),'hotspot finding in Review');
+  await wait(()=>evaluate(`document.getElementById('visual-review-context')?.textContent.includes('Architecture context')`),'review architecture context');
+  check('2.2 Review shows the architecture context of the finding',await evaluate(`document.getElementById('visual-review-context').textContent.includes('outgoing relationships')&&!!document.getElementById('visual-review-module')`));
+  const reviewed=await evaluate('projectUI.reviewState.detail.item.id');
+  await click('visual-review-module');await wait(()=>evaluate(`projectUI.view==='module-360'&&!!visualUI.module.data`),'Module 360 from Review');
+  await click('visual-back');await wait(()=>evaluate(`projectUI.view==='review'&&!!document.getElementById('project-review-defer')`),'back to Review');
+  check('2.2 Back from Module 360 reopens the same review item',await evaluate(`projectUI.reviewState.detail.item.id===${JSON.stringify(reviewed)}`));
   check('2.1 Review separates evidence, interpretation, recommendation and decision',await evaluate(`['1. Observed evidence','2. Structural interpretation','3. Recommendation','4. Human decision'].every(t=>document.getElementById('project-review-detail').textContent.includes(t))`));
   await click('project-review-defer');await wait(()=>evaluate(`document.getElementById('project-review-detail').textContent.includes('Deferred')`),'deferred decision');
   await clickSelector('[data-project-section="generate"]');await wait(()=>evaluate(`projectUI.generationState?.data&&document.getElementById('project-generation-body').textContent.includes('estate assessment')`),'target-neutral Generate');

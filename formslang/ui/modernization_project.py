@@ -53,7 +53,7 @@ function newProject(target) {
   renderProjectWizard();
   if(!projectUI.areas)projectLoadAreas();
 }
-function projectButton(id,label,primary=false){return `<button type="button" class="btn ${primary?'primary':''}" id="${id}">${esc(label)}</button>`;}
+function projectButton(id,label,primary=false,name=''){const named=name?` aria-label="${esc(name)}" title="${esc(name)}"`:'';return `<button type="button" class="btn ${primary?'primary':''}" id="${id}"${named}>${esc(label)}</button>`;}
 function projectStats(inventory={}) {
   const f=inventory.forms||{},d=inventory.database||{};
   const counts=[['Forms candidates',f.discovered],['Forms XML supported',f.parseable],['Forms analyzed',f.analyzed],['FMB needing XML',f.fmb_without_xml],['Database packages',d.packages],['Tables',d.tables],['Views',d.views],['Source warnings',inventory.warnings]];
@@ -173,14 +173,16 @@ const projectRecommendationLabels={PRESERVE:'Preserve',CONVERT:'Convert',REPLACE
 const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MANUAL:'Human decision',UNKNOWN:'Unknown'};
 function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
 function projectSectionNav(active='overview') {
-  const links=[['overview','Overview'],['system-map','System Map'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
+  const links=[['overview','Overview'],['system-map','System Map'],['hotspots','Hotspots'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
   return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`;
 }
 function projectBindSectionNav() {
   $('project-content').querySelectorAll('[data-project-section]').forEach(el=>el.onclick=()=>{
     const section=el.dataset.projectSection;
+    if(typeof visualUI==='object')visualUI.back=null;
     if(section==='overview'){if(projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='overview';const c=projectContext();projectLoadOverview(c,false).then(data=>{if(data&&projectCurrent(c)&&projectUI.view==='overview')renderProjectOverview(data);});}}
     else if(section==='system-map')projectSystemMapOpen();
+    else if(section==='hotspots'){if(typeof visualHotspotsOpen==='function')visualHotspotsOpen({},{remember:false});else projectOpenInventory({category:'hotspots'});}
     else if(section==='inventory')projectOpenInventory({category:'forms'});
     else if(section==='review')projectReviewOpen();
     else if(section==='generate')projectGenerationOpen();
@@ -358,7 +360,7 @@ function renderProjectOverview(data) {
   const stateMessage=state==='Stale'?'Source changed since this assessment. Saved metrics remain visible; refresh analysis before treating them as current.':state==='Missing Source'?'A source folder cannot be found. Relink it or continue viewing the saved assessment.':state==='Incomplete'?'This assessment is incomplete. Review source warnings and failed inputs.':state==='Unverified'?'Source freshness has not been verified.':'';
   const targetLabel=esc(projectTargetLabel(target.platform,target.version,target.representation));
   $('workspace-title').textContent=p.name||projectUI.summary?.project?.name||'Modernization Project';
-  $('project-content').innerHTML=`${projectSectionNav('overview')}<header class="project-overview-header"><div><h2 id="project-step-title" tabindex="-1">${esc(p.name||'Modernization Project')}</h2><p>${targetLabel}</p></div><p class="project-assessment-state"><span>Assessment status</span><b data-status="${esc(String(freshness).toUpperCase())}">${esc(state)}</b></p></header>${stateMessage?`<aside class="project-state-warning" role="status"><p>${esc(stateMessage)}</p><div class="project-actions">${projectButton('project-refresh','Refresh Analysis',true)}${state==='Missing Source'?projectButton('project-relink-missing','Relink Source'):''}</div></aside>`:''}<div class="project-overview-grid">${projectInventorySummary(data.inventory)}${projectHotspotsSummary(data.hotspots)}${projectDistribution('Risk',data.risk_distribution,projectRiskLabels,'risk')}${projectDistribution('Recommended Direction',data.recommendation_distribution,projectRecommendationLabels,'recommendation')}${projectDistribution('Intervention',data.intervention_distribution,projectInterventionLabels,'intervention')}<section class="project-panel" id="project-priority"><h3>Priority Review · Start Here</h3>${critical?`<p><b>${critical}</b> Critical · <b>${Number(priority.high||0)}</b> High · <b>${Number(priority.manual||0)}</b> Human Decisions</p>`:'<p class="project-empty">No unresolved CRITICAL findings in the current assessment.</p>'}${(priority.start_here||[]).length?`<div class="project-start-here">${priority.start_here.map(item=>`<div class="project-priority-item"><div><button type="button" class="project-metric-link" data-start-here="${esc(item.id)}"><b>${esc(item.name||item.id)}</b></button> <span class="project-muted">${esc(item.module||'')}</span><p class="project-muted" style="margin:2px 0 0 0;font-size:11px;">Why: ${esc(projectFactorText(item.factors||[]))}</p></div><span class="project-score-pill" data-risk="${esc(item.risk||'UNKNOWN')}" title="${(item.breakdown||[]).map(esc).join('\n')}">Score: ${Number(item.score||0).toFixed(1)}</span></div>`).join('')}</div>`:''}<p>${Number(priority.total||0)} unresolved findings ordered by transparent evidence factors.</p>${projectButton('project-start-priority','Start Priority Review',true)}</section><section class="project-panel"><h3>Automation Potential</h3><dl class="project-distribution">${Object.entries(projectInterventionLabels).map(([key,label])=>`<div><dt>${esc(label)}</dt><dd>${Number(data.automation_potential?.[key]?.percent??data.automation_potential?.categories?.[key]?.percent??0)}%</dd></div>`).join('')}</dl><p class="project-muted">Based on modernization decision categories, not effort or project-duration estimation. AUTO does not mean generation-ready.</p></section>${projectCoverage(coverage)}<section class="project-panel"><h3>Assessment Warnings</h3>${projectOverviewWarnings(data.warnings,data.warning_summary)}</section><section class="project-panel project-panel-wide"><h3>Assessment Record</h3><p>Assessed ${esc(timestamp)} · Analysis revision ${esc(String(assessment.analysis_revision||data.analysis_revision||'Unavailable').slice(0,12))}</p><p>Reviewed ${Number(review.reviewed||0)} / ${Number(review.total||0)} findings. Inspect Generate for scope-specific readiness and validation.</p></section></div>`;
+  $('project-content').innerHTML=`${projectSectionNav('overview')}<header class="project-overview-header"><div><h2 id="project-step-title" tabindex="-1">${esc(p.name||'Modernization Project')}</h2><p>${targetLabel}</p></div><p class="project-assessment-state"><span>Assessment status</span><b data-status="${esc(String(freshness).toUpperCase())}">${esc(state)}</b></p></header>${stateMessage?`<aside class="project-state-warning" role="status"><p>${esc(stateMessage)}</p><div class="project-actions">${projectButton('project-refresh','Refresh Analysis',true)}${state==='Missing Source'?projectButton('project-relink-missing','Relink Source'):''}</div></aside>`:''}${typeof visualCommandCenter==='function'?visualCommandCenter(data):''}<div class="project-overview-grid">${projectInventorySummary(data.inventory)}${projectHotspotsSummary(data.hotspots)}${projectDistribution('Risk',data.risk_distribution,projectRiskLabels,'risk')}${projectDistribution('Recommended Direction',data.recommendation_distribution,projectRecommendationLabels,'recommendation')}${projectDistribution('Intervention',data.intervention_distribution,projectInterventionLabels,'intervention')}<section class="project-panel" id="project-priority"><h3>Priority Review · Start Here</h3>${critical?`<p><b>${critical}</b> Critical · <b>${Number(priority.high||0)}</b> High · <b>${Number(priority.manual||0)}</b> Human Decisions</p>`:'<p class="project-empty">No unresolved CRITICAL findings in the current assessment.</p>'}${(priority.start_here||[]).length?`<div class="project-start-here">${priority.start_here.map(item=>`<div class="project-priority-item"><div><button type="button" class="project-metric-link" data-start-here="${esc(item.id)}"><b>${esc(item.name||item.id)}</b></button> <span class="project-muted">${esc(item.module||'')}</span><p class="project-muted" style="margin:2px 0 0 0;font-size:11px;">Why: ${esc(projectFactorText(item.factors||[]))}</p></div><span class="project-score-pill" data-risk="${esc(item.risk||'UNKNOWN')}" title="${(item.breakdown||[]).map(esc).join('\n')}">Score: ${Number(item.score||0).toFixed(1)}</span></div>`).join('')}</div>`:''}<p>${Number(priority.total||0)} unresolved findings ordered by transparent evidence factors.</p>${projectButton('project-start-priority','Start Priority Review',true)}</section><section class="project-panel"><h3>Automation Potential</h3><dl class="project-distribution">${Object.entries(projectInterventionLabels).map(([key,label])=>`<div><dt>${esc(label)}</dt><dd>${Number(data.automation_potential?.[key]?.percent??data.automation_potential?.categories?.[key]?.percent??0)}%</dd></div>`).join('')}</dl><p class="project-muted">Based on modernization decision categories, not effort or project-duration estimation. AUTO does not mean generation-ready.</p></section>${typeof visualCommandCenter==='function'?'':projectCoverage(coverage)}<section class="project-panel"><h3>Assessment Warnings</h3>${projectOverviewWarnings(data.warnings,data.warning_summary)}</section><section class="project-panel project-panel-wide"><h3>Assessment Record</h3><p>Assessed ${esc(timestamp)} · Analysis revision ${esc(String(assessment.analysis_revision||data.analysis_revision||'Unavailable').slice(0,12))}</p><p>Reviewed ${Number(review.reviewed||0)} / ${Number(review.total||0)} findings. Inspect Generate for scope-specific readiness and validation.</p></section></div>`;
   projectBindSectionNav();
   $('project-content').querySelectorAll('[data-project-filter]').forEach(el=>el.onclick=()=>projectOpenInventory({category:'findings',filters:{[el.dataset.projectFilter]:el.dataset.projectValue}}));
   $('project-start-priority').onclick=projectOpenPriorityReview;
@@ -366,6 +368,7 @@ function renderProjectOverview(data) {
   $('project-content').querySelectorAll('[data-hotspot-evidence]').forEach(el=>el.onclick=async()=>{await projectOpenInventory({category:'hotspots'});await projectInventoryDetail(el.dataset.hotspotEvidence);});
   if(stateMessage)$('project-refresh').onclick=startProjectAnalysis;
   if(state==='Missing Source')$('project-relink-missing').onclick=()=>renderProjectSummary(projectUI.summary);
+  if(typeof visualBindOverview==='function')visualBindOverview(data);
   $('project-step-title').focus();
 }
 function renderProjectSummary(data) {
@@ -501,134 +504,7 @@ async function projectDemo() {
   try{const result=await api('/api/v2/projects/demo',{target:'apex'});if(projectCurrent(c)){projectUI.busy=false;const opened=await openProject(result.project.id,false);if(opened&&projectCurrent(opened))await startProjectAnalysis();}}
   catch(e){if(projectCurrent(c)){projectUI.busy=false;$('project-demo').disabled=false;projectError(e.message);}}
 }
-const systemMapState = { focus: null, depth: 2, layer: '', edge_type: '', data: null, selectedNode: null, selectedEdge: null, request: 0 };
-const systemMapLayerLabels = { FORM: 'Forms', DATABASE: 'Database', GLOBAL: 'Global state', LIBRARY: 'Libraries / menus', INTEGRATION: 'Integration points', UNRESOLVED: 'Unresolved references', OTHER: 'Other' };
-
-async function projectSystemMapOpen(options = {}) {
-  projectSaveDraft();projectEnter('system-map');
-  if (systemMapState.projectId !== projectUI.activeId) Object.assign(systemMapState, { focus: null, data: null, selectedNode: null, selectedEdge: null, projectId: projectUI.activeId });
-  Object.assign(systemMapState, options);
-  renderProjectSystemMap();
-  await loadProjectSystemMap();
-}
-
-async function loadProjectSystemMap() {
-  const c = projectContext(), request = ++systemMapState.request;
-  const params = new URLSearchParams({ depth: String(systemMapState.depth) });
-  if (systemMapState.focus) params.set('focus', systemMapState.focus);
-  if (systemMapState.layer) params.set('layer', systemMapState.layer);
-  if (systemMapState.edge_type) params.set('edge_type', systemMapState.edge_type);
-  try {
-    const data = await api(`/api/v2/projects/${c.id}/system-map?${params}`);
-    if (!projectCurrent(c) || projectUI.view !== 'system-map' || request !== systemMapState.request) return;
-    systemMapState.data = data;
-    if (!systemMapState.focus && data.focus) systemMapState.focus = data.focus;
-    if (systemMapState.selectedNode) systemMapState.selectedNode = data.nodes.find(n => n.id === systemMapState.selectedNode.id) || null;
-    if (systemMapState.selectedEdge) systemMapState.selectedEdge = data.edges.find(e => e.id === systemMapState.selectedEdge.id) || null;
-    renderProjectSystemMap();
-  } catch (e) {
-    if (projectCurrent(c) && request === systemMapState.request) projectError(e.message);
-  }
-}
-
-function systemMapTruncation(d) {
-  const text = { NODE_LIMIT: 'nodes', EDGE_LIMIT: 'relationships', SELECTOR_LIMIT: 'Forms in the selector' };
-  return (d.truncation || []).map(t => `<p class="project-state-warning">Showing ${Number(t.limit)} of ${Number(t.available)} ${esc(text[t.reason] || t.reason)}.${t.reason === 'SELECTOR_LIMIT' ? ' Use Search (Ctrl+K) to focus any other Form.' : ' Refocus or filter to inspect the rest.'}</p>`).join('');
-}
-
-function renderProjectSystemMap() {
-  const d = systemMapState.data;
-  const forms = d?.available_forms || [];
-  const focus = systemMapState.focus || d?.focus || '';
-  const layers = d?.layers || Object.keys(systemMapLayerLabels);
-  const relationships = d?.relationships || ['CALLS', 'READS', 'WRITES', 'OPENS_FORM', 'SHARES_STATE', 'DUPLICATES_LOGIC', 'REFERENCES'];
-  const controls = `
-    <div class="project-filter-bar" style="margin-bottom:12px;">
-      <label for="system-map-focus">Focus Form
-        <select id="system-map-focus">${forms.map(f => `<option value="${esc(f.id)}" ${f.id === focus ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select>
-      </label>
-      <label for="system-map-depth">Depth
-        <select id="system-map-depth">${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${systemMapState.depth === n ? 'selected' : ''}>${n} ${n === 1 ? 'hop' : 'hops'}</option>`).join('')}</select>
-      </label>
-      <label for="system-map-layer">Layer
-        <select id="system-map-layer"><option value="">All layers</option>${layers.map(l => `<option value="${esc(l)}" ${systemMapState.layer === l ? 'selected' : ''}>${esc(systemMapLayerLabels[l] || l)}</option>`).join('')}</select>
-      </label>
-      <label for="system-map-edge">Relationship
-        <select id="system-map-edge"><option value="">All relationships</option>${relationships.map(r => `<option value="${esc(r)}" ${systemMapState.edge_type === r ? 'selected' : ''}>${esc(r.replaceAll('_', ' '))}</option>`).join('')}</select>
-      </label>
-      ${projectButton('system-map-refresh', 'Refresh Map')}
-    </div>`;
-  let svgContent = '', drawerContent = '', tableContent = '';
-  if (!d) {
-    svgContent = '<p style="padding:24px;">Loading system architecture map…</p>';
-    drawerContent = '<p>Loading details…</p>';
-  } else if (!d.nodes || !d.nodes.length) {
-    svgContent = '<p style="padding:24px;">No architecture nodes match the current focus and filters.</p>';
-    drawerContent = '<p>Select a different focus or loosen the filters.</p>';
-  } else {
-    const columns = { GLOBAL: 0, LIBRARY: 0, INTEGRATION: 0, OTHER: 0, FORM: 1, UNRESOLVED: 3 };
-    const colBuckets = [[], [], [], []];
-    d.nodes.forEach(n => {
-      const index = n.layer === 'DATABASE' ? (n.type === 'PACKAGE' ? 2 : 3) : (columns[n.layer] ?? 0);
-      colBuckets[index].push(n);
-    });
-    const colX = [40, 250, 470, 690], cardW = 160, cardH = 50, nodeCoords = new Map();
-    colBuckets.forEach((colNodes, cIdx) => colNodes.forEach((n, rIdx) => nodeCoords.set(n.id, { x: colX[cIdx], y: 50 + rIdx * 66, node: n })));
-    const svgHeight = Math.max(480, 80 + Math.max(...colBuckets.map(b => b.length), 1) * 66);
-    let edgesSvg = '';
-    d.edges.forEach(e => {
-      const s = nodeCoords.get(e.source), t = nodeCoords.get(e.target);
-      if (!s || !t) return;
-      const selected = systemMapState.selectedEdge?.id === e.id;
-      const x1 = s.x < t.x ? s.x + cardW : s.x, y1 = s.y + cardH / 2, x2 = s.x < t.x ? t.x : t.x + cardW, y2 = t.y + cardH / 2;
-      const dx = Math.max(40, Math.abs(x2 - x1) * 0.4), cx1 = s.x < t.x ? x1 + dx : x1 - dx, cx2 = s.x < t.x ? x2 - dx : x2 + dx;
-      const stroke = e.is_hotspot ? 'var(--risk-high)' : selected ? 'var(--gold)' : 'var(--border-strong)';
-      edgesSvg += `<g class="map-edge edge-${esc(e.classification.toLowerCase())}" data-edge-id="${esc(e.id)}"><path d="M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}" fill="none" stroke="${stroke}" stroke-width="${selected ? 3 : e.is_hotspot ? 2.5 : 1.5}" /></g>`;
-    });
-    let nodesSvg = '';
-    nodeCoords.forEach(({ x, y, node }) => {
-      const isFocus = node.id === focus, selected = systemMapState.selectedNode?.id === node.id;
-      const riskColor = node.risk === 'CRITICAL' ? 'var(--risk-critical)' : node.risk === 'HIGH' ? 'var(--risk-high)' : 'var(--border-subtle)';
-      nodesSvg += `<g class="map-node ${isFocus ? 'is-focus' : ''}" data-node-id="${esc(node.id)}" tabindex="0" role="button" aria-label="${esc(node.name)}, ${esc(node.type)}, ${Number(node.findings_count)} findings" transform="translate(${x},${y})"><rect width="${cardW}" height="${cardH}" rx="7" ry="7" fill="${isFocus ? 'var(--surface-2)' : 'var(--surface-1)'}" stroke="${selected ? 'var(--gold)' : isFocus ? 'var(--gold-deep)' : riskColor}" stroke-width="${selected ? 2.5 : isFocus ? 2 : 1}" /><text x="10" y="20" font-size="11" font-weight="650" fill="var(--ink)">${esc(node.name.length > 20 ? node.name.slice(0, 18) + '…' : node.name)}</text><text x="10" y="38" font-size="9.5" fill="var(--ink-dim)">${esc(node.type)} · ${Number(node.findings_count)} findings</text></g>`;
-    });
-    svgContent = `<svg class="project-system-map-svg" viewBox="0 0 890 ${svgHeight}" preserveAspectRatio="xMinYMin meet" role="img" aria-label="Module-level architecture map; the relationship table below lists the same content">${edgesSvg}${nodesSvg}</svg>`;
-    const names = new Map(d.nodes.map(n => [n.id, n.name]));
-    tableContent = `<div class="project-table-wrap"><table class="project-table"><caption>Relationships shown in the map</caption><thead><tr><th scope="col">Source</th><th scope="col">Relationship</th><th scope="col">Target</th><th scope="col">Observations</th><th scope="col">Inspect</th></tr></thead><tbody>${d.edges.map(e => `<tr><td>${esc(names.get(e.source) || e.source_name)}</td><td>${esc(e.classification.replaceAll('_', ' '))}${e.is_hotspot ? ' · hotspot candidate' : ''}</td><td>${esc(names.get(e.target) || e.target_name)}</td><td>${Number(e.count)}</td><td><button type="button" class="btn" data-edge-inspect="${esc(e.id)}">Inspect</button></td></tr>`).join('')}</tbody></table></div>`;
-    if (systemMapState.selectedEdge) {
-      const se = systemMapState.selectedEdge;
-      drawerContent = `<h4>Relationship evidence</h4><p><b>${esc(se.source_name)}</b> ${esc(se.classification.replaceAll('_', ' '))} <b>${esc(se.target_name)}</b></p><p>${Number(se.count)} observed relationship(s) · evidence level ${esc(se.level)}</p>${se.components?.length ? `<p><b>From components:</b> ${se.components.map(esc).join(', ')}</p>` : ''}<p><b>Blueprint relationship types:</b> ${(se.relationships || []).map(esc).join(', ')}</p>${se.is_hotspot ? `<p class="project-state-warning">Linked to ${Number(se.hotspot_ids.length)} hotspot candidate(s). Candidates need architecture review; they are not verdicts.</p>` : ''}<p class="project-muted">${Number((se.evidence || []).length)} evidence record(s) sampled. Open the Form in Review for source-level evidence.</p>`;
-    } else if (systemMapState.selectedNode) {
-      const sn = systemMapState.selectedNode;
-      drawerContent = `<h4>${esc(sn.name)}</h4><p>${esc(sn.type)} · ${esc(systemMapLayerLabels[sn.layer] || sn.layer)}${sn.resolution === 'UNRESOLVED_REFERENCE' ? ' · not found in supplied sources' : ''}</p><p><b>Findings:</b> ${Number(sn.findings_count)} · highest risk ${esc(sn.highest_risk)}</p><p><b>Hotspot candidates:</b> ${Number(sn.hotspot_count)}</p><p><b>Components folded in:</b> ${Number(sn.members)}</p><p><b>Relationships:</b> ${Number(sn.fan_in)} incoming, ${Number(sn.fan_out)} outgoing</p><div class="project-actions" style="margin-top:14px;display:flex;flex-direction:column;gap:6px;">${sn.layer === 'FORM' && sn.type === 'FORM' ? `<button class="btn primary" id="system-map-set-focus" data-focus-id="${esc(sn.id)}">Focus System Map Here</button>` : ''}<button class="btn" id="system-map-view-inventory" data-node-name="${esc(sn.name)}" data-node-layer="${esc(sn.layer)}" data-node-type="${esc(sn.type)}">View in Inventory</button></div>`;
-    } else {
-      drawerContent = `<h4>Architecture inspector</h4><p>${esc(d.description || '')}</p><p>Select a node or relationship, or use the table below.</p><p><b>Nodes shown:</b> ${Number(d.total_nodes)} of ${Number(d.reachable_nodes ?? d.total_nodes)} reachable (${Number(d.total_estate_nodes)} in the estate)</p><p><b>Relationships shown:</b> ${Number(d.total_edges)} of ${Number(d.available_edges ?? d.total_edges)}</p>`;
-    }
-  }
-  $('project-content').innerHTML = `${projectSectionNav('system-map')}<header><h2 id="project-step-title" tabindex="-1">System Map</h2><p>Module-level architecture: each Form includes its blocks, items, triggers and program units; each package includes its subprograms. Containment is not drawn as a dependency.</p></header>${controls}${d ? systemMapTruncation(d) : ''}<div class="project-system-map-split"><div class="project-system-map-canvas">${svgContent}</div><aside class="system-map-drawer" aria-label="System map inspector" aria-live="polite">${drawerContent}</aside></div>${tableContent}`;
-  projectBindSectionNav();
-  const reload = () => { systemMapState.selectedNode = null; systemMapState.selectedEdge = null; loadProjectSystemMap(); };
-  $('system-map-focus').onchange = () => { systemMapState.focus = $('system-map-focus').value; reload(); };
-  $('system-map-depth').onchange = () => { systemMapState.depth = Number($('system-map-depth').value); reload(); };
-  $('system-map-layer').onchange = () => { systemMapState.layer = $('system-map-layer').value; reload(); };
-  $('system-map-edge').onchange = () => { systemMapState.edge_type = $('system-map-edge').value; reload(); };
-  $('system-map-refresh').onclick = () => loadProjectSystemMap();
-  const selectNode = id => { const n = d?.nodes?.find(x => x.id === id); if (n) { systemMapState.selectedNode = n; systemMapState.selectedEdge = null; renderProjectSystemMap(); } };
-  const selectEdge = id => { const e = d?.edges?.find(x => x.id === id); if (e) { systemMapState.selectedEdge = e; systemMapState.selectedNode = null; renderProjectSystemMap(); } };
-  $('project-content').querySelectorAll('[data-node-id]').forEach(el => {
-    el.onclick = () => selectNode(el.dataset.nodeId);
-    el.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectNode(el.dataset.nodeId); } };
-  });
-  $('project-content').querySelectorAll('[data-edge-id]').forEach(el => { el.onclick = () => selectEdge(el.dataset.edgeId); });
-  $('project-content').querySelectorAll('[data-edge-inspect]').forEach(el => { el.onclick = () => selectEdge(el.dataset.edgeInspect); });
-  const focusBtn = $('system-map-set-focus');
-  if (focusBtn) focusBtn.onclick = () => { systemMapState.focus = focusBtn.dataset.focusId; reload(); };
-  const invBtn = $('system-map-view-inventory');
-  if (invBtn) invBtn.onclick = () => {
-    const layer = invBtn.dataset.nodeLayer, type = invBtn.dataset.nodeType;
-    const cat = layer === 'FORM' ? 'forms' : type === 'PACKAGE' ? 'packages' : type === 'TABLE' ? 'tables' : type === 'VIEW' ? 'views' : 'dependencies';
-    projectOpenInventory({ category: cat, query: invBtn.dataset.nodeName });
-  };
-}
+// System Map: see modernization_visual.py (2.2).
 
 // Global search. Every response is bound to the project, analysis revision,
 // query and request sequence that asked for it; anything older is discarded,
@@ -645,7 +521,7 @@ function openGlobalSearch() {
   globalSearch.context = globalSearchOpenContext();
   globalSearch.returnFocus = document.activeElement;
   modal.hidden = false;
-  modal.innerHTML = `<div class="global-search-backdrop" id="global-search-backdrop"><div class="global-search-modal" role="dialog" aria-modal="true" aria-label="Search this project"><div class="global-search-input-wrap"><input id="global-search-input" class="global-search-input" placeholder="Find forms, packages, tables, hotspot candidates, business rules, findings" autocomplete="off" maxlength="200" role="combobox" aria-expanded="true" aria-controls="global-search-list" aria-autocomplete="list" /><span class="search-shortcut-pill">Esc to close</span></div><ul id="global-search-list" class="global-search-results" role="listbox" aria-label="Search results"><li class="global-search-hint">Type 2 or more characters to search this project.</li></ul></div></div>`;
+  modal.innerHTML = `<div class="global-search-backdrop" id="global-search-backdrop"><div class="global-search-modal" role="dialog" aria-modal="true" aria-label="Search this project"><div class="global-search-input-wrap"><input id="global-search-input" class="global-search-input" placeholder="Find forms, packages, tables, hotspot candidates, business rules, findings" autocomplete="off" maxlength="200" role="combobox" aria-expanded="true" aria-controls="global-search-list" aria-autocomplete="list" /><span class="search-shortcut-pill">Enter opens · Alt+Enter shows on map · Esc closes</span></div><ul id="global-search-list" class="global-search-results" role="listbox" aria-label="Search results"><li class="global-search-hint">Type 2 or more characters to search this project.</li></ul></div></div>`;
   const input = $('global-search-input');
   input.focus();
   $('global-search-backdrop').onclick = e => { if (e.target.id === 'global-search-backdrop') closeGlobalSearch(); };
@@ -662,7 +538,7 @@ function openGlobalSearch() {
     else if (e.key === 'Tab') { e.preventDefault(); }
     else if (e.key === 'ArrowDown' && count) { e.preventDefault(); globalSearch.active = (globalSearch.active + 1) % count; updateSearchActiveItem(); }
     else if (e.key === 'ArrowUp' && count) { e.preventDefault(); globalSearch.active = (globalSearch.active - 1 + count) % count; updateSearchActiveItem(); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (globalSearch.active >= 0) executeSearchAction(globalSearch.results[globalSearch.active]); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (globalSearch.active >= 0) { const item = globalSearch.results[globalSearch.active]; if (e.altKey && item?.map_focus) executeSearchMap(item); else executeSearchAction(item); } }
   };
 }
 
@@ -694,9 +570,10 @@ function globalSearchRender(results, query) {
   const list = $('global-search-list'); if (!list) return;
   if (!query) { list.innerHTML = '<li class="global-search-hint">Type 2 or more characters to search this project.</li>'; return; }
   if (!results.length) { list.innerHTML = `<li class="global-search-hint">No results found for "${esc(query)}".</li>`; return; }
-  list.innerHTML = results.map((r, i) => `<li class="global-search-item ${i === 0 ? 'active' : ''}" id="global-search-option-${i}" role="option" aria-selected="${i === 0}" data-search-index="${i}"><div style="min-width:0;display:flex;flex-direction:column;gap:2px;"><div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;"><span>${esc(r.title)}</span>${r.risk && r.risk !== 'UNKNOWN' && r.risk !== 'NONE' ? `<span class="project-score-pill" data-risk="${esc(r.risk)}">${esc(r.risk)}</span>` : ''}</div><div style="font-size:11px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.subtitle)}</div></div><span class="search-cat-badge">${esc(r.category_label || r.category)}</span></li>`).join('');
+  list.innerHTML = results.map((r, i) => `<li class="global-search-item ${i === 0 ? 'active' : ''}" id="global-search-option-${i}" role="option" aria-selected="${i === 0}" data-search-index="${i}"><div style="min-width:0;display:flex;flex-direction:column;gap:2px;"><div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;"><span>${esc(r.title)}</span>${r.risk && r.risk !== 'UNKNOWN' && r.risk !== 'NONE' ? `<span class="project-score-pill" data-risk="${esc(r.risk)}">${esc(r.risk)}</span>` : ''}</div><div style="font-size:11px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.subtitle)}</div></div><span>${r.map_focus ? `<button type="button" class="search-map-link" tabindex="-1" data-search-map="${i}" aria-label="Show ${esc(r.title)} on the System Map">Map</button>` : ''}<span class="search-cat-badge">${esc(r.category_label || r.category)}</span></span></li>`).join('');
   $('global-search-input')?.setAttribute('aria-activedescendant', 'global-search-option-0');
   list.querySelectorAll('[data-search-index]').forEach(el => { el.onclick = () => executeSearchAction(globalSearch.results[Number(el.dataset.searchIndex)]); });
+  list.querySelectorAll('[data-search-map]').forEach(el => { el.onclick = event => { event.stopPropagation?.(); executeSearchMap(globalSearch.results[Number(el.dataset.searchMap)]); }; });
 }
 
 function updateSearchActiveItem() {
@@ -708,6 +585,13 @@ function updateSearchActiveItem() {
     el.setAttribute('aria-selected', String(active));
   });
   $('global-search-input')?.setAttribute('aria-activedescendant', `global-search-option-${globalSearch.active}`);
+}
+
+// Any result placed on the System Map can open the map focused on it.
+async function executeSearchMap(item) {
+  if (!item || item.project_id !== projectUI.activeId || !item.map_focus) { closeGlobalSearch(); return; }
+  closeGlobalSearch();
+  await projectSystemMapOpen({ focus: item.map_focus, selectedNode: null, selectedEdge: null });
 }
 
 async function executeSearchAction(item) {

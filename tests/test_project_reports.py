@@ -259,3 +259,22 @@ def test_duplicated_predicate_literals_stay_in_authorized_evidence(generation_pr
     with zipfile.ZipFile(io.BytesIO(package(service).body)) as archive:
         for name in archive.namelist():
             assert b'SYNTHETIC_SECRET_ONE' not in archive.read(name), name
+
+
+def test_visual_figures_do_not_carry_host_or_url_literals(generation_project):
+    service = generation_project
+    source = service.access.source_roots[0] / 'forms/notice.xml'
+    source.write_text(source.read_text().replace('</Block>', '''<Trigger Name="WHEN-NEW-FORM-INSTANCE"
+        TriggerText="BEGIN HOST('ping private-host.example.invalid'); WEB.SHOW_DOCUMENT('https://private-portal.example.invalid/x', '_blank'); END;"/></Block>'''), encoding='utf-8')
+    service.analyze(expected_revision=service.open().analysis_revision, expected_configuration=0)
+    # The authorized local map may name the integration target; delivery must not.
+    local = json.dumps(service.system_map(view='ESTATE'))
+    assert 'private-portal.example.invalid' in local or 'private-host.example.invalid' in local
+    state = service.report_overview()
+    executive = service.report_export('executive', state['binding']).body
+    technical = service.report_export('technical', state['binding']).body
+    assert b'<figure' in executive and b'Integration target (literal omitted' in executive
+    with zipfile.ZipFile(io.BytesIO(package(service).body)) as archive:
+        members = [archive.read(name) for name in archive.namelist()] + [name.encode() for name in archive.namelist()]
+    for body in (executive, technical, *members):
+        assert b'private-host.example.invalid' not in body and b'private-portal.example.invalid' not in body
