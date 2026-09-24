@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FormsLang 2.3 phase 1: the other half of the SCREENS <-> SCREENS_PEER
+     literal OPEN_FORM cycle. Synthetic fixture. -->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="SCREENS_PEER" Title="Screens peer">
+    <Block Name="CTL" DatabaseBlock="false">
+      <Item Name="BT_BACK" ItemType="Push Button" Label="Back" CanvasName="CV_PEER">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN OPEN_FORM('SCREENS'); END;"/>
+      </Item>
+    </Block>
+    <Canvas Name="CV_PEER" WindowName="WIN_PEER" CanvasType="Content"/>
+    <Window Name="WIN_PEER" PrimaryCanvas="CV_PEER"/>
+  </FormModule>
+</Module>

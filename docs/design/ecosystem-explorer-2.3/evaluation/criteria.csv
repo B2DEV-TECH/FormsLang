@@ -1,0 +1,7 @@
+criterion,description,target,measured,status,build_version,evaluated_on,sessions_recorded
+C1-T1,Participants who complete T1 unassisted,>=4 of 5,PENDING,PENDING,PENDING,PENDING,0 of 5
+C1-T2,Participants who complete T2 unassisted,>=4 of 5,PENDING,PENDING,PENDING,PENDING,0 of 5
+C1-T3,Participants who complete T3 unassisted,>=4 of 5,PENDING,PENDING,PENDING,PENDING,0 of 5
+C1-T4,Participants who complete T4 unassisted,>=4 of 5,PENDING,PENDING,PENDING,PENDING,0 of 5
+C2,Median time to first relation with evidence open (T2 first_evidence_s),<=90 s,PENDING,PENDING,PENDING,PENDING,0 of 5
+C3,Participants who leave believing the graph proves execution,0,PENDING,PENDING,PENDING,PENDING,0 of 5

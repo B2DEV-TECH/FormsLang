@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FormsLang 2.3 phase 1, Case C: two routines named SUBMIT in different
+  schemas, plus one call that names ORDER_API.SUBMIT without a schema.
+  Synthetic fixture; no customer source.
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="SUBMIT_DESK" Title="Submit Desk">
+    <Window Name="WIN_DESK" PrimaryCanvas="CV_DESK"/>
+    <Canvas Name="CV_DESK" WindowName="WIN_DESK" CanvasType="Content"/>
+    <Block Name="CTL" DatabaseBlock="false">
+      <Item Name="ORDER_ID" ItemType="Text Item" DataType="Number" CanvasName="CV_DESK"/>
+      <Item Name="BT_SALES" ItemType="Push Button" Label="Sales" CanvasName="CV_DESK">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN SALES_OWNER.ORDER_API.SUBMIT(:CTL.ORDER_ID); END;"/>
+      </Item>
+      <Item Name="BT_BILLING" ItemType="Push Button" Label="Billing" CanvasName="CV_DESK">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN BILLING_OWNER.ORDER_API.SUBMIT(:CTL.ORDER_ID); END;"/>
+      </Item>
+      <Item Name="BT_UNQUALIFIED" ItemType="Push Button" Label="Submit" CanvasName="CV_DESK">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN ORDER_API.SUBMIT(:CTL.ORDER_ID); END;"/>
+      </Item>
+    </Block>
+  </FormModule>
+</Module>

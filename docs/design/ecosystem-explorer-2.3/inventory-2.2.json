@@ -1,0 +1,1144 @@
+{
+  "corpora": {
+    "case_c": {
+      "blueprint": {
+        "canvas_attributes_persisted": [],
+        "database_bridge_edges": 0,
+        "edges_by_type_and_level": {
+          "CALLS FACT": 3,
+          "CONTAINS FACT": 15,
+          "DECLARES FACT": 1,
+          "REFERENCES FACT": 7,
+          "REFERENCES INFERENCE": 3
+        },
+        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "entities_by_type": {
+          "APPLICATION": 1,
+          "BLOCK": 1,
+          "CANVAS": 1,
+          "FORM": 1,
+          "ITEM": 4,
+          "PACKAGE_BODY": 1,
+          "PACKAGE_REFERENCE": 3,
+          "PACKAGE_SPEC": 1,
+          "PACKAGE_SUBPROGRAM": 1,
+          "ROUTINE_REFERENCE": 3,
+          "TABLE": 2,
+          "TRIGGER": 3,
+          "WINDOW": 1
+        },
+        "entities_without_finding_by_type": {
+          "APPLICATION": 1
+        },
+        "findings": 22,
+        "frontiers_outside_graph": {},
+        "hotspots_by_type": {
+          "api_bypass": 0,
+          "duplicated_rules": 0,
+          "global_state": 0
+        },
+        "reference_resolutions": {
+          "PACKAGE_REFERENCE RESOLVED_TO_DATABASE_OBJECT": 1,
+          "PACKAGE_REFERENCE SYMBOLIC_REFERENCE": 2,
+          "ROUTINE_REFERENCE RESOLVED_TO_DATABASE_OBJECT": 1,
+          "ROUTINE_REFERENCE SYMBOLIC_REFERENCE": 2
+        },
+        "schema_version": "blueprint/1",
+        "tab_page_entities": 0,
+        "visual_edges": {
+          "FORM CONTAINS CANVAS": 1,
+          "FORM CONTAINS WINDOW": 1,
+          "ITEM REFERENCES CANVAS": 4
+        },
+        "window_attributes_persisted": []
+      },
+      "case": {
+        "calls": {
+          "CTL.BT_BILLING": [
+            {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "BILLING_OWNER.ORDER_API.SUBMIT",
+              "target_type": "ROUTINE_REFERENCE",
+              "type": "CALLS"
+            }
+          ],
+          "CTL.BT_SALES": [
+            {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "SALES_OWNER.ORDER_API.SUBMIT",
+              "target_type": "ROUTINE_REFERENCE",
+              "type": "CALLS"
+            }
+          ],
+          "CTL.BT_UNQUALIFIED": [
+            {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "RESOLVED_TO_DATABASE_OBJECT",
+              "resolved_target": "ORDER_API.SUBMIT",
+              "target": "ORDER_API.SUBMIT",
+              "target_type": "ROUTINE_REFERENCE",
+              "type": "CALLS"
+            }
+          ]
+        },
+        "database_entities": [
+          {
+            "name": "ORDER_API",
+            "type": "PACKAGE_BODY"
+          },
+          {
+            "name": "ORDER_API",
+            "type": "PACKAGE_SPEC"
+          },
+          {
+            "name": "ORDER_API.SUBMIT",
+            "type": "PACKAGE_SUBPROGRAM"
+          },
+          {
+            "name": "BILLING_ORDERS",
+            "type": "TABLE"
+          },
+          {
+            "name": "SALES_ORDERS",
+            "type": "TABLE"
+          }
+        ]
+      },
+      "note": "Two ORDER_API.SUBMIT routines in different schemas and one call without schema (Case C).",
+      "parser_visual": {
+        "SUBMIT_DESK": {
+          "blocks_across_canvases": {},
+          "canvases": [
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_DESK",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_DESK"
+            }
+          ],
+          "canvases_with_undeclared_window": [],
+          "items": {
+            "canvas_not_declared": [],
+            "tab_page_not_declared_on_canvas": [],
+            "total": 4,
+            "visible_origin": {
+              "PARSER_DEFAULT": 4
+            },
+            "with_tab_page": 0,
+            "without_canvas": []
+          },
+          "window_canvas_conflicts": [],
+          "windows": [
+            {
+              "name": "WIN_DESK",
+              "primary_canvas": "CV_DESK",
+              "primary_canvas_declared_in_module": true
+            }
+          ],
+          "windows_without_primary_canvas": []
+        }
+      },
+      "sources": {
+        "database": [
+          "tests/fixtures/ecosystem/case_c/database/billing_order_api.pkb",
+          "tests/fixtures/ecosystem/case_c/database/billing_order_api.pks",
+          "tests/fixtures/ecosystem/case_c/database/billing_orders.sql",
+          "tests/fixtures/ecosystem/case_c/database/sales_order_api.pkb",
+          "tests/fixtures/ecosystem/case_c/database/sales_order_api.pks",
+          "tests/fixtures/ecosystem/case_c/database/sales_orders.sql"
+        ],
+        "forms": [
+          "tests/fixtures/ecosystem/case_c/forms/SUBMIT_DESK.xml"
+        ]
+      }
+    },
+    "modernization_lab": {
+      "blueprint": {
+        "canvas_attributes_persisted": [],
+        "database_bridge_edges": 0,
+        "edges_by_type_and_level": {
+          "CALLS FACT": 93,
+          "COMMITS FACT": 5,
+          "CONTAINS FACT": 149,
+          "CONTAINS INFERENCE": 16,
+          "DECLARES FACT": 20,
+          "DUPLICATES_LOGIC INFERENCE": 6,
+          "EXECUTES_QUERY FACT": 9,
+          "IMPLEMENTS FACT": 43,
+          "INVOKES_BUILTIN FACT": 57,
+          "NAVIGATES_TO FACT": 7,
+          "OPENS_FORM FACT": 3,
+          "READS FACT": 30,
+          "REFERENCES FACT": 204,
+          "REFERENCES INFERENCE": 38,
+          "RELATES FACT": 1,
+          "USES FACT": 12,
+          "USES_LOV FACT": 8,
+          "WRITES FACT": 15
+        },
+        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "entities_by_type": {
+          "ALERT": 5,
+          "APPLICATION": 1,
+          "BIND_REFERENCE": 6,
+          "BLOCK": 5,
+          "BUILTIN": 17,
+          "BUSINESS_RULE": 16,
+          "CANVAS": 4,
+          "CONSTANT_DECLARATION": 4,
+          "FORM": 4,
+          "GLOBAL_REFERENCE": 2,
+          "ITEM": 56,
+          "LIBRARY": 1,
+          "LOV": 4,
+          "MENU": 1,
+          "PACKAGE_BODY": 5,
+          "PACKAGE_REFERENCE": 6,
+          "PACKAGE_SPEC": 5,
+          "PACKAGE_SUBPROGRAM": 20,
+          "PARAMETER": 5,
+          "RECORD_GROUP": 4,
+          "RELATION": 1,
+          "ROUTINE_REFERENCE": 21,
+          "SEQUENCE_REFERENCE": 5,
+          "SUBPROGRAM_BODY": 23,
+          "TABLE": 11,
+          "TABLE_OR_VIEW_REFERENCE": 12,
+          "TRIGGER": 34,
+          "VIEW": 2,
+          "WINDOW": 4
+        },
+        "entities_without_finding_by_type": {
+          "APPLICATION": 1,
+          "BUILTIN": 17,
+          "BUSINESS_RULE": 16
+        },
+        "findings": 250,
+        "frontiers_outside_graph": {},
+        "hotspots_by_type": {
+          "api_bypass": 2,
+          "duplicated_rules": 3,
+          "global_state": 1
+        },
+        "reference_resolutions": {
+          "BIND_REFERENCE NONE": 6,
+          "GLOBAL_REFERENCE NONE": 2,
+          "PACKAGE_REFERENCE RESOLVED_TO_DATABASE_OBJECT": 5,
+          "PACKAGE_REFERENCE SYMBOLIC_REFERENCE": 1,
+          "ROUTINE_REFERENCE RESOLVED_TO_DATABASE_OBJECT": 8,
+          "ROUTINE_REFERENCE SYMBOLIC_REFERENCE": 13,
+          "SEQUENCE_REFERENCE SYMBOLIC_REFERENCE": 5,
+          "TABLE_OR_VIEW_REFERENCE RESOLVED_TO_DATABASE_OBJECT": 12
+        },
+        "schema_version": "blueprint/1",
+        "tab_page_entities": 0,
+        "visual_edges": {
+          "FORM CONTAINS CANVAS": 4,
+          "FORM CONTAINS WINDOW": 4,
+          "ITEM REFERENCES CANVAS": 56
+        },
+        "window_attributes_persisted": []
+      },
+      "case": {
+        "api_bypass_candidates": [
+          {
+            "module": "APPROVALS.xml",
+            "potential_existing_api_owners": [
+              "LOM_ORDER_API.TRANSITION_STATUS",
+              "LOM_ORDER_API.RECALC_ORDER_TOTALS"
+            ],
+            "severity": "HIGH",
+            "title": "Possible API bypass: LOM_ORDERS",
+            "unit": "BK_APPROVAL.BT_APPROVE",
+            "unit_calls_co_writer": false
+          },
+          {
+            "module": "APPROVALS.xml",
+            "potential_existing_api_owners": [
+              "LOM_ORDER_API.TRANSITION_STATUS",
+              "LOM_ORDER_API.RECALC_ORDER_TOTALS"
+            ],
+            "severity": "HIGH",
+            "title": "Possible API bypass: LOM_ORDERS",
+            "unit": "BK_APPROVAL.BT_REJECT",
+            "unit_calls_co_writer": false
+          }
+        ],
+        "triggers": {
+          "BK_APPROVAL.BT_APPROVE": [
+            {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "OM_SHARED.SHOW_MESSAGE",
+              "target_type": "ROUTINE_REFERENCE",
+              "type": "CALLS"
+            },
+            {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "OM_SHARED.SHOW_MESSAGE",
+              "target_type": "ROUTINE_REFERENCE",
+              "type": "CALLS"
+            },
+            {
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "COMMIT",
+              "target_type": "BUILTIN",
+              "type": "COMMITS"
+            },
+            {
+              "level": "INFERENCE",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "LOM_ORDER_API.TRANSITION_STATUS",
+              "target_type": "SUBPROGRAM_BODY",
+              "type": "DUPLICATES_LOGIC"
+            },
+            {
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "EXECUTE_QUERY",
+              "target_type": "BUILTIN",
+              "type": "EXECUTES_QUERY"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "AL_CONFIRM_APPROVE",
+              "target_type": "ALERT",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "SYSTEM.ALERT_BUTTON",
+              "target_type": "BIND_REFERENCE",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "GLOBAL.G_USER",
+              "target_type": "GLOBAL_REFERENCE",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "BK_APPROVAL.APPROVAL_ID",
+              "target_type": "ITEM",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "BK_APPROVAL.ORDER_ID",
+              "target_type": "ITEM",
+              "type": "REFERENCES"
+            },
+            {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "RESOLVED_TO_DATABASE_OBJECT",
+              "resolved_target": "LOM_ORDERS",
+              "target": "LOM_ORDERS",
+              "target_type": "TABLE_OR_VIEW_REFERENCE",
+              "type": "WRITES"
+            }
+          ],
+          "BK_APPROVAL.BT_REJECT": [
+            {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "OM_SHARED.SHOW_MESSAGE",
+              "target_type": "ROUTINE_REFERENCE",
+              "type": "CALLS"
+            },
+            {
+              "explorer_resolution": {
+                "resolution": "UNRESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "OM_SHARED.SHOW_MESSAGE",
+              "target_type": "ROUTINE_REFERENCE",
+              "type": "CALLS"
+            },
+            {
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "COMMIT",
+              "target_type": "BUILTIN",
+              "type": "COMMITS"
+            },
+            {
+              "level": "INFERENCE",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "LOM_ORDER_API.TRANSITION_STATUS",
+              "target_type": "SUBPROGRAM_BODY",
+              "type": "DUPLICATES_LOGIC"
+            },
+            {
+              "level": "FACT",
+              "resolution": "SYMBOLIC_REFERENCE",
+              "resolved_target": "",
+              "target": "EXECUTE_QUERY",
+              "target_type": "BUILTIN",
+              "type": "EXECUTES_QUERY"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "AL_CONFIRM_REJECT",
+              "target_type": "ALERT",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "SYSTEM.ALERT_BUTTON",
+              "target_type": "BIND_REFERENCE",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "GLOBAL.G_USER",
+              "target_type": "GLOBAL_REFERENCE",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "BK_APPROVAL.APPROVAL_ID",
+              "target_type": "ITEM",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "BK_APPROVAL.COMMENTS",
+              "target_type": "ITEM",
+              "type": "REFERENCES"
+            },
+            {
+              "level": "FACT",
+              "resolution": "",
+              "resolved_target": "",
+              "target": "BK_APPROVAL.ORDER_ID",
+              "target_type": "ITEM",
+              "type": "REFERENCES"
+            },
+            {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "RESOLVED_TO_DATABASE_OBJECT",
+              "resolved_target": "LOM_ORDERS",
+              "target": "LOM_ORDERS",
+              "target_type": "TABLE_OR_VIEW_REFERENCE",
+              "type": "WRITES"
+            }
+          ]
+        }
+      },
+      "note": "Four Forms plus DDL/packages/sequences/triggers/views, without seed/ (Case B).",
+      "parser_visual": {
+        "APPROVALS": {
+          "blocks_across_canvases": {},
+          "canvases": [
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_APPROVAL",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_APPROVAL"
+            }
+          ],
+          "canvases_with_undeclared_window": [],
+          "items": {
+            "canvas_not_declared": [],
+            "tab_page_not_declared_on_canvas": [],
+            "total": 10,
+            "visible_origin": {
+              "PARSER_DEFAULT": 10
+            },
+            "with_tab_page": 0,
+            "without_canvas": []
+          },
+          "window_canvas_conflicts": [],
+          "windows": [
+            {
+              "name": "WIN_APPROVAL",
+              "primary_canvas": "",
+              "primary_canvas_declared_in_module": null
+            }
+          ],
+          "windows_without_primary_canvas": [
+            "WIN_APPROVAL"
+          ]
+        },
+        "CUSTOMERS": {
+          "blocks_across_canvases": {},
+          "canvases": [
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_CUSTOMER",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_CUSTOMER"
+            }
+          ],
+          "canvases_with_undeclared_window": [],
+          "items": {
+            "canvas_not_declared": [],
+            "tab_page_not_declared_on_canvas": [],
+            "total": 9,
+            "visible_origin": {
+              "PARSER_DEFAULT": 9
+            },
+            "with_tab_page": 0,
+            "without_canvas": []
+          },
+          "window_canvas_conflicts": [],
+          "windows": [
+            {
+              "name": "WIN_CUSTOMER",
+              "primary_canvas": "",
+              "primary_canvas_declared_in_module": null
+            }
+          ],
+          "windows_without_primary_canvas": [
+            "WIN_CUSTOMER"
+          ]
+        },
+        "INVENTORY": {
+          "blocks_across_canvases": {},
+          "canvases": [
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_INVENTORY",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_INVENTORY"
+            }
+          ],
+          "canvases_with_undeclared_window": [],
+          "items": {
+            "canvas_not_declared": [],
+            "tab_page_not_declared_on_canvas": [],
+            "total": 11,
+            "visible_origin": {
+              "PARSER_DEFAULT": 11
+            },
+            "with_tab_page": 0,
+            "without_canvas": []
+          },
+          "window_canvas_conflicts": [],
+          "windows": [
+            {
+              "name": "WIN_INVENTORY",
+              "primary_canvas": "",
+              "primary_canvas_declared_in_module": null
+            }
+          ],
+          "windows_without_primary_canvas": [
+            "WIN_INVENTORY"
+          ]
+        },
+        "ORDERS": {
+          "blocks_across_canvases": {},
+          "canvases": [
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_ORDER",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_ORDER"
+            }
+          ],
+          "canvases_with_undeclared_window": [],
+          "items": {
+            "canvas_not_declared": [],
+            "tab_page_not_declared_on_canvas": [],
+            "total": 26,
+            "visible_origin": {
+              "PARSER_DEFAULT": 26
+            },
+            "with_tab_page": 0,
+            "without_canvas": []
+          },
+          "window_canvas_conflicts": [],
+          "windows": [
+            {
+              "name": "WIN_ORDER",
+              "primary_canvas": "",
+              "primary_canvas_declared_in_module": null
+            }
+          ],
+          "windows_without_primary_canvas": [
+            "WIN_ORDER"
+          ]
+        }
+      },
+      "sources": {
+        "database": [
+          "examples/modernization-lab/database/ddl/lom_approvals.sql",
+          "examples/modernization-lab/database/ddl/lom_audit_log.sql",
+          "examples/modernization-lab/database/ddl/lom_customers.sql",
+          "examples/modernization-lab/database/ddl/lom_lookup_tables.sql",
+          "examples/modernization-lab/database/ddl/lom_order_lines.sql",
+          "examples/modernization-lab/database/ddl/lom_orders.sql",
+          "examples/modernization-lab/database/ddl/lom_products_inventory.sql",
+          "examples/modernization-lab/database/ddl/lom_shipments.sql",
+          "examples/modernization-lab/database/packages/lom_approval_api.pkb",
+          "examples/modernization-lab/database/packages/lom_approval_api.pks",
+          "examples/modernization-lab/database/packages/lom_audit_api.pkb",
+          "examples/modernization-lab/database/packages/lom_audit_api.pks",
+          "examples/modernization-lab/database/packages/lom_customer_api.pkb",
+          "examples/modernization-lab/database/packages/lom_customer_api.pks",
+          "examples/modernization-lab/database/packages/lom_inventory_api.pkb",
+          "examples/modernization-lab/database/packages/lom_inventory_api.pks",
+          "examples/modernization-lab/database/packages/lom_order_api.pkb",
+          "examples/modernization-lab/database/packages/lom_order_api.pks",
+          "examples/modernization-lab/database/sequences/lom_sequences.sql",
+          "examples/modernization-lab/database/views/lom_views.sql"
+        ],
+        "forms": [
+          "examples/modernization-lab/forms/xml/APPROVALS.xml",
+          "examples/modernization-lab/forms/xml/CUSTOMERS.xml",
+          "examples/modernization-lab/forms/xml/INVENTORY.xml",
+          "examples/modernization-lab/forms/xml/ORDERS.xml"
+        ]
+      }
+    },
+    "showcase": {
+      "blueprint": {
+        "canvas_attributes_persisted": [],
+        "database_bridge_edges": 0,
+        "edges_by_type_and_level": {
+          "CALLS FACT": 10,
+          "COMMITS FACT": 2,
+          "CONTAINS FACT": 163,
+          "CONTAINS INFERENCE": 7,
+          "DEPENDS_ON FACT": 2,
+          "EXECUTES_QUERY FACT": 10,
+          "INVOKES_BUILTIN FACT": 130,
+          "NAVIGATES_TO FACT": 22,
+          "READS FACT": 8,
+          "REFERENCES FACT": 240,
+          "REFERENCES INFERENCE": 7,
+          "RELATES FACT": 2,
+          "RUNS FACT": 1,
+          "USES FACT": 4,
+          "USES_LOV FACT": 8,
+          "USES_PROGRAM_UNIT FACT": 3,
+          "WRITES FACT": 2
+        },
+        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "entities_by_type": {
+          "ALERT": 4,
+          "APPLICATION": 1,
+          "BIND_REFERENCE": 10,
+          "BLOCK": 5,
+          "BUILTIN": 40,
+          "BUSINESS_RULE": 7,
+          "CANVAS": 5,
+          "FORM": 1,
+          "GLOBAL_REFERENCE": 3,
+          "INTEGRATION_POINT": 2,
+          "ITEM": 78,
+          "KEY_REFERENCE": 3,
+          "LOV": 4,
+          "PACKAGE_REFERENCE": 2,
+          "PARAMETER": 4,
+          "PROGRAM_UNIT": 4,
+          "RECORD_GROUP": 3,
+          "RELATION": 2,
+          "REPORT": 1,
+          "ROUTINE_REFERENCE": 7,
+          "SEQUENCE_REFERENCE": 1,
+          "TABLE_OR_VIEW_REFERENCE": 7,
+          "TIMER_REFERENCE": 1,
+          "TRIGGER": 55,
+          "WINDOW": 2
+        },
+        "entities_without_finding_by_type": {
+          "APPLICATION": 1,
+          "BUILTIN": 40,
+          "BUSINESS_RULE": 7
+        },
+        "findings": 204,
+        "frontiers_outside_graph": {
+          "finding_question:runtime_target_unresolved": 4,
+          "risk_factor:dynamic_sql": 2
+        },
+        "hotspots_by_type": {
+          "api_bypass": 0,
+          "duplicated_rules": 0,
+          "global_state": 0
+        },
+        "reference_resolutions": {
+          "BIND_REFERENCE NONE": 10,
+          "GLOBAL_REFERENCE NONE": 3,
+          "KEY_REFERENCE NONE": 3,
+          "PACKAGE_REFERENCE SYMBOLIC_REFERENCE": 2,
+          "ROUTINE_REFERENCE SYMBOLIC_REFERENCE": 7,
+          "SEQUENCE_REFERENCE SYMBOLIC_REFERENCE": 1,
+          "TABLE_OR_VIEW_REFERENCE SYMBOLIC_REFERENCE": 7,
+          "TIMER_REFERENCE NONE": 1
+        },
+        "schema_version": "blueprint/1",
+        "tab_page_entities": 0,
+        "visual_edges": {
+          "FORM CONTAINS CANVAS": 5,
+          "FORM CONTAINS WINDOW": 2,
+          "ITEM REFERENCES CANVAS": 73
+        },
+        "window_attributes_persisted": []
+      },
+      "case": {
+        "local_program_units": [
+          "F_FORMATA_PRECO",
+          "PKG_UTIL",
+          "P_CALC_TOTAL_ITENS"
+        ],
+        "outgoing": [
+          {
+            "explorer_resolution": {
+              "resolution": "UNRESOLVED"
+            },
+            "level": "FACT",
+            "resolution": "SYMBOLIC_REFERENCE",
+            "resolved_target": "",
+            "target": "PKG_UTIL.P_MSG",
+            "target_type": "ROUTINE_REFERENCE",
+            "type": "CALLS"
+          },
+          {
+            "level": "FACT",
+            "resolution": "",
+            "resolved_target": "",
+            "target": "P_CALC_TOTAL_ITENS",
+            "target_type": "PROGRAM_UNIT",
+            "type": "USES_PROGRAM_UNIT"
+          }
+        ],
+        "risk_factor_titles": [
+          "Trigger point: POST-COMMIT",
+          "Unresolved local calls"
+        ],
+        "source_text": "BEGIN\n  P_CALC_TOTAL_ITENS;\n  PKG_UTIL.P_MSG('Alteracoes gravadas por ' || PKG_UTIL.F_USUARIO || '.');\nEND;",
+        "unit": "DEMO_ALL_ELEMENTS / POST-COMMIT"
+      },
+      "note": "DEMO_ALL_ELEMENTS alone, as a single-module project (Case A).",
+      "parser_visual": {
+        "DEMO_ALL_ELEMENTS": {
+          "blocks_across_canvases": {
+            "BK_PRODUTO": [
+              "CV_MAIN",
+              "CV_TABS"
+            ],
+            "CONTROL": [
+              "CV_CONFIRMA",
+              "CV_REAJUSTE",
+              "CV_TABS",
+              "CV_TOOLBAR"
+            ]
+          },
+          "canvases": [
+            {
+              "canvas_type": "Horizontal Toolbar",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_TOOLBAR",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_MAIN",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Tab",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_TABS",
+              "tab_pages": [
+                "TAB_GERAL",
+                "TAB_ITENS",
+                "TAB_COMERCIAL",
+                "TAB_AUDITORIA",
+                "TAB_RESUMO"
+              ],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Stacked",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_CONFIRMA",
+              "tab_pages": [],
+              "visible": false,
+              "visible_origin": "DECLARED",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_REAJUSTE",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_REAJUSTE"
+            }
+          ],
+          "canvases_with_undeclared_window": [],
+          "items": {
+            "canvas_not_declared": [],
+            "tab_page_not_declared_on_canvas": [],
+            "total": 78,
+            "visible_origin": {
+              "DECLARED": 1,
+              "PARSER_DEFAULT": 77
+            },
+            "with_tab_page": 28,
+            "without_canvas": [
+              "BK_PRODUTO.FLAG_CTRL",
+              "BK_ITENS.FK_PRODUTO_ID",
+              "BK_AUDIT.ID_AUDIT",
+              "BK_AUDIT.FK_PRODUTO_ID",
+              "BK_RESUMO.ID_CATEGORIA"
+            ]
+          },
+          "window_canvas_conflicts": [],
+          "windows": [
+            {
+              "name": "WIN_MAIN",
+              "primary_canvas": "CV_MAIN",
+              "primary_canvas_declared_in_module": true
+            },
+            {
+              "name": "WIN_REAJUSTE",
+              "primary_canvas": "CV_REAJUSTE",
+              "primary_canvas_declared_in_module": true
+            }
+          ],
+          "windows_without_primary_canvas": []
+        }
+      },
+      "sources": {
+        "database": [],
+        "forms": [
+          "tests/fixtures/showcase/module.xml"
+        ]
+      }
+    },
+    "visual_hierarchy": {
+      "blueprint": {
+        "canvas_attributes_persisted": [],
+        "database_bridge_edges": 0,
+        "edges_by_type_and_level": {
+          "CONTAINS FACT": 35,
+          "INVOKES_BUILTIN FACT": 5,
+          "OPENS_FORM FACT": 3,
+          "REFERENCES FACT": 14
+        },
+        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "entities_by_type": {
+          "APPLICATION": 1,
+          "BLOCK": 3,
+          "BUILTIN": 3,
+          "CANVAS": 8,
+          "FORM": 2,
+          "FORM_REFERENCE": 1,
+          "ITEM": 14,
+          "TRIGGER": 5,
+          "WINDOW": 3
+        },
+        "entities_without_finding_by_type": {
+          "APPLICATION": 1,
+          "BUILTIN": 3
+        },
+        "findings": 36,
+        "frontiers_outside_graph": {
+          "finding_question:runtime_target_unresolved": 1,
+          "risk_factor:cross_module_unresolved": 1,
+          "risk_factor:dynamic_sql": 1
+        },
+        "hotspots_by_type": {
+          "api_bypass": 0,
+          "duplicated_rules": 0,
+          "global_state": 0
+        },
+        "reference_resolutions": {
+          "FORM_REFERENCE SYMBOLIC_REFERENCE": 1
+        },
+        "schema_version": "blueprint/1",
+        "tab_page_entities": 0,
+        "visual_edges": {
+          "FORM CONTAINS CANVAS": 8,
+          "FORM CONTAINS WINDOW": 3,
+          "ITEM REFERENCES CANVAS": 12
+        },
+        "window_attributes_persisted": []
+      },
+      "note": "Positive and negative window/canvas/tab/item declarations, OPEN_FORM and dynamic SQL frontiers.",
+      "parser_visual": {
+        "SCREENS": {
+          "blocks_across_canvases": {
+            "BK_SPLIT": [
+              "CV_MAIN",
+              "CV_TABS"
+            ],
+            "CTL": [
+              "CV_HIDDEN",
+              "CV_MAIN",
+              "CV_NOT_DECLARED",
+              "CV_SHARED"
+            ]
+          },
+          "canvases": [
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_MAIN",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Stacked",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_SHARED",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Tab",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_TABS",
+              "tab_pages": [
+                "TAB_ONE",
+                "TAB_TWO"
+              ],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Stacked",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_HIDDEN",
+              "tab_pages": [],
+              "visible": false,
+              "visible_origin": "DECLARED",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_VISIBLE_DECLARED",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "DECLARED",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "PARSER_DEFAULT",
+              "name": "CV_DEFAULTS",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_MAIN"
+            },
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_ORPHAN",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": false,
+              "window_name": "WIN_NOT_DECLARED"
+            }
+          ],
+          "canvases_with_undeclared_window": [
+            "CV_ORPHAN"
+          ],
+          "items": {
+            "canvas_not_declared": [
+              {
+                "canvas": "CV_NOT_DECLARED",
+                "item": "CTL.GHOST"
+              }
+            ],
+            "tab_page_not_declared_on_canvas": [
+              {
+                "canvas": "CV_TABS",
+                "item": "BK_SPLIT.LOST_TAB_FIELD",
+                "tab_page": "TAB_UNDECLARED"
+              }
+            ],
+            "total": 13,
+            "visible_origin": {
+              "PARSER_DEFAULT": 13
+            },
+            "with_tab_page": 3,
+            "without_canvas": [
+              "CTL.NO_CANVAS"
+            ]
+          },
+          "window_canvas_conflicts": [
+            {
+              "canvas_window_name": "WIN_MAIN",
+              "primary_canvas": "CV_SHARED",
+              "window": "WIN_SIDE"
+            }
+          ],
+          "windows": [
+            {
+              "name": "WIN_MAIN",
+              "primary_canvas": "CV_MAIN",
+              "primary_canvas_declared_in_module": true
+            },
+            {
+              "name": "WIN_SIDE",
+              "primary_canvas": "CV_SHARED",
+              "primary_canvas_declared_in_module": true
+            }
+          ],
+          "windows_without_primary_canvas": []
+        },
+        "SCREENS_PEER": {
+          "blocks_across_canvases": {},
+          "canvases": [
+            {
+              "canvas_type": "Content",
+              "canvas_type_origin": "DECLARED",
+              "name": "CV_PEER",
+              "tab_pages": [],
+              "visible": true,
+              "visible_origin": "PARSER_DEFAULT",
+              "window_declared_in_module": true,
+              "window_name": "WIN_PEER"
+            }
+          ],
+          "canvases_with_undeclared_window": [],
+          "items": {
+            "canvas_not_declared": [],
+            "tab_page_not_declared_on_canvas": [],
+            "total": 1,
+            "visible_origin": {
+              "PARSER_DEFAULT": 1
+            },
+            "with_tab_page": 0,
+            "without_canvas": []
+          },
+          "window_canvas_conflicts": [],
+          "windows": [
+            {
+              "name": "WIN_PEER",
+              "primary_canvas": "CV_PEER",
+              "primary_canvas_declared_in_module": true
+            }
+          ],
+          "windows_without_primary_canvas": []
+        }
+      },
+      "sources": {
+        "database": [],
+        "forms": [
+          "tests/fixtures/ecosystem/visual_hierarchy/SCREENS.xml",
+          "tests/fixtures/ecosystem/visual_hierarchy/SCREENS_PEER.xml"
+        ]
+      }
+    }
+  },
+  "purpose": "Measured 2.2 facts for the FormsLang 2.3 ecosystem/1 contract. Synthetic fixtures only; no runtime claim.",
+  "schema": "ecosystem-inventory/1"
+}

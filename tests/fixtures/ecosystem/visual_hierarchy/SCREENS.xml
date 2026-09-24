@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FormsLang 2.3 phase 1: positive and negative visual-hierarchy declarations.
+  Synthetic fixture; no customer source. Each construct below exists so a test
+  can pin what the 2.2 engine records for it, and what it does not.
+
+  WIN_MAIN / CV_MAIN      window and content canvas that agree on both sides
+  WIN_SIDE / CV_SHARED    conflict: CV_SHARED says WIN_MAIN, WIN_SIDE says it is
+                          its primary canvas
+  CV_TABS                 tab canvas with two declared tabs; one item names a
+                          tab (TAB_UNDECLARED) that the canvas does not declare
+  CV_HIDDEN               Visible="false" declared
+  CV_VISIBLE_DECLARED     Visible="true" and CanvasType="Content" declared
+  CV_DEFAULTS             neither Visible nor CanvasType declared
+  CV_ORPHAN               WindowName names a window that is not declared
+  BK_SPLIT                one block whose items sit on two canvases
+  CTL.NO_CANVAS           item without CanvasName
+  CTL.GHOST               item whose CanvasName is not a declared canvas
+  BT_PEER / BT_DYNAMIC    literal OPEN_FORM to a supplied form and a computed one
+  BT_MISSING              literal CALL_FORM to a form that is not supplied
+  BT_DDL                  dynamic SQL through FORMS_DDL
+  SCREENS <-> SCREENS_PEER  literal OPEN_FORM cycle between two forms
+-->
+<Module xmlns="http://xmlns.oracle.com/Forms">
+  <FormModule Name="SCREENS" Title="Screens">
+    <Block Name="BK_SPLIT" DatabaseBlock="false">
+      <Item Name="HEADER_FIELD" ItemType="Text Item" CanvasName="CV_MAIN"/>
+      <Item Name="DETAIL_FIELD" ItemType="Text Item" CanvasName="CV_TABS" TabPageName="TAB_ONE"/>
+      <Item Name="SECOND_TAB_FIELD" ItemType="Text Item" CanvasName="CV_TABS" TabPageName="TAB_TWO"/>
+      <Item Name="LOST_TAB_FIELD" ItemType="Text Item" CanvasName="CV_TABS" TabPageName="TAB_UNDECLARED"/>
+    </Block>
+    <Block Name="CTL" DatabaseBlock="false">
+      <Item Name="NO_CANVAS" ItemType="Text Item"/>
+      <Item Name="GHOST" ItemType="Text Item" CanvasName="CV_NOT_DECLARED"/>
+      <Item Name="HIDDEN_FIELD" ItemType="Text Item" CanvasName="CV_HIDDEN"/>
+      <Item Name="SHARED_FIELD" ItemType="Text Item" CanvasName="CV_SHARED"/>
+      <Item Name="FORM_NAME" ItemType="Text Item" CanvasName="CV_MAIN"/>
+      <Item Name="BT_PEER" ItemType="Push Button" Label="Peer" CanvasName="CV_MAIN">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN OPEN_FORM('SCREENS_PEER'); END;"/>
+      </Item>
+      <Item Name="BT_DYNAMIC" ItemType="Push Button" Label="Dynamic" CanvasName="CV_MAIN">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN OPEN_FORM(:CTL.FORM_NAME); END;"/>
+      </Item>
+      <Item Name="BT_MISSING" ItemType="Push Button" Label="Missing" CanvasName="CV_MAIN">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN CALL_FORM('NOT_SUPPLIED'); END;"/>
+      </Item>
+      <Item Name="BT_DDL" ItemType="Push Button" Label="DDL" CanvasName="CV_MAIN">
+        <Trigger Name="WHEN-BUTTON-PRESSED" TriggerText="BEGIN FORMS_DDL('DELETE FROM ' || :CTL.FORM_NAME); END;"/>
+      </Item>
+    </Block>
+    <Canvas Name="CV_MAIN" WindowName="WIN_MAIN" CanvasType="Content"/>
+    <Canvas Name="CV_SHARED" WindowName="WIN_MAIN" CanvasType="Stacked"/>
+    <Canvas Name="CV_TABS" WindowName="WIN_MAIN" CanvasType="Tab">
+      <TabPage Name="TAB_ONE" Label="One"/>
+      <TabPage Name="TAB_TWO" Label="Two"/>
+    </Canvas>
+    <Canvas Name="CV_HIDDEN" WindowName="WIN_MAIN" CanvasType="Stacked" Visible="false"/>
+    <Canvas Name="CV_VISIBLE_DECLARED" WindowName="WIN_MAIN" CanvasType="Content" Visible="true"/>
+    <Canvas Name="CV_DEFAULTS" WindowName="WIN_MAIN"/>
+    <Canvas Name="CV_ORPHAN" WindowName="WIN_NOT_DECLARED" CanvasType="Content"/>
+    <Window Name="WIN_MAIN" PrimaryCanvas="CV_MAIN"/>
+    <Window Name="WIN_SIDE" PrimaryCanvas="CV_SHARED"/>
+  </FormModule>
+</Module>
