@@ -1545,3 +1545,157 @@ Every limitation recorded for 2.0.0 still applies. Forms2XML is required, and
 binaries are not semantically parsed. Generation produces independent module
 applications. Offline SQLcl validation is structural evidence, not runtime
 equivalence. Every figure here comes from synthetic fixtures.
+
+## 2.2.0 verification (2026-09-24, America/Sao_Paulo)
+
+FormsLang 2.2.0 is published. This section records the release evidence; the
+2.1.0 and 2.0.0 sections above and every earlier section are unchanged.
+
+Release: <https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.2.0>.
+Annotated tag `v2.2.0` (tag object `66e7e21`) targets
+`28d100daba40e2f62ea1c2405f8afb1ddf1e737e`. `main` was fast-forwarded to that
+commit (PR #15), so the tested candidate, the installer build and the release
+commit are the same SHA. The tag was created once and is not moved or
+recreated.
+
+The feature work merged in PR #14 (merge commit `6e3f601`, whose tree is
+identical to the reviewed head `27e84e4`). `main` push CI on `6e3f601`, run
+[35988204053](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35988204053),
+was 13/13 green on the first attempt before release preparation started. The
+release candidate adds only the version bump, the changelog, the public docs
+and the installed-product visual smoke; the only product-code change is the
+version string.
+
+### Exact-candidate CI (`28d100d`)
+
+PR CI run [35992029685](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35992029685):
+**13/13 green**.
+
+| Job | Result |
+|---|---|
+| pytest ubuntu py3.10 / 3.11 / 3.12 / 3.13 | 1824 passed, 5 skipped each |
+| pytest windows py3.10 / 3.11 / 3.13 | 1829 passed each (26:07 / 37:43 / 25:52) |
+| pytest windows py3.12 | 1829 passed (24:44), attempt 2, see below |
+| ruff, SQLcl `apex validate` (no database), deterministic export, workbench and corporate browser acceptance (Edge) | success, attempt 1 |
+
+Attempt 1 of the Windows py3.12 job **failed** after 41 minutes: 3 failed,
+1826 passed.
+
+- `test_project_descriptor_concurrency.py::test_concurrent_descriptor_readers_and_publication`
+  and `::test_descriptor_publication_with_other_process_readers` failed with
+  `BEGIN IMMEDIATE` → `sqlite3.OperationalError: database is locked` →
+  `ProjectBusy` (`project_store.py:179`/`204`).
+- `test_project_http.py::test_analysis_is_accepted_then_persisted` got an HTTP
+  500 while polling a running analysis job. The captured log only says
+  *Project request failed*, so the underlying exception is not proven.
+
+These tests belong to the pre-existing Windows SQLite contention family. The
+descriptor-concurrency tests had failed before on `2c977eb`, `903724f`,
+`abf6d0e`, `e252641` and `e19477d`, and job-polling 500s in
+`test_project_http.py` on `903724f` and `e252641`. `main` `6e3f601`, with the
+same product code, had passed all Windows jobs. Only that job was re-run once
+on the same SHA, and it passed. The failure was reported on PR #15 before the
+re-run. `project_store` timeouts were not changed.
+
+`main` push CI on the same commit: run
+[35999045429](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35999045429),
+**13/13 green** on the first attempt; the Windows pytest jobs took 24–36
+minutes.
+
+Installer acceptance run
+[35992028238](https://github.com/B2DEV-TECH/FormsLang/actions/runs/35992028238)
+on `28d100d` (the build job checked out `28d100daba40…`) passed with
+**baseline 2.1.0 → 2.2.0**:
+
+- `PASS: nsis clean install, upgrade 2.1.0 -> 2.2.0, project workflow, uninstall and reinstall with preserved state`;
+- `PASS: msi clean install, upgrade 2.1.0 -> 2.2.0, project workflow, uninstall and reinstall with preserved state`;
+- in both jobs, `PASS: installed desktop creates its native window and starts its engine`;
+- in both jobs, `PASS: installed engine serves the 2.2 journey Overview -> Start Here -> Hotspot -> System Map -> Review -> Module 360 -> Reports`.
+
+The last line is new in 2.2 (`examples/verify/installed_visual_check.py`). It
+starts the **installed** `formslang-engine.exe` on the modernization lab and
+checks that it reports the candidate version. It then drives headless Edge
+through the showcase journey. The result was 24/24 checks in each job.
+
+Published assets. These are the `installers-2.2.0` artifact of that run; nothing
+was rebuilt for publication:
+
+| Asset | Size (bytes) | SHA-256 |
+|---|---|---|
+| `FormsLang_2.2.0_x64-setup.exe` | 14,768,223 | `71ca7db1686535f77390cd9dd28d51edaf921563bc092264280e5f8114c766f0` |
+| `FormsLang_2.2.0_x64_en-US.msi` | 15,876,096 | `9970b49c557e09fe455a6550f3c6620d5d60c0761be1b34d753cbc467af2d457` |
+
+The EXE reports FileVersion and ProductVersion 2.2.0; the MSI reports
+ProductVersion 2.2.0. GitHub's asset digests match these hashes. An anonymous
+download of both assets returned HTTP 200 with the same bytes, and the latest
+release is `v2.2.0`. The installers are unsigned, as earlier releases were.
+
+### Local regression (Windows 11 Pro 10.0.26200, Python 3.12)
+
+- `python -m pytest -q` on the candidate: **1824 passed, 5 skipped** in
+  826 s.
+- `ruff check .` clean, and `git diff --check` clean.
+- Corporate project browser acceptance (Edge): **103/103**, no browser
+  exceptions.
+- Report determinism with the 2.2 figures: 4 analyzed projects × 11 formats
+  gave 44 exports. Each export was byte-identical across 2 exports in each of
+  2 separate server processes. 6 of them carry the static SVG figures.
+- The frozen modernization benchmark is unchanged. All 24 blobs under
+  `benchmark/baselines/` plus `expected/modernization-ground-truth.json` have
+  the same Git blob hashes at `v2.2.0` as at `v2.1.0`.
+
+### Backward compatibility with real 2.1.0 projects
+
+Five projects were created by a `v2.1.0` checkout, whose browser acceptance
+passed 76/76 checks. They cover three analyzed CURRENT projects, the corporate
+assessment and an unanalyzed cancellation project. The fixture leaves those
+last two INCOMPLETE on purpose.
+
+The run was in two steps:
+
+1. `v2.1.0` itself reopened the projects as a control and recorded each
+   freshness verdict.
+2. 2.2.0 opened and drove the same projects over HTTP.
+
+The 2.2.0 step covered:
+
+- the summary and a freshness job;
+- overview, inventory, the review queue, the System Map, search, generation
+  overview and assessment;
+- the 2.2 routes: visual overview, hotspots, the estate map, and Module 360
+  opened from a finding;
+- every report format and the package.
+
+Result: **95/95 checks passed**.
+
+- Every freshness verdict equals 2.1.0's, and the analysis revision is
+  unchanged.
+- The executive and technical reports carry exactly the figures the evidence
+  supports: the matrix only with hotspots, the lane figure only with
+  relationships. None contains `foreignObject`.
+- No historical row changed in any table, and the descriptors and existing
+  files are unchanged. The only new row per project is the `project_job` row
+  of the freshness job the check itself ran.
+
+An earlier attempt at this check reopened copied project folders. It was
+discarded because the project locators still pointed at the originals. The
+result above comes from a fresh, uncopied generation.
+
+### Known limitations and follow-ups (not blockers)
+
+- The Windows SQLite contention failures described above can recur on any
+  Windows run.
+- Windows pytest duration varies widely on hosted runners (24–41 minutes).
+- Installers are not code-signed.
+- Deliberately deferred: a review funnel, distribution bars and a
+  dependency/path explorer.
+- Inherited UI debt:
+  - the Review layout at 390px;
+  - an undefined `--amber` colour token;
+  - the System Map pan/zoom controls overlap the "Reached from focus" column
+    header in the focus view.
+
+Every limitation recorded for 2.1.0 and 2.0.0 still applies. The 2.2 views
+read the saved assessment and add no analysis claim. Offline SQLcl validation
+is structural evidence, not runtime equivalence. Every figure here comes from
+synthetic fixtures.
