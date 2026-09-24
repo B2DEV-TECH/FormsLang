@@ -1092,9 +1092,25 @@ function visualDistribution(dist, labels = {}) {
   return entries.length ? `<dl class="visual-drawer-facts">${entries.map(([k, v]) => `<div><dt>${esc(labels[k] || k)}</dt><dd>${Number(v)}</dd></div>`).join('')}</dl>` : '<p class="project-muted">No findings on this module.</p>';
 }
 
+// Executive names for the component types a module folds in; Technical keeps the type code.
+const visualComponentTerms = {
+  ALERT: 'Alert messages', BIND_REFERENCE: 'References to screen values', BLOCK: 'Data blocks', CANVAS: 'Screen layouts',
+  ITEM: 'Fields', LOV: 'Pick lists', LOV_REFERENCE: 'Pick list references', PARAMETER: 'Parameters', PROGRAM_UNIT: 'Local procedures',
+  RECORD_GROUP: 'Lookup data sets', TRIGGER: 'Event handlers', WINDOW: 'Windows', GLOBAL_REFERENCE: 'Shared global value references',
+  FORM_REFERENCE: 'References to other modules', PACKAGE_SPEC: 'Service interfaces', PACKAGE_BODY: 'Service implementations',
+  PACKAGE_SUBPROGRAM: 'Service operations', SUBPROGRAM_BODY: 'Operation implementations', CONSTANT_DECLARATION: 'Constants',
+  BUSINESS_RULE: 'Business-rule candidates', INTEGRATION_POINT: 'Integration points',
+};
+function visualComponentLabel(type) {
+  const code = String(type || '');
+  if (visualMode() !== 'executive') return esc(code);
+  const text = visualComponentTerms[code] || code.charAt(0) + code.slice(1).toLowerCase().replaceAll('_', ' ');
+  return `<span title="${esc(code)}">${esc(text)}</span>`;
+}
+
 function visualModuleBody(d) {
   const n = d.node || {}, review = n.review_summary || {}, unresolved = n.unresolved || n.layer === 'UNRESOLVED';
-  const composition = (d.composition || []).map(c => `<li>${esc(c.type)} <b>${Number(c.count)}</b></li>`).join('');
+  const composition = (d.composition || []).map(c => `<li>${visualComponentLabel(c.type)} <b>${Number(c.count)}</b></li>`).join('');
   const identity = `<p>${visualStatus(unresolved ? 'UNRESOLVED' : 'OBSERVED')} ${esc(visualLabel(n.presentation_type) || n.type)}</p><dl class="visual-drawer-facts"><div><dt>Lane</dt><dd>${esc(systemMapLaneLabel(n.lane))}</dd></div><div class="visual-technical-only"><dt>Module</dt><dd>${esc(d.module || '')}</dd></div><div><dt>Components folded in</dt><dd>${Number(n.members) || 0}</dd></div></dl>${composition ? `<h4>Composition</h4><ul class="visual-drawer-list visual-composition">${composition}</ul>` : ''}`;
   const architecture = `<p>${Number(n.fan_in)} incoming · ${Number(n.fan_out)} outgoing relationships</p><div class="visual-two"><div>${visualNeighbourList(d.neighbours?.inbound, 'inbound')}</div><div>${visualNeighbourList(d.neighbours?.outbound, 'outbound')}</div></div>`;
   const hotspots = (d.hotspots || []).map(h => `<li>${visualStatus('CANDIDATE')} <b>${esc(h.title)}</b> <span>${esc(h.severity)} · ${esc(h.statement)}</span></li>`).join('');
@@ -1164,17 +1180,42 @@ async function visualLoadHotspots() {
   if (projectUI.view === 'hotspots') visualRenderHotspots();
 }
 
+// Executive wording for hotspot evidence. Only labels change: the keys, values and
+// signal codes are the saved evidence, and Technical mode shows them exactly.
+const visualEvidenceKeys = {
+  table: 'Data object', potential_existing_api_owners: 'Shared services that also change it',
+  unit_guard_strength: 'Safeguards in the module logic', co_writer_guard_strength: 'Safeguards in the shared service',
+  guard_gap: 'Safeguard difference', unit_calls_co_writer: 'Module logic uses that service',
+  engine_signal: 'What the engine observed', database_subprogram: 'Shared service', match_kinds: 'Kind of similarity',
+  occurrences: 'Occurrences', modules: 'Application modules', units: 'Places in module logic',
+  variable: 'Shared global value', observed_writers: 'Modules that set it', observed_readers: 'Modules that read it',
+};
+const visualSignalTerms = {
+  DIRECT_DML_BYPASSES_API: 'Direct table access bypasses a related shared service',
+  LOGIC_DUPLICATED_QUERY: 'Same query structure as a shared service',
+  LOGIC_DUPLICATED_FORMULA: 'Same calculation structure as a shared service',
+  LOGIC_DUPLICATED_PREDICATE: 'Same condition structure as a shared service',
+};
+function visualEvidenceKey(key) {
+  return (visualMode() === 'executive' && visualEvidenceKeys[key]) || String(key).replaceAll('_', ' ');
+}
+function visualEvidenceItem(value) {
+  if (visualMode() !== 'executive') return esc(String(value));
+  if (value === true || value === false) return value ? 'Yes' : 'No';
+  const term = visualSignalTerms[value];
+  return term ? `<span title="${esc(value)}">${esc(term)}</span>` : esc(String(value));
+}
 function visualEvidenceValue(value) {
   if (value && typeof value === 'object' && Array.isArray(value.values)) {
     const more = value.total > value.values.length ? ` (+${Number(value.total) - value.values.length} more)` : '';
-    return `${value.values.map(esc).join(', ')}${more}`;
+    return `${value.values.map(visualEvidenceItem).join(', ')}${more}`;
   }
   if (value === null || value === undefined) return 'Not observed';
-  return esc(String(value));
+  return visualEvidenceItem(value);
 }
 
 function visualHotspotCard(h) {
-  const evidence = Object.entries(h.evidence || {}).map(([k, v]) => `<div><dt>${esc(k.replaceAll('_', ' '))}</dt><dd>${visualEvidenceValue(v)}</dd></div>`).join('');
+  const evidence = Object.entries(h.evidence || {}).map(([k, v]) => `<div><dt>${esc(visualEvidenceKey(k))}</dt><dd>${visualEvidenceValue(v)}</dd></div>`).join('');
   const nodes = (h.nodes || []).map(n => `<li><span>${esc(n.name)} <small>${esc(visualLabel(n.presentation_type) || n.type)}</small></span><span><button type="button" class="btn" data-hotspot-map="${esc(n.id)}" aria-label="Show ${esc(n.name)} on the System Map">Show on map</button>${n.type === 'FORM' ? ` <button type="button" class="btn" data-hotspot-module="${esc(n.id)}" aria-label="Open Module 360 for ${esc(n.name)}">Module 360</button>` : ''}</span></li>`).join('');
   const moreNodes = h.nodes_total > (h.nodes || []).length ? `<p class="project-muted">Showing ${(h.nodes || []).length} of ${Number(h.nodes_total)} places.</p>` : '';
   const review = (h.finding_ids || []).length ? `<button type="button" class="btn" data-hotspot-review="${esc(h.finding_ids[0])}">Review the linked finding${h.finding_ids.length > 1 ? ` (1 of ${h.finding_ids.length})` : ''}</button>` : '';

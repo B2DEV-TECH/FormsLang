@@ -528,6 +528,46 @@ assert.ok(!html.includes('data-matrix-module="UNKNOWN"'));assert.match(html,/dat
 ''')
 
 
+def test_executive_evidence_uses_plain_words_for_the_same_saved_evidence(tmp_path):
+    # One saved hotspot and one module, rendered in both modes without refetching:
+    # Technical keeps the exact keys and signal codes, Executive words the same values.
+    run_d(tmp_path, r'''
+const saved=()=>{const d=hotspotData();d.items[0].evidence={table:'WORK_ITEMS',co_writer_guard_strength:3,unit_calls_co_writer:false,
+  engine_signal:'DIRECT_DML_BYPASSES_API',match_kinds:{values:['LOGIC_DUPLICATED_QUERY','NEW_ENGINE_CODE'],total:2}};return d;};
+api=dApi({hotspots:saved});visualSetMode('technical');await visualHotspotsOpen({});
+const evidence=()=>$('project-content').innerHTML.split('<dl class="visual-drawer-facts">')[1].split('</dl>')[0];
+const technical=evidence(),data=JSON.stringify(visualUI.hotspots.data),calls=dCalls.length;
+assert.match(technical,/<dt>engine signal<\/dt><dd>DIRECT_DML_BYPASSES_API<\/dd>/);
+assert.match(technical,/<dt>co writer guard strength<\/dt><dd>3<\/dd>/);assert.match(technical,/<dt>unit calls co writer<\/dt><dd>false<\/dd>/);
+assert.match(technical,/<dd>LOGIC_DUPLICATED_QUERY, NEW_ENGINE_CODE<\/dd>/);
+visualSetMode('executive');
+const executive=evidence();
+assert.equal(dCalls.length,calls,'switching mode reuses the saved answer');assert.equal(JSON.stringify(visualUI.hotspots.data),data);
+assert.match(executive,/<dt>What the engine observed<\/dt><dd><span title="DIRECT_DML_BYPASSES_API">Direct table access bypasses a related shared service<\/span><\/dd>/);
+assert.match(executive,/<dt>Safeguards in the shared service<\/dt><dd>3<\/dd>/);assert.match(executive,/<dt>Module logic uses that service<\/dt><dd>No<\/dd>/);
+assert.match(executive,/<dt>Data object<\/dt><dd>WORK_ITEMS<\/dd>/);
+// An unknown code is never reworded: the engine's own identifier is the only honest label.
+assert.match(executive,/<span title="LOGIC_DUPLICATED_QUERY">Same query structure as a shared service<\/span>, NEW_ENGINE_CODE<\/dd>/);
+assert.ok(!/>[^<]*(DIRECT_DML_BYPASSES_API|LOGIC_DUPLICATED_QUERY|co writer)/.test(executive),'no engine code is the visible text');
+assert.equal((technical.match(/<div>/g)||[]).length,(executive.match(/<div>/g)||[]).length,'the same evidence rows in both modes');
+api=dApi();await visualModuleOpen({node:'form:A'});
+let html=$('project-content').innerHTML;assert.match(html,/<span title="BLOCK">Data blocks<\/span> <b>2<\/b>/);assert.match(html,/<span title="TRIGGER">Event handlers<\/span> <b>9<\/b>/);
+visualSetMode('technical');html=$('project-content').innerHTML;assert.match(html,/<li>BLOCK <b>2<\/b><\/li>/);assert.match(html,/<li>TRIGGER <b>9<\/b><\/li>/);
+''')
+
+
+def test_executive_evidence_labels_still_escape_hostile_text(tmp_path):
+    run_d(tmp_path, r'''
+const hostile='<img src=x onerror=alert(1)>"';visualSetMode('executive');
+api=dApi({module:()=>moduleData({composition:[{type:hostile,count:1}]}),
+  hotspots:()=>{const d=hotspotData();d.items[0].evidence={[hostile]:hostile,engine_signal:hostile,list:{values:[hostile],total:1}};return d;}});
+await visualModuleOpen({node:'form:A'});
+let html=$('project-content').innerHTML;assert.ok(!html.includes('<img'));assert.ok(!html.includes('"<'));assert.match(html,/&lt;img src=x onerror=alert\(1\)>&quot;/);
+await visualHotspotsOpen({});
+html=$('project-content').innerHTML;assert.ok(!html.includes('<img'));assert.ok(!html.includes('"<'));assert.match(html,/&lt;img src=x onerror=alert\(1\)>&quot;/);
+''')
+
+
 def test_hotspot_filters_reload_from_the_server_and_empty_estate_says_so(tmp_path):
     run_d(tmp_path, r'''
 api=dApi();await visualHotspotsOpen({module:'intake.xml'});

@@ -1,9 +1,10 @@
 # Visual Modernization Intelligence (2.2) — design record
 
-Status: **in development** on branch `codex/formslang-2.2-visual-intelligence`
-(from `main` `b54934b`, FormsLang 2.1.0). This document is kept truthful while
-the work proceeds: a section describes what exists in the branch, and anything
-not yet built or not yet verified is labelled so.
+Status: **implementation complete — awaiting 2.2 release hardening**, on branch
+`codex/formslang-2.2-visual-intelligence` (from `main` `b54934b`, FormsLang
+2.1.0). No 2.2 release, tag or version bump exists yet. A section describes
+what exists in the branch, and anything not built or not verified is labelled
+so.
 
 ## Purpose
 
@@ -100,6 +101,13 @@ evidence are identical.
 | SHARES_STATE | Shares global state |
 | DUPLICATES_LOGIC | Similar logic observed |
 | UNRESOLVED | Unresolved reference |
+
+Hotspot evidence and Module 360 composition follow the same rule. In Executive
+mode an evidence field such as `unit_guard_strength` reads "Safeguards in the
+module logic", the signal `DIRECT_DML_BYPASSES_API` reads "Direct table access
+bypasses a related shared service" (the code stays in the tooltip), and
+`BLOCK` reads "Data blocks". Technical mode shows the exact keys and signal
+codes. A code without a plain-language label is shown as recorded.
 
 The view mode is remembered for the browser session (`sessionStorage`) and is
 never stored in the project database.
@@ -325,6 +333,12 @@ Only measured results are written here.
     database sources;
   - the command bar showed the raw ISO assessment timestamp; it now shows
     minutes and the zone, with the exact value kept in the tooltip.
+- Independent review before merge: the Executive Hotspot Explorer printed raw
+  engine codes (`DIRECT_DML_BYPASSES_API`, `unit_guard_strength`) and Module
+  360 printed component types (`BLOCK`, `PROGRAM_UNIT`). Executive mode now
+  labels them in plain language (see Terminology). Detection rules and saved
+  evidence are unchanged; a test renders one hotspot in both modes and checks
+  the same data, no refetch and different labels.
 
 ## Follow-ups (not in 2.2)
 
