@@ -1,0 +1,5 @@
+-- Case C: ORDER_API specification owned by BILLING_OWNER. Synthetic fixture.
+CREATE OR REPLACE PACKAGE BILLING_OWNER.ORDER_API AS
+  PROCEDURE SUBMIT(p_order_id NUMBER);
+END ORDER_API;
+/
