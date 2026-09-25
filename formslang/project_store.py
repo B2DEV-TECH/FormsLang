@@ -173,13 +173,16 @@ class ProjectStore:
         mirror_current = False
         try:
             with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as check:
-                # Share the database's cross-process writer lock with mirror
-                # publication. Windows can deny opens during atomic replacement.
-                # No database mutation is performed by this validation transaction.
-                check.execute("BEGIN IMMEDIATE")
+                # A read transaction: its SHARED lock is held until close and
+                # excludes mirror publication, which takes the EXCLUSIVE lock
+                # (see sync_descriptor), across processes too. Readers do not
+                # exclude each other, so opens no longer compete for the single
+                # writer lock under SQLite's polling busy handler, which grants
+                # it to whichever caller retries first and can starve a waiter.
+                check.execute("BEGIN")
+                row = check.execute("SELECT schema_version,descriptor_json FROM modernization_project WHERE id=1").fetchone()
                 if check.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise ProjectError("Project database integrity check failed")
-                row = check.execute("SELECT schema_version,descriptor_json FROM modernization_project WHERE id=1").fetchone()
                 if not row or row[0] != "formslang-project/1":
                     raise ProjectError("Unsupported project database schema")
                 authoritative = descriptor_from_dict(json.loads(row[1]))
@@ -232,12 +235,12 @@ class ProjectStore:
             raise ProjectError('Project run schema could not be migrated; existing state is preserved') from exc
 
     @contextmanager
-    def _write(self):
+    def _write(self, *, exclusive: bool = False):
         db = self.session.db
         if db.in_transaction:
             raise ProjectError('Project write requires its own transaction')
         try:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute('BEGIN EXCLUSIVE' if exclusive else 'BEGIN IMMEDIATE')
             yield db
             db.commit()
         except sqlite3.Error as exc:
@@ -319,34 +322,47 @@ class ProjectStore:
         return descriptor_from_dict(json.loads(row[0]))
 
     def sync_descriptor(self) -> None:
-        # Fetch the authoritative payload under the same lock as the filesystem
-        # operation: otherwise a delayed reader can republish an older descriptor.
-        with self._write():
-            self._sync_descriptor_locked()
-
-    def _sync_descriptor_locked(self) -> None:
+        # The authoritative payload is fetched again under the same lock as the
+        # rename: otherwise a delayed reader can republish an older descriptor.
+        # EXCLUSIVE also waits out every open's read transaction, so no reader
+        # holds project.json while it is replaced (Windows denies the rename).
+        # The fsync'd copy is staged before the lock, so the lock covers a
+        # comparison and a rename rather than a disk flush.
         destination = contained_path(self.directory, "project.json")
-        payload = canonical_json(descriptor_to_dict(self.descriptor())) + "\n"
+        staged_payload = self._descriptor_payload()
         try:
-            if destination.is_file() and destination.read_text(encoding="utf-8", errors="replace") == payload:
-                return
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
-                    dir=self.directory, prefix=".descriptor-", delete=False) as stream:
-                temporary = Path(stream.name)
-                try:
-                    stream.write(payload)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                except Exception:
-                    stream.close()
-                    temporary.unlink(missing_ok=True)
-                    raise
+            staged = self._stage_descriptor(staged_payload)
             try:
-                replace_mirror(temporary, destination)
+                with self._write(exclusive=True):
+                    payload = self._descriptor_payload()
+                    if destination.is_file() and destination.read_text(encoding="utf-8", errors="replace") == payload:
+                        return
+                    if payload != staged_payload:
+                        # Published between the staging read and the lock: rare, flush under the lock.
+                        staged.unlink(missing_ok=True)
+                        staged = self._stage_descriptor(payload)
+                    replace_mirror(staged, destination)
             finally:
-                temporary.unlink(missing_ok=True)
+                staged.unlink(missing_ok=True)
         except OSError as exc:
             raise ProjectError("Project descriptor could not be saved; SQLite state is preserved") from exc
+
+    def _descriptor_payload(self) -> str:
+        return canonical_json(descriptor_to_dict(self.descriptor())) + "\n"
+
+    def _stage_descriptor(self, payload: str) -> Path:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
+                dir=self.directory, prefix=".descriptor-", delete=False) as stream:
+            temporary = Path(stream.name)
+            try:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            except Exception:
+                stream.close()
+                temporary.unlink(missing_ok=True)
+                raise
+        return temporary
 
     def load_assessment(self) -> dict | None:
         row = self.session.db.execute("SELECT a.payload_json FROM project_assessment a JOIN modernization_project p ON p.analysis_revision=a.revision WHERE p.id=1").fetchone()
