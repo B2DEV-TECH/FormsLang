@@ -333,7 +333,9 @@ def case_b(bp) -> dict:
          "unit_calls_co_writer": h["evidence"]["unit_calls_co_writer"]}
         for h in hotspots.detect_api_bypass_candidates(bp)
     ]
-    return {"triggers": rows, "api_bypass_candidates": sorted(bypass, key=lambda r: r["unit"])}
+    # The engine emits a unit's candidates in table-id order, and database ids
+    # derive from source paths; the title keeps this list platform-independent.
+    return {"triggers": rows, "api_bypass_candidates": sorted(bypass, key=lambda r: (r["unit"], r["title"]))}
 
 
 def case_c(bp) -> dict:

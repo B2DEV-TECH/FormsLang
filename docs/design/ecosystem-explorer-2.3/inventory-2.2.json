@@ -262,17 +262,6 @@
           {
             "module": "APPROVALS.xml",
             "potential_existing_api_owners": [
-              "LOM_ORDER_API.TRANSITION_STATUS",
-              "LOM_ORDER_API.RECALC_ORDER_TOTALS"
-            ],
-            "severity": "HIGH",
-            "title": "Possible API bypass: LOM_ORDERS",
-            "unit": "BK_APPROVAL.BT_APPROVE",
-            "unit_calls_co_writer": false
-          },
-          {
-            "module": "APPROVALS.xml",
-            "potential_existing_api_owners": [
               "LOM_APPROVAL_API.APPROVE",
               "LOM_APPROVAL_API.REJECT",
               "LOM_APPROVAL_API.CREATE_APPROVAL_REQUEST"
@@ -290,18 +279,29 @@
             ],
             "severity": "HIGH",
             "title": "Possible API bypass: LOM_ORDERS",
+            "unit": "BK_APPROVAL.BT_APPROVE",
+            "unit_calls_co_writer": false
+          },
+          {
+            "module": "APPROVALS.xml",
+            "potential_existing_api_owners": [
+              "LOM_APPROVAL_API.APPROVE",
+              "LOM_APPROVAL_API.REJECT",
+              "LOM_APPROVAL_API.CREATE_APPROVAL_REQUEST"
+            ],
+            "severity": "HIGH",
+            "title": "Possible API bypass: LOM_APPROVALS",
             "unit": "BK_APPROVAL.BT_REJECT",
             "unit_calls_co_writer": false
           },
           {
             "module": "APPROVALS.xml",
             "potential_existing_api_owners": [
-              "LOM_APPROVAL_API.APPROVE",
-              "LOM_APPROVAL_API.REJECT",
-              "LOM_APPROVAL_API.CREATE_APPROVAL_REQUEST"
+              "LOM_ORDER_API.TRANSITION_STATUS",
+              "LOM_ORDER_API.RECALC_ORDER_TOTALS"
             ],
             "severity": "HIGH",
-            "title": "Possible API bypass: LOM_APPROVALS",
+            "title": "Possible API bypass: LOM_ORDERS",
             "unit": "BK_APPROVAL.BT_REJECT",
             "unit_calls_co_writer": false
           }

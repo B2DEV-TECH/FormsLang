@@ -15,7 +15,7 @@ export async function showcaseChecks({evaluate,click,clickSelector,value,wait,ch
 
   // 1. Estate and source coverage.
   check('showcase Estate Overview reports the lab inventory',await evaluate(`(()=>{const i=projectUI.overview.inventory;return i.forms_modules===4&&i.database_packages===5&&i.tables===11;})()`),await evaluate('projectUI.overview.inventory'));
-  check('showcase hotspots come from the engine',await evaluate(`(()=>{const h=projectUI.overview.hotspots;return h.total===6&&h.by_type.api_bypass===2&&h.by_type.duplicated_rules===3&&h.by_type.global_state===1;})()`),await evaluate('projectUI.overview.hotspots'));
+  check('showcase hotspots come from the engine',await evaluate(`(()=>{const h=projectUI.overview.hotspots;return h.total===8&&h.by_type.api_bypass===4&&h.by_type.duplicated_rules===3&&h.by_type.global_state===1;})()`),await evaluate('projectUI.overview.hotspots'));
   check('showcase Overview draws estate, coverage and journey panels',await evaluate(`['visual-estate','visual-board','visual-journey'].every(id=>!!document.getElementById(id))&&!!document.getElementById('visual-coverage-title')`));
   await wait(()=>evaluate(`['visual-estate','visual-board','visual-journey'].every(id=>{const t=document.getElementById(id)?.textContent||'';return t&&!t.includes('Loading');})`),'Overview visuals');
   await screenshot('showcase-1-overview.png');
@@ -27,8 +27,9 @@ export async function showcaseChecks({evaluate,click,clickSelector,value,wait,ch
   await clickSelector('[data-visual-attention="hotspots"]');
   await wait(()=>evaluate(`projectUI.view==='hotspots'&&!!visualUI.hotspots.data`),'Hotspot Explorer');
   await evaluate(`(()=>{const s=document.getElementById('visual-hotspot-type');s.value='API_BYPASS_CANDIDATE';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-  await wait(()=>evaluate(`projectUI.view==='hotspots'&&visualUI.hotspots.data?.total===2&&visualUI.hotspots.data.items.every(h=>h.hotspot_type==='API_BYPASS_CANDIDATE')`),'API bypass filter');
-  check('showcase API bypass candidate explains evidence and limits',await evaluate(`(()=>{const t=document.getElementById('project-content').textContent,h=visualUI.hotspots.data.items[0];return t.includes('Why FormsLang noticed this')&&t.includes('What this does NOT prove')&&h.uncertainty.length>0&&['APPROVALS','LOM_ORDERS'].every(n=>h.nodes.some(x=>x.name===n));})()`),await evaluate('visualUI.hotspots.data.items[0]?.nodes'));
+  await wait(()=>evaluate(`projectUI.view==='hotspots'&&visualUI.hotspots.data?.total===4&&visualUI.hotspots.data.items.every(h=>h.hotspot_type==='API_BYPASS_CANDIDATE')`),'API bypass filter');
+  check('showcase API bypass candidate explains evidence and limits',await evaluate(`(()=>{const t=document.getElementById('project-content').textContent,h=visualUI.hotspots.data.items.find(x=>x.evidence.table==='LOM_ORDERS');return t.includes('Why FormsLang noticed this')&&t.includes('What this does NOT prove')&&h.uncertainty.length>0&&['APPROVALS','LOM_ORDERS'].every(n=>h.nodes.some(x=>x.name===n));})()`),await evaluate('visualUI.hotspots.data.items[0]?.nodes'));
+  check('showcase API bypass covers the LOM_APPROVALS write of both buttons',await evaluate(`visualUI.hotspots.data.items.filter(h=>h.evidence.table==='LOM_APPROVALS').length===2`),await evaluate('visualUI.hotspots.data.items.map(h=>h.title)'));
   await screenshot('showcase-2-api-bypass.png');
 
   // 4. Show it on the System Map: Form -> package API -> table.
