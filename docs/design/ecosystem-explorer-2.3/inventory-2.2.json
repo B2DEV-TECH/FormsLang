@@ -11,7 +11,7 @@
           "REFERENCES FACT": 7,
           "REFERENCES INFERENCE": 3
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "APPLICATION": 1,
           "BLOCK": 1,
@@ -192,9 +192,9 @@
           "RELATES FACT": 1,
           "USES FACT": 12,
           "USES_LOV FACT": 8,
-          "WRITES FACT": 15
+          "WRITES FACT": 17
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "ALERT": 5,
           "APPLICATION": 1,
@@ -234,7 +234,7 @@
         "findings": 250,
         "frontiers_outside_graph": {},
         "hotspots_by_type": {
-          "api_bypass": 2,
+          "api_bypass": 4,
           "duplicated_rules": 3,
           "global_state": 1
         },
@@ -262,12 +262,36 @@
           {
             "module": "APPROVALS.xml",
             "potential_existing_api_owners": [
+              "LOM_APPROVAL_API.APPROVE",
+              "LOM_APPROVAL_API.REJECT",
+              "LOM_APPROVAL_API.CREATE_APPROVAL_REQUEST"
+            ],
+            "severity": "HIGH",
+            "title": "Possible API bypass: LOM_APPROVALS",
+            "unit": "BK_APPROVAL.BT_APPROVE",
+            "unit_calls_co_writer": false
+          },
+          {
+            "module": "APPROVALS.xml",
+            "potential_existing_api_owners": [
               "LOM_ORDER_API.TRANSITION_STATUS",
               "LOM_ORDER_API.RECALC_ORDER_TOTALS"
             ],
             "severity": "HIGH",
             "title": "Possible API bypass: LOM_ORDERS",
             "unit": "BK_APPROVAL.BT_APPROVE",
+            "unit_calls_co_writer": false
+          },
+          {
+            "module": "APPROVALS.xml",
+            "potential_existing_api_owners": [
+              "LOM_APPROVAL_API.APPROVE",
+              "LOM_APPROVAL_API.REJECT",
+              "LOM_APPROVAL_API.CREATE_APPROVAL_REQUEST"
+            ],
+            "severity": "HIGH",
+            "title": "Possible API bypass: LOM_APPROVALS",
+            "unit": "BK_APPROVAL.BT_REJECT",
             "unit_calls_co_writer": false
           },
           {
@@ -377,6 +401,18 @@
               },
               "level": "FACT",
               "resolution": "RESOLVED_TO_DATABASE_OBJECT",
+              "resolved_target": "LOM_APPROVALS",
+              "target": "LOM_APPROVALS",
+              "target_type": "TABLE_OR_VIEW_REFERENCE",
+              "type": "WRITES"
+            },
+            {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "RESOLVED_TO_DATABASE_OBJECT",
               "resolved_target": "LOM_ORDERS",
               "target": "LOM_ORDERS",
               "target_type": "TABLE_OR_VIEW_REFERENCE",
@@ -477,6 +513,18 @@
               "target": "BK_APPROVAL.ORDER_ID",
               "target_type": "ITEM",
               "type": "REFERENCES"
+            },
+            {
+              "explorer_resolution": {
+                "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE",
+                "resolution": "LEGACY_RESOLVED"
+              },
+              "level": "FACT",
+              "resolution": "RESOLVED_TO_DATABASE_OBJECT",
+              "resolved_target": "LOM_APPROVALS",
+              "target": "LOM_APPROVALS",
+              "target_type": "TABLE_OR_VIEW_REFERENCE",
+              "type": "WRITES"
             },
             {
               "explorer_resolution": {
@@ -698,7 +746,7 @@
           "USES_PROGRAM_UNIT FACT": 3,
           "WRITES FACT": 2
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "ALERT": 4,
           "APPLICATION": 1,
@@ -918,7 +966,7 @@
           "OPENS_FORM FACT": 3,
           "REFERENCES FACT": 14
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "APPLICATION": 1,
           "BLOCK": 3,
