@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-VERSION = "plsql-evidence/1"
+VERSION = "plsql-evidence/2"
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$#]*")
 
 
@@ -104,6 +104,9 @@ def extract(source: str, not_calls: set[str], not_tables: set[str],
             and ts[i + 2].value == "(" and "WITH" in words}
     expression_stack = []
     statement_start = 0
+    # Inside a MERGE statement its UPDATE and DELETE are clauses of that one
+    # command, whose only write is the INTO target; elsewhere they are writes.
+    in_merge = False
     for i, t in enumerate(ts):
         v = t.value
         prev = ts[i - 1].value if i else ""
@@ -116,17 +119,19 @@ def extract(source: str, not_calls: set[str], not_tables: set[str],
                 expression_stack.pop()
             elif v == ";":
                 statement_start = i + 1
+                in_merge = False
             if t.kind in {"quoted", "incomplete"}:
                 unknown.append({"line": t.line, "reason": "Quoted or incomplete syntax needs review"})
             continue
+        in_merge = in_merge or v == "MERGE"
         if v in {"FROM", "JOIN"}:
             if not expression_stack or expression_stack[-1] not in {"EXTRACT", "TRIM", "SUBSTRING"}:
                 kind = "WRITES" if prev == "DELETE" else "READS"
         elif v == "USING" and any(x.value == "MERGE" for x in ts[statement_start:i]):
             kind = "READS"
-        elif (v == "UPDATE" and prev not in {"FOR", "THEN", "BEFORE", "AFTER"}
+        elif (v == "UPDATE" and not in_merge and prev not in {"FOR", "BEFORE", "AFTER"}
               or v == "INTO" and prev in {"INSERT", "MERGE"}
-              or v == "DELETE" and nxt != "FROM"):
+              or v == "DELETE" and not in_merge and nxt != "FROM"):
             kind = "WRITES"
         if kind:
             name, end = name_at(pos)

@@ -239,8 +239,9 @@ must record them.
 - A 2.3 assessment with visual links carries `visual_hierarchy_version: 1` in
   allowlisted metadata; `engine_version` is bumped; `schema_version` stays
   `blueprint/1` while the change is additive. None of this exists yet: the
-  measured engine version is
-  `blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:…`.
+  measured 2.2.0 engine version is
+  `blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:…`;
+  the G-DML fix changes it to `plsql-evidence/2`.
 - Schema-aware resolution (phase 2) is declared the same way, as
   `schema_resolution_version: 1`. Without it, every database resolution is
   presented under §5.1. The two capabilities are independent. A snapshot is

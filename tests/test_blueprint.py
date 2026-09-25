@@ -67,6 +67,56 @@ def test_sql_expression_from_is_not_a_table_and_merge_using_is_a_read():
     assert event_names(source, "WRITES") == {"DEST"}
 
 
+def event_counts(source, kind):
+    counts = {}
+    for e in plsql.evidence(source)["events"]:
+        if e["kind"] == kind:
+            counts[e["name"]] = counts.get(e["name"], 0) + 1
+    return counts
+
+
+@pytest.mark.parametrize("source", [
+    "BEGIN IF a = 1 THEN UPDATE t1 SET x = 1; END IF; END;",
+    "BEGIN IF a = 1 THEN NULL; ELSIF a = 2 THEN UPDATE t1 SET x = 1; END IF; END;",
+    "BEGIN IF a = 1 THEN NULL; ELSE UPDATE t1 SET x = 1; END IF; END;",
+    "BEGIN NULL; EXCEPTION WHEN no_data_found THEN UPDATE t1 SET x = 1; END;",
+    "BEGIN CASE a WHEN 1 THEN UPDATE t1 SET x = 1; END CASE; END;",
+    "BEGIN IF a = 1 THEN IF b = 2 THEN UPDATE t1 SET x = 1; END IF; END IF; END;",
+    "BEGIN IF a = 1 THEN DELETE t1 WHERE x = 1; END IF; END;",
+])
+def test_dml_right_after_then_is_a_write(source):
+    # G-DML: the MERGE guard used to drop every UPDATE whose previous token was THEN.
+    assert event_counts(source, "WRITES") == {"T1": 1}
+
+
+def test_merge_branches_are_one_write_of_the_merge_target():
+    source = """BEGIN
+      MERGE INTO dest d USING src s ON (d.id = s.id)
+        WHEN MATCHED THEN UPDATE SET d.x = s.x DELETE WHERE d.x IS NULL
+        WHEN NOT MATCHED THEN INSERT (id, x) VALUES (s.id, s.x);
+    END;"""
+    assert event_counts(source, "WRITES") == {"DEST": 1}
+    assert event_counts(source, "READS") == {"SRC": 1}
+
+
+def test_merge_context_ends_with_its_statement():
+    source = """BEGIN
+      IF a = 1 THEN
+        MERGE INTO dest USING src ON (1 = 1) WHEN MATCHED THEN UPDATE SET x = 1;
+        UPDATE after_merge SET y = 2;
+      ELSIF a = 2 THEN
+        UPDATE other SET y = 3;
+      END IF;
+    END;"""
+    assert event_counts(source, "WRITES") == {"DEST": 1, "AFTER_MERGE": 1, "OTHER": 1}
+
+
+def test_select_for_update_stays_a_read():
+    source = "BEGIN IF a = 1 THEN SELECT x INTO v FROM t1 WHERE id = 1 FOR UPDATE OF x NOWAIT; END IF; END;"
+    assert event_counts(source, "WRITES") == {}
+    assert event_counts(source, "READS") == {"T1": 1}
+
+
 def test_risk_catalog_uses_same_evidence_as_dependency_graph():
     source = "BEGIN MESSAGE(q'[It's only text: HOST('rm');]'); END;"
     measured = plsql.analyze_evidence(source)

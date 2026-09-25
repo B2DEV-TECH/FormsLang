@@ -26,7 +26,7 @@ Scale: `examples/verify/project_corporate_scale.py --profile ecosystem` and
 |---|---|
 | `ecosystem/1` contract written | Done |
 | Case A reproducible up to the limit of the 2.2 facts | Done: `test_case_a_*`, with gaps G-CALL-LOCAL, G-CALL-EXPR and G-RISK-TEXT pinned |
-| Case B reproducible up to the limit of the 2.2 facts | Done: `test_case_b_*`, with defect G-DML pinned |
+| Case B reproducible up to the limit of the 2.2 facts | Done: `test_case_b_*`; defect G-DML pinned, then fixed in `plsql-evidence/2` |
 | Case C (homonyms across schemas) measured | Done: two engine defects pinned (G-SCHEMA-BODY, G-SCHEMA-COLLIDE); legacy-resolution rule covered |
 | Gaps documented with a phase-2 capture inventory | Done |
 | Visible/CanvasType origin recorded as not verifiable | Done: contract §6, `CV_VISIBLE_DECLARED` vs `CV_DEFAULTS` |
@@ -46,7 +46,8 @@ Scale: `examples/verify/project_corporate_scale.py --profile ecosystem` and
    Case C covers it.
 2. **G-DML** (engine defect, ships in 2.2.0). It is fixed in a separate 2.2.x
    pull request, with regression tests for `UPDATE` after `THEN` and for
-   `MERGE`.
+   `MERGE`. The fix bumps the extractor to `plsql-evidence/2`
+   ([gaps §1](gaps-and-capture.md#g-dml--update-right-after-then-is-not-recorded-as-a-write)).
 3. **G-SCHEMA-BODY and G-SCHEMA-COLLIDE** are fixed in phase 2. The fix keeps
    the schema and records ambiguities. Old assessments are not rewritten.
 4. **Read latency.** Phase 3 adds a per-revision read of the Blueprint, then

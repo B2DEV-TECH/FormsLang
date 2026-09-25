@@ -110,10 +110,12 @@ O que isto não prova
   writers. No drawn edge joins `BT_APPROVE` to `LOM_ORDER_API`. None exists in
   the assessment, where the only link is `DUPLICATES_LOGIC` at
   `INFERENCE`.
-- **Known under-report.** 2.2 does not record the `UPDATE lom_approvals` in the
-  same trigger ([G-DML](gaps-and-capture.md#g-dml--update-right-after-then-is-not-recorded-as-a-write)).
-  Until that is fixed, the inspector must not word the list of writes as
-  complete ("todas as escritas"). It says "escritas identificadas".
+- **Known under-report in older assessments.** An assessment made before
+  `plsql-evidence/2` does not record the `UPDATE lom_approvals` in the same
+  trigger ([G-DML](gaps-and-capture.md#g-dml--update-right-after-then-is-not-recorded-as-a-write)).
+  A new analysis records it. In both cases the inspector does not word the
+  list of writes as complete ("todas as escritas"): the extraction is lexical
+  and dynamic SQL is not followed. It says "escritas identificadas".
 - **Legacy resolution.** Every 2.2 database resolution is shown as legacy and
   not verifiable against same-named objects in other schemas
   ([contract §5.1](contract-ecosystem-1.md#51-legacy-database-resolution-2122-snapshots)).
@@ -142,7 +144,7 @@ O que isto não prova
 
 "fluxo de execução", "processo de negócio", "sempre executa", "caminho do
 usuário", "tela usada pelo operador", "canvas visível" (for a value whose
-origin is not verifiable), "todas as escritas" (while G-DML is open),
+origin is not verifiable), "todas as escritas",
 "resolvido" or "confirmado" for a legacy database resolution,
 "migração x%", scores. The evaluation checks this directly, through the exit
 question on execution.

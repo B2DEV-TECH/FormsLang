@@ -12,7 +12,10 @@ predate 2.3 and ship in 2.2.0. The decisions taken at review close §1.
 
 ### G-DML — `UPDATE` right after `THEN` is not recorded as a write
 
-`formslang/plsql_evidence.py:127` accepts `UPDATE` as a write only when the
+**Status: fixed in `plsql-evidence/2`** (separate 2.2.x pull request). The
+description below is the 2.2.0 behaviour, kept as the record of the defect.
+
+In 2.2.0, `formslang/plsql_evidence.py:127` accepted `UPDATE` as a write only when the
 previous token is not `FOR`, `THEN`, `BEFORE` or `AFTER`. `THEN` is in that
 set to skip the `WHEN MATCHED THEN UPDATE` clause of a `MERGE`. The side
 effect is that an ordinary `UPDATE` that begins an `IF … THEN`, `ELSIF … THEN`
@@ -26,9 +29,24 @@ calls in the same position are captured.
   future explorer.
 - **Severity.** This is a correctness defect in extracted facts: writes are
   under-reported, and the report looks complete.
-- **Test.** `test_gap_case_b_update_right_after_then_is_not_recorded_as_a_write`.
-- **Fix direction (not applied).** Exclude `THEN` only inside a `MERGE`
-  statement, as the `USING` branch two lines above already does.
+- **Test.** `test_case_b_update_right_after_then_is_recorded_as_a_write`
+  (was `test_gap_case_b_update_right_after_then_is_not_recorded_as_a_write`).
+- **Fix (applied).** The extractor tracks whether the current statement is a
+  `MERGE`, from the `MERGE` keyword to the `;` that ends it. Inside a `MERGE`,
+  the `UPDATE` and `DELETE` of its `WHEN MATCHED` branches are part of the one
+  write to the `MERGE INTO` target, and are not counted again. Outside a
+  `MERGE`, `UPDATE` after `THEN` is a write. Regression tests in
+  `tests/test_blueprint.py` cover `IF`, `ELSIF`, `ELSE`, `EXCEPTION WHEN`,
+  `CASE` and nested branches, a `MERGE` with `UPDATE`, `DELETE WHERE` and
+  `INSERT` branches counted once, and a `MERGE` followed by an `UPDATE`.
+- **Effect of the fix (Case B).** Both triggers now have a `WRITES` edge to
+  `LOM_APPROVALS`, and two new `HIGH` `api_bypass` candidates appear for
+  `LOM_APPROVALS`, with `LOM_APPROVAL_API.APPROVE` as the first potential
+  owner. The existing `LOM_ORDERS` candidates keep their ids. The committed
+  inventory changed only there and in the engine version string.
+- **Existing assessments.** They are not rewritten. The engine identity
+  changes with `plsql-evidence/2`, so a saved assessment is reported as made
+  by an older engine; a new analysis produces the corrected facts.
 
 ### G-SCHEMA-BODY — a schema-qualified package body loses its subprograms
 

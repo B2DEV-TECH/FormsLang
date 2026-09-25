@@ -126,17 +126,18 @@ def test_gap_case_a_risk_factor_calls_a_resolved_local_call_unresolved(showcase)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("owner", ["BK_APPROVAL.BT_APPROVE", "BK_APPROVAL.BT_REJECT"])
-def test_case_b_trigger_writes_lom_orders_and_never_calls_the_api(lab, owner):
+def test_case_b_trigger_writes_both_tables_and_never_calls_the_api(lab, owner):
     _, bp = lab
     names = by_id(bp)
     unit = trigger(bp, "APPROVALS.xml", owner)
     edges = [e for e in bp["edges"] if e["source"] == unit["id"]]
     writes = [names[e["target"]] for e in edges if e["type"] == "WRITES"]
-    assert [w["name"] for w in writes] == ["LOM_ORDERS"]
-    # The bridge to the database object is an attribute of the reference, not an edge.
-    assert writes[0]["type"] == "TABLE_OR_VIEW_REFERENCE"
-    assert writes[0]["resolution"] == "RESOLVED_TO_DATABASE_OBJECT"
-    assert names[writes[0]["resolved_target"]]["type"] == "TABLE"
+    assert sorted(w["name"] for w in writes) == ["LOM_APPROVALS", "LOM_ORDERS"]
+    for write in writes:
+        # The bridge to the database object is an attribute of the reference, not an edge.
+        assert write["type"] == "TABLE_OR_VIEW_REFERENCE"
+        assert write["resolution"] == "RESOLVED_TO_DATABASE_OBJECT"
+        assert names[write["resolved_target"]]["type"] == "TABLE"
     calls = {names[e["target"]]["name"] for e in edges if e["type"] == "CALLS"}
     assert calls == {"OM_SHARED.SHOW_MESSAGE"}
     assert not any(n.startswith(("LOM_ORDER_API", "LOM_APPROVAL_API")) for n in calls)
@@ -149,23 +150,25 @@ def test_case_b_trigger_writes_lom_orders_and_never_calls_the_api(lab, owner):
 def test_case_b_bypass_candidates_are_candidates_with_their_caveat(lab):
     _, bp = lab
     found = hotspots.detect_api_bypass_candidates(bp)
-    units = sorted(by_id(bp)[h["entity_id"]]["attributes"]["owner"] for h in found)
-    assert units == ["BK_APPROVAL.BT_APPROVE", "BK_APPROVAL.BT_REJECT"]
+    pairs = sorted((by_id(bp)[h["entity_id"]]["attributes"]["owner"], h["evidence"]["table"]) for h in found)
+    assert pairs == [("BK_APPROVAL.BT_APPROVE", "LOM_APPROVALS"), ("BK_APPROVAL.BT_APPROVE", "LOM_ORDERS"),
+                     ("BK_APPROVAL.BT_REJECT", "LOM_APPROVALS"), ("BK_APPROVAL.BT_REJECT", "LOM_ORDERS")]
     for h in found:
         assert h["classification"] == "CANDIDATE"
-        assert h["evidence"]["table"] == "LOM_ORDERS"
         assert h["evidence"]["unit_calls_co_writer"] is False
         assert any("does not prove which one is the authoritative owner" in u for u in h["uncertainty"])
 
 
-def test_gap_case_b_update_right_after_then_is_not_recorded_as_a_write(lab):
+def test_case_b_update_right_after_then_is_recorded_as_a_write(lab):
+    # G-DML, closed in plsql-evidence/2: this UPDATE follows THEN inside an IF.
     modules, bp = lab
     approvals = next(m for m in modules if m.name == "APPROVALS")
-    text = next(t.text for b in approvals.blocks for i in b.items for t in i.triggers if i.name == "BT_APPROVE")
-    assert "THEN\n    UPDATE lom_approvals" in text
-    unit = trigger(bp, "APPROVALS.xml", "BK_APPROVAL.BT_APPROVE")
-    written = {e[3] for e in out(bp, unit["id"]) if e[0] == "WRITES"}
-    assert "LOM_APPROVALS" not in written  # plsql_evidence skips UPDATE after THEN (MERGE guard)
+    for owner, button in (("BK_APPROVAL.BT_APPROVE", "BT_APPROVE"), ("BK_APPROVAL.BT_REJECT", "BT_REJECT")):
+        text = next(t.text for b in approvals.blocks for i in b.items for t in i.triggers if i.name == button)
+        assert "THEN\n    UPDATE lom_approvals" in text
+        unit = trigger(bp, "APPROVALS.xml", owner)
+        written = [e[3] for e in out(bp, unit["id"]) if e[0] == "WRITES"]
+        assert sorted(written) == ["LOM_APPROVALS", "LOM_ORDERS"]
 
 
 # ---------------------------------------------------------------------------
