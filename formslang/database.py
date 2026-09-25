@@ -15,8 +15,8 @@ from typing import Any
 from . import plsql, plsql_evidence
 
 # Coverage status of one supplied database source.
-PARSED = "PARSED"                                  # every CREATE statement became an object
-PARSED_WITH_WARNINGS = "PARSED_WITH_WARNINGS"      # objects, plus statements that did not
+PARSED = "PARSED"                                  # every supported CREATE became an object
+PARSED_WITH_WARNINGS = "PARSED_WITH_WARNINGS"      # objects, plus supported CREATEs that did not
 NO_RECOGNIZED_OBJECTS = "NO_RECOGNIZED_OBJECTS"    # read, but no object came out of it
 REJECTED_OR_UNREADABLE = "REJECTED_OR_UNREADABLE"  # never read; `reason` says why
 
@@ -215,8 +215,11 @@ class SourceCoverage:
 
     `objects` are the extracted objects, `not_extracted` the CREATE statements of a
     supported kind that produced none, and `unsupported` the CREATE statements of a
-    kind FormsLang does not model. Entries are {"kind", "name"} (plus "line" for
-    statements); the name is None when the header could not be read.
+    kind FormsLang does not model. Entries are {"kind", "name"}; statements add
+    "line", "severity" and "reason". The name is None when the header could not
+    be read. A not-extracted statement is a WARNING and makes the source
+    PARSED_WITH_WARNINGS; an unsupported one is INFO -- a limit of the model, not
+    of the read -- and leaves the status alone while staying listed.
     """
 
     source_file: str
@@ -468,12 +471,14 @@ def _coverage(project: DatabaseProject, text: str, source_file: str) -> SourceCo
     objects = sorted(({"kind": kind, "name": name} for kind, family in _FAMILY_OF_KIND.items()
                       for name in getattr(project, family)), key=lambda o: (o["kind"], o["name"]))
     statements = _create_statements(text)
-    not_extracted = [s for s in statements if s["kind"] in _FAMILY_OF_KIND
+    not_extracted = [{**s, "severity": "WARNING", "reason": "NOT_EXTRACTED"} for s in statements
+                     if s["kind"] in _FAMILY_OF_KIND
                      and s["name"] not in getattr(project, _FAMILY_OF_KIND[s["kind"]])]
-    unsupported = [s for s in statements if s["kind"] not in _FAMILY_OF_KIND]
+    unsupported = [{**s, "severity": "INFO", "reason": "UNSUPPORTED_BY_MODEL"} for s in statements
+                   if s["kind"] not in _FAMILY_OF_KIND]
     if not objects:
         status = NO_RECOGNIZED_OBJECTS
-    elif not_extracted or unsupported:
+    elif not_extracted:
         status = PARSED_WITH_WARNINGS
     else:
         status = PARSED

@@ -114,6 +114,16 @@ parsed, and nothing recorded that the file was skipped: it was listed in
   statements that yielded no object. A lexical scan finds them, independently
   of the extractors. The Blueprint carries it as `database.source_coverage`.
   When coverage was never computed it is `None`: unknown, not clean.
+- **Warning versus information.** A statement of a supported kind that yields
+  no object is listed under `not_extracted` with `severity: WARNING`,
+  `reason: NOT_EXTRACTED`, and makes the source `PARSED_WITH_WARNINGS`. A
+  statement of a kind FormsLang does not model (`CREATE INDEX`, `TRIGGER`,
+  `TYPE`, ...) is listed under `unsupported` with `severity: INFO`,
+  `reason: UNSUPPORTED_BY_MODEL`. It stays visible but does not by itself
+  change the status: a source of tables and indexes is `PARSED`.
+- **Quoted names are not resolved against unquoted ones.** `"MyPackage"` and
+  `MYPACKAGE` are different objects, as in Oracle, and nothing normalises one
+  into the other. Quoted *subprogram* names are separate, unstarted work.
 - **Tests.** `tests/test_database_headers.py`, `tests/test_database_coverage.py`.
 
 ### G-DDL-EXTRACT — CREATE statements that are recognised but not extracted
@@ -133,6 +143,20 @@ Blueprint:
   text.
 - **Variants.** `GLOBAL TEMPORARY TABLE`, `FORCE VIEW`, and quoted table,
   view and sequence names.
+
+### G-SOURCE-REVISION — a zero-object source does not reach the revision
+
+Found during WP-07; open, deliberately not changed there. `blueprint.build`
+derives `source_revision` from `DatabaseProject.files`, and a source that
+yields no object is not in `files`. Adding or removing such a source (a
+trigger file, an index-only file, seed DML) leaves the revision unchanged,
+although coverage lists it. The invariant to hold:
+
+> Two repository states with materially different supplied source sets must not silently appear identical merely because one source produced zero extracted objects.
+
+This belongs to repository and checkpoint identity (ADR-02, consumed by
+WP-10 and WP-20), not to the DDL parser. The revision semantics are unchanged
+until then.
 
 ### G-SCHEMA-COLLIDE — same-named packages in two schemas collapse into one
 
