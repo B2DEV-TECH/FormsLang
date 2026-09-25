@@ -7,7 +7,8 @@ marked passed because the local unit tests are green. Planned work is in
 [requirements-matrix.md](requirements-matrix.md).
 
 Specification: FL3-MASTER-2026-09-25 revision 1.0. Planning baseline: `main` at
-`1d9cb47`. Active milestone: **M0**. Branch: `codex/formslang-3-m0`.
+`1d9cb47`. Active milestone: **M0**. Branches: `codex/formslang-3-m0` (Draft PR #21) and
+`codex/formslang-3-wp07` (local, from `70f8596`).
 
 ## Summary
 
@@ -16,7 +17,7 @@ Specification: FL3-MASTER-2026-09-25 revision 1.0. Planning baseline: `main` at
 | G-01 Baseline truth | **In progress** | Baseline audit written against `1d9cb47`, and the §3.3 concerns verified in code (see below) |
 | G-02 Repository integrity | Not started | — (ADR-01..03 not written) |
 | G-03 Portability and Git exchange | Not started | — |
-| G-04 Facts and evidence | **In progress** | G-SCHEMA-BODY fixed with failing-then-passing tests. G-SCHEMA-COLLIDE and G-DDL-HEADER stay pinned as open defects. |
+| G-04 Facts and evidence | **In progress** | G-SCHEMA-BODY and G-DDL-HEADER fixed with failing-then-passing tests (G-DDL-HEADER on the local WP-07 branch). Per-source database coverage added. G-SCHEMA-COLLIDE and G-DDL-EXTRACT stay open. |
 | G-05 Language and decisions | Not started | — |
 | G-06 Workbench and CLI | Not started | — |
 | G-07 Target delivery | Not started | 2.2 generator behaviour recorded in the baseline audit only |
@@ -53,7 +54,7 @@ No gate is **passed**. The full 3.0 release is not complete.
 
 ## G-04 — Facts and evidence
 
-- **Links:** SRC-11 (partial), SRC-14, INV-07; gaps G-SCHEMA-BODY, G-SCHEMA-COLLIDE and G-DDL-HEADER in [../ecosystem-explorer-2.3/gaps-and-capture.md](../ecosystem-explorer-2.3/gaps-and-capture.md).
+- **Links:** SRC-11 (partial), SRC-14, INV-07; gaps G-SCHEMA-BODY, G-SCHEMA-COLLIDE, G-DDL-HEADER and G-DDL-EXTRACT in [../ecosystem-explorer-2.3/gaps-and-capture.md](../ecosystem-explorer-2.3/gaps-and-capture.md).
 - **Scope:** static database-source extraction (`formslang/database.py`) and blueprint analysis (`formslang/blueprint.py`), offline, on synthetic fixtures.
 - **Implementation commits:** WP-03 commit `e104b33` on `codex/formslang-3-m0`. It is local and not pushed.
 - **Fixtures:** the synthetic Case C corpus from the 2.3 ecosystem inventory and inline `tmp_path` sources. No customer source is used.
@@ -71,7 +72,35 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Behaviour now proven:** a `CREATE [OR REPLACE] PACKAGE BODY OWNER.NAME AS|IS` body keeps its subprograms, its `IMPLEMENTS` links, and its writes. The engine version is `blueprint-analysis/2`, so saved assessments from the previous engine are reported as stale.
 - **Behaviour still not proven (open defects, pinned by `test_gap_*` tests):**
   - **G-SCHEMA-COLLIDE:** same-named objects in two schemas merge into one, and the last file wins. This needs ADR-06, then WP-04.
-  - **G-DDL-HEADER (new, found in M0):** headers written by DDL exports (`EDITIONABLE`, `"S"."P"`, `S . P`) produce no spec and no body, and nothing reports the loss. This violates INV-07. It is the next slice (WP-07).
+  - **G-DDL-HEADER (found in M0):** fixed in WP-07; see below.
+
+### WP-07 — DDL-export headers and database source coverage
+
+- **Branch:** `codex/formslang-3-wp07`, from `70f8596`. Local, not pushed.
+- **Commands and outcomes (Python 3.13, local):**
+
+  | Step | Command | Outcome |
+  |---|---|---|
+  | Header tests, before the fix | `py -3.13 -m pytest -q tests/test_database_headers.py` | 24 failed, 9 passed |
+  | After the header pattern | same | 32 passed, 2 failed: the `.sql` pre-filter (`"PACKAGE BODY "` followed by a line break) and the engine version |
+  | After the pre-filter and the engine bump | `py -3.13 -m pytest -q tests/test_database_headers.py tests/test_ecosystem_phase1.py` | 60 passed, 1 failed (the committed inventory, as expected before regeneration) |
+  | Coverage tests, before the implementation | `py -3.13 -m pytest -q tests/test_database_coverage.py`, with only the status constants defined | 19 failed, 0 passed |
+  | After the implementation | `py -3.13 -m pytest -q tests/test_database_coverage.py tests/test_database_headers.py` | 53 passed |
+  | Related suites | `py -3.13 -m pytest -q tests/test_database.py tests/test_database_headers.py tests/test_database_coverage.py tests/test_blueprint.py tests/test_blueprint_backend.py tests/test_ecosystem_phase1.py tests/test_estate_hotspots.py tests/test_depgraph.py tests/test_modernization.py tests/test_project_analysis.py tests/test_project_sources.py tests/test_project_discovery.py` | 310 passed, 2 skipped, after the inventory regeneration |
+  | Inventory | `py -3.13 examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-2.2.json` | Passes. The regenerated diff changes only the engine version, in the four corpora. |
+  | Lint | `py -3.13 -m ruff check .` | All checks passed |
+  | Full suite | `py -3.13 -m pytest -q -p no:cacheprovider` | 1919 passed, 5 skipped in 832 s (the M0 run was 1868 passed; this adds 34 header and 19 coverage tests and removes the 2 cases of the old gap test). The skip count is unchanged. |
+  | Coverage on repository corpora | `parse_database_sources` on `examples/modernization-lab/database` and on Case C | Lab: 27 supplied, 13 parsed, 7 parsed with warnings (unmodelled `CREATE INDEX`), 7 with no recognized objects (the DML-only seed scripts, `NO_CREATE_STATEMENT`), 0 rejected. Case C: 6 supplied, 6 parsed. |
+
+- **Behaviour now proven:**
+  - Package specs and bodies with `EDITIONABLE`/`NONEDITIONABLE`, quoted owner and name, and spaces or line breaks around the dot are parsed, subprograms included. A quoted name keeps its case, and an unquoted one is folded to upper case. The identity key is still the bare name.
+  - Malformed headers (`S..P`, `S.P.Q`, `1P`, an unterminated quote, an empty quoted name, both editioning keywords) are not recognised. The old pattern accepted the first three.
+  - Every supplied database source has a coverage entry with one of four statuses. The entry lists the objects extracted, the CREATE statements of a supported kind that yielded no object, and the CREATE statements of an unmodelled kind. A missing path in a source list is `REJECTED_OR_UNREADABLE` (`SOURCE_NOT_FOUND`), and in the project pipeline every rejecting diagnostic becomes such an entry. When coverage was never computed it is `None`, never an empty result.
+  - The Blueprint carries `database.source_coverage` (summary and per-source entries, logical paths only in the project pipeline). The engine is `blueprint-analysis/3`, so earlier saved assessments are reported as stale.
+- **Behaviour still not proven:**
+  - **G-DDL-EXTRACT:** the statements coverage reports as `not_extracted` are still missing from the Blueprint (see the gap document).
+  - No report, UI or CLI output shows coverage yet.
+  - The CREATE scan is lexical. A SQL*Plus `REM` line that contains `CREATE TABLE x` is counted as a statement; the error only ever adds a warning, never hides one.
 - **Independent review:** none yet.
 - **Status:** in progress. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
 
