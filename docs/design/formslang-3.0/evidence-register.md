@@ -7,8 +7,9 @@ marked passed because the local unit tests are green. Planned work is in
 [requirements-matrix.md](requirements-matrix.md).
 
 Specification: FL3-MASTER-2026-09-25 revision 1.0. Planning baseline: `main` at
-`1d9cb47`. Active milestone: **M0**. Branches: `codex/formslang-3-m0` (Draft PR #21) and
-`codex/formslang-3-wp07` (local, from `70f8596`).
+`1d9cb47`. Active milestone: **M0**. Branches: `codex/formslang-3-m0` (Draft PR #21),
+`codex/formslang-3-wp07` (Draft PR #22, stacked on #21) and `codex/formslang-3-wp02`
+(Draft PR #23, against `main`).
 
 ## Summary
 
@@ -48,7 +49,7 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Evidence locations:** [baseline-audit.md](baseline-audit.md) §2–§6, and the CI run pages.
 - **Independent review:** none yet.
 - **Known limitations:**
-  - The cause of the `1d9cb47` 500 is **unknown**. The HTTP boundary sanitises the error without logging a traceback. WP-02 adds that logging before any fix.
+  - The cause of the `1d9cb47` 500 is **unknown**. The HTTP boundary sanitised the error without logging its type. WP-02 (Draft PR #23) adds that logging; its CI did not reproduce the failure (see WP-02 below).
   - Python 3.10 and 3.11 were not run locally.
 - **Status:** in progress. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
 
@@ -76,7 +77,7 @@ No gate is **passed**. The full 3.0 release is not complete.
 
 ### WP-07 — DDL-export headers and database source coverage
 
-- **Branch:** `codex/formslang-3-wp07`, from `70f8596`. Draft PR stacked on #21 (base `codex/formslang-3-m0`).
+- **Branch:** `codex/formslang-3-wp07`, from `70f8596`. Draft PR #22, stacked on #21 (base `codex/formslang-3-m0`).
 - **Commands and outcomes (Python 3.13, local):**
 
   | Step | Command | Outcome |
@@ -111,6 +112,25 @@ No gate is **passed**. The full 3.0 release is not complete.
   - CI does not run on this branch: `ci.yml` triggers only on pushes and pull requests to `main`, and the PR is stacked on `codex/formslang-3-m0`. Python 3.10, 3.11 and 3.12 were not run for this slice.
 - **Independent review:** none yet.
 - **Status:** in progress. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
+
+### WP-02 — instrumentation of the HTTP 500 boundary
+
+- **Branch:** `codex/formslang-3-wp02`, from `main` at `1d9cb47`, independent of #21 and #22. Draft PR #23 against `main`. Commit `b83ade2`.
+- **Change:** the generic `except Exception` in `ProjectHTTP.dispatch` logs one ERROR message with the correlation id returned to the client, the method, the route with every data segment replaced by `{…}`, and each exception of the cause/context chain with its type, a safe code (`sqlite_errorname` from Python 3.11, `errno`) and its frames (`file:line in function`). It never logs the exception message, the query string, the body or credentials, and passes no `exc_info`. The response, the status, retries, locks, busy timeouts and the journal mode are unchanged.
+- **Commands and outcomes:**
+
+  | Step | Command | Outcome |
+  |---|---|---|
+  | New tests, before the change (Python 3.13, local) | `py -3.13 -m pytest -q tests/test_project_http.py -k "logged or sanitized"` | 3 failed, 1 passed (the log message had no correlation id, type or route) |
+  | After the change | same | 4 passed |
+  | HTTP and project suites | `py -3.13 -m pytest -q tests/test_project_http.py tests/test_project_generation_http.py tests/test_project_reports_http.py tests/test_workbench.py tests/test_workbench_mfa.py tests/test_project_jobs.py tests/test_project_service.py tests/test_project_intake.py` | 199 passed, 1 skipped |
+  | Lint | `py -3.13 -m ruff check .` | All checks passed |
+  | Full suite | `py -3.13 -m pytest -q -p no:cacheprovider` | 1866 passed, 5 skipped in 829 s |
+  | CI of Draft PR #23 | GitHub Actions run 36176591379 at `b83ade2` | `pytest (windows-latest, py3.11)`: **1871 passed, 0 failed** in 1904 s. All 13 checks passed: the other Windows jobs (py3.10, py3.12, py3.13) 1871 passed each, the four Ubuntu jobs, ruff, the export, SQLcl `apex validate` and both Edge acceptances. |
+
+- **Windows py3.11 500: not reproduced.** The job that failed on `1d9cb47` passed on the instrumented branch, so there is no new evidence of its cause. One green run proves only that it did not recur; the failure is intermittent. No fix was written, as the owner required.
+- **Correction:** the #21 description says the `1d9cb47` failure happened during setup. The job log shows it in the test call (`analyze_demo` → `wait_job`, `tests/test_project_http.py:52`).
+- **Status:** instrumentation done and tested; cause unknown. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
 
 ## Gates not started
 
