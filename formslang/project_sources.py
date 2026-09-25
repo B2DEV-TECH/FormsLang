@@ -24,6 +24,9 @@ from .project_manifest import ManifestEntry, fingerprint_sources, source_id
 from .project_model import ProjectError
 
 SOURCE_PIPELINE_VERSION = 'project-sources/1'
+# Diagnostics that mean a selected source was never parsed at all.
+REJECTING_CODES = frozenset({'SOURCE_MISSING', 'SOURCE_TOO_LARGE', 'SOURCE_CHANGED', 'SOURCE_BLOCKED',
+                             'SOURCE_UNREADABLE', 'INVALID_DATABASE_SOURCE', 'STAGED_SOURCE_UNREADABLE'})
 
 
 @dataclass(frozen=True)
@@ -129,7 +132,9 @@ def _normalize_sources(value, logical: str):
 def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, *,
                  checkpoint, progress) -> ParsedSources:
     modules, keys, diagnostics = [], [], list(discovery.diagnostics)
-    merged = database.DatabaseProject()
+    # Every selected database source gets a coverage entry, including the ones
+    # that were rejected or yielded no object.
+    merged = database.DatabaseProject(coverage=[])
     definitions = defaultdict(list)
     manifest = {e.source_id: e for e in staged.manifest}
     selected = sorted((e.candidate for e in discovery.entries if e.candidate.selected),
@@ -142,6 +147,9 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
     def warn(candidate, code, message, remediation='Correct this source and refresh analysis.'):
         diagnostics.append(diagnostic(candidate.root_id, candidate.relative_path,
             code, message, remediation, 'FORMS_PARSING' if candidate.representation == 'xml' else 'DATABASE_PARSING'))
+        if candidate.representation == 'database' and code in REJECTING_CODES:
+            merged.coverage.append(database.SourceCoverage(
+                candidate.root_id + '/' + candidate.relative_path, database.REJECTED_OR_UNREADABLE, reason=code))
 
     for candidate in selected:
         checkpoint()
@@ -174,6 +182,9 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
                 keys.append(logical)
             elif candidate.representation == 'database':
                 parsed = database.parse_database_file(path)
+                [coverage] = parsed.coverage
+                coverage.source_file = logical
+                merged.coverage.append(coverage)
                 if not any(getattr(parsed, family) for family in DB_FAMILIES):
                     warn(candidate, 'UNSUPPORTED_SQL', 'No supported database objects were parsed.',
                          'Supply table/view/package source; unsupported SQL requires human review.')
@@ -199,6 +210,7 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
         else:
             getattr(merged, family)[name] = objects[0][1]
     merged.files.sort()
+    merged.coverage.sort(key=lambda c: c.source_file)
     inventory = copy.deepcopy(discovery.inventory)
     inventory['forms']['analyzed'] = len(modules)
     inventory['forms']['parseable'] = len(modules)
