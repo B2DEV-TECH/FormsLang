@@ -56,7 +56,7 @@ No gate is **passed**. The full 3.0 release is not complete.
 
 - **Links:** SRC-11 (partial), SRC-14, INV-07; gaps G-SCHEMA-BODY, G-SCHEMA-COLLIDE, G-DDL-HEADER and G-DDL-EXTRACT in [../ecosystem-explorer-2.3/gaps-and-capture.md](../ecosystem-explorer-2.3/gaps-and-capture.md).
 - **Scope:** static database-source extraction (`formslang/database.py`) and blueprint analysis (`formslang/blueprint.py`), offline, on synthetic fixtures.
-- **Implementation commits:** WP-03 commit `e104b33` on `codex/formslang-3-m0`. It is local and not pushed.
+- **Implementation commits:** WP-03 commit `e104b33` on `codex/formslang-3-m0`, on Draft PR #21, not merged.
 - **Fixtures:** the synthetic Case C corpus from the 2.3 ecosystem inventory and inline `tmp_path` sources. No customer source is used.
 - **Commands and outcomes (Python 3.13, local):**
 
@@ -76,7 +76,7 @@ No gate is **passed**. The full 3.0 release is not complete.
 
 ### WP-07 — DDL-export headers and database source coverage
 
-- **Branch:** `codex/formslang-3-wp07`, from `70f8596`. Local, not pushed.
+- **Branch:** `codex/formslang-3-wp07`, from `70f8596`. Draft PR stacked on #21 (base `codex/formslang-3-m0`).
 - **Commands and outcomes (Python 3.13, local):**
 
   | Step | Command | Outcome |
@@ -90,17 +90,25 @@ No gate is **passed**. The full 3.0 release is not complete.
   | Inventory | `py -3.13 examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-2.2.json` | Passes. The regenerated diff changes only the engine version, in the four corpora. |
   | Lint | `py -3.13 -m ruff check .` | All checks passed |
   | Full suite | `py -3.13 -m pytest -q -p no:cacheprovider` | 1919 passed, 5 skipped in 832 s (the M0 run was 1868 passed; this adds 34 header and 19 coverage tests and removes the 2 cases of the old gap test). The skip count is unchanged. |
-  | Coverage on repository corpora | `parse_database_sources` on `examples/modernization-lab/database` and on Case C | Lab: 27 supplied, 13 parsed, 7 parsed with warnings (unmodelled `CREATE INDEX`), 7 with no recognized objects (the DML-only seed scripts, `NO_CREATE_STATEMENT`), 0 rejected. Case C: 6 supplied, 6 parsed. |
+  | Coverage on repository corpora (first commit) | `parse_database_sources` on `examples/modernization-lab/database` and on Case C | Lab: 27 supplied, 13 parsed, 7 parsed with warnings (unmodelled `CREATE INDEX`), 7 with no recognized objects (the DML-only seed scripts, `NO_CREATE_STATEMENT`), 0 rejected. Case C: 6 supplied, 6 parsed. |
+  | Unmodelled kinds made informational: tests, before the change | `py -3.13 -m pytest -q tests/test_database_coverage.py` | 3 failed, 17 passed: the index beside a table expected `PARSED` with `severity: INFO`, the not-extracted entry expected `severity: WARNING`, and the four-source summary expected 2 parsed and 0 with warnings |
+  | After the change | same | 20 passed |
+  | Related suites, after the change | the related-suites command above | 311 passed, 2 skipped |
+  | Full suite, after the change | `py -3.13 -m pytest -q -p no:cacheprovider` | 1920 passed, 5 skipped in 837 s (one test more than at `bfbaf70`; the skip count is unchanged) |
+  | Coverage on repository corpora (after the change) | same probe | Lab: 27 supplied, 20 parsed, 0 parsed with warnings, 7 with no recognized objects (`NO_CREATE_STATEMENT`), 0 rejected; the 12 `CREATE INDEX` statements are listed as `INFO`. The inventory's database selection for the lab (20 sources): 20 parsed. Case C: 6 supplied, 6 parsed. |
 
 - **Behaviour now proven:**
   - Package specs and bodies with `EDITIONABLE`/`NONEDITIONABLE`, quoted owner and name, and spaces or line breaks around the dot are parsed, subprograms included. A quoted name keeps its case, and an unquoted one is folded to upper case. The identity key is still the bare name.
   - Malformed headers (`S..P`, `S.P.Q`, `1P`, an unterminated quote, an empty quoted name, both editioning keywords) are not recognised. The old pattern accepted the first three.
-  - Every supplied database source has a coverage entry with one of four statuses. The entry lists the objects extracted, the CREATE statements of a supported kind that yielded no object, and the CREATE statements of an unmodelled kind. A missing path in a source list is `REJECTED_OR_UNREADABLE` (`SOURCE_NOT_FOUND`), and in the project pipeline every rejecting diagnostic becomes such an entry. When coverage was never computed it is `None`, never an empty result.
+  - Every supplied database source has a coverage entry with one of four statuses. The entry lists the objects extracted, the CREATE statements of a supported kind that yielded no object (`WARNING`, `NOT_EXTRACTED`; they make the source `PARSED_WITH_WARNINGS`), and the CREATE statements of an unmodelled kind (`INFO`, `UNSUPPORTED_BY_MODEL`; listed, but they do not change the status). A missing path in a source list is `REJECTED_OR_UNREADABLE` (`SOURCE_NOT_FOUND`), and in the project pipeline every rejecting diagnostic becomes such an entry. When coverage was never computed it is `None`, never an empty result.
   - The Blueprint carries `database.source_coverage` (summary and per-source entries, logical paths only in the project pipeline). The engine is `blueprint-analysis/3`, so earlier saved assessments are reported as stale.
 - **Behaviour still not proven:**
   - **G-DDL-EXTRACT:** the statements coverage reports as `not_extracted` are still missing from the Blueprint (see the gap document).
   - No report, UI or CLI output shows coverage yet.
   - The CREATE scan is lexical. A SQL*Plus `REM` line that contains `CREATE TABLE x` is counted as a statement; the error only ever adds a warning, never hides one.
+  - **G-SOURCE-REVISION (follow-up, not changed here):** `source_revision` is derived from `files` only, so a supplied source that yields no object does not change it. Invariant to hold: "Two repository states with materially different supplied source sets must not silently appear identical merely because one source produced zero extracted objects." Owned by ADR-02 (WP-10, WP-20).
+  - Quoted names are not resolved against unquoted ones (`"MyPackage"` is not `MYPACKAGE`, as in Oracle). Quoted subprogram names are separate work.
+  - CI does not run on this branch: `ci.yml` triggers only on pushes and pull requests to `main`, and the PR is stacked on `codex/formslang-3-m0`. Python 3.10, 3.11 and 3.12 were not run for this slice.
 - **Independent review:** none yet.
 - **Status:** in progress. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
 

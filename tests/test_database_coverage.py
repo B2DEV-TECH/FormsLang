@@ -56,11 +56,24 @@ def test_an_empty_source_has_no_recognized_objects_and_no_create_statement(tmp_p
     assert coverage.reason == "NO_CREATE_STATEMENT"
 
 
-def test_an_unmodelled_statement_beside_an_object_is_a_warning(tmp_path):
+def test_an_unmodelled_statement_beside_an_object_is_informational(tmp_path):
+    # FormsLang does not model indexes: that is a limit of the model, not a
+    # failure to read the source, so the source is still PARSED -- but the
+    # index stays visible and says why it produced nothing.
     coverage = coverage_of(tmp_path, "t.sql", "CREATE TABLE T (ID NUMBER);\nCREATE INDEX T_I ON T (ID);\n")
-    assert coverage.status == PARSED_WITH_WARNINGS
+    assert coverage.status == PARSED
     assert kinds(coverage.objects) == [("TABLE", "T")]
-    assert kinds(coverage.unsupported) == [("INDEX", "T_I")]
+    assert coverage.unsupported == [{"kind": "INDEX", "name": "T_I", "line": 2,
+                                     "severity": "INFO", "reason": "UNSUPPORTED_BY_MODEL"}]
+
+
+def test_a_supported_statement_not_extracted_stays_a_warning_beside_unmodelled_ones(tmp_path):
+    coverage = coverage_of(tmp_path, "t.sql", "CREATE TABLE A (ID NUMBER);\nCREATE INDEX A_I ON A (ID);\n"
+                                              'CREATE TABLE "T" (ID NUMBER);\n')
+    assert coverage.status == PARSED_WITH_WARNINGS
+    assert coverage.not_extracted == [{"kind": "TABLE", "name": "T", "line": 3,
+                                       "severity": "WARNING", "reason": "NOT_EXTRACTED"}]
+    assert [e["severity"] for e in coverage.unsupported] == ["INFO"]
 
 
 @pytest.mark.parametrize(("name", "text", "missing"), [
@@ -126,7 +139,7 @@ def test_sources_report_every_supplied_file_including_a_missing_one(tmp_path):
     # A missing source is never counted as a parsed file.
     assert str(missing) not in project.files
     assert project.coverage_summary() == {
-        "supplied": 4, "parsed": 1, "parsed_with_warnings": 1,
+        "supplied": 4, "parsed": 2, "parsed_with_warnings": 0,
         "no_recognized_objects": 1, "rejected_or_unreadable": 1,
     }
 
