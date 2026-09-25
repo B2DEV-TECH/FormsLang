@@ -8,10 +8,12 @@
           "CALLS FACT": 3,
           "CONTAINS FACT": 15,
           "DECLARES FACT": 1,
+          "IMPLEMENTS FACT": 2,
           "REFERENCES FACT": 7,
-          "REFERENCES INFERENCE": 3
+          "REFERENCES INFERENCE": 3,
+          "WRITES FACT": 1
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/2+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "APPLICATION": 1,
           "BLOCK": 1,
@@ -23,14 +25,16 @@
           "PACKAGE_SPEC": 1,
           "PACKAGE_SUBPROGRAM": 1,
           "ROUTINE_REFERENCE": 3,
+          "SUBPROGRAM_BODY": 1,
           "TABLE": 2,
+          "TABLE_OR_VIEW_REFERENCE": 1,
           "TRIGGER": 3,
           "WINDOW": 1
         },
         "entities_without_finding_by_type": {
           "APPLICATION": 1
         },
-        "findings": 22,
+        "findings": 24,
         "frontiers_outside_graph": {},
         "hotspots_by_type": {
           "api_bypass": 0,
@@ -41,7 +45,8 @@
           "PACKAGE_REFERENCE RESOLVED_TO_DATABASE_OBJECT": 1,
           "PACKAGE_REFERENCE SYMBOLIC_REFERENCE": 2,
           "ROUTINE_REFERENCE RESOLVED_TO_DATABASE_OBJECT": 1,
-          "ROUTINE_REFERENCE SYMBOLIC_REFERENCE": 2
+          "ROUTINE_REFERENCE SYMBOLIC_REFERENCE": 2,
+          "TABLE_OR_VIEW_REFERENCE SYMBOLIC_REFERENCE": 1
         },
         "schema_version": "blueprint/1",
         "tab_page_entities": 0,
@@ -107,6 +112,10 @@
           {
             "name": "ORDER_API.SUBMIT",
             "type": "PACKAGE_SUBPROGRAM"
+          },
+          {
+            "name": "ORDER_API.SUBMIT",
+            "type": "SUBPROGRAM_BODY"
           },
           {
             "name": "BILLING_ORDERS",
@@ -194,7 +203,7 @@
           "USES_LOV FACT": 8,
           "WRITES FACT": 17
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/2+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "ALERT": 5,
           "APPLICATION": 1,
@@ -746,7 +755,7 @@
           "USES_PROGRAM_UNIT FACT": 3,
           "WRITES FACT": 2
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/2+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "ALERT": 4,
           "APPLICATION": 1,
@@ -966,7 +975,7 @@
           "OPENS_FORM FACT": 3,
           "REFERENCES FACT": 14
         },
-        "engine_version": "blueprint-analysis/1+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
+        "engine_version": "blueprint-analysis/2+plsql-evidence/2+analysis/1+risk/1+behavior/1+sensitive/1+catalog:199d242a56",
         "entities_by_type": {
           "APPLICATION": 1,
           "BLOCK": 3,
