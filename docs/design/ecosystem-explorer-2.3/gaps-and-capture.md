@@ -90,19 +90,73 @@ parsed, so there is no `SUBPROGRAM_BODY` and no `IMPLEMENTS` edge.
 
 ### G-DDL-HEADER — an exported package header is dropped without a trace
 
-Found while fixing G-SCHEMA-BODY; open. `parse_package_spec` and
-`parse_package_body` accept only `CREATE [OR REPLACE] PACKAGE [BODY] name`,
-with an unquoted `name` of the form `NAME` or `SCHEMA.NAME`. The
-headers that DDL exports usually write, `CREATE OR REPLACE EDITIONABLE PACKAGE
-BODY "SCHEMA"."NAME"`, `NONEDITIONABLE`, quoted names, and spaces around the dot,
-do not match. The package is then not parsed, and nothing records that the
-file was skipped: it is listed in `DatabaseProject.files` with no object.
+**Status: fixed in `blueprint-analysis/3`** (FormsLang 3.0 WP-07). Found while
+fixing G-SCHEMA-BODY. `parse_package_spec` and `parse_package_body` accepted
+only `CREATE [OR REPLACE] PACKAGE [BODY] name`, with an unquoted `name` of the
+form `NAME` or `SCHEMA.NAME`. The headers that DDL exports usually write,
+`CREATE OR REPLACE EDITIONABLE PACKAGE BODY "SCHEMA"."NAME"`, `NONEDITIONABLE`,
+quoted names, and spaces around the dot, did not match. The package was not
+parsed, and nothing recorded that the file was skipped: it was listed in
+`DatabaseProject.files` with no object.
 
-- **Measured effect.** With either `EDITIONABLE` or `"S"."P"`, both the spec and
-  the body parse to nothing.
-- **Severity.** Missing data looks like "no database code", which the
-  3.0 invariant *unknown is not zero* forbids.
-- **Test.** `test_gap_exported_package_header_is_dropped_without_a_trace`.
+- **Fix.** One header pattern serves both parsers:
+  `CREATE [OR REPLACE] [EDITIONABLE | NONEDITIONABLE] PACKAGE [BODY] [owner .] name AS|IS`,
+  where each part may be quoted. A quoted name keeps its exact case; an
+  unquoted one is folded to upper case, as Oracle does. The identity key is
+  still the bare name (G-SCHEMA-COLLIDE is unchanged).
+- **Stricter than before.** `S..P`, `S.P.Q` and `1P` were accepted, because the
+  old pattern took the last dotted part of any run of name characters. They
+  are now not recognised. A specification named `BODY_API` was dropped, and is
+  now parsed.
+- **Every source is now accounted for.** `DatabaseProject.coverage` gives each
+  supplied source a status (`PARSED`, `PARSED_WITH_WARNINGS`,
+  `NO_RECOGNIZED_OBJECTS`, `REJECTED_OR_UNREADABLE`) and lists the CREATE
+  statements that yielded no object. A lexical scan finds them, independently
+  of the extractors. The Blueprint carries it as `database.source_coverage`.
+  When coverage was never computed it is `None`: unknown, not clean.
+- **Warning versus information.** A statement of a supported kind that yields
+  no object is listed under `not_extracted` with `severity: WARNING`,
+  `reason: NOT_EXTRACTED`, and makes the source `PARSED_WITH_WARNINGS`. A
+  statement of a kind FormsLang does not model (`CREATE INDEX`, `TRIGGER`,
+  `TYPE`, ...) is listed under `unsupported` with `severity: INFO`,
+  `reason: UNSUPPORTED_BY_MODEL`. It stays visible but does not by itself
+  change the status: a source of tables and indexes is `PARSED`.
+- **Quoted names are not resolved against unquoted ones.** `"MyPackage"` and
+  `MYPACKAGE` are different objects, as in Oracle, and nothing normalises one
+  into the other. Quoted *subprogram* names are separate, unstarted work.
+- **Tests.** `tests/test_database_headers.py`, `tests/test_database_coverage.py`.
+
+### G-DDL-EXTRACT — CREATE statements that are recognised but not extracted
+
+Found during WP-07; open. Coverage now reports each case as `not_extracted`,
+so none is silent any more, but the object is still missing from the
+Blueprint:
+
+- **Clause before `AS`.** `AUTHID`, `ACCESSIBLE BY`, `DEFAULT COLLATION` and
+  `SHARING` between the package name and `AS`/`IS`. Pinned by
+  `test_gap_spec_header_with_a_clause_before_as_is_not_recognised`.
+- **One package per file.** Only the first specification and the first body
+  in a file are extracted.
+- **After a `/`.** The statement splitter keeps the `/` at the head of the
+  next statement, so a table after a `/`-terminated statement is not read. A
+  view followed by `/` without `;` absorbs the next statement into its query
+  text.
+- **Variants.** `GLOBAL TEMPORARY TABLE`, `FORCE VIEW`, and quoted table,
+  view and sequence names.
+
+### G-SOURCE-REVISION — a zero-object source does not reach the revision
+
+Found during WP-07; open, deliberately not changed there. `blueprint.build`
+derives `source_revision` from `DatabaseProject.files`, and a source that
+yields no object is not in `files`. Adding or removing such a source (a
+trigger file, an index-only file, seed DML) leaves the revision unchanged,
+although coverage lists it. The invariant to hold:
+
+> Two repository states with materially different supplied source sets must not silently appear identical merely because one source produced zero extracted objects.
+
+This belongs to repository and checkpoint identity (ADR-02, consumed by
+WP-10 and WP-20), not to the DDL parser. The revision semantics are unchanged
+until then.
 
 ### G-SCHEMA-COLLIDE — same-named packages in two schemas collapse into one
 

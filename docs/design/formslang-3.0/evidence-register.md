@@ -7,7 +7,9 @@ marked passed because the local unit tests are green. Planned work is in
 [requirements-matrix.md](requirements-matrix.md).
 
 Specification: FL3-MASTER-2026-09-25 revision 1.0. Planning baseline: `main` at
-`1d9cb47`. Active milestone: **M0**. Branch: `codex/formslang-3-m0`.
+`1d9cb47`. Active milestone: **M0**. Branches: `codex/formslang-3-m0` (Draft PR #21),
+`codex/formslang-3-wp07` (Draft PR #22, stacked on #21) and `codex/formslang-3-wp02`
+(Draft PR #23, against `main`).
 
 ## Summary
 
@@ -16,7 +18,7 @@ Specification: FL3-MASTER-2026-09-25 revision 1.0. Planning baseline: `main` at
 | G-01 Baseline truth | **In progress** | Baseline audit written against `1d9cb47`, and the §3.3 concerns verified in code (see below) |
 | G-02 Repository integrity | Not started | — (ADR-01..03 not written) |
 | G-03 Portability and Git exchange | Not started | — |
-| G-04 Facts and evidence | **In progress** | G-SCHEMA-BODY fixed with failing-then-passing tests. G-SCHEMA-COLLIDE and G-DDL-HEADER stay pinned as open defects. |
+| G-04 Facts and evidence | **In progress** | G-SCHEMA-BODY and G-DDL-HEADER fixed with failing-then-passing tests (G-DDL-HEADER on the local WP-07 branch). Per-source database coverage added. G-SCHEMA-COLLIDE and G-DDL-EXTRACT stay open. |
 | G-05 Language and decisions | Not started | — |
 | G-06 Workbench and CLI | Not started | — |
 | G-07 Target delivery | Not started | 2.2 generator behaviour recorded in the baseline audit only |
@@ -47,15 +49,15 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Evidence locations:** [baseline-audit.md](baseline-audit.md) §2–§6, and the CI run pages.
 - **Independent review:** none yet.
 - **Known limitations:**
-  - The cause of the `1d9cb47` 500 is **unknown**. The HTTP boundary sanitises the error without logging a traceback. WP-02 adds that logging before any fix.
+  - The cause of the `1d9cb47` 500 is **unknown**. The HTTP boundary sanitised the error without logging its type. WP-02 (Draft PR #23) adds that logging; its CI did not reproduce the failure (see WP-02 below).
   - Python 3.10 and 3.11 were not run locally.
 - **Status:** in progress. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
 
 ## G-04 — Facts and evidence
 
-- **Links:** SRC-11 (partial), SRC-14, INV-07; gaps G-SCHEMA-BODY, G-SCHEMA-COLLIDE and G-DDL-HEADER in [../ecosystem-explorer-2.3/gaps-and-capture.md](../ecosystem-explorer-2.3/gaps-and-capture.md).
+- **Links:** SRC-11 (partial), SRC-14, INV-07; gaps G-SCHEMA-BODY, G-SCHEMA-COLLIDE, G-DDL-HEADER and G-DDL-EXTRACT in [../ecosystem-explorer-2.3/gaps-and-capture.md](../ecosystem-explorer-2.3/gaps-and-capture.md).
 - **Scope:** static database-source extraction (`formslang/database.py`) and blueprint analysis (`formslang/blueprint.py`), offline, on synthetic fixtures.
-- **Implementation commits:** WP-03 commit `e104b33` on `codex/formslang-3-m0`. It is local and not pushed.
+- **Implementation commits:** WP-03 commit `e104b33` on `codex/formslang-3-m0`, on Draft PR #21, not merged.
 - **Fixtures:** the synthetic Case C corpus from the 2.3 ecosystem inventory and inline `tmp_path` sources. No customer source is used.
 - **Commands and outcomes (Python 3.13, local):**
 
@@ -71,9 +73,64 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Behaviour now proven:** a `CREATE [OR REPLACE] PACKAGE BODY OWNER.NAME AS|IS` body keeps its subprograms, its `IMPLEMENTS` links, and its writes. The engine version is `blueprint-analysis/2`, so saved assessments from the previous engine are reported as stale.
 - **Behaviour still not proven (open defects, pinned by `test_gap_*` tests):**
   - **G-SCHEMA-COLLIDE:** same-named objects in two schemas merge into one, and the last file wins. This needs ADR-06, then WP-04.
-  - **G-DDL-HEADER (new, found in M0):** headers written by DDL exports (`EDITIONABLE`, `"S"."P"`, `S . P`) produce no spec and no body, and nothing reports the loss. This violates INV-07. It is the next slice (WP-07).
+  - **G-DDL-HEADER (found in M0):** fixed in WP-07; see below.
+
+### WP-07 — DDL-export headers and database source coverage
+
+- **Branch:** `codex/formslang-3-wp07`, from `70f8596`. Draft PR #22, stacked on #21 (base `codex/formslang-3-m0`).
+- **Commands and outcomes (Python 3.13, local):**
+
+  | Step | Command | Outcome |
+  |---|---|---|
+  | Header tests, before the fix | `py -3.13 -m pytest -q tests/test_database_headers.py` | 24 failed, 9 passed |
+  | After the header pattern | same | 32 passed, 2 failed: the `.sql` pre-filter (`"PACKAGE BODY "` followed by a line break) and the engine version |
+  | After the pre-filter and the engine bump | `py -3.13 -m pytest -q tests/test_database_headers.py tests/test_ecosystem_phase1.py` | 60 passed, 1 failed (the committed inventory, as expected before regeneration) |
+  | Coverage tests, before the implementation | `py -3.13 -m pytest -q tests/test_database_coverage.py`, with only the status constants defined | 19 failed, 0 passed |
+  | After the implementation | `py -3.13 -m pytest -q tests/test_database_coverage.py tests/test_database_headers.py` | 53 passed |
+  | Related suites | `py -3.13 -m pytest -q tests/test_database.py tests/test_database_headers.py tests/test_database_coverage.py tests/test_blueprint.py tests/test_blueprint_backend.py tests/test_ecosystem_phase1.py tests/test_estate_hotspots.py tests/test_depgraph.py tests/test_modernization.py tests/test_project_analysis.py tests/test_project_sources.py tests/test_project_discovery.py` | 310 passed, 2 skipped, after the inventory regeneration |
+  | Inventory | `py -3.13 examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-2.2.json` | Passes. The regenerated diff changes only the engine version, in the four corpora. |
+  | Lint | `py -3.13 -m ruff check .` | All checks passed |
+  | Full suite | `py -3.13 -m pytest -q -p no:cacheprovider` | 1919 passed, 5 skipped in 832 s (the M0 run was 1868 passed; this adds 34 header and 19 coverage tests and removes the 2 cases of the old gap test). The skip count is unchanged. |
+  | Coverage on repository corpora (first commit) | `parse_database_sources` on `examples/modernization-lab/database` and on Case C | Lab: 27 supplied, 13 parsed, 7 parsed with warnings (unmodelled `CREATE INDEX`), 7 with no recognized objects (the DML-only seed scripts, `NO_CREATE_STATEMENT`), 0 rejected. Case C: 6 supplied, 6 parsed. |
+  | Unmodelled kinds made informational: tests, before the change | `py -3.13 -m pytest -q tests/test_database_coverage.py` | 3 failed, 17 passed: the index beside a table expected `PARSED` with `severity: INFO`, the not-extracted entry expected `severity: WARNING`, and the four-source summary expected 2 parsed and 0 with warnings |
+  | After the change | same | 20 passed |
+  | Related suites, after the change | the related-suites command above | 311 passed, 2 skipped |
+  | Full suite, after the change | `py -3.13 -m pytest -q -p no:cacheprovider` | 1920 passed, 5 skipped in 837 s (one test more than at `bfbaf70`; the skip count is unchanged) |
+  | Coverage on repository corpora (after the change) | same probe | Lab: 27 supplied, 20 parsed, 0 parsed with warnings, 7 with no recognized objects (`NO_CREATE_STATEMENT`), 0 rejected; the 12 `CREATE INDEX` statements are listed as `INFO`. The inventory's database selection for the lab (20 sources): 20 parsed. Case C: 6 supplied, 6 parsed. |
+
+- **Behaviour now proven:**
+  - Package specs and bodies with `EDITIONABLE`/`NONEDITIONABLE`, quoted owner and name, and spaces or line breaks around the dot are parsed, subprograms included. A quoted name keeps its case, and an unquoted one is folded to upper case. The identity key is still the bare name.
+  - Malformed headers (`S..P`, `S.P.Q`, `1P`, an unterminated quote, an empty quoted name, both editioning keywords) are not recognised. The old pattern accepted the first three.
+  - Every supplied database source has a coverage entry with one of four statuses. The entry lists the objects extracted, the CREATE statements of a supported kind that yielded no object (`WARNING`, `NOT_EXTRACTED`; they make the source `PARSED_WITH_WARNINGS`), and the CREATE statements of an unmodelled kind (`INFO`, `UNSUPPORTED_BY_MODEL`; listed, but they do not change the status). A missing path in a source list is `REJECTED_OR_UNREADABLE` (`SOURCE_NOT_FOUND`), and in the project pipeline every rejecting diagnostic becomes such an entry. When coverage was never computed it is `None`, never an empty result.
+  - The Blueprint carries `database.source_coverage` (summary and per-source entries, logical paths only in the project pipeline). The engine is `blueprint-analysis/3`, so earlier saved assessments are reported as stale.
+- **Behaviour still not proven:**
+  - **G-DDL-EXTRACT:** the statements coverage reports as `not_extracted` are still missing from the Blueprint (see the gap document).
+  - No report, UI or CLI output shows coverage yet.
+  - The CREATE scan is lexical. A SQL*Plus `REM` line that contains `CREATE TABLE x` is counted as a statement; the error only ever adds a warning, never hides one.
+  - **G-SOURCE-REVISION (follow-up, not changed here):** `source_revision` is derived from `files` only, so a supplied source that yields no object does not change it. Invariant to hold: "Two repository states with materially different supplied source sets must not silently appear identical merely because one source produced zero extracted objects." Owned by ADR-02 (WP-10, WP-20).
+  - Quoted names are not resolved against unquoted ones (`"MyPackage"` is not `MYPACKAGE`, as in Oracle). Quoted subprogram names are separate work.
+  - CI does not run on this branch: `ci.yml` triggers only on pushes and pull requests to `main`, and the PR is stacked on `codex/formslang-3-m0`. Python 3.10, 3.11 and 3.12 were not run for this slice.
 - **Independent review:** none yet.
 - **Status:** in progress. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
+
+### WP-02 — instrumentation of the HTTP 500 boundary
+
+- **Branch:** `codex/formslang-3-wp02`, from `main` at `1d9cb47`, independent of #21 and #22. Draft PR #23 against `main`. Commit `b83ade2`.
+- **Change:** the generic `except Exception` in `ProjectHTTP.dispatch` logs one ERROR message with the correlation id returned to the client, the method, the route with every data segment replaced by `{…}`, and each exception of the cause/context chain with its type, a safe code (`sqlite_errorname` from Python 3.11, `errno`) and its frames (`file:line in function`). It never logs the exception message, the query string, the body or credentials, and passes no `exc_info`. The response, the status, retries, locks, busy timeouts and the journal mode are unchanged.
+- **Commands and outcomes:**
+
+  | Step | Command | Outcome |
+  |---|---|---|
+  | New tests, before the change (Python 3.13, local) | `py -3.13 -m pytest -q tests/test_project_http.py -k "logged or sanitized"` | 3 failed, 1 passed (the log message had no correlation id, type or route) |
+  | After the change | same | 4 passed |
+  | HTTP and project suites | `py -3.13 -m pytest -q tests/test_project_http.py tests/test_project_generation_http.py tests/test_project_reports_http.py tests/test_workbench.py tests/test_workbench_mfa.py tests/test_project_jobs.py tests/test_project_service.py tests/test_project_intake.py` | 199 passed, 1 skipped |
+  | Lint | `py -3.13 -m ruff check .` | All checks passed |
+  | Full suite | `py -3.13 -m pytest -q -p no:cacheprovider` | 1866 passed, 5 skipped in 829 s |
+  | CI of Draft PR #23 | GitHub Actions run 36176591379 at `b83ade2` | `pytest (windows-latest, py3.11)`: **1871 passed, 0 failed** in 1904 s. All 13 checks passed: the other Windows jobs (py3.10, py3.12, py3.13) 1871 passed each, the four Ubuntu jobs, ruff, the export, SQLcl `apex validate` and both Edge acceptances. |
+
+- **Windows py3.11 500: not reproduced.** The job that failed on `1d9cb47` passed on the instrumented branch, so there is no new evidence of its cause. One green run proves only that it did not recur; the failure is intermittent. No fix was written, as the owner required.
+- **Correction:** the #21 description says the `1d9cb47` failure happened during setup. The job log shows it in the test call (`analyze_demo` → `wait_job`, `tests/test_project_http.py:52`).
+- **Status:** instrumentation done and tested; cause unknown. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
 
 ## Gates not started
 
