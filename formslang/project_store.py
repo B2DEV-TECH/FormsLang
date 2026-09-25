@@ -173,13 +173,16 @@ class ProjectStore:
         mirror_current = False
         try:
             with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as check:
-                # Share the database's cross-process writer lock with mirror
-                # publication. Windows can deny opens during atomic replacement.
-                # No database mutation is performed by this validation transaction.
-                check.execute("BEGIN IMMEDIATE")
+                # A read transaction: its SHARED lock is held until close and
+                # excludes mirror publication, which takes the EXCLUSIVE lock
+                # (see _mirror_publication), across processes too. Readers do not
+                # exclude each other, so opens no longer compete for the single
+                # writer lock under SQLite's polling busy handler, which grants
+                # it to whichever caller retries first and can starve a waiter.
+                check.execute("BEGIN")
+                row = check.execute("SELECT schema_version,descriptor_json FROM modernization_project WHERE id=1").fetchone()
                 if check.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise ProjectError("Project database integrity check failed")
-                row = check.execute("SELECT schema_version,descriptor_json FROM modernization_project WHERE id=1").fetchone()
                 if not row or row[0] != "formslang-project/1":
                     raise ProjectError("Unsupported project database schema")
                 authoritative = descriptor_from_dict(json.loads(row[1]))
@@ -205,11 +208,25 @@ class ProjectStore:
             raise ProjectError("Not a valid FormsLang project database") from exc
         except (sqlite3.Error, json.JSONDecodeError) as exc:
             raise ProjectError("Not a valid FormsLang project database") from exc
-        result = cls(root, Store(path, reconcile_jobs=False))
+        # The session connection reads again after the check closed, so a
+        # publication can hold the lock here too; report it as retryable
+        # ProjectBusy, not as a raw sqlite3 error the HTTP boundary answers with 500.
+        try:
+            session = Store(path, reconcile_jobs=False)
+        except sqlite3.OperationalError as exc:
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise ProjectBusy("Project is busy; retry after the current operation") from exc
+            raise ProjectError("Not a valid FormsLang project database") from exc
+        result = cls(root, session)
         try:
             result._migrate_runs()
             if not mirror_current:
                 result.sync_descriptor()
+        except sqlite3.OperationalError as exc:
+            result.close()
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise ProjectBusy("Project is busy; retry after the current operation") from exc
+            raise
         except Exception:
             result.close()
             raise
@@ -232,12 +249,12 @@ class ProjectStore:
             raise ProjectError('Project run schema could not be migrated; existing state is preserved') from exc
 
     @contextmanager
-    def _write(self):
+    def _write(self, *, exclusive: bool = False):
         db = self.session.db
         if db.in_transaction:
             raise ProjectError('Project write requires its own transaction')
         try:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute('BEGIN EXCLUSIVE' if exclusive else 'BEGIN IMMEDIATE')
             yield db
             db.commit()
         except sqlite3.Error as exc:
@@ -255,7 +272,8 @@ class ProjectStore:
     def replace_roots(self, roots, *, expected_configuration: int) -> ProjectDescriptor:
         if type(expected_configuration) is not int or expected_configuration < 0:
             raise ProjectError('Invalid configuration precondition')
-        with self._write() as db:
+        with self._mirror_publication(replace(self.descriptor(), source_roots=roots)) as publish, \
+                self._write(exclusive=True) as db:
             if db.execute("SELECT 1 FROM project_job WHERE status IN ('QUEUED','RUNNING')").fetchone():
                 raise ProjectBusy('Analysis is active; retry relink after it finishes')
             if self.configuration_revision() != expected_configuration:
@@ -265,7 +283,7 @@ class ProjectStore:
             db.execute('UPDATE modernization_project SET descriptor_json=? WHERE id=1',
                        (canonical_json(descriptor_to_dict(updated)),))
             db.execute('UPDATE project_configuration SET revision=revision+1 WHERE id=1')
-        self.sync_descriptor()
+            publish()
         return updated
 
     def record_discovery(self, result, *, run_id: str) -> None:
@@ -319,34 +337,89 @@ class ProjectStore:
         return descriptor_from_dict(json.loads(row[0]))
 
     def sync_descriptor(self) -> None:
-        # Fetch the authoritative payload under the same lock as the filesystem
-        # operation: otherwise a delayed reader can republish an older descriptor.
-        with self._write():
-            self._sync_descriptor_locked()
-
-    def _sync_descriptor_locked(self) -> None:
+        # The authoritative payload is fetched again under the same lock as the
+        # rename: otherwise a delayed reader can republish an older descriptor.
+        # EXCLUSIVE also waits out every open's read transaction, so no reader
+        # holds project.json while it is replaced (Windows denies the rename).
+        # The fsync'd copy is staged before the lock, so the lock covers a
+        # comparison and a rename rather than a disk flush.
         destination = contained_path(self.directory, "project.json")
-        payload = canonical_json(descriptor_to_dict(self.descriptor())) + "\n"
+        staged_payload = self._descriptor_payload()
         try:
-            if destination.is_file() and destination.read_text(encoding="utf-8", errors="replace") == payload:
-                return
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
-                    dir=self.directory, prefix=".descriptor-", delete=False) as stream:
-                temporary = Path(stream.name)
-                try:
-                    stream.write(payload)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                except Exception:
-                    stream.close()
-                    temporary.unlink(missing_ok=True)
-                    raise
+            staged = self._stage_descriptor(staged_payload)
             try:
-                replace_mirror(temporary, destination)
+                with self._write(exclusive=True):
+                    payload = self._descriptor_payload()
+                    if destination.is_file() and destination.read_text(encoding="utf-8", errors="replace") == payload:
+                        return
+                    if payload != staged_payload:
+                        # Published between the staging read and the lock: rare, flush under the lock.
+                        staged.unlink(missing_ok=True)
+                        staged = self._stage_descriptor(payload)
+                    replace_mirror(staged, destination)
             finally:
-                temporary.unlink(missing_ok=True)
+                staged.unlink(missing_ok=True)
         except OSError as exc:
             raise ProjectError("Project descriptor could not be saved; SQLite state is preserved") from exc
+
+    @contextmanager
+    def _mirror_publication(self, expected: ProjectDescriptor):
+        """Publish project.json inside the EXCLUSIVE transaction that changes the descriptor.
+
+        Publishing after the commit left a window in which every open saw the
+        database ahead of its mirror and published it as well, so concurrent
+        opens queued for the EXCLUSIVE lock behind each other and one could
+        starve into ProjectBusy. Inside the transaction no open, in any process,
+        can observe that window. The caller runs ``publish()`` as the last step
+        before its commit. A mirror failure does not roll the database back:
+        SQLite stays authoritative and the next open republishes the mirror.
+        """
+        destination = contained_path(self.directory, "project.json")
+        state = {"payload": canonical_json(descriptor_to_dict(expected)) + "\n", "staged": None, "failure": None}
+        try:
+            # Flushed before the caller takes the lock, as in sync_descriptor.
+            state["staged"] = self._stage_descriptor(state["payload"])
+        except OSError as exc:
+            state["failure"] = exc
+
+        def publish() -> None:
+            if state["failure"] is not None:
+                return
+            try:
+                payload = self._descriptor_payload()
+                if payload != state["payload"]:
+                    # Another write changed the descriptor before the lock: stage the locked state.
+                    state["staged"].unlink(missing_ok=True)
+                    state["staged"] = None
+                    state["staged"] = self._stage_descriptor(payload)
+                replace_mirror(state["staged"], destination)
+            except OSError as exc:
+                state["failure"] = exc
+
+        try:
+            yield publish
+        finally:
+            if state["staged"] is not None:
+                state["staged"].unlink(missing_ok=True)
+        if state["failure"] is not None:
+            raise ProjectError("Project descriptor could not be saved; SQLite state is preserved") from state["failure"]
+
+    def _descriptor_payload(self) -> str:
+        return canonical_json(descriptor_to_dict(self.descriptor())) + "\n"
+
+    def _stage_descriptor(self, payload: str) -> Path:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
+                dir=self.directory, prefix=".descriptor-", delete=False) as stream:
+            temporary = Path(stream.name)
+            try:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            except Exception:
+                stream.close()
+                temporary.unlink(missing_ok=True)
+                raise
+        return temporary
 
     def load_assessment(self) -> dict | None:
         row = self.session.db.execute("SELECT a.payload_json FROM project_assessment a JOIN modernization_project p ON p.analysis_revision=a.revision WHERE p.id=1").fetchone()
@@ -364,63 +437,66 @@ class ProjectStore:
         validate_assessment(descriptor, assessment)
         revision = assessment["analysis_revision"]
         db = self.session.db
-        try:
-            db.execute("BEGIN IMMEDIATE")
-            descriptor = self.descriptor()
-            validate_assessment(descriptor, assessment)
-            if fenced:
-                job = db.execute('SELECT * FROM project_job WHERE job_id=? AND project_id=?',
-                                 (job_id, descriptor.id)).fetchone()
-                if (job is None or job['owner_token'] != owner_token or job['status'] != 'RUNNING'
-                        or job['operation'] != 'ANALYZE' or self.configuration_revision() != expected_configuration
-                        or job['requested_configuration'] != expected_configuration
-                        or job['requested_revision'] != expected_revision):
-                    raise RevisionConflict('Project job ownership or configuration changed')
-                if job['cancellation_requested']:
-                    from .project_jobs import AnalysisCancelled
-                    raise AnalysisCancelled('Analysis cancelled before publication')
-            elif db.execute("SELECT 1 FROM project_job WHERE status IN ('QUEUED','RUNNING')").fetchone():
-                raise ProjectBusy('A project job owns publication; wait for it to finish')
-            current = db.execute("SELECT analysis_revision FROM modernization_project WHERE id=1").fetchone()[0]
-            if current != expected_revision:
-                raise RevisionConflict("Assessment changed; reload before publishing")
-            existing = db.execute("SELECT payload_json FROM project_assessment WHERE revision=?", (revision,)).fetchone()
-            if existing:
-                previous = json.loads(existing[0])
-                # Keep the original analysis clock for repeated exports of a revision.
-                if canonical_json({k: v for k, v in previous.items() if k != "analyzed_at"}) != canonical_json({k: v for k, v in assessment.items() if k != "analyzed_at"}):
-                    raise RevisionConflict("Assessment content differs for the same revision")
-                assessment = previous
-            else:
-                db.execute("INSERT INTO project_assessment VALUES (?,?,?,?)",
-                    (revision, assessment["source_revision"], assessment["analyzed_at"], canonical_json(assessment)))
-            updated = replace(descriptor, analysis_revision=revision,
-                              engine_version=assessment["blueprint"]["engine_version"])
-            db.execute("UPDATE modernization_project SET analysis_revision=?,descriptor_json=? WHERE id=1",
-                       (revision, canonical_json(descriptor_to_dict(updated))))
-            db.execute("INSERT OR REPLACE INTO blueprint_snapshot VALUES (1,?)",
-                       (canonical_json(assessment["blueprint"]),))
-            if fenced:
-                completed = ('COMPLETED_WITH_WARNINGS' if assessment.get('completion_state') in
-                             {'INCOMPLETE', 'COMPLETE_WITH_WARNINGS'} or assessment['status'] == 'Incomplete'
-                             else 'COMPLETED')
-                outcome = {'analysis_revision': revision,
-                           'completion_state': assessment.get('completion_state', 'COMPLETE')}
-                db.execute('UPDATE project_job SET status=?,finished_at=?,outcome_json=? WHERE job_id=?',
-                           (completed, datetime.now(timezone.utc).isoformat(), canonical_json(outcome), job_id))
-            db.commit()
-        except sqlite3.OperationalError as exc:
-            db.rollback()
-            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
-                raise ProjectBusy("Project is busy; retry after the current operation") from exc
-            raise ProjectError("Assessment could not be published") from exc
-        except sqlite3.Error as exc:
-            db.rollback()
-            raise ProjectError("Assessment could not be published") from exc
-        except Exception:
-            db.rollback()
-            raise
-        self.sync_descriptor()
+        expected = replace(descriptor, analysis_revision=revision,
+                           engine_version=assessment["blueprint"]["engine_version"])
+        with self._mirror_publication(expected) as publish:
+            try:
+                db.execute("BEGIN EXCLUSIVE")
+                descriptor = self.descriptor()
+                validate_assessment(descriptor, assessment)
+                if fenced:
+                    job = db.execute('SELECT * FROM project_job WHERE job_id=? AND project_id=?',
+                                     (job_id, descriptor.id)).fetchone()
+                    if (job is None or job['owner_token'] != owner_token or job['status'] != 'RUNNING'
+                            or job['operation'] != 'ANALYZE' or self.configuration_revision() != expected_configuration
+                            or job['requested_configuration'] != expected_configuration
+                            or job['requested_revision'] != expected_revision):
+                        raise RevisionConflict('Project job ownership or configuration changed')
+                    if job['cancellation_requested']:
+                        from .project_jobs import AnalysisCancelled
+                        raise AnalysisCancelled('Analysis cancelled before publication')
+                elif db.execute("SELECT 1 FROM project_job WHERE status IN ('QUEUED','RUNNING')").fetchone():
+                    raise ProjectBusy('A project job owns publication; wait for it to finish')
+                current = db.execute("SELECT analysis_revision FROM modernization_project WHERE id=1").fetchone()[0]
+                if current != expected_revision:
+                    raise RevisionConflict("Assessment changed; reload before publishing")
+                existing = db.execute("SELECT payload_json FROM project_assessment WHERE revision=?", (revision,)).fetchone()
+                if existing:
+                    previous = json.loads(existing[0])
+                    # Keep the original analysis clock for repeated exports of a revision.
+                    if canonical_json({k: v for k, v in previous.items() if k != "analyzed_at"}) != canonical_json({k: v for k, v in assessment.items() if k != "analyzed_at"}):
+                        raise RevisionConflict("Assessment content differs for the same revision")
+                    assessment = previous
+                else:
+                    db.execute("INSERT INTO project_assessment VALUES (?,?,?,?)",
+                        (revision, assessment["source_revision"], assessment["analyzed_at"], canonical_json(assessment)))
+                updated = replace(descriptor, analysis_revision=revision,
+                                  engine_version=assessment["blueprint"]["engine_version"])
+                db.execute("UPDATE modernization_project SET analysis_revision=?,descriptor_json=? WHERE id=1",
+                           (revision, canonical_json(descriptor_to_dict(updated))))
+                db.execute("INSERT OR REPLACE INTO blueprint_snapshot VALUES (1,?)",
+                           (canonical_json(assessment["blueprint"]),))
+                if fenced:
+                    completed = ('COMPLETED_WITH_WARNINGS' if assessment.get('completion_state') in
+                                 {'INCOMPLETE', 'COMPLETE_WITH_WARNINGS'} or assessment['status'] == 'Incomplete'
+                                 else 'COMPLETED')
+                    outcome = {'analysis_revision': revision,
+                               'completion_state': assessment.get('completion_state', 'COMPLETE')}
+                    db.execute('UPDATE project_job SET status=?,finished_at=?,outcome_json=? WHERE job_id=?',
+                               (completed, datetime.now(timezone.utc).isoformat(), canonical_json(outcome), job_id))
+                publish()
+                db.commit()
+            except sqlite3.OperationalError as exc:
+                db.rollback()
+                if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                    raise ProjectBusy("Project is busy; retry after the current operation") from exc
+                raise ProjectError("Assessment could not be published") from exc
+            except sqlite3.Error as exc:
+                db.rollback()
+                raise ProjectError("Assessment could not be published") from exc
+            except Exception:
+                db.rollback()
+                raise
 
     def add_module_session(self, source_id: str, revision: str, relative_store: str,
                            provenance: dict) -> None:

@@ -2,13 +2,16 @@
 
 import json
 import multiprocessing
+import sqlite3
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
 from formslang import project_store
-from formslang.project_model import ProjectDescriptor, SourceRoot
+from formslang.project_model import ProjectBusy, ProjectDescriptor, SourceRoot
 from formslang.project_store import ProjectStore
 
 
@@ -149,3 +152,176 @@ def test_descriptor_publication_with_other_process_readers(tmp_path):
         results.close()
         results.join_thread()
     assert all(reader.exitcode == 0 for reader in readers)
+
+
+def _paused_in_thread(name, entered, release):
+    """Block the named thread at a patched call until the test releases it."""
+    def pause():
+        if threading.current_thread().name == name:
+            entered.set()
+            assert release.wait(10)
+    return pause
+
+
+def _open_and_close(root):
+    store = ProjectStore.open(root)
+    try:
+        return store.descriptor().id
+    finally:
+        store.close()
+
+
+def test_open_validations_do_not_exclude_each_other(tmp_path, monkeypatch):
+    # Opens used to take the writer lock to validate. Under SQLite's polling
+    # busy handler that let a stream of opens starve one of them into ProjectBusy.
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+    entered, release = threading.Event(), threading.Event()
+    pause = _paused_in_thread('first-reader', entered, release)
+    original_read = Path.read_text
+
+    def paused_read(path, *args, **kwargs):
+        if path.name == 'project.json':
+            pause()
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'read_text', paused_read)
+
+    def first():
+        threading.current_thread().name = 'first-reader'
+        return _open_and_close(tmp_path)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        held = pool.submit(first)
+        try:
+            assert entered.wait(10)
+            # The first open is inside its validation transaction, reading the mirror.
+            assert pool.submit(_open_and_close, tmp_path).result(timeout=10) == 'd' * 32
+        finally:
+            release.set()
+        assert held.result(timeout=10) == 'd' * 32
+
+
+def test_open_does_not_wait_for_a_database_writer(tmp_path):
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+    writer = ProjectStore.open(tmp_path)
+    try:
+        with writer._write():
+            # An ordinary project write (job heartbeat, review) holds RESERVED only.
+            assert _open_and_close(tmp_path) == 'd' * 32
+    finally:
+        writer.close()
+
+
+def test_descriptor_is_flushed_before_publication_takes_the_lock(tmp_path, monkeypatch):
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+    entered, release = threading.Event(), threading.Event()
+    pause = _paused_in_thread('descriptor-publisher', entered, release)
+    original_fsync = project_store.os.fsync
+
+    def paused_fsync(descriptor):
+        pause()
+        return original_fsync(descriptor)
+
+    monkeypatch.setattr(project_store.os, 'fsync', paused_fsync)
+
+    def publish():
+        threading.current_thread().name = 'descriptor-publisher'
+        store = ProjectStore.open(tmp_path)
+        try:
+            store.replace_roots((SourceRoot('f', 'forms', 'new-source'),), expected_configuration=0)
+        finally:
+            store.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        writer = pool.submit(publish)
+        try:
+            assert entered.wait(10)
+            # The publisher is flushing the staged copy; readers are not locked out yet.
+            assert pool.submit(_open_and_close, tmp_path).result(timeout=10) == 'd' * 32
+        finally:
+            release.set()
+        writer.result(timeout=10)
+    assert json.loads((tmp_path / '.formslang/project.json').read_text())['source_roots'][0]['path'] == 'new-source'
+
+
+def test_open_never_sees_the_database_ahead_of_its_mirror(tmp_path, monkeypatch):
+    # A publication used to commit the database and replace project.json in a
+    # second transaction. Every open in between saw a stale mirror and published
+    # it too, so a burst of opens queued for the EXCLUSIVE lock behind each other.
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+    entered, release = threading.Event(), threading.Event()
+    pause = _paused_in_thread('descriptor-publisher', entered, release)
+    original_fsync, original_sync = project_store.os.fsync, ProjectStore.sync_descriptor
+    republished = []
+
+    def paused_fsync(descriptor):
+        pause()
+        return original_fsync(descriptor)
+
+    def recorded_sync(store):
+        republished.append(threading.current_thread().name)
+        return original_sync(store)
+
+    monkeypatch.setattr(project_store.os, 'fsync', paused_fsync)
+    monkeypatch.setattr(ProjectStore, 'sync_descriptor', recorded_sync)
+
+    def publish():
+        threading.current_thread().name = 'descriptor-publisher'
+        store = ProjectStore.open(tmp_path)
+        try:
+            store.replace_roots((SourceRoot('f', 'forms', 'new-source'),), expected_configuration=0)
+        finally:
+            store.close()
+
+    def observe():
+        store = ProjectStore.open(tmp_path)
+        try:
+            mirror = json.loads((tmp_path / '.formslang/project.json').read_text())
+            return store.descriptor().source_roots, mirror['source_roots']
+        finally:
+            store.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        writer = pool.submit(publish)
+        try:
+            assert entered.wait(10)
+            # The publisher is staging its mirror; the database must not be ahead of it.
+            roots, mirrored = pool.submit(observe).result(timeout=10)
+        finally:
+            release.set()
+        writer.result(timeout=10)
+    assert roots == () and mirrored == []
+    assert republished == [], 'an open republished a mirror that a live publication had left behind'
+    roots, mirrored = observe()
+    assert roots[0].path == 'new-source' and mirrored[0]['path'] == 'new-source'
+
+
+def test_open_reports_a_lock_after_validation_as_project_busy(tmp_path, monkeypatch):
+    # The session connection reads again after the validation transaction; a
+    # publication holding the lock there must reach the HTTP boundary as the
+    # retryable ProjectBusy (409), not as a raw sqlite3 error (500).
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+    closed = []
+    original_close = ProjectStore.close
+
+    def locked_migration(_store):
+        raise sqlite3.OperationalError('database is locked')
+
+    def tracked_close(store):
+        closed.append(store)
+        return original_close(store)
+
+    monkeypatch.setattr(ProjectStore, '_migrate_runs', locked_migration)
+    monkeypatch.setattr(ProjectStore, 'close', tracked_close)
+    with pytest.raises(ProjectBusy):
+        ProjectStore.open(tmp_path)
+    assert len(closed) == 1, 'the session opened before the lock must be closed'
+    monkeypatch.undo()
+
+    class LockedStore:
+        def __init__(self, *_args, **_kwargs):
+            raise sqlite3.OperationalError('database is locked')
+
+    monkeypatch.setattr(project_store, 'Store', LockedStore)
+    with pytest.raises(ProjectBusy):
+        ProjectStore.open(tmp_path)
