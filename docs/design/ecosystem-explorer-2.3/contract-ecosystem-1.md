@@ -241,7 +241,8 @@ must record them.
   `blueprint/1` while the change is additive. None of this exists yet: the
   measured 2.2.0 engine version is
   `blueprint-analysis/1+plsql-evidence/1+analysis/1+risk/1+behavior/1+sensitive/1+catalog:…`;
-  the G-DML fix changes it to `plsql-evidence/2`.
+  the G-DML fix changes it to `plsql-evidence/2`, and the G-SCHEMA-BODY fix to
+  `blueprint-analysis/2`.
 - Schema-aware resolution (phase 2) is declared the same way, as
   `schema_resolution_version: 1`. Without it, every database resolution is
   presented under §5.1. The two capabilities are independent. A snapshot is

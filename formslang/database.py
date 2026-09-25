@@ -420,13 +420,9 @@ def parse_package_body(text: str, source_file: str = "") -> PackageBody | None:
     pkg_body = PackageBody(name=raw_pkg_name, source_file=source_file, raw_text=text)
 
     tokens = plsql_evidence.tokens(text)
-    i = 0
-    # Advance past PACKAGE BODY <name> AS/IS
-    while i < len(tokens):
-        if tokens[i].value.upper() in {"AS", "IS"} and i > 2 and tokens[i - 2].value.upper() == "BODY":
-            i += 1
-            break
-        i += 1
+    # Start after the AS/IS the header matched. Counting tokens back from AS/IS
+    # to BODY breaks on a schema-qualified name, which adds "OWNER" and ".".
+    i = next((k for k, t in enumerate(tokens) if t.start >= m.end()), len(tokens))
 
     # Now scan subprograms: FUNCTION or PROCEDURE
     while i < len(tokens):
