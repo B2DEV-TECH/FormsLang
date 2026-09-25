@@ -239,3 +239,55 @@ def test_descriptor_is_flushed_before_publication_takes_the_lock(tmp_path, monke
             release.set()
         writer.result(timeout=10)
     assert json.loads((tmp_path / '.formslang/project.json').read_text())['source_roots'][0]['path'] == 'new-source'
+
+
+def test_open_never_sees_the_database_ahead_of_its_mirror(tmp_path, monkeypatch):
+    # A publication used to commit the database and replace project.json in a
+    # second transaction. Every open in between saw a stale mirror and published
+    # it too, so a burst of opens queued for the EXCLUSIVE lock behind each other.
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+    entered, release = threading.Event(), threading.Event()
+    pause = _paused_in_thread('descriptor-publisher', entered, release)
+    original_fsync, original_sync = project_store.os.fsync, ProjectStore.sync_descriptor
+    republished = []
+
+    def paused_fsync(descriptor):
+        pause()
+        return original_fsync(descriptor)
+
+    def recorded_sync(store):
+        republished.append(threading.current_thread().name)
+        return original_sync(store)
+
+    monkeypatch.setattr(project_store.os, 'fsync', paused_fsync)
+    monkeypatch.setattr(ProjectStore, 'sync_descriptor', recorded_sync)
+
+    def publish():
+        threading.current_thread().name = 'descriptor-publisher'
+        store = ProjectStore.open(tmp_path)
+        try:
+            store.replace_roots((SourceRoot('f', 'forms', 'new-source'),), expected_configuration=0)
+        finally:
+            store.close()
+
+    def observe():
+        store = ProjectStore.open(tmp_path)
+        try:
+            mirror = json.loads((tmp_path / '.formslang/project.json').read_text())
+            return store.descriptor().source_roots, mirror['source_roots']
+        finally:
+            store.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        writer = pool.submit(publish)
+        try:
+            assert entered.wait(10)
+            # The publisher is staging its mirror; the database must not be ahead of it.
+            roots, mirrored = pool.submit(observe).result(timeout=10)
+        finally:
+            release.set()
+        writer.result(timeout=10)
+    assert roots == () and mirrored == []
+    assert republished == [], 'an open republished a mirror that a live publication had left behind'
+    roots, mirrored = observe()
+    assert roots[0].path == 'new-source' and mirrored[0]['path'] == 'new-source'

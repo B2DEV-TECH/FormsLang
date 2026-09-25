@@ -5,6 +5,7 @@ import sqlite3
 
 import pytest
 
+from formslang import project_store as store_module
 from formslang.project_discovery import DiscoveredSource, DiscoveryResult, SourceDiagnostic
 from formslang.project_manifest import SourceCandidate
 from formslang.project_model import (
@@ -48,12 +49,16 @@ def test_stale_store_reads_latest_metadata_in_update_transaction(project_store):
 
 
 def test_mirror_failure_preserves_committed_configuration(project_store, monkeypatch):
-    def failed():
-        raise ProjectError('mirror unavailable')
+    # The mirror is replaced inside the configuration transaction; its failure
+    # must still leave the committed database state for the next open to mirror.
+    def failed(source, destination):
+        raise OSError('mirror unavailable')
     roots = (SourceRoot('f', 'forms', '../forms'),)
-    monkeypatch.setattr(project_store, 'sync_descriptor', failed)
-    with pytest.raises(ProjectError, match='mirror'):
-        project_store.replace_roots(roots, expected_configuration=0)
+    with monkeypatch.context() as patch:
+        patch.setattr(store_module, 'replace_mirror', failed)
+        with pytest.raises(ProjectError, match='descriptor could not be saved'):
+            project_store.replace_roots(roots, expected_configuration=0)
+    assert not list(project_store.directory.glob('.descriptor-*'))
     reopened = ProjectStore.open(project_store.root)
     try:
         assert reopened.descriptor().source_roots == roots
