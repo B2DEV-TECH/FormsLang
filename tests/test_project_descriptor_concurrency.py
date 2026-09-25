@@ -2,13 +2,16 @@
 
 import json
 import multiprocessing
+import sqlite3
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
 from formslang import project_store
-from formslang.project_model import ProjectDescriptor, SourceRoot
+from formslang.project_model import ProjectBusy, ProjectDescriptor, SourceRoot
 from formslang.project_store import ProjectStore
 
 
@@ -291,3 +294,34 @@ def test_open_never_sees_the_database_ahead_of_its_mirror(tmp_path, monkeypatch)
     assert republished == [], 'an open republished a mirror that a live publication had left behind'
     roots, mirrored = observe()
     assert roots[0].path == 'new-source' and mirrored[0]['path'] == 'new-source'
+
+
+def test_open_reports_a_lock_after_validation_as_project_busy(tmp_path, monkeypatch):
+    # The session connection reads again after the validation transaction; a
+    # publication holding the lock there must reach the HTTP boundary as the
+    # retryable ProjectBusy (409), not as a raw sqlite3 error (500).
+    ProjectStore.create(tmp_path, ProjectDescriptor(id='d' * 32, name='Concurrent')).close()
+    closed = []
+    original_close = ProjectStore.close
+
+    def locked_migration(_store):
+        raise sqlite3.OperationalError('database is locked')
+
+    def tracked_close(store):
+        closed.append(store)
+        return original_close(store)
+
+    monkeypatch.setattr(ProjectStore, '_migrate_runs', locked_migration)
+    monkeypatch.setattr(ProjectStore, 'close', tracked_close)
+    with pytest.raises(ProjectBusy):
+        ProjectStore.open(tmp_path)
+    assert len(closed) == 1, 'the session opened before the lock must be closed'
+    monkeypatch.undo()
+
+    class LockedStore:
+        def __init__(self, *_args, **_kwargs):
+            raise sqlite3.OperationalError('database is locked')
+
+    monkeypatch.setattr(project_store, 'Store', LockedStore)
+    with pytest.raises(ProjectBusy):
+        ProjectStore.open(tmp_path)

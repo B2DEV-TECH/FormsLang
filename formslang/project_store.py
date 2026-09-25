@@ -208,11 +208,25 @@ class ProjectStore:
             raise ProjectError("Not a valid FormsLang project database") from exc
         except (sqlite3.Error, json.JSONDecodeError) as exc:
             raise ProjectError("Not a valid FormsLang project database") from exc
-        result = cls(root, Store(path, reconcile_jobs=False))
+        # The session connection reads again after the check closed, so a
+        # publication can hold the lock here too; report it as retryable
+        # ProjectBusy, not as a raw sqlite3 error the HTTP boundary answers with 500.
+        try:
+            session = Store(path, reconcile_jobs=False)
+        except sqlite3.OperationalError as exc:
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise ProjectBusy("Project is busy; retry after the current operation") from exc
+            raise ProjectError("Not a valid FormsLang project database") from exc
+        result = cls(root, session)
         try:
             result._migrate_runs()
             if not mirror_current:
                 result.sync_descriptor()
+        except sqlite3.OperationalError as exc:
+            result.close()
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise ProjectBusy("Project is busy; retry after the current operation") from exc
+            raise
         except Exception:
             result.close()
             raise
