@@ -135,6 +135,30 @@ class PackageBody:
 
 
 @dataclass
+class PackageDeclaration:
+    """One lexical CREATE PACKAGE occurrence, including its parsed contents."""
+
+    kind: str
+    owner: str | None
+    name: str
+    qualified_name: str
+    source_file: str
+    line: int
+    order: int
+    header_text: str
+    parsed: PackageSpec | PackageBody
+    projection_status: str = "PROJECTED"
+
+    def to_dict(self) -> dict[str, Any]:
+        # Source bodies are deliberately absent from this inventory projection.
+        return {"kind": self.kind, "owner": self.owner, "name": self.name,
+                "qualified_name": self.qualified_name, "source_file": self.source_file,
+                "line": self.line, "order": self.order, "header_text": self.header_text,
+                "subprograms": [s.name for s in self.parsed.subprograms],
+                "projection_status": self.projection_status}
+
+
+@dataclass
 class Column:
     """Database table column definition."""
 
@@ -241,6 +265,7 @@ class DatabaseProject:
     views: dict[str, View] = field(default_factory=dict)
     package_specs: dict[str, PackageSpec] = field(default_factory=dict)
     package_bodies: dict[str, PackageBody] = field(default_factory=dict)
+    package_declarations: list[PackageDeclaration] = field(default_factory=list)
     sequences: dict[str, Sequence] = field(default_factory=dict)
     files: list[str] = field(default_factory=list)
     # One entry per supplied source. None means coverage was never computed,
@@ -262,6 +287,7 @@ class DatabaseProject:
             "views": {k: v.to_dict() for k, v in self.views.items()},
             "package_specs": {k: v.to_dict() for k, v in self.package_specs.items()},
             "package_bodies": {k: v.to_dict() for k, v in self.package_bodies.items()},
+            "package_declarations": [d.to_dict() for d in self.package_declarations],
             "sequences": {k: v.to_dict() for k, v in self.sequences.items()},
             "files": self.files,
             "coverage": None if self.coverage is None else [c.to_dict() for c in self.coverage],
@@ -399,8 +425,8 @@ _IDENTIFIER = r'(?:"[^"]+"|[A-Za-z][A-Za-z0-9_$#]*)'
 # the header shape DDL exports write. A clause between the name and AS/IS
 # (AUTHID, ACCESSIBLE BY, ...) is not recognised; coverage reports such a file.
 _PACKAGE_HEADER = re.compile(
-    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?PACKAGE\s+(BODY\s+)?"
-    rf"(?:{_IDENTIFIER}\s*\.\s*)?({_IDENTIFIER})(?:\s+|(?<=\"))(?:AS|IS)\b",
+    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?PACKAGE\s+(?P<body>BODY\s+)?"
+    rf"(?:(?P<owner>{_IDENTIFIER})\s*\.\s*)?(?P<name>{_IDENTIFIER})(?:\s+|(?<=\"))(?:AS|IS)\b",
     re.IGNORECASE,
 )
 
@@ -412,7 +438,51 @@ def _object_name(identifier: str) -> str:
 
 def _package_header(text: str, body: bool) -> re.Match[str] | None:
     """The first package specification (or body) header in the text."""
-    return next((m for m in _PACKAGE_HEADER.finditer(text) if bool(m.group(1)) == body), None)
+    return next((m for t in plsql_evidence.tokens(text) if t.kind == "word" and t.value == "CREATE"
+                 if (m := _PACKAGE_HEADER.match(text, t.start)) and bool(m.group("body")) == body), None)
+
+
+def _package_occurrences(text: str, source_file: str) -> list[PackageDeclaration]:
+    """Parse each lexical package CREATE within its own source interval."""
+    tokens = plsql_evidence.tokens(text)
+    create_offsets = [t.start for i, t in enumerate(tokens) if t.kind == "word" and t.value == "CREATE"
+                      and (i + 1 == len(tokens) or tokens[i + 1].value not in {"ON", "OR"}
+                           or i + 2 < len(tokens) and tokens[i + 2].value == "REPLACE")]
+    occurrences = []
+    for order, start in enumerate(create_offsets):
+        match = _PACKAGE_HEADER.match(text, start)
+        if not match:
+            continue
+        end = create_offsets[order + 1] if order + 1 < len(create_offsets) else len(text)
+        segment = text[start:end]
+        kind = "PACKAGE BODY" if match.group("body") else "PACKAGE"
+        parsed = (parse_package_body(segment, source_file) if match.group("body")
+                  else parse_package_spec(segment, source_file))
+        if parsed is None:
+            continue
+        owner = _object_name(match.group("owner")) if match.group("owner") else None
+        name = _object_name(match.group("name"))
+        occurrences.append(PackageDeclaration(
+            kind=kind, owner=owner, name=name,
+            qualified_name=f"{owner}.{name}" if owner else name,
+            source_file=source_file, line=text.count("\n", 0, start) + 1,
+            order=len(occurrences) + 1, header_text=text[start:match.end()], parsed=parsed))
+    return occurrences
+
+
+def _project_unique_packages(project: DatabaseProject) -> None:
+    """Keep legacy bare-name maps only where they cannot choose a collision."""
+    for kind, family in (("PACKAGE", "package_specs"), ("PACKAGE BODY", "package_bodies")):
+        groups: dict[str, list[PackageDeclaration]] = {}
+        for declaration in project.package_declarations:
+            if declaration.kind == kind:
+                groups.setdefault(declaration.name, []).append(declaration)
+        for matches in groups.values():
+            if len(matches) > 1:
+                for declaration in matches:
+                    declaration.projection_status = "AMBIGUOUS_BARE_NAME"
+        setattr(project, family, {name: matches[0].parsed for name, matches in groups.items()
+                                  if len(matches) == 1})
 
 
 # The statement kinds extracted into a DatabaseProject family.
@@ -469,11 +539,27 @@ def _create_statements(text: str) -> list[dict[str, Any]]:
 def _coverage(project: DatabaseProject, text: str, source_file: str) -> SourceCoverage:
     """Compare the objects extracted from one source with the CREATE statements it holds."""
     objects = sorted(({"kind": kind, "name": name} for kind, family in _FAMILY_OF_KIND.items()
-                      for name in getattr(project, family)), key=lambda o: (o["kind"], o["name"]))
+                      if not kind.startswith("PACKAGE") for name in getattr(project, family)),
+                     key=lambda o: (o["kind"], o["name"]))
+    objects.extend({"kind": d.kind, "name": d.name, "owner": d.owner,
+                    "qualified_name": d.qualified_name, "line": d.line, "order": d.order}
+                   for d in project.package_declarations)
+    objects.sort(key=lambda o: (o["kind"], o["name"], o.get("order", 0)))
     statements = _create_statements(text)
-    not_extracted = [{**s, "severity": "WARNING", "reason": "NOT_EXTRACTED"} for s in statements
-                     if s["kind"] in _FAMILY_OF_KIND
-                     and s["name"] not in getattr(project, _FAMILY_OF_KIND[s["kind"]])]
+    extracted_packages = Counter((d.kind, d.name, d.line) for d in project.package_declarations)
+    not_extracted = []
+    for statement in statements:
+        kind = statement["kind"]
+        if kind not in _FAMILY_OF_KIND:
+            continue
+        if kind.startswith("PACKAGE"):
+            identity = (kind, statement["name"], statement["line"])
+            if extracted_packages[identity]:
+                extracted_packages[identity] -= 1
+                continue
+        elif statement["name"] in getattr(project, _FAMILY_OF_KIND[kind]):
+            continue
+        not_extracted.append({**statement, "severity": "WARNING", "reason": "NOT_EXTRACTED"})
     unsupported = [{**s, "severity": "INFO", "reason": "UNSUPPORTED_BY_MODEL"} for s in statements
                    if s["kind"] not in _FAMILY_OF_KIND]
     if not objects:
@@ -492,7 +578,7 @@ def parse_package_spec(text: str, source_file: str = "") -> PackageSpec | None:
     if not m:
         return None
 
-    pkg_spec = PackageSpec(name=_object_name(m.group(2)), source_file=source_file, raw_text=text)
+    pkg_spec = PackageSpec(name=_object_name(m.group("name")), source_file=source_file, raw_text=text)
 
     # Tokenize spec body to extract constants and subprograms
     body_start = m.end()
@@ -551,7 +637,7 @@ def parse_package_body(text: str, source_file: str = "") -> PackageBody | None:
     if not m:
         return None
 
-    pkg_body = PackageBody(name=_object_name(m.group(2)), source_file=source_file, raw_text=text)
+    pkg_body = PackageBody(name=_object_name(m.group("name")), source_file=source_file, raw_text=text)
 
     tokens = plsql_evidence.tokens(text)
     # Start after the AS/IS the header matched. Counting tokens back from AS/IS
@@ -777,13 +863,8 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
 
     project = DatabaseProject(files=[rel_path])
 
-    # Each parser finds its own header, whatever whitespace follows PACKAGE.
-    pkg_spec = parse_package_spec(text, source_file=rel_path)
-    if pkg_spec:
-        project.package_specs[pkg_spec.name] = pkg_spec
-    pkg_body = parse_package_body(text, source_file=rel_path)
-    if pkg_body:
-        project.package_bodies[pkg_body.name] = pkg_body
+    project.package_declarations = _package_occurrences(text, rel_path)
+    _project_unique_packages(project)
 
     # Extract statements for DDL, views, sequences, comments
     stmts = _extract_statements(text)
@@ -847,10 +928,10 @@ def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProj
         proj = parse_database_file(fp)
         merged.tables.update(proj.tables)
         merged.views.update(proj.views)
-        merged.package_specs.update(proj.package_specs)
-        merged.package_bodies.update(proj.package_bodies)
+        merged.package_declarations.extend(proj.package_declarations)
         merged.sequences.update(proj.sequences)
         merged.files.extend(proj.files)
         merged.coverage.extend(proj.coverage)
     merged.coverage.extend(missing)
+    _project_unique_packages(merged)
     return merged

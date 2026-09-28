@@ -13,6 +13,7 @@ start until this phase has been reviewed.
 | [`inventory-2.2.json`](inventory-2.2.json) | Historical, unchanged 2.2 engine baseline measured on four corpora. Keep it when the analysis engine changes. |
 | [`inventory-m0.json`](inventory-m0.json) | Current M0 engine characterization of the same corpora. Check it with `py examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-m0.json`. |
 | [`inventory-wp07.json`](inventory-wp07.json) | WP-07 engine characterization of the same corpora; `inventory-2.2.json` remains historical. |
+| [`inventory-wp08.json`](inventory-wp08.json) | WP-08 engine characterization of the same corpora; the earlier snapshots remain historical evidence. |
 | [`gaps-and-capture.md`](gaps-and-capture.md) | Three pre-existing engine defects, the contract gaps, and what phase 2 must capture. |
 | [`performance-2.2-baseline.md`](performance-2.2-baseline.md) | The 500-Form baseline and ecosystem runs, warm-read p50/p95, memory and response sizes. |
 | [`journey-three-steps.md`](journey-three-steps.md) | The three-step journey as text wireframes built from measured facts. |

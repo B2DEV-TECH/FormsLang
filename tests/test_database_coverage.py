@@ -89,12 +89,12 @@ def test_a_supported_statement_that_is_not_extracted_is_reported(tmp_path, name,
     assert kinds(coverage.not_extracted) == missing
 
 
-def test_a_second_package_in_one_file_is_reported_not_extracted(tmp_path):
+def test_a_second_package_in_one_file_is_extracted_and_counted(tmp_path):
     coverage = coverage_of(tmp_path, "two.pks", "CREATE PACKAGE P AS PROCEDURE X; END P;\n/\n"
                                                 "CREATE PACKAGE Q AS PROCEDURE Y; END Q;\n/\n")
-    assert coverage.status == PARSED_WITH_WARNINGS
-    assert kinds(coverage.objects) == [("PACKAGE", "P")]
-    assert kinds(coverage.not_extracted) == [("PACKAGE", "Q")]
+    assert coverage.status == PARSED
+    assert kinds(coverage.objects) == [("PACKAGE", "P"), ("PACKAGE", "Q")]
+    assert coverage.not_extracted == []
 
 
 def test_a_table_after_a_slash_terminated_statement_is_reported_not_extracted(tmp_path):
