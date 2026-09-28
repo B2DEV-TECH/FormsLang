@@ -46,7 +46,11 @@ M0 exits when WP-01 is committed, the §3.3 concerns have been verified, and one
 bounded foundation defect (WP-03) has been fixed with failing-then-passing
 evidence. Order for the remaining M0/P02 packages: WP-07 (first slice tested locally), then
 WP-02 (instrumentation, Draft PR #23; a fix only once a logged cause exists), then WP-05 and
-WP-06. WP-08 follows the 28 September handoff in Draft PR #24. WP-04 waits for ADR-06.
+WP-06. WP-08 follows the 28 September handoff in Draft PR #24. Its independent
+audit found and corrected a collision merge regression, lexical decoys, quoted
+member loss, and invalid package SHARING options; see the evidence register.
+The remaining supported-CREATE/assessment status gap is pinned outside this
+slice. WP-04 waits for ADR-06.
 
 ## M1 — Prove repository semantics (P03)
 
