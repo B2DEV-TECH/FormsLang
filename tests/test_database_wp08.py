@@ -174,6 +174,20 @@ def test_quoted_package_name_can_touch_as_keyword(tmp_path):
     assert [s.name for s in project.package_specs["P"].subprograms] == ["X"]
 
 
+def test_quoted_accessible_by_identifier_does_not_end_header(tmp_path):
+    source = _write(tmp_path, "quoted_accessor.sql", 'CREATE PACKAGE P ACCESSIBLE BY '
+                    '(PACKAGE "Q) AS PROCEDURE FAKE;") AS PROCEDURE REAL; END P;\n/\n')
+    project = database.parse_database_file(source)
+    assert [s.name for s in project.package_specs["P"].subprograms] == ["REAL"]
+
+
+def test_as_suffix_inside_package_name_is_not_header_keyword(tmp_path):
+    source = _write(tmp_path, "missing_as.sql", 'CREATE PACKAGE PAS PROCEDURE X; END PAS;\n/\n')
+    project = database.parse_database_file(source)
+    assert project.package_declarations == []
+    assert project.coverage[0].not_extracted[0]["name"] == "PAS"
+
+
 def test_same_bare_name_nonpackage_creates_are_visible_and_not_projected(tmp_path):
     source = _write(tmp_path, "tables.sql", """CREATE TABLE SALES.T (A NUMBER);
 CREATE TABLE BILLING.T (B NUMBER);
