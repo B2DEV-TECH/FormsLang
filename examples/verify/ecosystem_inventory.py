@@ -1,4 +1,4 @@
-"""Measured inventory of the facts the 2.2 engine records, for the 2.3 ecosystem contract.
+"""Measured inventory of the current engine for the 2.3 ecosystem contract.
 
 FormsLang 2.3 phase 1 (contract, inventory, fixtures). This script reads the
 synthetic fixtures, parses them with the shipped parser and builds the shipped
@@ -18,7 +18,7 @@ The difference between those layers is the phase-2 enrichment inventory. The
 output is deterministic: no timestamps, no absolute paths, sorted keys.
 
     python examples/verify/ecosystem_inventory.py --output inventory.json
-    python examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-2.2.json
+    python examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-m0.json
 """
 
 from __future__ import annotations
@@ -377,7 +377,7 @@ def measure_corpus(name: str, spec: dict) -> dict:
 def inventory() -> dict:
     return {
         "schema": "ecosystem-inventory/1",
-        "purpose": ("Measured 2.2 facts for the FormsLang 2.3 ecosystem/1 contract. "
+        "purpose": ("Measured facts from the current engine for the FormsLang 2.3 ecosystem/1 contract. "
                     "Synthetic fixtures only; no runtime claim."),
         "corpora": {name: measure_corpus(name, spec) for name, spec in CORPORA.items()},
     }
