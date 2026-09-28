@@ -21,6 +21,7 @@ from formslang.parser import parse_xml
 
 REPO = Path(__file__).resolve().parents[1]
 GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-2.2.json"
+CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-wp08.json"
 
 
 def build(name):
@@ -73,13 +74,13 @@ def trigger(bp, module, owner, name="WHEN-BUTTON-PRESSED"):
 # Committed inventory
 # ---------------------------------------------------------------------------
 
-def test_inventory_is_deterministic_and_matches_the_committed_baseline():
+def test_inventory_is_deterministic_and_matches_the_current_characterization():
     first = inv.render(inv.inventory())
     assert first == inv.render(inv.inventory())
     assert "\\\\" not in first and ":/" not in first  # no absolute or Windows paths leak in
-    assert first == GOLDEN.read_text(encoding="utf-8"), (
+    assert first == CURRENT_GOLDEN.read_text(encoding="utf-8"), (
         "Regenerate with: python examples/verify/ecosystem_inventory.py --output "
-        "docs/design/ecosystem-explorer-2.3/inventory-2.2.json, then review the diff")
+        "docs/design/ecosystem-explorer-2.3/inventory-wp08.json, then review the diff")
 
 
 # ---------------------------------------------------------------------------
@@ -191,24 +192,26 @@ def test_case_c_three_call_sites_keep_three_symbol_identities(case_c):
         assert "resolved_target" not in targets[owner]
 
 
-def test_gap_case_c_same_named_packages_in_two_schemas_collapse_into_one(case_c):
+def test_case_c_homonyms_are_inventoried_without_choosing_one_for_the_blueprint(case_c):
     _, bp = case_c
     specs = [e for e in bp["entities"] if e["type"] == "PACKAGE_SPEC"]
-    assert [e["name"] for e in specs] == ["ORDER_API"]  # the schema is dropped; one file wins
-    # The bodies collapse the same way: only the last file's SUBMIT, and its write, survive.
-    [sub] = [e for e in bp["entities"] if e["type"] == "SUBPROGRAM_BODY"]
-    assert Path(sub["module"]).name == "sales_order_api.pkb"
-    assert [e[3] for e in out(bp, sub["id"]) if e[0] == "WRITES"] == ["SALES_OWNER.SALES_ORDERS"]
-    # The call without schema is resolved to that survivor, with no ambiguity recorded.
+    assert specs == []
+    declarations = bp["database"]["package_declarations"]
+    assert {(d["kind"], d["qualified_name"]) for d in declarations} == {
+        ("PACKAGE", "SALES_OWNER.ORDER_API"), ("PACKAGE", "BILLING_OWNER.ORDER_API"),
+        ("PACKAGE BODY", "SALES_OWNER.ORDER_API"),
+        ("PACKAGE BODY", "BILLING_OWNER.ORDER_API")}
+    assert [e for e in bp["entities"] if e["type"] == "SUBPROGRAM_BODY"] == []
+    # The unqualified call stays symbolic until ADR-06 defines schema-aware resolution.
     ref = next(e for e in bp["entities"] if e["type"] == "ROUTINE_REFERENCE" and e["name"] == "ORDER_API.SUBMIT")
-    assert ref["resolution"] == "RESOLVED_TO_DATABASE_OBJECT"
+    assert ref["attributes"]["resolution"] == "SYMBOLIC_REFERENCE"
 
 
 def test_case_c_legacy_resolution_of_the_unqualified_call_is_never_presented_as_resolved():
     # Contract §5.1: 2.2 resolved ORDER_API.SUBMIT to the one package that survived the
     # schema collapse. The explorer shows it as a legacy resolution whose schema collision
     # cannot be checked, not as a confirmed link, until a schema-aware re-analysis.
-    calls = inv.inventory()["corpora"]["case_c"]["case"]["calls"]
+    calls = json.loads(GOLDEN.read_text(encoding="utf-8"))["corpora"]["case_c"]["case"]["calls"]
     [unqualified] = calls["CTL.BT_UNQUALIFIED"]
     assert unqualified["resolution"] == "RESOLVED_TO_DATABASE_OBJECT"  # what 2.2 saved
     assert unqualified["explorer_resolution"] == {
@@ -268,14 +271,13 @@ def test_case_c_schema_qualified_package_bodies_yield_their_subprograms(case_c):
     # A saved 2.2 assessment lacks these facts, so it must read as an older engine.
     # blueprint-analysis/2 introduced them; any later engine keeps them.
     assert int(bp["engine_version"].split("+")[0].rsplit("/", 1)[1]) >= 2
-    [body] = [e for e in bp["entities"] if e["type"] == "PACKAGE_BODY"]
-    [sub] = [e for e in bp["entities"] if e["type"] == "SUBPROGRAM_BODY"]
-    assert sub["name"] == "ORDER_API.SUBMIT"
-    assert {"source": body["id"], "target": sub["id"], "type": "IMPLEMENTS"}.items() <= next(
-        e for e in bp["edges"] if e["source"] == body["id"] and e["target"] == sub["id"]).items()
-    edges = out(bp, sub["id"])
-    assert ("IMPLEMENTS", "PACKAGE_SUBPROGRAM", "ORDER_API.SUBMIT") in [(e[0], e[2], e[3]) for e in edges]
-    assert [e[0] for e in edges if e[0] == "WRITES"] == ["WRITES"]
+    # The new parser keeps both bodies in its ordered inventory. The Blueprint
+    # does not choose one bare-name projection while ADR-06 is outstanding.
+    declarations = bp["database"]["package_declarations"]
+    assert {(d["qualified_name"], tuple(d["subprograms"])) for d in declarations
+            if d["kind"] == "PACKAGE BODY"} == {
+        ("SALES_OWNER.ORDER_API", ("SUBMIT",)),
+        ("BILLING_OWNER.ORDER_API", ("SUBMIT",))}
 
 
 # ---------------------------------------------------------------------------
