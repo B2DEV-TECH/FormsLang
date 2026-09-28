@@ -81,6 +81,74 @@ CREATE PACKAGE REAL AS PROCEDURE X; END REAL;
     assert [s.name for s in project.package_specs["REAL"].subprograms] == ["X"]
 
 
+def test_package_member_inventory_ignores_comment_and_string_decoys(tmp_path):
+    source = _write(tmp_path, "members.sql", """CREATE PACKAGE P AS
+  -- PROCEDURE COMMENT_DECOY;
+  C CONSTANT VARCHAR2(80) := 'PROCEDURE STRING_DECOY;';
+  /* FUNCTION BLOCK_DECOY RETURN NUMBER; */
+  PROCEDURE REAL_MEMBER;
+END P;
+/
+""")
+    project = database.parse_database_file(source)
+    [declaration] = project.package_declarations
+    assert [s.name for s in declaration.parsed.subprograms] == ["REAL_MEMBER"]
+    assert [c.name for c in declaration.parsed.constants] == ["C"]
+    assert declaration.to_dict()["subprograms"] == ["REAL_MEMBER"]
+
+
+def test_package_member_inventory_preserves_overload_evidence_in_blueprint(tmp_path):
+    source = _write(tmp_path, "overloads.sql", """CREATE PACKAGE P AS
+  PROCEDURE RUN(P_ID NUMBER);
+  PROCEDURE RUN(P_NAME VARCHAR2);
+END P;
+/
+""")
+    bp = blueprint.build([], title="overloads", database_sources=source)
+    [declaration] = bp["database"]["package_declarations"]
+    assert [(m["name"], m["kind"], m["line"], m["parameters"][0]["data_type"])
+            for m in declaration["members"]] == [
+        ("RUN", "PROCEDURE", 2, "NUMBER"),
+        ("RUN", "PROCEDURE", 3, "VARCHAR2"),
+    ]
+
+
+def test_quoted_package_members_keep_case_in_spec_and_body(tmp_path):
+    source = _write(tmp_path, "quoted_members.sql", """CREATE PACKAGE P AS
+  PROCEDURE "Run Job";
+END P;
+/
+CREATE PACKAGE BODY P AS
+  PROCEDURE "Run Job" IS BEGIN NULL; END "Run Job";
+END P;
+/
+""")
+    project = database.parse_database_file(source)
+    assert [[s.name for s in d.parsed.subprograms] for d in project.package_declarations] == [
+        ["Run Job"], ["Run Job"]]
+    assert [[m["name"] for m in d.to_dict()["members"]] for d in project.package_declarations] == [
+        ["Run Job"], ["Run Job"]]
+
+
+def test_quoted_dot_in_package_name_keeps_qualified_name_unambiguous(tmp_path):
+    source = _write(tmp_path, "qualified.sql", """CREATE PACKAGE "A.B" AS PROCEDURE X; END "A.B";
+/
+CREATE PACKAGE A.B AS PROCEDURE Y; END B;
+/
+""")
+    project = database.parse_database_file(source)
+    assert [(d.owner, d.name, d.qualified_name) for d in project.package_declarations] == [
+        (None, "A.B", '"A.B"'), ("A", "B", "A.B")]
+
+
+def test_comment_literal_cannot_fabricate_table_or_coverage_object(tmp_path):
+    source = _write(tmp_path, "comment_table.sql", "CREATE TABLE T (ID NUMBER);\n"
+                    "COMMENT ON TABLE T IS ' CREATE TABLE FAKE (ID NUMBER)';\n")
+    project = database.parse_database_file(source)
+    assert set(project.tables) == {"T"}
+    assert [(o["kind"], o["name"]) for o in project.coverage[0].objects] == [("TABLE", "T")]
+
+
 def test_blueprint_reports_homonyms_without_resolving_an_arbitrary_package(tmp_path):
     _write(tmp_path, "a.sql", "CREATE PACKAGE SALES.P AS PROCEDURE A; END P;\n/\n")
     _write(tmp_path, "b.sql", "CREATE PACKAGE BILLING.P AS PROCEDURE B; END P;\n/\n")
@@ -202,6 +270,26 @@ CREATE TABLE BILLING.T (B NUMBER);
         (1, "COLLIDING_BARE_NAME"), (2, "COLLIDING_BARE_NAME")]
 
 
+def test_colliding_tables_across_sources_never_reappear_as_one_projection(tmp_path):
+    first = _write(tmp_path, "a.sql", "CREATE TABLE A.T (A NUMBER);\n"
+                   "CREATE TABLE B.T (B NUMBER);\n")
+    second = _write(tmp_path, "b.sql", "CREATE TABLE C.T (C NUMBER);\n")
+    project = database.parse_database_sources([first, second])
+    assert project.tables == {}
+    assert sum(len(c.objects) for c in project.coverage) == 3
+
+
+def test_supported_but_unextracted_homonym_withholds_bare_table(tmp_path):
+    source = _write(tmp_path, "mixed.sql", "CREATE TABLE A.T (A NUMBER);\n"
+                    'CREATE TABLE "B"."T" (B NUMBER);\n')
+    project = database.parse_database_file(source)
+    assert project.tables == {}
+    [coverage] = project.coverage
+    assert [(o["kind"], o["name"]) for o in coverage.objects] == [("TABLE", "T")]
+    assert [(o["kind"], o["name"], o["reason"]) for o in coverage.not_extracted] == [
+        ("TABLE", "T", "NOT_EXTRACTED")]
+
+
 @pytest.mark.parametrize("header", [
     "CREATE PACKAGE P AUTHID DEFINER AS",
     "CREATE OR REPLACE PACKAGE P AUTHID CURRENT_USER IS",
@@ -209,8 +297,8 @@ CREATE TABLE BILLING.T (B NUMBER);
     'CREATE PACKAGE "S"."P" DEFAULT COLLATION "BINARY_CI" AS',
     "CREATE PACKAGE P DEFAULT COLLATION USING_NLS_COMP AS",
     "CREATE PACKAGE P SHARING = METADATA AS",
-    "CREATE PACKAGE P SHARING = EXTENDED DATA AS",
-    ("CREATE PACKAGE P SHARING=DATA AUTHID DEFINER ACCESSIBLE BY (PACKAGE APP.API) "
+    "CREATE PACKAGE P SHARING = NONE AS",
+    ("CREATE PACKAGE P SHARING=NONE AUTHID DEFINER ACCESSIBLE BY (PACKAGE APP.API) "
      "DEFAULT COLLATION USING_NLS_COMP AS"),
 ])
 def test_package_spec_header_clauses_are_bounded_and_preserved(tmp_path, header):
@@ -232,6 +320,25 @@ def test_package_body_sharing_clause_is_preserved(tmp_path):
     assert declaration.kind == "PACKAGE BODY"
     assert declaration.header_text == "CREATE PACKAGE BODY S.P SHARING = METADATA AS"
     assert [s.name for s in declaration.parsed.subprograms] == ["X"]
+
+
+@pytest.mark.parametrize("kind", ["PACKAGE", "PACKAGE BODY"])
+@pytest.mark.parametrize("attribute", ["DATA", "EXTENDED DATA"])
+def test_package_sharing_rejects_attributes_reserved_for_other_object_kinds(tmp_path, kind, attribute):
+    source = _write(tmp_path, "sharing.sql", f"CREATE {kind} P SHARING = {attribute} AS "
+                    "PROCEDURE X; END P;\n/\n")
+    project = database.parse_database_file(source)
+    assert project.package_declarations == []
+    assert [(entry["kind"], entry["reason"]) for entry in project.coverage[0].not_extracted] == [
+        (kind, "NOT_EXTRACTED")]
+
+
+@pytest.mark.xfail(strict=True, reason="Future DDL grammar: IF NOT EXISTS is outside WP-08B clauses")
+def test_known_gap_documented_if_not_exists_package_header(tmp_path):
+    source = _write(tmp_path, "if_not_exists.sql",
+                    "CREATE PACKAGE IF NOT EXISTS P AS PROCEDURE X; END P;\n/\n")
+    project = database.parse_database_file(source)
+    assert [d.name for d in project.package_declarations] == ["P"]
 
 
 @pytest.mark.parametrize("header", [

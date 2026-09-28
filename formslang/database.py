@@ -151,10 +151,19 @@ class PackageDeclaration:
 
     def to_dict(self) -> dict[str, Any]:
         # Source bodies are deliberately absent from this inventory projection.
+        members = [{"name": s.name, "kind": s.subprogram_type, "line": s.line_number,
+                    "parameters": [{"name": p.name, "data_type": p.data_type, "mode": p.mode}
+                                   for p in s.parameters], "return_type": s.return_type}
+                   for s in self.parsed.subprograms]
+        if isinstance(self.parsed, PackageSpec):
+            members.extend({"name": c.name, "kind": "CONSTANT", "line": c.line_number,
+                            "data_type": c.data_type} for c in self.parsed.constants)
+        members.sort(key=lambda member: member["line"])
         return {"kind": self.kind, "owner": self.owner, "name": self.name,
                 "qualified_name": self.qualified_name, "source_file": self.source_file,
                 "line": self.line, "order": self.order, "header_text": self.header_text,
                 "subprograms": [s.name for s in self.parsed.subprograms],
+                "members": members,
                 "projection_status": self.projection_status}
 
 
@@ -434,7 +443,7 @@ _IDENTIFIER = r'(?:"[^"]+"|[A-Za-z][A-Za-z0-9_$#]*)'
 # CREATE [OR REPLACE] [EDITIONABLE | NONEDITIONABLE] PACKAGE [BODY] [owner .] name
 # with the supported Oracle header clauses. Keep the exact header as provenance;
 # parsing one does not establish its runtime or privilege semantics.
-_SHARING_CLAUSE = r"SHARING\s*=\s*(?:EXTENDED\s+DATA|METADATA|DATA|NONE)\b"
+_SHARING_CLAUSE = r"SHARING\s*=\s*(?:METADATA|NONE)\b"
 _QUOTED_HEADER_NAME = r'"(?:[^"]|"")+"'
 _ACCESSIBLE_CLAUSE = rf'ACCESSIBLE\s+BY\s*\((?:{_QUOTED_HEADER_NAME}|[^();"])+\)'
 _SPEC_CLAUSE = (rf"(?:AUTHID\s+(?:CURRENT_USER|DEFINER)\b|"
@@ -452,6 +461,14 @@ _PACKAGE_HEADER = re.compile(
 def _object_name(identifier: str) -> str:
     """Oracle folds an unquoted name to upper case and keeps a quoted one exactly."""
     return identifier[1:-1] if identifier.startswith('"') else identifier.upper()
+
+
+def _qualified_part(identifier: str) -> str:
+    """Keep quotes when removing them would make a qualified name ambiguous."""
+    name = _object_name(identifier)
+    if identifier.startswith('"') and not re.fullmatch(r"[A-Z][A-Z0-9_$#]*", name):
+        return identifier
+    return name
 
 
 def _package_header(text: str, body: bool) -> re.Match[str] | None:
@@ -520,11 +537,13 @@ def _package_occurrences(text: str, source_file: str) -> list[PackageDeclaration
         if isinstance(parsed, PackageSpec):
             for constant in parsed.constants:
                 constant.line_number += line_offset
-        owner = _object_name(match.group("owner")) if match.group("owner") else None
-        name = _object_name(match.group("name"))
+        raw_owner, raw_name = match.group("owner"), match.group("name")
+        owner = _object_name(raw_owner) if raw_owner else None
+        name = _object_name(raw_name)
         occurrences.append(PackageDeclaration(
             kind=kind, owner=owner, name=name,
-            qualified_name=f"{owner}.{name}" if owner else name,
+            qualified_name=(f"{_qualified_part(raw_owner)}.{_qualified_part(raw_name)}"
+                            if raw_owner else _qualified_part(raw_name)),
             source_file=source_file, line=text.count("\n", 0, start) + 1,
             order=len(occurrences) + 1, header_text=text[start:match.end()], parsed=parsed))
     return occurrences
@@ -544,6 +563,21 @@ def _project_unique_packages(project: DatabaseProject) -> None:
     for kind, family in (("PACKAGE", "package_specs"), ("PACKAGE BODY", "package_bodies")):
         setattr(project, family, {d.name: d.parsed for d in project.package_declarations
                                   if d.kind == kind and d.projection_status == "PROJECTED"})
+
+
+def _withhold_colliding_nonpackages(project: DatabaseProject) -> None:
+    """Do not publish a bare-name object when coverage shows multiple CREATEs."""
+    counts = Counter((o["kind"], o["name"]) for c in project.coverage or []
+                     for o in c.objects if o["kind"] in {"TABLE", "VIEW", "SEQUENCE"})
+    # A supported CREATE that failed extraction may still name a homonym.
+    # Its bare name is unsafe to project until identity-aware parsing exists.
+    counts.update((o["kind"], o["name"]) for c in project.coverage or []
+                  for o in c.not_extracted if o["kind"] in {"TABLE", "VIEW", "SEQUENCE"}
+                  and o["name"] is not None and o["reason"] == "NOT_EXTRACTED")
+    for kind, family in (("TABLE", "tables"), ("VIEW", "views"), ("SEQUENCE", "sequences")):
+        for name in list(getattr(project, family)):
+            if counts[(kind, name)] > 1:
+                del getattr(project, family)[name]
 
 
 # The statement kinds extracted into a DatabaseProject family.
@@ -652,16 +686,19 @@ def parse_package_spec(text: str, source_file: str = "") -> PackageSpec | None:
     # Tokenize spec body to extract constants and subprograms
     body_start = m.end()
     spec_body = text[body_start:]
+    # Match declarations against lexical code, not comments or literals. Keep
+    # offsets so line numbers and constant values still refer to the real source.
+    lexical_body = _lexical_header_text(spec_body, plsql_evidence.tokens(spec_body))
 
     # Extract subprogram declarations: function ... return ...; or procedure ...;
     # Regex for procedure / function declarations
     sub_pattern = re.compile(
-        r"\b(FUNCTION|PROCEDURE)\s+([A-Za-z0-9_$#]+)\s*(?:\((.*?)\))?\s*(?:RETURN\s+([A-Za-z0-9_$#%]+))?\s*;",
+        rf"\b(FUNCTION|PROCEDURE)\s+({_IDENTIFIER})\s*(?:\((.*?)\))?\s*(?:RETURN\s+([A-Za-z0-9_$#%]+))?\s*;",
         re.IGNORECASE | re.DOTALL,
     )
-    for sm in sub_pattern.finditer(spec_body):
+    for sm in sub_pattern.finditer(lexical_body):
         stype = sm.group(1).upper()
-        sname = sm.group(2).upper()
+        sname = _object_name(sm.group(2))
         param_text = sm.group(3) or ""
         ret_type = sm.group(4).upper() if sm.group(4) else None
         params = _parse_params(param_text)
@@ -682,10 +719,10 @@ def parse_package_spec(text: str, source_file: str = "") -> PackageSpec | None:
         r"\b([A-Za-z0-9_$#]+)\s+CONSTANT\s+([A-Za-z0-9_$#%]+(?:\s*\([^)]*\))?)\s*(?::=|DEFAULT)\s*([^;]+);",
         re.IGNORECASE,
     )
-    for cm in const_pattern.finditer(spec_body):
+    for cm in const_pattern.finditer(lexical_body):
         cname = cm.group(1).upper()
         ctype = cm.group(2).upper()
-        cval = cm.group(3).strip()
+        cval = spec_body[cm.start(3):cm.end(3)].strip()
         line_no = text[: body_start + cm.start()].count("\n") + 1
         pkg_spec.constants.append(
             Constant(
@@ -722,9 +759,9 @@ def parse_package_body(text: str, source_file: str = "") -> PackageBody | None:
             sub_start_token = t
             sub_line = t.line
             i += 1
-            if i >= len(tokens) or tokens[i].kind != "word":
+            if i >= len(tokens) or tokens[i].kind not in {"word", "quoted"}:
                 continue
-            sname = tokens[i].value.upper()
+            sname = _object_name(tokens[i].value)
             i += 1
 
             # Parse parameters if present
@@ -772,7 +809,8 @@ def parse_package_body(text: str, source_file: str = "") -> PackageBody | None:
                         # Check if followed by sname or ;
                         end_token = tokens[i]
                         i += 1
-                        if i < len(tokens) and tokens[i].value.upper() == sname:
+                        if (i < len(tokens) and tokens[i].kind in {"word", "quoted"}
+                                and _object_name(tokens[i].value) == sname):
                             end_token = tokens[i]
                             i += 1
                         if i < len(tokens) and tokens[i].value == ";":
@@ -940,7 +978,7 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
     nonpackage_occurrences: list[dict[str, Any]] = []
     for stmt_sql, line_no in stmts:
         s_upper = stmt_sql.strip().upper()
-        if s_upper.startswith("CREATE TABLE") or " CREATE TABLE " in s_upper:
+        if s_upper.startswith("CREATE TABLE"):
             table = parse_create_table(stmt_sql, source_file=rel_path)
             if table:
                 project.tables[table.name] = table
@@ -965,12 +1003,8 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
                 elif tname in project.views:
                     project.views[tname].comment = cm_text
 
-    counts = Counter((o["kind"], o["name"]) for o in nonpackage_occurrences)
-    for kind, family in (("TABLE", "tables"), ("VIEW", "views"), ("SEQUENCE", "sequences")):
-        for name in list(getattr(project, family)):
-            if counts[(kind, name)] > 1:
-                del getattr(project, family)[name]
     project.coverage = [_coverage(project, text, rel_path, nonpackage_occurrences)]
+    _withhold_colliding_nonpackages(project)
     return project
 
 
@@ -1012,4 +1046,5 @@ def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProj
         merged.coverage.extend(proj.coverage)
     merged.coverage.extend(missing)
     _project_unique_packages(merged)
+    _withhold_colliding_nonpackages(merged)
     return merged
