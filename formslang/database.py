@@ -297,6 +297,15 @@ class DatabaseProject:
 def _extract_statements(text: str) -> list[tuple[str, int]]:
     """Extract top-level statements separated by ; or / with line numbers."""
     tokens = plsql_evidence.tokens(text)
+    # A SQLcl slash is a command only when it is alone on its physical line.
+    # Match that offset against lexical tokens so slash inside strings/comments
+    # cannot become a delimiter.
+    slash_offsets = set()
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        if line.strip() == "/":
+            slash_offsets.add(offset + line.index("/"))
+        offset += len(line)
     statements: list[tuple[str, int]] = []
     cur_tokens: list[plsql_evidence.Token] = []
     cur_start_line = 1
@@ -306,6 +315,16 @@ def _extract_statements(text: str) -> list[tuple[str, int]]:
     i = 0
     while i < len(tokens):
         t = tokens[i]
+        if t.kind == "symbol" and t.value == "/" and t.start in slash_offsets:
+            if cur_tokens:
+                stmt_text = text[cur_tokens[0].start:cur_tokens[-1].end].strip()
+                if stmt_text:
+                    statements.append((stmt_text, cur_start_line))
+            cur_tokens = []
+            depth = 0
+            in_package_or_type = False
+            i += 1
+            continue
         if not cur_tokens:
             cur_start_line = t.line
 
@@ -319,34 +338,16 @@ def _extract_statements(text: str) -> list[tuple[str, int]]:
         if val_upper in {"PACKAGE", "TYPE"} and i > 0 and tokens[i - 1].value.upper() in {"CREATE", "REPLACE"}:
             in_package_or_type = True
 
-        if t.value == ";" and depth == 0:
-            if not in_package_or_type:
-                # Top level statement finished
-                start_offset = cur_tokens[0].start if cur_tokens else t.start
-                stmt_text = text[start_offset:t.end].strip()
-                if stmt_text:
-                    statements.append((stmt_text, cur_start_line))
-                cur_tokens = []
-                i += 1
-                continue
-            else:
-                # Inside package or type: check if this is the final END [name];
-                # a package ends with `END [name];` or with a bare `END;`.
-                ends_unit = (
-                    len(cur_tokens) >= 2
-                    and cur_tokens[-1].kind == "word"
-                    and cur_tokens[-2].value.upper() == "END"
-                ) or (
-                    len(cur_tokens) >= 1 and cur_tokens[-1].value.upper() == "END"
-                )
-                if ends_unit:
-                    start_offset = cur_tokens[0].start
-                    stmt_text = text[start_offset:t.end].strip()
-                    statements.append((stmt_text, cur_start_line))
-                    cur_tokens = []
-                    in_package_or_type = False
-                    i += 1
-                    continue
+        # A package/type contains nested semicolons and END clauses. Its
+        # SQLcl execution delimiter, or EOF, closes the statement.
+        if t.value == ";" and depth == 0 and not in_package_or_type:
+            start_offset = cur_tokens[0].start if cur_tokens else t.start
+            stmt_text = text[start_offset:t.end].strip()
+            if stmt_text:
+                statements.append((stmt_text, cur_start_line))
+            cur_tokens = []
+            i += 1
+            continue
 
         cur_tokens.append(t)
         i += 1
