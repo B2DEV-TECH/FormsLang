@@ -10,7 +10,8 @@ start until this phase has been reviewed.
 | Document | What it fixes |
 |---|---|
 | [`contract-ecosystem-1.md`](contract-ecosystem-1.md) | The `ecosystem/1` contract: identities, the relation record, the seven families mapped from the 2.2 edge types, certainty, the visual-attribute origin rule, frontiers, bounds and revision compatibility. |
-| [`inventory-2.2.json`](inventory-2.2.json) | What the 2.2 engine records, measured on four corpora (showcase, modernization lab, Case C and the visual-hierarchy fixture) and Cases A–C. Regenerate or check it with `py examples/verify/ecosystem_inventory.py --output/--check`. |
+| [`inventory-2.2.json`](inventory-2.2.json) | Historical, unchanged 2.2 engine baseline measured on four corpora. Keep it when the analysis engine changes. |
+| [`inventory-m0.json`](inventory-m0.json) | Current M0 engine characterization of the same corpora. Check it with `py examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-m0.json`. |
 | [`gaps-and-capture.md`](gaps-and-capture.md) | Three pre-existing engine defects, the contract gaps, and what phase 2 must capture. |
 | [`performance-2.2-baseline.md`](performance-2.2-baseline.md) | The 500-Form baseline and ecosystem runs, warm-read p50/p95, memory and response sizes. |
 | [`journey-three-steps.md`](journey-three-steps.md) | The three-step journey as text wireframes built from measured facts. |

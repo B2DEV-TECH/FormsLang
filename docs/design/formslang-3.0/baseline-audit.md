@@ -51,7 +51,7 @@ frontend build step.
 | Export the showcase twice and `cmp` the ZIPs | `ci.yml` job `export` | CI only |
 | SQLcl `apex validate --offline` plus two negative controls | `ci.yml` job `validate` (Java 21, `sqlcl-latest.zip`) | CI only |
 | Installer upgrade from the last release (NSIS and MSI) | `installer-acceptance.yml` → `examples/verify/installer_upgrade.ps1` | Not run in M0 (manual workflow) |
-| `py examples/verify/ecosystem_inventory.py --check` | `docs/design/ecosystem-explorer-2.3/README.md` | Covered by `tests/test_ecosystem_phase1.py` |
+| `py examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-m0.json` | `docs/design/ecosystem-explorer-2.3/README.md` | Covered by `tests/test_ecosystem_phase1.py` |
 | `examples/verify/project_corporate_scale.py --profile ecosystem` | ecosystem design docs | Not run in M0 |
 
 Documentation drift found: `CONTRIBUTING.md` says `python -m formslang serve`

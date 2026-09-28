@@ -1,4 +1,4 @@
-"""FormsLang 2.3 phase 1: what the 2.2 engine records for the ecosystem contract.
+"""FormsLang 2.3 phase 1: historical 2.2 baseline and current engine facts.
 
 These are characterization tests. They pin the facts ``ecosystem/1`` may use
 today and the gaps it must not paper over (docs/design/ecosystem-explorer-2.3/).
@@ -21,6 +21,7 @@ from formslang.parser import parse_xml
 
 REPO = Path(__file__).resolve().parents[1]
 GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-2.2.json"
+CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-m0.json"
 
 
 def build(name):
@@ -73,13 +74,20 @@ def trigger(bp, module, owner, name="WHEN-BUTTON-PRESSED"):
 # Committed inventory
 # ---------------------------------------------------------------------------
 
-def test_inventory_is_deterministic_and_matches_the_committed_baseline():
+def test_original_2_2_inventory_remains_a_historical_baseline():
+    original = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    case_c = original["corpora"]["case_c"]["blueprint"]
+    assert case_c["engine_version"].startswith("blueprint-analysis/1+")
+    assert "SUBPROGRAM_BODY" not in case_c["entities_by_type"]
+
+
+def test_inventory_is_deterministic_and_matches_the_m0_characterization():
     first = inv.render(inv.inventory())
     assert first == inv.render(inv.inventory())
     assert "\\\\" not in first and ":/" not in first  # no absolute or Windows paths leak in
-    assert first == GOLDEN.read_text(encoding="utf-8"), (
+    assert first == CURRENT_GOLDEN.read_text(encoding="utf-8"), (
         "Regenerate with: python examples/verify/ecosystem_inventory.py --output "
-        "docs/design/ecosystem-explorer-2.3/inventory-2.2.json, then review the diff")
+        "docs/design/ecosystem-explorer-2.3/inventory-m0.json, then review the diff")
 
 
 # ---------------------------------------------------------------------------

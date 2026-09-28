@@ -64,7 +64,7 @@ No gate is **passed**. The full 3.0 release is not complete.
   | Failing test first | `py -3.13 -m pytest -q tests/test_ecosystem_phase1.py -k "schema_qualified"` before the fix | 3 failed, 1 passed (the unqualified header already worked) |
   | After the fix | `py -3.13 -m pytest -q tests/test_ecosystem_phase1.py` | 29 passed |
   | Related suites | `py -3.13 -m pytest -q tests/test_database.py tests/test_blueprint.py tests/test_blueprint_backend.py tests/test_ecosystem_phase1.py tests/test_estate_hotspots.py tests/test_depgraph.py tests/test_modernization.py tests/test_project_analysis.py` | 206 passed, 1 skipped (symlinks unavailable to this Windows account) |
-  | Inventory | `py -3.13 examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-2.2.json` | Passes. The regenerated diff changes only the engine version in the four corpora, plus Case C: +1 `SUBPROGRAM_BODY`, +2 `IMPLEMENTS`, +1 `WRITES`, +1 symbolic table reference, and findings 22 → 24. |
+  | Inventory | `py -3.13 examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-m0.json` | Passes. The new M0 snapshot changes the engine version in the four corpora, plus Case C: +1 `SUBPROGRAM_BODY`, +2 `IMPLEMENTS`, +1 `WRITES`, +1 symbolic table reference, and findings 22 → 24. The original `inventory-2.2.json` stays unchanged. |
   | Lint | `py -3.13 -m ruff check .` | All checks passed |
   | Full suite | `py -3.13 -m pytest -q -p no:cacheprovider` | 1868 passed, 5 skipped in 836 s at `e104b33`. The skip count matches the pre-M0 baseline; this run did not list the reasons. |
 

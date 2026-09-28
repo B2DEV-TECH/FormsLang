@@ -54,7 +54,7 @@ check, the full suite and the local HTTP repetition.
 1. Replace the pinned gap test with positive tests for `EDITIONABLE`/`NONEDITIONABLE`, `"S"."P"` and `S . P` headers on both specs and bodies. A quoted name keeps its exact case.
 2. Add a negative test: a database file that yields no object is reported as a coverage limit, not dropped silently.
 3. Change the header patterns in `formslang/database.py`. The identity key stays the bare name, because WP-04 owns identity.
-4. Bump the engine version, then regenerate and check `docs/design/ecosystem-explorer-2.3/inventory-2.2.json`.
+4. Bump the engine version, then create and check a new current inventory snapshot. Keep `docs/design/ecosystem-explorer-2.3/inventory-2.2.json` as the original 2.2 baseline.
 5. Update `gaps-and-capture.md`, the matrix and the evidence register.
 
 ## Environments not available
