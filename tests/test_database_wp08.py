@@ -135,3 +135,63 @@ def test_unrecognised_or_invalid_clause_is_reported_not_extracted(tmp_path, head
     assert project.coverage[0].status == database.NO_RECOGNIZED_OBJECTS
     assert [(e["kind"], e["name"]) for e in project.coverage[0].not_extracted] == [
         ("PACKAGE BODY" if "BODY" in header else "PACKAGE", "P")]
+
+
+@pytest.mark.parametrize("separator", ["/\n", "   /   \n", "\n\t/\r\n\r\n"])
+def test_isolated_slash_keeps_consecutive_table_statements(separator, tmp_path):
+    source = _write(tmp_path, "tables.sql", "CREATE TABLE A (ID NUMBER);\n"
+                    + separator + "CREATE TABLE B (ID NUMBER);\n")
+    project = database.parse_database_file(source)
+    assert set(project.tables) == {"A", "B"}
+    assert project.coverage[0].not_extracted == []
+
+
+def test_slash_ends_view_without_semicolon_before_next_create(tmp_path):
+    source = _write(tmp_path, "views.sql", "CREATE VIEW V AS SELECT '/' AS PATH FROM DUAL\n"
+                    "  /  \nCREATE TABLE T (ID NUMBER);\n")
+    project = database.parse_database_file(source)
+    assert set(project.views) == {"V"}
+    assert set(project.tables) == {"T"}
+    assert "CREATE TABLE" not in project.views["V"].query_text
+    assert project.coverage[0].not_extracted == []
+
+
+def test_slash_inside_q_string_and_comment_is_not_a_delimiter(tmp_path):
+    source = _write(tmp_path, "literals.sql", """CREATE VIEW V AS SELECT q'[
+/
+]' AS PATH FROM DUAL
+-- /
+/
+CREATE TABLE T (ID NUMBER);
+""")
+    project = database.parse_database_file(source)
+    assert set(project.views) == {"V"}
+    assert set(project.tables) == {"T"}
+    assert "q'[\n/\n]'" in project.views["V"].query_text
+    assert project.coverage[0].not_extracted == []
+
+
+def test_package_clauses_multiple_creates_and_slash_work_together(tmp_path):
+    source = _write(tmp_path, "combined.sql", """CREATE PACKAGE S.P AUTHID CURRENT_USER AS
+  PROCEDURE X;
+END P;
+   /
+CREATE PACKAGE BODY S.P SHARING = METADATA AS
+  PROCEDURE X IS BEGIN
+    IF 1 = 1 THEN NULL; END IF;
+  END X;
+END P;
+/
+CREATE VIEW V AS SELECT 8 / 2 AS HALF FROM DUAL
+/
+CREATE TABLE T (ID NUMBER);
+""")
+    project = database.parse_database_file(source)
+    assert [(d.kind, d.qualified_name, d.line) for d in project.package_declarations] == [
+        ("PACKAGE", "S.P", 1), ("PACKAGE BODY", "S.P", 5)]
+    assert [[s.name for s in d.parsed.subprograms] for d in project.package_declarations] == [
+        ["X"], ["X"]]
+    assert set(project.views) == {"V"}
+    assert set(project.tables) == {"T"}
+    assert len(project.coverage[0].objects) == 4
+    assert project.coverage[0].not_extracted == []

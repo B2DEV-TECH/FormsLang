@@ -96,12 +96,11 @@ def test_a_second_package_in_one_file_is_extracted_and_counted(tmp_path):
     assert coverage.not_extracted == []
 
 
-def test_a_table_after_a_slash_terminated_statement_is_reported_not_extracted(tmp_path):
+def test_a_table_after_a_slash_terminated_statement_is_extracted(tmp_path):
     coverage = coverage_of(tmp_path, "slash.sql", "CREATE TABLE A (ID NUMBER);\n/\nCREATE TABLE T (ID NUMBER);\n")
-    assert coverage.status == PARSED_WITH_WARNINGS
-    assert kinds(coverage.objects) == [("TABLE", "A")]
-    assert kinds(coverage.not_extracted) == [("TABLE", "T")]
-    assert coverage.not_extracted[0]["line"] == 3
+    assert coverage.status == PARSED
+    assert kinds(coverage.objects) == [("TABLE", "A"), ("TABLE", "T")]
+    assert coverage.not_extracted == []
 
 
 def test_create_in_a_string_or_comment_or_ddl_trigger_event_is_not_a_statement(tmp_path):
@@ -198,6 +197,23 @@ def test_a_project_keeps_the_coverage_of_a_source_with_no_objects(project_source
     assert any(d.error_code == "UNSUPPORTED_SQL" and d.relative_path == "audit.trg" for d in result.diagnostics)
     assert result.database.files == ["database/orders.sql"]
     assert str(access.source_roots[1]) not in json.dumps(result.database.to_dict()["coverage"])
+
+
+def test_project_pipeline_keeps_colliding_package_declarations_with_logical_sources(project_sources):
+    access, _, _ = project_sources
+    (access.source_roots[1] / "two.sql").write_text(
+        "CREATE PACKAGE SALES.P AS PROCEDURE A; END P;\n/\n"
+        "CREATE PACKAGE BILLING.P AS PROCEDURE B; END P;\n/\n", encoding="utf-8")
+    result = _parse_project(project_sources)
+    declarations = result.database.package_declarations
+    assert [d.qualified_name for d in declarations] == ["SALES.P", "BILLING.P"]
+    assert [d.source_file for d in declarations] == ["database/two.sql"] * 2
+    assert all(d.projection_status == "AMBIGUOUS_BARE_NAME" for d in declarations)
+    assert "P" not in result.database.package_specs
+    assert "database/two.sql" in result.database.files
+    assert result.inventory["database"]["package_declarations"] == 2
+    assert not [d for d in result.diagnostics if d.error_code == "UNSUPPORTED_SQL"
+                and d.relative_path == "two.sql"]
 
 
 def test_a_project_records_a_source_that_could_not_be_staged(project_sources, monkeypatch):

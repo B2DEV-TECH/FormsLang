@@ -185,12 +185,14 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
                 [coverage] = parsed.coverage
                 coverage.source_file = logical
                 merged.coverage.append(coverage)
-                if not any(getattr(parsed, family) for family in DB_FAMILIES):
+                if not parsed.package_declarations and not any(
+                        getattr(parsed, family) for family in DB_FAMILIES):
                     warn(candidate, 'UNSUPPORTED_SQL', 'No supported database objects were parsed.',
                          'Supply table/view/package source; unsupported SQL requires human review.')
                 else:
                     _normalize_sources(parsed, logical)
                     merged.files.append(logical)
+                    merged.package_declarations.extend(parsed.package_declarations)
                     for family in DB_FAMILIES:
                         for name, obj in getattr(parsed, family).items():
                             definitions[(family, name)].append((candidate, obj))
@@ -209,6 +211,7 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
                      'Select the authoritative definition and refresh analysis.')
         else:
             getattr(merged, family)[name] = objects[0][1]
+    database._project_unique_packages(merged)
     merged.files.sort()
     merged.coverage.sort(key=lambda c: c.source_file)
     inventory = copy.deepcopy(discovery.inventory)
@@ -216,6 +219,7 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
     inventory['forms']['parseable'] = len(modules)
     inventory['database'] = {family: len(getattr(merged, family)) for family in DB_FAMILIES}
     inventory['database']['packages'] = len(set(merged.package_specs) | set(merged.package_bodies))
+    inventory['database']['package_declarations'] = len(merged.package_declarations)
     # Deduplicate preview/parse diagnostics without changing immutable source content.
     diagnostics = sorted(set(diagnostics), key=lambda d: (d.source_id, d.stage, d.error_code))
     inventory['warnings'] = len(diagnostics)
