@@ -435,8 +435,10 @@ _IDENTIFIER = r'(?:"[^"]+"|[A-Za-z][A-Za-z0-9_$#]*)'
 # with the supported Oracle header clauses. Keep the exact header as provenance;
 # parsing one does not establish its runtime or privilege semantics.
 _SHARING_CLAUSE = r"SHARING\s*=\s*(?:EXTENDED\s+DATA|METADATA|DATA|NONE)\b"
+_QUOTED_HEADER_NAME = r'"(?:[^"]|"")+"'
+_ACCESSIBLE_CLAUSE = rf'ACCESSIBLE\s+BY\s*\((?:{_QUOTED_HEADER_NAME}|[^();"])+\)'
 _SPEC_CLAUSE = (rf"(?:AUTHID\s+(?:CURRENT_USER|DEFINER)\b|"
-                rf"ACCESSIBLE\s+BY\s*\([^();]+\)|"
+                rf"{_ACCESSIBLE_CLAUSE}|"
                 rf"DEFAULT\s+COLLATION\s+{_IDENTIFIER}|{_SHARING_CLAUSE})")
 _BODY_CLAUSE = _SHARING_CLAUSE
 _PACKAGE_HEADER = re.compile(
@@ -457,7 +459,21 @@ def _package_header(text: str, body: bool) -> re.Match[str] | None:
     tokens = plsql_evidence.tokens(text)
     lexical_text = _lexical_header_text(text, tokens)
     return next((m for t in tokens if t.kind == "word" and t.value == "CREATE"
-                 if (m := _PACKAGE_HEADER.match(lexical_text, t.start)) and bool(m.group("body")) == body), None)
+                 if (m := _match_package_header(lexical_text, tokens, t.start))
+                 and bool(m.group("body")) == body), None)
+
+
+def _match_package_header(lexical_text: str, tokens: list[plsql_evidence.Token],
+                          start: int) -> re.Match[str] | None:
+    match = _PACKAGE_HEADER.match(lexical_text, start)
+    if match is None:
+        return None
+    # A regex can backtrack into a word such as PAS, or punctuation inside a
+    # quoted name. The delimiter must be its own lexical AS/IS token.
+    if not any(t.kind == "word" and t.value in {"AS", "IS"} and t.end == match.end()
+               for t in tokens):
+        return None
+    return match
 
 
 def _lexical_header_text(text: str, tokens: list[plsql_evidence.Token]) -> str:
@@ -485,7 +501,7 @@ def _package_occurrences(text: str, source_file: str) -> list[PackageDeclaration
                            or i + 2 < len(tokens) and tokens[i + 2].value == "REPLACE")]
     occurrences = []
     for order, start in enumerate(create_offsets):
-        match = _PACKAGE_HEADER.match(lexical_text, start)
+        match = _match_package_header(lexical_text, tokens, start)
         if not match:
             continue
         end = create_offsets[order + 1] if order + 1 < len(create_offsets) else len(text)
