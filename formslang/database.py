@@ -421,12 +421,18 @@ def _parse_params(param_str: str) -> list[Parameter]:
 # An Oracle identifier: quoted (any characters but a double quote) or unquoted.
 _IDENTIFIER = r'(?:"[^"]+"|[A-Za-z][A-Za-z0-9_$#]*)'
 
-# CREATE [OR REPLACE] [EDITIONABLE | NONEDITIONABLE] PACKAGE [BODY] [owner .] name AS|IS,
-# the header shape DDL exports write. A clause between the name and AS/IS
-# (AUTHID, ACCESSIBLE BY, ...) is not recognised; coverage reports such a file.
+# CREATE [OR REPLACE] [EDITIONABLE | NONEDITIONABLE] PACKAGE [BODY] [owner .] name
+# with the supported Oracle header clauses. Keep the exact header as provenance;
+# parsing one does not establish its runtime or privilege semantics.
+_SHARING_CLAUSE = r"SHARING\s*=\s*(?:EXTENDED\s+DATA|METADATA|DATA|NONE)\b"
+_SPEC_CLAUSE = (rf"(?:AUTHID\s+(?:CURRENT_USER|DEFINER)\b|"
+                rf"ACCESSIBLE\s+BY\s*\([^();]+\)|"
+                rf"DEFAULT\s+COLLATION\s+{_IDENTIFIER}|{_SHARING_CLAUSE})")
+_BODY_CLAUSE = _SHARING_CLAUSE
 _PACKAGE_HEADER = re.compile(
     r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?PACKAGE\s+(?P<body>BODY\s+)?"
-    rf"(?:(?P<owner>{_IDENTIFIER})\s*\.\s*)?(?P<name>{_IDENTIFIER})(?:\s+|(?<=\"))(?:AS|IS)\b",
+    rf"(?:(?P<owner>{_IDENTIFIER})\s*\.\s*)?(?P<name>{_IDENTIFIER})"
+    rf"(?:\s+(?(body){_BODY_CLAUSE}|{_SPEC_CLAUSE}))*\s+(?:AS|IS)\b",
     re.IGNORECASE,
 )
 

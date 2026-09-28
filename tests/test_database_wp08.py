@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from formslang import blueprint, database
 
 
@@ -86,3 +88,50 @@ def test_blueprint_reports_homonyms_without_resolving_an_arbitrary_package(tmp_p
     assert [d["qualified_name"] for d in bp["database"]["package_declarations"]] == [
         "SALES.P", "BILLING.P"]
     assert not [e for e in bp["entities"] if e["type"] == "PACKAGE_SPEC"]
+
+
+@pytest.mark.parametrize("header", [
+    "CREATE PACKAGE P AUTHID DEFINER AS",
+    "CREATE OR REPLACE PACKAGE P AUTHID CURRENT_USER IS",
+    "CREATE PACKAGE P ACCESSIBLE BY (PACKAGE APP.API, PROCEDURE APP.RUN) AS",
+    'CREATE PACKAGE "S"."P" DEFAULT COLLATION "BINARY_CI" AS',
+    "CREATE PACKAGE P DEFAULT COLLATION USING_NLS_COMP AS",
+    "CREATE PACKAGE P SHARING = METADATA AS",
+    "CREATE PACKAGE P SHARING = EXTENDED DATA AS",
+    ("CREATE PACKAGE P SHARING=DATA AUTHID DEFINER ACCESSIBLE BY (PACKAGE APP.API) "
+     "DEFAULT COLLATION USING_NLS_COMP AS"),
+])
+def test_package_spec_header_clauses_are_bounded_and_preserved(tmp_path, header):
+    source = _write(tmp_path, "clauses.sql", header + " PROCEDURE X; END P;\n/\n"
+                    "CREATE PACKAGE Q AS PROCEDURE Y; END Q;\n/\n")
+    project = database.parse_database_file(source)
+    first, second = project.package_declarations
+    assert first.header_text == header
+    assert (first.source_file, first.line, first.name) == (str(source), 1, "P")
+    assert [s.name for s in first.parsed.subprograms] == ["X"]
+    assert [s.name for s in second.parsed.subprograms] == ["Y"]
+    assert project.coverage[0].not_extracted == []
+
+
+def test_package_body_sharing_clause_is_preserved(tmp_path):
+    source = _write(tmp_path, "body.sql", "CREATE PACKAGE BODY S.P SHARING = METADATA AS "
+                    "PROCEDURE X IS BEGIN NULL; END X; END P;\n/\n")
+    [declaration] = database.parse_database_file(source).package_declarations
+    assert declaration.kind == "PACKAGE BODY"
+    assert declaration.header_text == "CREATE PACKAGE BODY S.P SHARING = METADATA AS"
+    assert [s.name for s in declaration.parsed.subprograms] == ["X"]
+
+
+@pytest.mark.parametrize("header", [
+    "CREATE PACKAGE P AUTHID OTHER AS",
+    "CREATE PACKAGE P ACCESSIBLE BY (PACKAGE APP.API AS",
+    "CREATE PACKAGE P SHARING = UNKNOWN AS",
+    "CREATE PACKAGE BODY P AUTHID DEFINER AS",
+])
+def test_unrecognised_or_invalid_clause_is_reported_not_extracted(tmp_path, header):
+    source = _write(tmp_path, "bad.sql", header + " PROCEDURE X; END P;\n/\n")
+    project = database.parse_database_file(source)
+    assert project.package_declarations == []
+    assert project.coverage[0].status == database.NO_RECOGNIZED_OBJECTS
+    assert [(e["kind"], e["name"]) for e in project.coverage[0].not_extracted] == [
+        ("PACKAGE BODY" if "BODY" in header else "PACKAGE", "P")]

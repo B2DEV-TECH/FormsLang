@@ -80,7 +80,6 @@ def test_a_supported_statement_not_extracted_stays_a_warning_beside_unmodelled_o
     # Each is a supported kind that the extractor does not yet read (see gaps-and-capture.md).
     ("gtt.sql", "CREATE GLOBAL TEMPORARY TABLE G (ID NUMBER) ON COMMIT DELETE ROWS;", [("TABLE", "G")]),
     ("force.sql", "CREATE OR REPLACE FORCE VIEW V AS SELECT 1 X FROM DUAL;", [("VIEW", "V")]),
-    ("authid.pks", "CREATE OR REPLACE PACKAGE P AUTHID DEFINER AS PROCEDURE X; END P;\n/\n", [("PACKAGE", "P")]),
     ("quoted.sql", 'CREATE TABLE "T" (ID NUMBER);', [("TABLE", "T")]),
 ])
 def test_a_supported_statement_that_is_not_extracted_is_reported(tmp_path, name, text, missing):
