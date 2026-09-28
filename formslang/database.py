@@ -274,12 +274,12 @@ class DatabaseProject:
     views: dict[str, View] = field(default_factory=dict)
     package_specs: dict[str, PackageSpec] = field(default_factory=dict)
     package_bodies: dict[str, PackageBody] = field(default_factory=dict)
-    package_declarations: list[PackageDeclaration] = field(default_factory=list)
     sequences: dict[str, Sequence] = field(default_factory=dict)
     files: list[str] = field(default_factory=list)
     # One entry per supplied source. None means coverage was never computed,
     # which is unknown, not an estate without gaps.
     coverage: list[SourceCoverage] | None = None
+    package_declarations: list[PackageDeclaration] = field(default_factory=list)
 
     def coverage_summary(self) -> dict[str, int] | None:
         if self.coverage is None:
