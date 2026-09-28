@@ -90,6 +90,104 @@ def test_blueprint_reports_homonyms_without_resolving_an_arbitrary_package(tmp_p
     assert not [e for e in bp["entities"] if e["type"] == "PACKAGE_SPEC"]
 
 
+def test_spec_and_body_from_different_owners_do_not_form_false_implementation(tmp_path):
+    source = _write(tmp_path, "cross_owner.sql", """CREATE PACKAGE SALES.P AS
+  PROCEDURE X;
+END P;
+/
+CREATE PACKAGE BODY BILLING.P AS
+  PROCEDURE X IS BEGIN NULL; END X;
+END P;
+/
+""")
+    project = database.parse_database_file(source)
+    assert [d.qualified_name for d in project.package_declarations] == ["SALES.P", "BILLING.P"]
+    assert project.package_specs == {} and project.package_bodies == {}
+    assert [d.projection_status for d in project.package_declarations] == [
+        "AMBIGUOUS_BARE_NAME", "AMBIGUOUS_BARE_NAME"]
+
+    bp = blueprint.build([], title="cross owner", database_sources=source)
+    assert not [e for e in bp["edges"] if e["type"] == "IMPLEMENTS"]
+
+
+def test_package_member_lines_are_absolute_in_multi_create_export(tmp_path):
+    source = _write(tmp_path, "lines.sql", """CREATE TABLE T (ID NUMBER);
+/
+CREATE PACKAGE S.P AS
+  K CONSTANT NUMBER := 1;
+  PROCEDURE X;
+END P;
+/
+CREATE PACKAGE BODY S.P AS
+  PROCEDURE X IS BEGIN NULL; END X;
+END P;
+/
+""")
+    project = database.parse_database_file(source)
+    spec, body = [d.parsed for d in project.package_declarations]
+    assert spec.constants[0].line_number == 4
+    assert spec.subprograms[0].line_number == 5
+    assert body.subprograms[0].line_number == 9
+
+
+def test_adjacent_create_after_package_without_slash_stays_visible(tmp_path):
+    source = _write(tmp_path, "adjacent.sql", """CREATE PACKAGE P AS PROCEDURE X; END P;
+CREATE VIEW V AS SELECT 1 FROM DUAL;
+CREATE SEQUENCE S;
+""")
+    project = database.parse_database_file(source)
+    assert set(project.package_specs) == {"P"}
+    assert set(project.views) == {"V"}
+    assert set(project.sequences) == {"S"}
+    assert project.coverage[0].not_extracted == []
+
+
+def test_package_slash_prevents_later_anonymous_block_members(tmp_path):
+    source = _write(tmp_path, "block.sql", """CREATE PACKAGE BODY P AS
+  PROCEDURE X IS BEGIN NULL; END X;
+END P;
+/
+DECLARE
+  PROCEDURE FAKE IS BEGIN NULL; END FAKE;
+BEGIN NULL; END;
+/
+""")
+    project = database.parse_database_file(source)
+    assert [s.name for s in project.package_bodies["P"].subprograms] == ["X"]
+
+
+def test_comment_cannot_supply_package_header_closing_tokens(tmp_path):
+    source = _write(tmp_path, "comment.sql", """CREATE PACKAGE P ACCESSIBLE BY (PACKAGE S.Q /* ) AS
+  PROCEDURE FAKE;
+  */) AS
+  PROCEDURE REAL;
+END P;
+/
+""")
+    project = database.parse_database_file(source)
+    assert [s.name for s in project.package_specs["P"].subprograms] == ["REAL"]
+
+
+def test_quoted_package_name_can_touch_as_keyword(tmp_path):
+    source = _write(tmp_path, "quoted.sql", 'CREATE PACKAGE "P"AS PROCEDURE X; END P;\n/\n')
+    project = database.parse_database_file(source)
+    assert [s.name for s in project.package_specs["P"].subprograms] == ["X"]
+
+
+def test_same_bare_name_nonpackage_creates_are_visible_and_not_projected(tmp_path):
+    source = _write(tmp_path, "tables.sql", """CREATE TABLE SALES.T (A NUMBER);
+CREATE TABLE BILLING.T (B NUMBER);
+""")
+    project = database.parse_database_file(source)
+    assert project.tables == {}
+    [coverage] = project.coverage
+    assert coverage.status == database.PARSED_WITH_WARNINGS
+    assert [(o["kind"], o["name"], o["line"]) for o in coverage.objects] == [
+        ("TABLE", "T", 1), ("TABLE", "T", 2)]
+    assert [(e["line"], e["reason"]) for e in coverage.not_extracted] == [
+        (1, "COLLIDING_BARE_NAME"), (2, "COLLIDING_BARE_NAME")]
+
+
 @pytest.mark.parametrize("header", [
     "CREATE PACKAGE P AUTHID DEFINER AS",
     "CREATE OR REPLACE PACKAGE P AUTHID CURRENT_USER IS",

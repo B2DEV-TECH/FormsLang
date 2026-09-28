@@ -65,6 +65,22 @@ def test_unsupported_only_is_not_empty_success(project_service, project_sources)
     assert 'UNSUPPORTED_XML' in metadata and 'UNSUPPORTED_SQL' in metadata
 
 
+def test_homonymous_packages_only_are_publishable_inventory(project_service, project_sources):
+    access, _, xml = project_sources
+    xml.unlink()
+    (access.source_roots[1] / 'orders.sql').write_text("""CREATE PACKAGE SALES.P AS PROCEDURE X; END P;
+/
+CREATE PACKAGE BILLING.P AS PROCEDURE Y; END P;
+/
+""")
+    result = project_service.analyze(expected_revision=None, expected_configuration=0)
+    assert result['status'] in {'COMPLETED', 'COMPLETED_WITH_WARNINGS'}
+    saved = project_service.assessment()
+    assert saved['inventory']['database']['package_declarations'] == 2
+    assert [d['qualified_name'] for d in saved['blueprint']['database']['package_declarations']] == [
+        'SALES.P', 'BILLING.P']
+
+
 @pytest.mark.parametrize('phase', ['DISCOVERY', 'FORMS_PARSING', 'BLUEPRINT', 'PERSISTING'])
 def test_cancel_each_boundary_keeps_previous_assessment(project_service, phase):
     first = project_service.analyze(expected_revision=None, expected_configuration=0)

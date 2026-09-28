@@ -315,6 +315,15 @@ def _extract_statements(text: str) -> list[tuple[str, int]]:
     i = 0
     while i < len(tokens):
         t = tokens[i]
+        if in_package_or_type and cur_tokens and t.kind == "word" and t.value == "CREATE":
+            # SQL exports may put the next DDL directly after END pkg; without
+            # SQLcl's slash. Do not let the prior package swallow that CREATE.
+            stmt_text = text[cur_tokens[0].start:cur_tokens[-1].end].strip()
+            if stmt_text:
+                statements.append((stmt_text, cur_start_line))
+            cur_tokens = []
+            depth = 0
+            in_package_or_type = False
         if t.kind == "symbol" and t.value == "/" and t.start in slash_offsets:
             if cur_tokens:
                 stmt_text = text[cur_tokens[0].start:cur_tokens[-1].end].strip()
@@ -433,7 +442,7 @@ _BODY_CLAUSE = _SHARING_CLAUSE
 _PACKAGE_HEADER = re.compile(
     r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?PACKAGE\s+(?P<body>BODY\s+)?"
     rf"(?:(?P<owner>{_IDENTIFIER})\s*\.\s*)?(?P<name>{_IDENTIFIER})"
-    rf"(?:\s+(?(body){_BODY_CLAUSE}|{_SPEC_CLAUSE}))*\s+(?:AS|IS)\b",
+    rf"(?:\s+(?(body){_BODY_CLAUSE}|{_SPEC_CLAUSE}))*\s*(?:AS|IS)\b",
     re.IGNORECASE,
 )
 
@@ -445,28 +454,56 @@ def _object_name(identifier: str) -> str:
 
 def _package_header(text: str, body: bool) -> re.Match[str] | None:
     """The first package specification (or body) header in the text."""
-    return next((m for t in plsql_evidence.tokens(text) if t.kind == "word" and t.value == "CREATE"
-                 if (m := _PACKAGE_HEADER.match(text, t.start)) and bool(m.group("body")) == body), None)
+    tokens = plsql_evidence.tokens(text)
+    lexical_text = _lexical_header_text(text, tokens)
+    return next((m for t in tokens if t.kind == "word" and t.value == "CREATE"
+                 if (m := _PACKAGE_HEADER.match(lexical_text, t.start)) and bool(m.group("body")) == body), None)
+
+
+def _lexical_header_text(text: str, tokens: list[plsql_evidence.Token]) -> str:
+    """Preserve offsets while hiding comments and string literals from headers."""
+    chars = ["\n" if ch == "\n" else " " for ch in text]
+    for token in tokens:
+        if token.kind in {"word", "quoted", "symbol"}:
+            chars[token.start:token.end] = text[token.start:token.end]
+    return "".join(chars)
 
 
 def _package_occurrences(text: str, source_file: str) -> list[PackageDeclaration]:
     """Parse each lexical package CREATE within its own source interval."""
     tokens = plsql_evidence.tokens(text)
+    lexical_text = _lexical_header_text(text, tokens)
+    slash_offsets = set()
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        if line.strip() == "/":
+            slash_offsets.add(offset + line.index("/"))
+        offset += len(line)
+    slash_offsets.intersection_update(t.start for t in tokens if t.kind == "symbol" and t.value == "/")
     create_offsets = [t.start for i, t in enumerate(tokens) if t.kind == "word" and t.value == "CREATE"
                       and (i + 1 == len(tokens) or tokens[i + 1].value not in {"ON", "OR"}
                            or i + 2 < len(tokens) and tokens[i + 2].value == "REPLACE")]
     occurrences = []
     for order, start in enumerate(create_offsets):
-        match = _PACKAGE_HEADER.match(text, start)
+        match = _PACKAGE_HEADER.match(lexical_text, start)
         if not match:
             continue
         end = create_offsets[order + 1] if order + 1 < len(create_offsets) else len(text)
+        end = min((slash for slash in slash_offsets if start < slash < end), default=end)
         segment = text[start:end]
         kind = "PACKAGE BODY" if match.group("body") else "PACKAGE"
         parsed = (parse_package_body(segment, source_file) if match.group("body")
                   else parse_package_spec(segment, source_file))
         if parsed is None:
             continue
+        # The member parsers see one sliced CREATE, so rebase their local lines
+        # to physical lines in the source file before exposing the inventory.
+        line_offset = text.count("\n", 0, start)
+        for member in parsed.subprograms:
+            member.line_number += line_offset
+        if isinstance(parsed, PackageSpec):
+            for constant in parsed.constants:
+                constant.line_number += line_offset
         owner = _object_name(match.group("owner")) if match.group("owner") else None
         name = _object_name(match.group("name"))
         occurrences.append(PackageDeclaration(
@@ -479,17 +516,18 @@ def _package_occurrences(text: str, source_file: str) -> list[PackageDeclaration
 
 def _project_unique_packages(project: DatabaseProject) -> None:
     """Keep legacy bare-name maps only where they cannot choose a collision."""
+    groups: dict[str, list[PackageDeclaration]] = {}
+    for declaration in project.package_declarations:
+        groups.setdefault(declaration.name, []).append(declaration)
+        declaration.projection_status = "PROJECTED"
+    for matches in groups.values():
+        kinds = Counter(d.kind for d in matches)
+        if len({d.owner for d in matches}) > 1 or any(n > 1 for n in kinds.values()):
+            for declaration in matches:
+                declaration.projection_status = "AMBIGUOUS_BARE_NAME"
     for kind, family in (("PACKAGE", "package_specs"), ("PACKAGE BODY", "package_bodies")):
-        groups: dict[str, list[PackageDeclaration]] = {}
-        for declaration in project.package_declarations:
-            if declaration.kind == kind:
-                groups.setdefault(declaration.name, []).append(declaration)
-        for matches in groups.values():
-            if len(matches) > 1:
-                for declaration in matches:
-                    declaration.projection_status = "AMBIGUOUS_BARE_NAME"
-        setattr(project, family, {name: matches[0].parsed for name, matches in groups.items()
-                                  if len(matches) == 1})
+        setattr(project, family, {d.name: d.parsed for d in project.package_declarations
+                                  if d.kind == kind and d.projection_status == "PROJECTED"})
 
 
 # The statement kinds extracted into a DatabaseProject family.
@@ -543,18 +581,23 @@ def _create_statements(text: str) -> list[dict[str, Any]]:
     return found
 
 
-def _coverage(project: DatabaseProject, text: str, source_file: str) -> SourceCoverage:
+def _coverage(project: DatabaseProject, text: str, source_file: str,
+              nonpackage_occurrences: list[dict[str, Any]] | None = None) -> SourceCoverage:
     """Compare the objects extracted from one source with the CREATE statements it holds."""
-    objects = sorted(({"kind": kind, "name": name} for kind, family in _FAMILY_OF_KIND.items()
-                      if not kind.startswith("PACKAGE") for name in getattr(project, family)),
-                     key=lambda o: (o["kind"], o["name"]))
+    objects = list(nonpackage_occurrences or [])
     objects.extend({"kind": d.kind, "name": d.name, "owner": d.owner,
                     "qualified_name": d.qualified_name, "line": d.line, "order": d.order}
                    for d in project.package_declarations)
     objects.sort(key=lambda o: (o["kind"], o["name"], o.get("order", 0)))
     statements = _create_statements(text)
     extracted_packages = Counter((d.kind, d.name, d.line) for d in project.package_declarations)
-    not_extracted = []
+    extracted_other = Counter((o["kind"], o["name"], o["line"]) for o in objects
+                              if not o["kind"].startswith("PACKAGE"))
+    collision_counts = Counter((o["kind"], o["name"]) for o in objects
+                               if not o["kind"].startswith("PACKAGE"))
+    not_extracted = [{**o, "severity": "WARNING", "reason": "COLLIDING_BARE_NAME"}
+                     for o in objects if not o["kind"].startswith("PACKAGE")
+                     and collision_counts[(o["kind"], o["name"])] > 1]
     for statement in statements:
         kind = statement["kind"]
         if kind not in _FAMILY_OF_KIND:
@@ -564,8 +607,11 @@ def _coverage(project: DatabaseProject, text: str, source_file: str) -> SourceCo
             if extracted_packages[identity]:
                 extracted_packages[identity] -= 1
                 continue
-        elif statement["name"] in getattr(project, _FAMILY_OF_KIND[kind]):
-            continue
+        else:
+            identity = (kind, statement["name"], statement["line"])
+            if extracted_other[identity]:
+                extracted_other[identity] -= 1
+                continue
         not_extracted.append({**statement, "severity": "WARNING", "reason": "NOT_EXTRACTED"})
     unsupported = [{**s, "severity": "INFO", "reason": "UNSUPPORTED_BY_MODEL"} for s in statements
                    if s["kind"] not in _FAMILY_OF_KIND]
@@ -875,20 +921,24 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
 
     # Extract statements for DDL, views, sequences, comments
     stmts = _extract_statements(text)
+    nonpackage_occurrences: list[dict[str, Any]] = []
     for stmt_sql, line_no in stmts:
         s_upper = stmt_sql.strip().upper()
         if s_upper.startswith("CREATE TABLE") or " CREATE TABLE " in s_upper:
             table = parse_create_table(stmt_sql, source_file=rel_path)
             if table:
                 project.tables[table.name] = table
+                nonpackage_occurrences.append({"kind": "TABLE", "name": table.name, "line": line_no})
         elif s_upper.startswith(("CREATE OR REPLACE VIEW", "CREATE VIEW")):
             view = parse_create_view(stmt_sql, source_file=rel_path)
             if view:
                 project.views[view.name] = view
+                nonpackage_occurrences.append({"kind": "VIEW", "name": view.name, "line": line_no})
         elif s_upper.startswith("CREATE SEQUENCE"):
             seq = parse_create_sequence(stmt_sql, source_file=rel_path)
             if seq:
                 project.sequences[seq.name] = seq
+                nonpackage_occurrences.append({"kind": "SEQUENCE", "name": seq.name, "line": line_no})
         elif s_upper.startswith("COMMENT ON TABLE"):
             m_cm = re.search(r"COMMENT\s+ON\s+TABLE\s+([A-Za-z0-9_$#.]+)\s+IS\s+'(.*?)'", stmt_sql, re.IGNORECASE | re.DOTALL)
             if m_cm:
@@ -899,7 +949,12 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
                 elif tname in project.views:
                     project.views[tname].comment = cm_text
 
-    project.coverage = [_coverage(project, text, rel_path)]
+    counts = Counter((o["kind"], o["name"]) for o in nonpackage_occurrences)
+    for kind, family in (("TABLE", "tables"), ("VIEW", "views"), ("SEQUENCE", "sequences")):
+        for name in list(getattr(project, family)):
+            if counts[(kind, name)] > 1:
+                del getattr(project, family)[name]
+    project.coverage = [_coverage(project, text, rel_path, nonpackage_occurrences)]
     return project
 
 
