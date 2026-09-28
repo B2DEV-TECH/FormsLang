@@ -13,6 +13,15 @@ def _write(tmp_path, name, text):
     return path
 
 
+def test_database_project_legacy_positional_constructor_keeps_sequences_and_files():
+    sequence = database.Sequence(name="S", source_file="legacy.sql")
+    project = database.DatabaseProject({}, {}, {}, {}, {"S": sequence}, ["legacy.sql"], [])
+    serialized = project.to_dict()
+    assert serialized["sequences"] == {"S": sequence.to_dict()}
+    assert serialized["files"] == ["legacy.sql"]
+    assert serialized["package_declarations"] == []
+
+
 def test_multiple_package_spec_and_body_declarations_keep_owner_order_and_source(tmp_path):
     source = _write(tmp_path, "packages.sql", """-- CREATE PACKAGE FAKE AS END FAKE;
 CREATE PACKAGE SALES.P AS PROCEDURE A; END P;
