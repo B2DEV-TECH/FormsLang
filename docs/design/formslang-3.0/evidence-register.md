@@ -8,7 +8,8 @@ marked passed because the local unit tests are green. Planned work is in
 
 Specification: FL3-MASTER-2026-09-25 revision 1.0. Planning baseline: `main` at
 `1d9cb47`. Active milestone: **M0**. Branches: `codex/formslang-3-m0` (Draft PR #21),
-`codex/formslang-3-wp07` (Draft PR #22, stacked on #21) and `codex/formslang-3-wp02`
+`codex/formslang-3-wp07` (Draft PR #22, stacked on #21), `codex/formslang-3-wp08`
+(Draft PR #24, stacked on #22), and `codex/formslang-3-wp02`
 (Draft PR #23, against `main`).
 
 ## Summary
@@ -131,6 +132,17 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Windows py3.11 500: not reproduced.** The job that failed on `1d9cb47` passed on the instrumented branch, so there is no new evidence of its cause. One green run proves only that it did not recur; the failure is intermittent. No fix was written, as the owner required.
 - **Correction:** the #21 description says the `1d9cb47` failure happened during setup. The job log shows it in the test call (`analyze_demo` → `wait_job`, `tests/test_project_http.py:52`).
 - **Status:** instrumentation done and tested; cause unknown. **Owner/reviewer:** Geraldo Viana Jr, not yet reviewed.
+
+### WP-08A/B/C — independent audit of Draft PR #24
+
+- **Branch and scope:** `codex/formslang-3-wp08`, stacked on Draft PR #22. The independent read-only review compared `9d08e1e..e94e7e6` with the master specification, requirements matrix, plan, handoff, and #21/#22 invariants. The correction commit is `22751e8` on #24. PR #23 is unchanged.
+- **Important regression found:** when two same-name tables in one file had already been withheld, a third table in another file could be published under that bare name. The review compared base and head: base withheld the table and reported two `DUPLICATE_DB_OBJECT` diagnostics; the pre-audit WP-08 head published the third table without a diagnostic. The same path covered views and sequences. Both direct `parse_database_sources` and the project pipeline now count coverage occurrences before projecting a bare name. A supported but not extracted quoted homonym also withholds the bare projection; the direct case failed first, and direct/project cases now pass.
+- **Other WP-08 findings:** package spec member regex accepted procedure/function decoys from comments and string literals; a `COMMENT ON TABLE` literal containing `CREATE TABLE` fabricated a table; quoted member names vanished; a quoted dot in a package name made `qualified_name` indistinguishable from an owner/name separator; Blueprint's declaration projection reduced overloaded members to identical names; package `SHARING=DATA` and `SHARING=EXTENDED DATA` were accepted even though [Oracle's SHARING table](https://docs.oracle.com/en/database/oracle/oracle-database/26/lnpls/SHARING-clause.html) lists only `METADATA` and `NONE` for packages. These paths have minimal failing-first tests and corrections.
+- **Red/green evidence, Windows 11 / Python 3.13.15:** member decoy and overload projection: 2 failed then 2 passed; cross-source table collision in direct and project pipelines: 2 failed then 2 passed; invalid package sharing (spec/body, two attributes): 4 failed then passed; quoted member and literal CREATE decoy: 2 failed then passed; parsed plus unextracted quoted homonym: 1 failed then passed; quoted dot in qualified name: 1 failed then passed. Three out-of-scope gaps also failed as expected before being marked strict `xfail`.
+- **Final verification:** `py -3.13 -m pytest -q tests/test_database.py tests/test_database_headers.py tests/test_database_coverage.py tests/test_database_wp08.py tests/test_blueprint.py tests/test_blueprint_backend.py tests/test_ecosystem_phase1.py tests/test_project_analysis.py tests/test_project_sources.py` — **237 passed, 1 skipped, 3 xfailed** in 18.18 s. `py -3.12 -m pytest -q tests/test_database_wp08.py tests/test_database_coverage.py tests/test_database_headers.py` — **100 passed, 3 xfailed** in 1.42 s. `py -3.13 -m pytest -q -p no:cacheprovider` — **1967 passed, 5 skipped, 3 xfailed** in 846.26 s. Repository-wide `py -3.13 -m ruff check .`, `git diff --check`, and the `inventory-wp08.json` generator check passed. Two earlier full-suite attempts were discarded after code files were edited during execution; one then raised `RevisionConflict` because `engine_identity` hashes those files. The isolated journey test passed, and the final suite ran with code files stable.
+- **CI limit:** #24 is stacked on #22 and `ci.yml` triggers pull requests only when based on `main`; GitHub reports zero checks for #24. Local Windows testing does not substitute for the Ubuntu/Windows Python 3.10–3.13 matrix, browser checks, export, or SQLcl. Oracle runtime validation was not performed.
+- **Pinned gaps outside this slice:** three minimal tests failed before being marked strict `xfail`: a supported CREATE warning in source coverage can leave a project assessment `COMPLETE` (WP-07/project integration); direct `blueprint.build` hashes database file paths rather than changed SQL bytes for its local `source_revision` (ADR-02; the manifest-bound project path does hash source content); documented `CREATE PACKAGE IF NOT EXISTS` is not recognized (future DDL grammar, target-version policy required). Full schema-aware identity and qualified call resolution still belong to ADR-06/WP-04. Oracle runtime validation was not performed.
+- **Gate status:** G-04 remains **in progress**. No release gate is passed by this audit.
 
 ## Gates not started
 
