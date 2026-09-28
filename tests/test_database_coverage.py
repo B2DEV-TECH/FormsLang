@@ -216,6 +216,58 @@ def test_project_pipeline_keeps_colliding_package_declarations_with_logical_sour
                 and d.relative_path == "two.sql"]
 
 
+def test_project_pipeline_withholds_table_after_earlier_source_collision(project_sources):
+    access, _, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        "CREATE TABLE A.T (A NUMBER);\nCREATE TABLE B.T (B NUMBER);\n", encoding="utf-8")
+    (access.source_roots[1] / "later.sql").write_text(
+        "CREATE TABLE C.T (C NUMBER);\n", encoding="utf-8")
+    result = _parse_project(project_sources)
+    assert result.database.tables == {}
+    assert len([d for d in result.diagnostics if d.error_code == "DUPLICATE_DB_OBJECT"]) == 2
+    assert sum(len(c.objects) for c in result.database.coverage) == 3
+
+
+def test_project_pipeline_withholds_table_with_unextracted_quoted_homonym(project_sources):
+    access, _, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        "CREATE TABLE A.T (A NUMBER);\n", encoding="utf-8")
+    (access.source_roots[1] / "quoted.sql").write_text(
+        'CREATE TABLE "B"."T" (B NUMBER);\n', encoding="utf-8")
+    result = _parse_project(project_sources)
+    assert result.database.tables == {}
+    assert len([d for d in result.diagnostics if d.error_code == "DUPLICATE_DB_OBJECT"]) == 2
+    assert any(c.not_extracted for c in result.database.coverage)
+
+
+@pytest.mark.xfail(strict=True, reason="WP-07 integration gap: coverage warnings do not affect assessment status")
+def test_known_gap_supported_create_warning_makes_assessment_incomplete(project_sources):
+    from formslang.project_service import ProjectService
+
+    access, descriptor, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        'CREATE TABLE T (ID NUMBER);\nCREATE TABLE "Quoted" (ID NUMBER);\n', encoding="utf-8")
+    service = ProjectService(access)
+    try:
+        service.create(descriptor.name, roots=descriptor.source_roots)
+        service.analyze(expected_revision=None, expected_configuration=0)
+        assessment = service.assessment()
+        assert assessment["blueprint"]["database"]["source_coverage"]["sources"][0]["not_extracted"]
+        assert assessment["completion_state"] == "INCOMPLETE"
+    finally:
+        service.close()
+
+
+@pytest.mark.xfail(strict=True, reason="ADR-02 gap: direct Blueprint revision hashes database paths, not bytes")
+def test_known_gap_direct_blueprint_source_revision_tracks_sql_bytes(tmp_path):
+    source = tmp_path / "same.sql"
+    source.write_text("CREATE PACKAGE P AS PROCEDURE X; END P;\n/\n", encoding="utf-8")
+    before = blueprint.build([], title="revision", database_sources=source)["source_revision"]
+    source.write_text("CREATE PACKAGE P AS PROCEDURE Y; END P;\n/\n", encoding="utf-8")
+    after = blueprint.build([], title="revision", database_sources=source)["source_revision"]
+    assert before != after
+
+
 def test_a_project_records_a_source_that_could_not_be_staged(project_sources, monkeypatch):
     from formslang import project_sources as sources
 
