@@ -185,7 +185,7 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
                 [coverage] = parsed.coverage
                 coverage.source_file = logical
                 merged.coverage.append(coverage)
-                if not parsed.package_declarations and not any(
+                if not coverage.objects and not parsed.package_declarations and not any(
                         getattr(parsed, family) for family in DB_FAMILIES):
                     warn(candidate, 'UNSUPPORTED_SQL', 'No supported database objects were parsed.',
                          'Supply table/view/package source; unsupported SQL requires human review.')
