@@ -35,6 +35,10 @@ The proposed decision is **3**.
   evidence. A quoted `"FOO"` and unquoted `FOO` denote the same Oracle identifier,
   while `"Foo"`, `FOO`, and `"A.B"` remain distinct as Oracle requires. A dot inside
   quotes never becomes a key separator.
+- WP-08's `owner` and `name` display fields do not say whether an original
+  mixed-case token was quoted. WP-04 must derive its key from the lexical header
+  tokens or add explicit raw identifier components; it must never uppercase an
+  already-decoded quoted name a second time.
 - The identifier equivalence above follows Oracle's documented
   [database object naming rules](https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Database-Object-Names-and-Qualifiers.html).
 - Source occurrence identity includes the logical source root, relative source
@@ -68,6 +72,12 @@ WP-11 and WP-31 consume the later correspondence contract.
 
 ## Evidence required before acceptance
 
+- The outside-product probe `examples/verify/entity_identity_contract.py` and
+  `tests/test_entity_identity_contract.py` currently pass **3** fixture tests on
+  Windows / Python 3.13.15. They cover Case C owner keys, Oracle identifier
+  spelling, and correspondence for move, rename, schema, overload, root,
+  engine and changed bytes. This validates a candidate contract, not product
+  implementation or approval transfer.
 - Case C: both `ORDER_API` owners retain separate spec/body/member identities;
   each qualified call selects its owner and the bare call is ambiguous.
 - Fixtures for quoted/unquoted equivalence, quoted case and dots, duplicate
