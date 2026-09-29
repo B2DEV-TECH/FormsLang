@@ -75,11 +75,11 @@ WP-11 and WP-31 consume the later correspondence contract.
 ## Evidence required before acceptance
 
 - The outside-product probe `examples/verify/entity_identity_contract.py` and
-  `tests/test_entity_identity_contract.py` currently pass **3** fixture tests on
-  Windows / Python 3.13.15. They cover Case C owner keys, Oracle identifier
-  spelling, and correspondence for move, rename, schema, overload, root,
-  engine and changed bytes. This validates a candidate contract, not product
-  implementation or approval transfer.
+  `tests/test_entity_identity_contract.py` currently pass **4** fixture tests on
+  Windows / Python 3.13.15. They cover Case C owner keys, quoted source spelling
+  retained by WP-08, Oracle identifier rules, and correspondence for move,
+  rename, schema, overload, root, engine and changed bytes. This validates a
+  candidate contract, not product implementation or approval transfer.
 - Case C: both `ORDER_API` owners retain separate spec/body/member identities;
   each qualified call selects its owner and the bare call is ambiguous.
 - Fixtures for quoted/unquoted equivalence, quoted case and dots, duplicate

@@ -38,6 +38,17 @@ def test_real_case_c_package_declarations_keep_two_owner_keys():
     assert {d.owner for d in project.package_declarations} == {"SALES_OWNER", "BILLING_OWNER"}
 
 
+def test_wp08_inventory_retains_quoted_spelling_needed_for_identity(tmp_path):
+    source = tmp_path / "quoted.sql"
+    source.write_text('CREATE PACKAGE "A.B" AS PROCEDURE "MiXed"; END "A.B";', encoding="utf-8")
+    [declaration] = database.parse_database_file(source).package_declarations
+    assert declaration.name == "A.B"
+    assert declaration.qualified_name == '"A.B"'
+    assert symbol_key(declaration.kind, declaration.owner, declaration.qualified_name) == (
+        "PACKAGE", None, "A.B", None, None)
+    assert declaration.to_dict()["members"][0]["name"] == "MiXed"
+
+
 def test_correspondence_never_rebinds_after_move_or_changed_context():
     before = Entity("analysis-a", "engine/4", "root-a", "db/p.sql", "sha256:same",
                     symbol_key("PACKAGE", "SALES", "P"))
