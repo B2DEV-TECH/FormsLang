@@ -21,7 +21,7 @@ from formslang.parser import parse_xml
 
 REPO = Path(__file__).resolve().parents[1]
 GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-2.2.json"
-CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-m0.json"
+CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-wp07.json"
 
 
 def build(name):
@@ -81,13 +81,13 @@ def test_original_2_2_inventory_remains_a_historical_baseline():
     assert "SUBPROGRAM_BODY" not in case_c["entities_by_type"]
 
 
-def test_inventory_is_deterministic_and_matches_the_m0_characterization():
+def test_inventory_is_deterministic_and_matches_the_current_characterization():
     first = inv.render(inv.inventory())
     assert first == inv.render(inv.inventory())
     assert "\\\\" not in first and ":/" not in first  # no absolute or Windows paths leak in
     assert first == CURRENT_GOLDEN.read_text(encoding="utf-8"), (
         "Regenerate with: python examples/verify/ecosystem_inventory.py --output "
-        "docs/design/ecosystem-explorer-2.3/inventory-m0.json, then review the diff")
+        "docs/design/ecosystem-explorer-2.3/inventory-wp07.json, then review the diff")
 
 
 # ---------------------------------------------------------------------------
@@ -271,24 +271,11 @@ def test_schema_qualified_package_body_keeps_its_subprograms(header):
     assert [(s.name, s.subprogram_type) for s in body.subprograms] == [("X", "PROCEDURE"), ("Y", "FUNCTION")]
 
 
-@pytest.mark.parametrize("header", [
-    "CREATE OR REPLACE EDITIONABLE PACKAGE BODY S.P AS",
-    'CREATE OR REPLACE PACKAGE BODY "S"."P" AS',
-])
-def test_gap_exported_package_header_is_dropped_without_a_trace(header, tmp_path):
-    # G-DDL-HEADER: DDL exports write EDITIONABLE and quoted names. Such a package
-    # is not parsed, and nothing records that the file was skipped.
-    source = tmp_path / "p.pkb"
-    source.write_text(f"{header} PROCEDURE X IS BEGIN NULL; END X; END P;\n/\n", encoding="utf-8")
-    project = database.parse_database_file(source)
-    assert project.files == [str(source)]
-    assert project.package_bodies == {} and project.package_specs == {}
-
-
 def test_case_c_schema_qualified_package_bodies_yield_their_subprograms(case_c):
     _, bp = case_c
     # A saved 2.2 assessment lacks these facts, so it must read as an older engine.
-    assert bp["engine_version"].startswith("blueprint-analysis/2+")
+    # blueprint-analysis/2 introduced them; any later engine keeps them.
+    assert int(bp["engine_version"].split("+")[0].rsplit("/", 1)[1]) >= 2
     [body] = [e for e in bp["entities"] if e["type"] == "PACKAGE_BODY"]
     [sub] = [e for e in bp["entities"] if e["type"] == "SUBPROGRAM_BODY"]
     assert sub["name"] == "ORDER_API.SUBMIT"

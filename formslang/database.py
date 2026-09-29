@@ -7,12 +7,18 @@ and package bodies (.pkb) into structured, queryable models with lexical evidenc
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from . import plsql, plsql_evidence
 
+# Coverage status of one supplied database source.
+PARSED = "PARSED"                                  # every supported CREATE became an object
+PARSED_WITH_WARNINGS = "PARSED_WITH_WARNINGS"      # objects, plus supported CREATEs that did not
+NO_RECOGNIZED_OBJECTS = "NO_RECOGNIZED_OBJECTS"    # read, but no object came out of it
+REJECTED_OR_UNREADABLE = "REJECTED_OR_UNREADABLE"  # never read; `reason` says why
 
 @dataclass
 class Parameter:
@@ -204,6 +210,30 @@ class Sequence:
 
 
 @dataclass
+class SourceCoverage:
+    """What one supplied database source yielded.
+
+    `objects` are the extracted objects, `not_extracted` the CREATE statements of a
+    supported kind that produced none, and `unsupported` the CREATE statements of a
+    kind FormsLang does not model. Entries are {"kind", "name"}; statements add
+    "line", "severity" and "reason". The name is None when the header could not
+    be read. A not-extracted statement is a WARNING and makes the source
+    PARSED_WITH_WARNINGS; an unsupported one is INFO -- a limit of the model, not
+    of the read -- and leaves the status alone while staying listed.
+    """
+
+    source_file: str
+    status: str
+    objects: list[dict[str, Any]] = field(default_factory=list)
+    not_extracted: list[dict[str, Any]] = field(default_factory=list)
+    unsupported: list[dict[str, Any]] = field(default_factory=list)
+    reason: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class DatabaseProject:
     """Aggregated database project containing tables, views, packages, sequences."""
 
@@ -213,6 +243,18 @@ class DatabaseProject:
     package_bodies: dict[str, PackageBody] = field(default_factory=dict)
     sequences: dict[str, Sequence] = field(default_factory=dict)
     files: list[str] = field(default_factory=list)
+    # One entry per supplied source. None means coverage was never computed,
+    # which is unknown, not an estate without gaps.
+    coverage: list[SourceCoverage] | None = None
+
+    def coverage_summary(self) -> dict[str, int] | None:
+        if self.coverage is None:
+            return None
+        counts = Counter(c.status for c in self.coverage)
+        return {"supplied": len(self.coverage), "parsed": counts[PARSED],
+                "parsed_with_warnings": counts[PARSED_WITH_WARNINGS],
+                "no_recognized_objects": counts[NO_RECOGNIZED_OBJECTS],
+                "rejected_or_unreadable": counts[REJECTED_OR_UNREADABLE]}
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -222,6 +264,7 @@ class DatabaseProject:
             "package_bodies": {k: v.to_dict() for k, v in self.package_bodies.items()},
             "sequences": {k: v.to_dict() for k, v in self.sequences.items()},
             "files": self.files,
+            "coverage": None if self.coverage is None else [c.to_dict() for c in self.coverage],
         }
 
 
@@ -349,15 +392,107 @@ def _parse_params(param_str: str) -> list[Parameter]:
     return params
 
 
+# An Oracle identifier: quoted (any characters but a double quote) or unquoted.
+_IDENTIFIER = r'(?:"[^"]+"|[A-Za-z][A-Za-z0-9_$#]*)'
+
+# CREATE [OR REPLACE] [EDITIONABLE | NONEDITIONABLE] PACKAGE [BODY] [owner .] name AS|IS,
+# the header shape DDL exports write. A clause between the name and AS/IS
+# (AUTHID, ACCESSIBLE BY, ...) is not recognised; coverage reports such a file.
+_PACKAGE_HEADER = re.compile(
+    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?PACKAGE\s+(BODY\s+)?"
+    rf"(?:{_IDENTIFIER}\s*\.\s*)?({_IDENTIFIER})(?:\s+|(?<=\"))(?:AS|IS)\b",
+    re.IGNORECASE,
+)
+
+
+def _object_name(identifier: str) -> str:
+    """Oracle folds an unquoted name to upper case and keeps a quoted one exactly."""
+    return identifier[1:-1] if identifier.startswith('"') else identifier.upper()
+
+
+def _package_header(text: str, body: bool) -> re.Match[str] | None:
+    """The first package specification (or body) header in the text."""
+    return next((m for m in _PACKAGE_HEADER.finditer(text) if bool(m.group(1)) == body), None)
+
+
+# The statement kinds extracted into a DatabaseProject family.
+_FAMILY_OF_KIND = {"TABLE": "tables", "VIEW": "views", "SEQUENCE": "sequences",
+                   "PACKAGE": "package_specs", "PACKAGE BODY": "package_bodies"}
+# Words that may sit between CREATE [OR REPLACE] and the object kind.
+_CREATE_MODIFIERS = {"EDITIONABLE", "NONEDITIONABLE", "EDITIONING", "FORCE", "NOFORCE",
+                     "GLOBAL", "PRIVATE", "TEMPORARY", "SHARDED", "DUPLICATED", "BLOCKCHAIN",
+                     "IMMUTABLE", "UNIQUE", "BITMAP", "MULTIVALUE", "PUBLIC", "SHARED"}
+_TWO_WORD_KINDS = {("PACKAGE", "BODY"), ("TYPE", "BODY"), ("MATERIALIZED", "VIEW"), ("DATABASE", "LINK")}
+
+
+def _create_statements(text: str) -> list[dict[str, Any]]:
+    """Every CREATE statement in the text, found lexically: comments and strings are skipped.
+
+    This is independent of the extractors, so a statement they miss still shows up.
+    CREATE followed by ON or OR (a DDL trigger event) is not a statement.
+    """
+    toks = plsql_evidence.tokens(text)
+
+    def word(j: int) -> str | None:
+        return toks[j].value.upper() if j < len(toks) and toks[j].kind == "word" else None
+
+    found: list[dict[str, Any]] = []
+    for i, tok in enumerate(toks):
+        if word(i) != "CREATE":
+            continue
+        j = i + 1
+        if word(j) == "OR" and word(j + 1) == "REPLACE":
+            j += 2
+        while word(j) in _CREATE_MODIFIERS or (word(j) == "NO" and word(j + 1) == "FORCE"):
+            j += 2 if word(j) == "NO" else 1
+        kind = word(j)
+        if kind is None or kind in {"ON", "OR"}:
+            continue
+        j += 1
+        if (kind, word(j)) in _TWO_WORD_KINDS:
+            kind = f"{kind} {word(j)}"
+            j += 1
+        if (word(j), word(j + 1), word(j + 2)) == ("IF", "NOT", "EXISTS"):
+            j += 3
+        # [owner .] name; the name is the last part, with Oracle case semantics.
+        name = None
+        while j < len(toks) and toks[j].kind in {"word", "quoted"}:
+            name = _object_name(toks[j].value)
+            if j + 2 < len(toks) and toks[j + 1].value == ".":
+                j += 2
+            else:
+                break
+        found.append({"kind": kind, "name": name, "line": tok.line})
+    return found
+
+
+def _coverage(project: DatabaseProject, text: str, source_file: str) -> SourceCoverage:
+    """Compare the objects extracted from one source with the CREATE statements it holds."""
+    objects = sorted(({"kind": kind, "name": name} for kind, family in _FAMILY_OF_KIND.items()
+                      for name in getattr(project, family)), key=lambda o: (o["kind"], o["name"]))
+    statements = _create_statements(text)
+    not_extracted = [{**s, "severity": "WARNING", "reason": "NOT_EXTRACTED"} for s in statements
+                     if s["kind"] in _FAMILY_OF_KIND
+                     and s["name"] not in getattr(project, _FAMILY_OF_KIND[s["kind"]])]
+    unsupported = [{**s, "severity": "INFO", "reason": "UNSUPPORTED_BY_MODEL"} for s in statements
+                   if s["kind"] not in _FAMILY_OF_KIND]
+    if not objects:
+        status = NO_RECOGNIZED_OBJECTS
+    elif not_extracted:
+        status = PARSED_WITH_WARNINGS
+    else:
+        status = PARSED
+    return SourceCoverage(source_file, status, objects, not_extracted, unsupported,
+                          reason=None if statements or objects else "NO_CREATE_STATEMENT")
+
+
 def parse_package_spec(text: str, source_file: str = "") -> PackageSpec | None:
     """Parse an Oracle package specification."""
-    # Match package name
-    m = re.search(r"CREATE\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+(?:BODY\s+)?([A-Za-z0-9_$#.]+)\s+(?:AS|IS)", text, re.IGNORECASE)
-    if not m or "BODY" in m.group(0).upper():
+    m = _package_header(text, body=False)
+    if not m:
         return None
 
-    raw_pkg_name = m.group(1).split(".")[-1].strip().upper()
-    pkg_spec = PackageSpec(name=raw_pkg_name, source_file=source_file, raw_text=text)
+    pkg_spec = PackageSpec(name=_object_name(m.group(2)), source_file=source_file, raw_text=text)
 
     # Tokenize spec body to extract constants and subprograms
     body_start = m.end()
@@ -412,12 +547,11 @@ def parse_package_spec(text: str, source_file: str = "") -> PackageSpec | None:
 
 def parse_package_body(text: str, source_file: str = "") -> PackageBody | None:
     """Parse an Oracle package body implementation."""
-    m = re.search(r"CREATE\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+BODY\s+([A-Za-z0-9_$#.]+)\s+(?:AS|IS)", text, re.IGNORECASE)
+    m = _package_header(text, body=True)
     if not m:
         return None
 
-    raw_pkg_name = m.group(1).split(".")[-1].strip().upper()
-    pkg_body = PackageBody(name=raw_pkg_name, source_file=source_file, raw_text=text)
+    pkg_body = PackageBody(name=_object_name(m.group(2)), source_file=source_file, raw_text=text)
 
     tokens = plsql_evidence.tokens(text)
     # Start after the AS/IS the header matched. Counting tokens back from AS/IS
@@ -643,17 +777,13 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
 
     project = DatabaseProject(files=[rel_path])
 
-    # Check for package spec
-    if p.suffix.lower() == ".pks" or "PACKAGE " in text.upper():
-        pkg_spec = parse_package_spec(text, source_file=rel_path)
-        if pkg_spec:
-            project.package_specs[pkg_spec.name] = pkg_spec
-
-    # Check for package body
-    if p.suffix.lower() == ".pkb" or "PACKAGE BODY " in text.upper():
-        pkg_body = parse_package_body(text, source_file=rel_path)
-        if pkg_body:
-            project.package_bodies[pkg_body.name] = pkg_body
+    # Each parser finds its own header, whatever whitespace follows PACKAGE.
+    pkg_spec = parse_package_spec(text, source_file=rel_path)
+    if pkg_spec:
+        project.package_specs[pkg_spec.name] = pkg_spec
+    pkg_body = parse_package_body(text, source_file=rel_path)
+    if pkg_body:
+        project.package_bodies[pkg_body.name] = pkg_body
 
     # Extract statements for DDL, views, sequences, comments
     stmts = _extract_statements(text)
@@ -681,12 +811,13 @@ def parse_database_file(path: Path | str) -> DatabaseProject:
                 elif tname in project.views:
                     project.views[tname].comment = cm_text
 
-
+    project.coverage = [_coverage(project, text, rel_path)]
     return project
 
 
 def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProject:
     """Parse multiple database sources and merge into a unified DatabaseProject."""
+    missing: list[SourceCoverage] = []
     if isinstance(paths, (str, Path)):
         p = Path(paths)
         if p.is_dir():
@@ -707,8 +838,11 @@ def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProj
                 ]))
             elif ip.is_file():
                 file_paths.append(ip)
+            else:
+                # Supplied but absent: reported, never silently skipped.
+                missing.append(SourceCoverage(str(ip), REJECTED_OR_UNREADABLE, reason="SOURCE_NOT_FOUND"))
 
-    merged = DatabaseProject()
+    merged = DatabaseProject(coverage=[])
     for fp in file_paths:
         proj = parse_database_file(fp)
         merged.tables.update(proj.tables)
@@ -717,5 +851,6 @@ def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProj
         merged.package_bodies.update(proj.package_bodies)
         merged.sequences.update(proj.sequences)
         merged.files.extend(proj.files)
-
+        merged.coverage.extend(proj.coverage)
+    merged.coverage.extend(missing)
     return merged
