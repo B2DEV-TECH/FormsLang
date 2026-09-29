@@ -157,6 +157,14 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Evidence:** [wp06-read-write-inventory.md](wp06-read-write-inventory.md) classifies the implicit migration, mirror repair, job recovery, freshness-job and locator-registration paths from the actual callers. Existing store/job/service tests: Windows 11 / Python 3.13.15, **43 passed, 1 skipped**. This audit changes no behavior.
 - **Dependency result:** ADR-01/WP-10 must define an explicit read, migration, recovery and publication contract before changing persistence. The inventory does not attribute the intermittent HTTP 500 to SQLite or issue #20 and closes no gate.
 
+### WP-10 — repository transaction and checkpoint spike
+
+- **Branch:** `codex/formslang-3-wp10-repository-spike`, stacked on WP-06 commit `de24df2`.
+- **Draft contracts:** [ADR-01](adr/ADR-01-repository-authority.md), [ADR-02](adr/ADR-02-object-identity.md), [ADR-03](adr/ADR-03-checkpoint-schema.md), and the [portable-state schema draft](wp10-portable-state-schema-draft.md). None is accepted.
+- **Executable evidence:** `examples/verify/repository_spike.py` stays outside the product path. `tests/test_repository_spike.py` proves exact-byte and kind-separated IDs, golden manifest bytes, rollback before commit, pending and idempotent recovery after commit, missing-object refusal, interrupted object flush and one winner under two concurrent publishers. The missing-object test failed first because recovery published a manifest with an unavailable accepted object; the repair then passed. Focused local run: **7 passed** on Windows 11 / Python 3.13.15.
+- **Local verification:** Windows 11 / Python 3.13.15 full suite: **1976 passed, 5 skipped, 3 xfailed** in 842.78 s. Ruff passed. CI remains pending.
+- **Limits:** This is not a product migration or a complete crash/power-loss, portability, authorization or export proof. G-02 and G-03 remain open.
+
 ## Gates not started
 
 G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0
