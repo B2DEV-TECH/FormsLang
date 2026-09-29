@@ -20,7 +20,7 @@ async function projectJourneyForm(nodeId){
   try{
     const form=await api(`/api/v2/projects/${encodeURIComponent(c.id)}/module-360?node=${encodeURIComponent(nodeId)}`);
     if(!projectJourneyCurrent(c,s)||serial!==s.serial)return;
-    if(form.node.layer!=='FORM')throw Error('The selected node is not a Form.');
+    if(form.node.type!=='FORM')throw Error('The selected node is not a confirmed Form.');
     s.form=form;
     const generation=await api(`/api/v2/projects/${encodeURIComponent(c.id)}/generation`);
     if(!projectJourneyCurrent(c,s)||serial!==s.serial)return;

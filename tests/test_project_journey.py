@@ -1,5 +1,7 @@
 """WP-12 read-only journey contracts on the bundled synthetic project."""
 
+from pathlib import Path
+
 import pytest
 
 from formslang import rbac
@@ -55,3 +57,29 @@ def test_journey_read_does_not_change_saved_revisions(demo):
             after['review_revision']) == (before['analysis_revision'],
                                          before['blueprint']['source_revision'],
                                          before['review_revision'])
+
+
+def test_missing_form_reference_is_not_a_followable_form(tmp_path, monkeypatch):
+    monkeypatch.setenv('FORMSLANG_AUTH', '0')
+    intake = ProjectIntake(tmp_path / 'data', tmp_path / 'config')
+    created = intake.create_demo()
+    source = next(root for root in created['project']['source_roots'] if root['kind'] == 'forms')
+    # The copied demo root is the verified synthetic source; change only one
+    # literal target so the engine must preserve a symbolic Form reference.
+    customers = Path(source['path']) / 'customers.xml'
+    original = customers.read_text(encoding='utf-8')
+    customers.write_text(original.replace("OPEN_FORM('SHIPMENTS')", "OPEN_FORM('GHOST_FORM')"),
+                         encoding='utf-8')
+    project_id = created['project']['id']
+    authorize = lambda: intake.access(project_id, rbac.RUN_CONVERSION)
+    service = ProjectService(authorize(), authorize=authorize)
+    try:
+        assert service.analyze(expected_revision=None, expected_configuration=0)['status'] == 'COMPLETED'
+        graph = service.system_map(focus='CUSTOMERS')
+        edge = next(e for e in graph['edges'] if e['source_name'] == 'CUSTOMERS'
+                    and e['classification'] == 'OPENS_FORM' and e['target_name'] == 'GHOST_FORM')
+        detail = service.relationship_evidence(edge['id'])
+        assert detail['edge']['target_layer'] == 'FORM'
+        assert detail['edge']['target_unresolved'] is True
+    finally:
+        service.close()

@@ -1534,7 +1534,8 @@ def relationship_evidence(prepared: PreparedProjection, edge_id: str) -> dict:
         'edge': {'id': edge['id'], 'source': edge['source'], 'source_name': edge['source_name'],
                  'target': edge['target'], 'target_name': edge['target_name'],
                  'target_layer': graph['nodes'][edge['target']]['layer'],
-                 'target_unresolved': graph['nodes'][edge['target']]['layer'] == 'UNRESOLVED',
+                 'target_unresolved': (graph['nodes'][edge['target']]['layer'] == 'UNRESOLVED'
+                                       or graph['nodes'][edge['target']]['type'].endswith('_REFERENCE')),
                  'classification': edge['classification'], 'level': edge['level'],
                  'count': edge['count'], 'evidence_refs': list(edge['evidence'])},
         'evidence': [{'id': proof_id, 'text': safe_excerpt(proofs[proof_id].get('text', '')),

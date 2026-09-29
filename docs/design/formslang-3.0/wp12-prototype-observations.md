@@ -17,6 +17,8 @@ The journey can be run against another analyzed project. The bundled demo keeps 
 
 The Edge acceptance script uses the real local server and bundled synthetic project. It found two Forms. **CUSTOMERS** exposes an observed `OPENS_FORM` relationship to **SHIPMENTS** and an observed `REFERENCES` relationship whose destination remains **UNRESOLVED**. The selected `OPENS_FORM` evidence ID matches the ID attached to that exact saved edge. Its excerpt retains `OPEN_FORM` while omitting the `'SHIPMENTS'` literal. The interface labels the excerpt as bounded, names the relationship as a structural observation, and says runtime behavior is unverified.
 
+A separate regression changes the demo's `OPEN_FORM` target to the absent `GHOST_FORM`. The saved graph places that symbolic reference in the Form layer, but the journey labels it unresolved and offers no confirmed Form navigation.
+
 Following the resolved edge opens the **SHIPMENTS** Form in the same journey. The generation service reports it blocked, including `MODULE_NOT_PREPARED`; the page groups all current blocker records by code and shows counts. The journey has no controls for accepting decisions, preparing code or generating output. The browser check compares analysis, review and source revisions before and after this sequence.
 
 Captured synthetic screens: [relationship evidence and limits](assets/wp12-customers-evidence.png) and [blockers after following the Form](assets/wp12-followed-form.png).
