@@ -151,6 +151,12 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Validation:** Windows 11, Python 3.13.15: targeted probe/policy/conversion tests, **39 passed, 1 xfailed**; `py -3.13 -m pytest -q -p no:cacheprovider`, **1970 passed, 5 skipped, 4 xfailed** in 846.41 s; `py -3.13 -m ruff check .` and `git diff --check` passed. CI run `36617867680` on `91ba4ad` passed all **13/13** checks across Ubuntu/Windows Python 3.10–3.13, Ruff, both Edge acceptances, deterministic export and SQLcl/APEX validation.
 - **Remaining work:** define context preview, consent and retention before optional AI orchestration (WP-47), with SEC-05/SEC-06 and AI-01..03. The probe does not close G-11.
 
+### WP-06 — reads that write inventory
+
+- **Branch:** `codex/formslang-3-wp06-read-write-inventory`, based on merged `main` at `b09be2d`.
+- **Evidence:** [wp06-read-write-inventory.md](wp06-read-write-inventory.md) classifies the implicit migration, mirror repair, job recovery, freshness-job and locator-registration paths from the actual callers. Existing store/job/service tests: Windows 11 / Python 3.13.15, **43 passed, 1 skipped**. This audit changes no behavior.
+- **Dependency result:** ADR-01/WP-10 must define an explicit read, migration, recovery and publication contract before changing persistence. The inventory does not attribute the intermittent HTTP 500 to SQLite or issue #20 and closes no gate.
+
 ## Gates not started
 
 G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0
