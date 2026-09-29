@@ -159,10 +159,10 @@ No gate is **passed**. The full 3.0 release is not complete.
 
 ### WP-10 — repository transaction and checkpoint spike
 
-- **Branch:** `codex/formslang-3-wp10-repository-spike`, stacked on WP-06 commit `de24df2`.
+- **Branch:** `codex/formslang-3-wp10-repository-spike`, stacked on the reconciled WP-06 commit `024b088` and WP-05 commit `5e34693`. The two own WP-10 commits were replayed without conflicts; `range-diff` marks both equivalent.
 - **Draft contracts:** [ADR-01](adr/ADR-01-repository-authority.md), [ADR-02](adr/ADR-02-object-identity.md), [ADR-03](adr/ADR-03-checkpoint-schema.md), and the [portable-state schema draft](wp10-portable-state-schema-draft.md). None is accepted.
 - **Executable evidence:** `examples/verify/repository_spike.py` stays outside the product path. `tests/test_repository_spike.py` proves exact-byte and kind-separated IDs, canonical manifests across different input orders, rollback before commit, pending and idempotent recovery after commit, missing-object refusal, interrupted object flush and one winner under two concurrent publishers. The recovery missing-object test failed first because recovery published a manifest with an unavailable accepted object. A second red test found that a new event was accepted despite a missing object inherited from the previous checkpoint. Both repairs passed. Focused local run: **9 passed** on Windows 11 / Python 3.13.15.
-- **Local verification:** Windows 11 / Python 3.13.15 final full suite: **1978 passed, 5 skipped, 3 xfailed** in 843.01 s. Focused suite: **9 passed**. Ruff and `git diff --check` passed. CI remains pending.
+- **Local verification:** Windows 11 / Python 3.13.15 on the final composed head: **1979 passed, 5 skipped, 4 xfailed** in 918.63 s. Focused WP-10 plus WP-05 suite: **10 passed, 1 xfailed**. Ruff and `git diff --check` passed. The extra xfail is the WP-05 egress probe; the three prior strict xfails remain. Final 13-check CI is pending because the Draft PR is stacked on WP-06.
 - **Limits:** This is not a product migration or a complete crash/power-loss, portability, authorization or export proof. G-02 and G-03 remain open.
 
 ## Gates not started

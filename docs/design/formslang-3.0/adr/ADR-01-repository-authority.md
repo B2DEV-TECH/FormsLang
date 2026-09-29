@@ -1,6 +1,8 @@
 # ADR-01 — Repository authority and transaction boundary
 
-Status: **Draft**. Owner acceptance and product migration are pending.
+Status: **Draft**. Owner acceptance of the transaction contract and product
+migration are separate pending steps. Accepting this ADR will not validate a
+product repository or close a release gate.
 
 ## Context
 
@@ -38,7 +40,8 @@ event; verification before the revision transaction repaired it. The spike demon
 the proposed order but does **not** prove power-loss durability of directory
 entries, product migration, idempotency keys, permission checks, safe exports,
 network filesystem support or recovery under real process termination. Those
-are required before acceptance and WP-20.
+are required for WP-20 and later release gates; this ADR's contract review
+must record them as unproven rather than treating the spike as product proof.
 
 ## Alternatives retained for comparison
 
@@ -50,7 +53,10 @@ are required before acceptance and WP-20.
 
 ## Acceptance work
 
-Failure injection across real project migration; Windows/Linux reader and
-writer matrix; explicit no-write read tests; idempotency and authorization;
-recoverable mirror/checkpoint publication; backup and restore proof. The
-intermittent HTTP 500 has no established cause and is not assigned to this ADR.
+Before owner acceptance of this architecture, review the spike's transaction
+ordering, verified-object rule, recovery/idempotency behavior and conflict
+tests, and the WP-06 write-side-effect inventory. WP-20 must then prove failure
+injection across real project migration, a Windows/Linux reader and writer
+matrix, explicit no-write reads, idempotency and authorization, recoverable
+mirror/checkpoint publication, and backup/restore. The intermittent HTTP 500
+has no established cause and is not assigned to this ADR.

@@ -1,6 +1,6 @@
 # FormsLang 3.0 — Architecture decision index
 
-Status: **M0.** No 3.0 ADR has been written or accepted yet. The "Default"
+Status: **M1.** ADR-01/02/03 are Draft on WP-10; none is accepted. The "Default"
 column is the direction the [specification](master-specification.md#31-required-architecture-decision-records)
 proposes. It is a starting hypothesis, and an accepted decision can differ from
 it. A dependent work package ([implementation-plan.md](implementation-plan.md))

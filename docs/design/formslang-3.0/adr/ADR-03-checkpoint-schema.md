@@ -1,7 +1,8 @@
 # ADR-03 — Whole-project checkpoint and portable history
 
 Status: **Draft**. The schema below is a spike fixture, not an accepted 3.0
-exchange format.
+exchange format. Acceptance of the architecture does not approve the example
+as a product format or satisfy portability gates.
 
 ## Context
 
@@ -35,7 +36,12 @@ error or availability record rather than being regenerated with a newer engine.
 
 ## Evidence and limits
 
-The spike pins exact bytes, crash recovery and an idempotent replay. It has not
-proven full/review export closure, import trust, divergent origins, private
-proposal retention, artifact/validation linkage or a clean-workspace reopen.
-WP-20 and ADR-04/07 require those tests before this ADR can be accepted.
+The spike pins exact bytes, crash recovery and an idempotent replay. Before
+owner acceptance, review its canonical-byte contract, root-last publication,
+verified-object closure rule and declared-omission rule. It has not proven
+full/review export closure, import trust, divergent origins, private proposal
+retention, artifact/validation linkage or a clean-workspace reopen. WP-20 and
+ADR-04/07 must produce those product tests before claiming completion or a
+release gate; they cannot be prerequisites for accepting the contract that
+WP-20 depends on. The versioned product schema and its golden bytes must be
+reviewed and tested before WP-20 publishes a product checkpoint.
