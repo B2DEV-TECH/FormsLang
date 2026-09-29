@@ -185,15 +185,33 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
                 [coverage] = parsed.coverage
                 coverage.source_file = logical
                 merged.coverage.append(coverage)
-                if not any(getattr(parsed, family) for family in DB_FAMILIES):
+                for occurrence in coverage.not_extracted:
+                    if occurrence['reason'] == 'NOT_EXTRACTED' and occurrence['name'] is not None:
+                        family = {'TABLE': 'tables', 'VIEW': 'views',
+                                  'SEQUENCE': 'sequences'}.get(occurrence['kind'])
+                        if family is not None:
+                            definitions[(family, occurrence['name'])].append((candidate, None))
+                if not coverage.objects and not parsed.package_declarations and not any(
+                        getattr(parsed, family) for family in DB_FAMILIES):
                     warn(candidate, 'UNSUPPORTED_SQL', 'No supported database objects were parsed.',
                          'Supply table/view/package source; unsupported SQL requires human review.')
                 else:
                     _normalize_sources(parsed, logical)
                     merged.files.append(logical)
+                    merged.package_declarations.extend(parsed.package_declarations)
                     for family in DB_FAMILIES:
-                        for name, obj in getattr(parsed, family).items():
-                            definitions[(family, name)].append((candidate, obj))
+                        if family in {'tables', 'views', 'sequences'}:
+                            # The file parser withholds a colliding bare name.
+                            # Retain its occurrence in cross-file conflict checks.
+                            kind = family[:-1].upper()
+                            for occurrence in coverage.objects:
+                                if occurrence['kind'] == kind:
+                                    name = occurrence['name']
+                                    definitions[(family, name)].append(
+                                        (candidate, getattr(parsed, family).get(name)))
+                        else:
+                            for name, obj in getattr(parsed, family).items():
+                                definitions[(family, name)].append((candidate, obj))
         except ValueError as exc:
             position = getattr(exc.__cause__, 'position', None)
             detail = f' at line {position[0]}, column {position[1]}' if position else ''
@@ -207,8 +225,10 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
             for candidate, _ in objects:
                 warn(candidate, 'DUPLICATE_DB_OBJECT', 'Conflicting database object definitions were excluded from reasoning.',
                      'Select the authoritative definition and refresh analysis.')
-        else:
+        elif objects[0][1] is not None:
             getattr(merged, family)[name] = objects[0][1]
+    database._project_unique_packages(merged)
+    database._withhold_colliding_nonpackages(merged)
     merged.files.sort()
     merged.coverage.sort(key=lambda c: c.source_file)
     inventory = copy.deepcopy(discovery.inventory)
@@ -216,6 +236,7 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
     inventory['forms']['parseable'] = len(modules)
     inventory['database'] = {family: len(getattr(merged, family)) for family in DB_FAMILIES}
     inventory['database']['packages'] = len(set(merged.package_specs) | set(merged.package_bodies))
+    inventory['database']['package_declarations'] = len(merged.package_declarations)
     # Deduplicate preview/parse diagnostics without changing immutable source content.
     diagnostics = sorted(set(diagnostics), key=lambda d: (d.source_id, d.stage, d.error_code))
     inventory['warnings'] = len(diagnostics)

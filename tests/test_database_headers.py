@@ -106,13 +106,14 @@ def test_exported_package_headers_reach_the_blueprint(tmp_path):
                                     " PROCEDURE X IS BEGIN NULL; END X; END P;\n/\n")
     bp = blueprint.build([], title="headers", database_sources=tmp_path)
     # A saved assessment made before this engine lacks these packages.
-    assert bp["engine_version"].startswith("blueprint-analysis/3+")
+    assert bp["engine_version"].startswith("blueprint-analysis/4+")
     kinds = sorted((e["type"], e["name"]) for e in bp["entities"]
                    if e["type"] in {"PACKAGE_SPEC", "PACKAGE_BODY", "SUBPROGRAM_BODY"})
     assert kinds == [("PACKAGE_BODY", "P"), ("PACKAGE_SPEC", "P"), ("SUBPROGRAM_BODY", "P.X")]
 
 
-def test_gap_spec_header_with_a_clause_before_as_is_not_recognised():
-    # Outside WP-07A: AUTHID, ACCESSIBLE BY, DEFAULT COLLATION and SHARING sit between
-    # the name and AS/IS. Such a spec is still not parsed; WP-07B reports it.
-    assert database.parse_package_spec("CREATE OR REPLACE PACKAGE P AUTHID DEFINER AS PROCEDURE X; END P;") is None
+def test_spec_header_with_authid_clause_is_recognised():
+    spec = database.parse_package_spec(
+        "CREATE OR REPLACE PACKAGE P AUTHID DEFINER AS PROCEDURE X; END P;")
+    assert spec is not None
+    assert [sub.name for sub in spec.subprograms] == ["X"]

@@ -80,7 +80,9 @@ def analyze_project(access, *, expected_revision, expected_configuration, author
                 material = [d for d in parsed.diagnostics if d.error_code not in INFORMATIONAL_CODES]
                 counts.update(warnings_count=len(parsed.diagnostics), errors_count=len(material))
                 lease.progress({'phase': current_phase, 'processed': 0, 'total': None, **counts})
-                if not parsed.modules and not any(getattr(parsed.database, family) for family in DB_FAMILIES):
+                if (not parsed.modules and not parsed.database.package_declarations
+                        and not any(c.objects for c in parsed.database.coverage or [])
+                        and not any(getattr(parsed.database, family) for family in DB_FAMILIES)):
                     lease.finish('FAILED', _failure('NO_SUPPORTED_SOURCES', 'No usable supported sources were analyzed.',
                         'Select Forms2XML and supported database source, then retry.'))
                 else:

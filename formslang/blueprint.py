@@ -23,9 +23,10 @@ from .store import PENDING, TaskView
 
 VERSION = "blueprint/1"
 # blueprint-analysis/2: schema-qualified package bodies keep their subprograms.
-# blueprint-analysis/3: DDL-export package headers (EDITIONABLE, quoted names);
+# blueprint-analysis/4: every package CREATE is inventoried; ambiguous bare-name
+# projections are withheld instead of choosing one schema's declaration.
 # database source coverage.
-ENGINE_VERSION = f"blueprint-analysis/3+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
+ENGINE_VERSION = f"blueprint-analysis/4+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
 # MOVE_TO_PLSQL_API and REPLACE_WITH_APEX_NATIVE are outcomes the cross-layer
 # reasoning can reach: logic that belongs in a database API, and logic the target
 # platform already provides natively. Both are decisions, not partial results.
@@ -749,6 +750,7 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
             "views": len(db_proj.views),
             "package_specs": len(db_proj.package_specs),
             "package_bodies": len(db_proj.package_bodies),
+            "package_declarations": [d.to_dict() for d in db_proj.package_declarations],
             "sequences": len(db_proj.sequences),
             "files": sorted(db_proj.files),
             # None when the sources were never scanned for coverage: unknown, not clean.

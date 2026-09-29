@@ -80,7 +80,6 @@ def test_a_supported_statement_not_extracted_stays_a_warning_beside_unmodelled_o
     # Each is a supported kind that the extractor does not yet read (see gaps-and-capture.md).
     ("gtt.sql", "CREATE GLOBAL TEMPORARY TABLE G (ID NUMBER) ON COMMIT DELETE ROWS;", [("TABLE", "G")]),
     ("force.sql", "CREATE OR REPLACE FORCE VIEW V AS SELECT 1 X FROM DUAL;", [("VIEW", "V")]),
-    ("authid.pks", "CREATE OR REPLACE PACKAGE P AUTHID DEFINER AS PROCEDURE X; END P;\n/\n", [("PACKAGE", "P")]),
     ("quoted.sql", 'CREATE TABLE "T" (ID NUMBER);', [("TABLE", "T")]),
 ])
 def test_a_supported_statement_that_is_not_extracted_is_reported(tmp_path, name, text, missing):
@@ -89,20 +88,19 @@ def test_a_supported_statement_that_is_not_extracted_is_reported(tmp_path, name,
     assert kinds(coverage.not_extracted) == missing
 
 
-def test_a_second_package_in_one_file_is_reported_not_extracted(tmp_path):
+def test_a_second_package_in_one_file_is_extracted_and_counted(tmp_path):
     coverage = coverage_of(tmp_path, "two.pks", "CREATE PACKAGE P AS PROCEDURE X; END P;\n/\n"
                                                 "CREATE PACKAGE Q AS PROCEDURE Y; END Q;\n/\n")
-    assert coverage.status == PARSED_WITH_WARNINGS
-    assert kinds(coverage.objects) == [("PACKAGE", "P")]
-    assert kinds(coverage.not_extracted) == [("PACKAGE", "Q")]
+    assert coverage.status == PARSED
+    assert kinds(coverage.objects) == [("PACKAGE", "P"), ("PACKAGE", "Q")]
+    assert coverage.not_extracted == []
 
 
-def test_a_table_after_a_slash_terminated_statement_is_reported_not_extracted(tmp_path):
+def test_a_table_after_a_slash_terminated_statement_is_extracted(tmp_path):
     coverage = coverage_of(tmp_path, "slash.sql", "CREATE TABLE A (ID NUMBER);\n/\nCREATE TABLE T (ID NUMBER);\n")
-    assert coverage.status == PARSED_WITH_WARNINGS
-    assert kinds(coverage.objects) == [("TABLE", "A")]
-    assert kinds(coverage.not_extracted) == [("TABLE", "T")]
-    assert coverage.not_extracted[0]["line"] == 3
+    assert coverage.status == PARSED
+    assert kinds(coverage.objects) == [("TABLE", "A"), ("TABLE", "T")]
+    assert coverage.not_extracted == []
 
 
 def test_create_in_a_string_or_comment_or_ddl_trigger_event_is_not_a_statement(tmp_path):
@@ -199,6 +197,75 @@ def test_a_project_keeps_the_coverage_of_a_source_with_no_objects(project_source
     assert any(d.error_code == "UNSUPPORTED_SQL" and d.relative_path == "audit.trg" for d in result.diagnostics)
     assert result.database.files == ["database/orders.sql"]
     assert str(access.source_roots[1]) not in json.dumps(result.database.to_dict()["coverage"])
+
+
+def test_project_pipeline_keeps_colliding_package_declarations_with_logical_sources(project_sources):
+    access, _, _ = project_sources
+    (access.source_roots[1] / "two.sql").write_text(
+        "CREATE PACKAGE SALES.P AS PROCEDURE A; END P;\n/\n"
+        "CREATE PACKAGE BILLING.P AS PROCEDURE B; END P;\n/\n", encoding="utf-8")
+    result = _parse_project(project_sources)
+    declarations = result.database.package_declarations
+    assert [d.qualified_name for d in declarations] == ["SALES.P", "BILLING.P"]
+    assert [d.source_file for d in declarations] == ["database/two.sql"] * 2
+    assert all(d.projection_status == "AMBIGUOUS_BARE_NAME" for d in declarations)
+    assert "P" not in result.database.package_specs
+    assert "database/two.sql" in result.database.files
+    assert result.inventory["database"]["package_declarations"] == 2
+    assert not [d for d in result.diagnostics if d.error_code == "UNSUPPORTED_SQL"
+                and d.relative_path == "two.sql"]
+
+
+def test_project_pipeline_withholds_table_after_earlier_source_collision(project_sources):
+    access, _, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        "CREATE TABLE A.T (A NUMBER);\nCREATE TABLE B.T (B NUMBER);\n", encoding="utf-8")
+    (access.source_roots[1] / "later.sql").write_text(
+        "CREATE TABLE C.T (C NUMBER);\n", encoding="utf-8")
+    result = _parse_project(project_sources)
+    assert result.database.tables == {}
+    assert len([d for d in result.diagnostics if d.error_code == "DUPLICATE_DB_OBJECT"]) == 2
+    assert sum(len(c.objects) for c in result.database.coverage) == 3
+
+
+def test_project_pipeline_withholds_table_with_unextracted_quoted_homonym(project_sources):
+    access, _, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        "CREATE TABLE A.T (A NUMBER);\n", encoding="utf-8")
+    (access.source_roots[1] / "quoted.sql").write_text(
+        'CREATE TABLE "B"."T" (B NUMBER);\n', encoding="utf-8")
+    result = _parse_project(project_sources)
+    assert result.database.tables == {}
+    assert len([d for d in result.diagnostics if d.error_code == "DUPLICATE_DB_OBJECT"]) == 2
+    assert any(c.not_extracted for c in result.database.coverage)
+
+
+@pytest.mark.xfail(strict=True, reason="WP-07 integration gap: coverage warnings do not affect assessment status")
+def test_known_gap_supported_create_warning_makes_assessment_incomplete(project_sources):
+    from formslang.project_service import ProjectService
+
+    access, descriptor, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        'CREATE TABLE T (ID NUMBER);\nCREATE TABLE "Quoted" (ID NUMBER);\n', encoding="utf-8")
+    service = ProjectService(access)
+    try:
+        service.create(descriptor.name, roots=descriptor.source_roots)
+        service.analyze(expected_revision=None, expected_configuration=0)
+        assessment = service.assessment()
+        assert assessment["blueprint"]["database"]["source_coverage"]["sources"][0]["not_extracted"]
+        assert assessment["completion_state"] == "INCOMPLETE"
+    finally:
+        service.close()
+
+
+@pytest.mark.xfail(strict=True, reason="ADR-02 gap: direct Blueprint revision hashes database paths, not bytes")
+def test_known_gap_direct_blueprint_source_revision_tracks_sql_bytes(tmp_path):
+    source = tmp_path / "same.sql"
+    source.write_text("CREATE PACKAGE P AS PROCEDURE X; END P;\n/\n", encoding="utf-8")
+    before = blueprint.build([], title="revision", database_sources=source)["source_revision"]
+    source.write_text("CREATE PACKAGE P AS PROCEDURE Y; END P;\n/\n", encoding="utf-8")
+    after = blueprint.build([], title="revision", database_sources=source)["source_revision"]
+    assert before != after
 
 
 def test_a_project_records_a_source_that_could_not_be_staged(project_sources, monkeypatch):

@@ -128,19 +128,20 @@ parsed, and nothing recorded that the file was skipped: it was listed in
 
 ### G-DDL-EXTRACT — CREATE statements that are recognised but not extracted
 
-Found during WP-07; open. Coverage now reports each case as `not_extracted`,
-so none is silent any more, but the object is still missing from the
-Blueprint:
+Found during WP-07. WP-08A/B/C in Draft PR #24 now inventory
+every package declaration in source order, recognise the listed package
+header clauses, and split an isolated SQLcl `/` so following statements are
+read. The original `inventory-2.2.json` remains historical; the current
+characterization is `inventory-wp08.json`. This does not implement ADR-06:
+when same-name packages collide, the new inventory shows each owner and
+`AMBIGUOUS_BARE_NAME`, while the Blueprint withholds the bare-name projection
+instead of claiming a resolved target.
+Repeated supported table, view and sequence CREATEs with the same bare name
+also remain in source coverage as `COLLIDING_BARE_NAME` warnings; their bare
+projection is withheld pending schema-aware identity.
 
-- **Clause before `AS`.** `AUTHID`, `ACCESSIBLE BY`, `DEFAULT COLLATION` and
-  `SHARING` between the package name and `AS`/`IS`. Pinned by
-  `test_gap_spec_header_with_a_clause_before_as_is_not_recognised`.
-- **One package per file.** Only the first specification and the first body
-  in a file are extracted.
-- **After a `/`.** The statement splitter keeps the `/` at the head of the
-  next statement, so a table after a `/`-terminated statement is not read. A
-  view followed by `/` without `;` absorbs the next statement into its query
-  text.
+The following variants remain `not_extracted` and need separate work:
+
 - **Variants.** `GLOBAL TEMPORARY TABLE`, `FORCE VIEW`, and quoted table,
   view and sequence names.
 
