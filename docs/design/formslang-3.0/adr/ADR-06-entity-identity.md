@@ -80,6 +80,8 @@ WP-11 and WP-31 consume the later correspondence contract.
   retained by WP-08, Oracle identifier rules, and correspondence for move,
   rename, schema, overload, root, engine and changed bytes. This validates a
   candidate contract, not product implementation or approval transfer.
+  The complete local suite on this branch returned **1973 passed, 5 skipped,
+  3 xfailed** in 848.07 s; Ruff passed.
 - Case C: both `ORDER_API` owners retain separate spec/body/member identities;
   each qualified call selects its owner and the bare call is ambiguous.
 - Fixtures for quoted/unquoted equivalence, quoted case and dots, duplicate
