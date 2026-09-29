@@ -38,7 +38,9 @@ The proposed decision is **3**.
 - WP-08's `owner` and `name` display fields do not say whether an original
   mixed-case token was quoted. WP-04 must derive its key from the lexical header
   tokens or add explicit raw identifier components; it must never uppercase an
-  already-decoded quoted name a second time.
+  already-decoded quoted name a second time. Oracle does not permit an
+  embedded double quote or NUL in an object identifier; the probe rejects
+  that invalid syntax.
 - The identifier equivalence above follows Oracle's documented
   [database object naming rules](https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Database-Object-Names-and-Qualifiers.html).
 - Source occurrence identity includes the logical source root, relative source

@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 
 _UNQUOTED = re.compile(r"[A-Za-z][A-Za-z0-9_$#]*\Z")
-_QUOTED = re.compile(r'"(?:[^"]|"")+"\Z')
+_QUOTED = re.compile(r'"[^"\x00]+"\Z')
 
 
 def oracle_identifier(raw: str) -> str:
@@ -17,7 +17,7 @@ def oracle_identifier(raw: str) -> str:
     if not isinstance(raw, str):
         raise TypeError("identifier must be text")
     if _QUOTED.fullmatch(raw):
-        return raw[1:-1].replace('""', '"')
+        return raw[1:-1]
     if _UNQUOTED.fullmatch(raw):
         return raw.upper()
     raise ValueError("unsupported identifier spelling")

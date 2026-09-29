@@ -18,7 +18,8 @@ def test_oracle_identifier_parts_preserve_owner_case_and_quoted_dots():
     assert oracle_identifier("orders") == oracle_identifier('"ORDERS"') == "ORDERS"
     assert oracle_identifier('"Orders"') == "Orders"
     assert oracle_identifier('"A.B"') == "A.B"
-    assert oracle_identifier('"A""B"') == 'A"B'
+    with pytest.raises(ValueError):
+        oracle_identifier('"A""B"')
     with pytest.raises(ValueError):
         oracle_identifier("SALES.P")
     assert symbol_key("PACKAGE", "SALES", '"A.B"') != symbol_key("PACKAGE", '"SALES.A"', "B")
