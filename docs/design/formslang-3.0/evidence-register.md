@@ -165,6 +165,23 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Local verification:** Windows 11 / Python 3.12.10 on the final composed head: **1979 passed, 5 skipped, 4 xfailed** in 918.63 s. Focused WP-10 plus WP-05 suite: **10 passed, 1 xfailed**. Ruff and `git diff --check` passed. The extra xfail is the WP-05 egress probe; the three prior strict xfails remain. PRs #29 and #30 are merged; #31 now targets `main`. Final 13-check CI on #31 remains pending.
 - **Limits:** This is not a product migration or a complete crash/power-loss, portability, authorization or export proof. G-02 and G-03 remain open.
 
+### ADR-06 — identity contract probe on Draft PR #32
+
+- The probe is outside the product path. It cannot change entity IDs, reference
+  resolution, decision binding or historical snapshots. Its first four focused
+  tests and the original full suite passed; CI run `36625615586` passed all
+  13 checks on head `1ed32f2` before the following probe correction.
+- Two additional focused tests failed first: a matching symbol in a different
+  logical source root was labelled `REMOVED`, and duplicate candidate rows were
+  labelled `AMBIGUOUS`. The corrected probe returns `NOT_COMPARABLE` for the
+  changed root, deduplicates candidates and orders them deterministically with
+  the exact locator first. The six focused tests pass; the full suite on
+  Windows 11 / Python 3.12.10 returned **1975 passed, 5 skipped, 3 xfailed** in
+  916.64 s. Ruff and `git diff --check` pass. CI on the corrected head is pending.
+- ADR-06 remains Draft. Case C product entities, qualified call resolution,
+  Blueprint/project parity, engine versioning and legacy compatibility are
+  still WP-04 work. No gate is closed by this probe.
+
 ## Gates not started
 
 G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0

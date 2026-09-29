@@ -45,15 +45,19 @@ class Entity:
 
 def classify(before: Entity, candidates: list[Entity]) -> tuple[str, tuple[Entity, ...]]:
     """Find reviewable correspondence without granting a decision binding."""
-    same_symbol = [item for item in candidates
-                   if item.root == before.root and item.key == before.key]
+    matching_key = [item for item in candidates if item.key == before.key]
+    same_symbol = [item for item in matching_key if item.root == before.root]
     comparable = [item for item in same_symbol
                   if item.engine == before.engine and item.source_digest == before.source_digest]
+    comparable = sorted(set(comparable),
+                        key=lambda item: (item.path != before.path, item.path, item.analysis))
     if len(comparable) > 1:
         return "AMBIGUOUS", tuple(comparable)
     if comparable:
         item = comparable[0]
         return ("EXACT" if item.path == before.path else "MOVED_CANDIDATE"), (item,)
     if same_symbol:
+        return "NOT_COMPARABLE", ()
+    if matching_key:
         return "NOT_COMPARABLE", ()
     return "REMOVED", ()

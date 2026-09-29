@@ -60,7 +60,6 @@ def test_correspondence_never_rebinds_after_move_or_changed_context():
         replace(exact, key=symbol_key("PACKAGE", "SALES", "P2")),
         replace(exact, key=symbol_key("PACKAGE", "BILLING", "P")),
         replace(exact, key=symbol_key("PACKAGE", "SALES", "P", signature="NUMBER")),
-        replace(exact, root="root-b"),
     ):
         assert classify(before, [changed]) == ("REMOVED", ())
     assert classify(before, [replace(exact, engine="engine/5")]) == ("NOT_COMPARABLE", ())
@@ -68,3 +67,20 @@ def test_correspondence_never_rebinds_after_move_or_changed_context():
         "NOT_COMPARABLE", ())
     assert classify(before, [exact, replace(exact, path="db/duplicate.sql")]) == (
         "AMBIGUOUS", (exact, replace(exact, path="db/duplicate.sql")))
+
+
+def test_correspondence_does_not_call_another_source_root_removed():
+    before = Entity("analysis-a", "engine/4", "root-a", "db/p.sql", "sha256:same",
+                    symbol_key("PACKAGE", "SALES", "P"))
+    other_root = replace(before, analysis="analysis-b", root="root-b")
+    assert classify(before, [other_root]) == ("NOT_COMPARABLE", ())
+
+
+def test_correspondence_candidates_are_deduplicated_and_ordered():
+    before = Entity("analysis-a", "engine/4", "root-a", "db/p.sql", "sha256:same",
+                    symbol_key("PACKAGE", "SALES", "P"))
+    exact = replace(before, analysis="analysis-b")
+    moved = replace(exact, path="db/z.sql")
+    assert classify(before, [exact, exact]) == ("EXACT", (exact,))
+    assert classify(before, [moved, exact]) == ("AMBIGUOUS", (exact, moved))
+    assert classify(before, [exact, moved]) == ("AMBIGUOUS", (exact, moved))

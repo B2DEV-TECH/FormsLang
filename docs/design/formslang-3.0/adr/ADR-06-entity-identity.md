@@ -52,7 +52,10 @@ The proposed decision is **3**.
   identity and its declared entity schema. A new analysis does not inherit a
   decision binding because a display name or local revision counter matches.
   A locator match or same bytes may produce a reviewable correspondence
-  candidate, never an automatic approved rebind.
+  candidate, never an automatic approved rebind. A changed logical source root
+  is `NOT_COMPARABLE`, not proof of removal. Duplicate candidate rows are
+  deduplicated, and ambiguous candidates have a stable exact-locator-first
+  order so filesystem enumeration cannot change the review result.
 - Qualified references may resolve only to a unique compatible symbol under a
   pinned analysis. A bare reference with several valid candidates is
   `AMBIGUOUS`; a bare reference without proven schema context remains symbolic.
@@ -75,13 +78,17 @@ WP-11 and WP-31 consume the later correspondence contract.
 ## Evidence required before acceptance
 
 - The outside-product probe `examples/verify/entity_identity_contract.py` and
-  `tests/test_entity_identity_contract.py` currently pass **4** fixture tests on
-  Windows / Python 3.13.15. They cover Case C owner keys, quoted source spelling
+  `tests/test_entity_identity_contract.py` currently pass **6** fixture tests on
+  Windows / Python 3.12.10. They cover Case C owner keys, quoted source spelling
   retained by WP-08, Oracle identifier rules, and correspondence for move,
-  rename, schema, overload, root, engine and changed bytes. This validates a
-  candidate contract, not product implementation or approval transfer.
-  The complete local suite on this branch returned **1973 passed, 5 skipped,
-  3 xfailed** in 848.07 s; Ruff passed.
+  rename, schema, overload, root, engine and changed bytes. Two new red tests
+  exposed false `REMOVED` classification after a root change and false
+  `AMBIGUOUS` classification for duplicate candidate rows; the probe now
+  returns `NOT_COMPARABLE` and deduplicates with stable ordering. This validates
+  a candidate contract, not product implementation or approval transfer.
+  Before these two tests, the complete local suite returned **1973 passed,
+  5 skipped, 3 xfailed** in 848.07 s on Python 3.13.15. The final local suite on
+  Python 3.12.10 returned **1975 passed, 5 skipped, 3 xfailed** in 916.64 s.
 - Case C: both `ORDER_API` owners retain separate spec/body/member identities;
   each qualified call selects its owner and the bare call is ambiguous.
 - Fixtures for quoted/unquoted equivalence, quoted case and dots, duplicate
