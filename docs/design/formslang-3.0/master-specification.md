@@ -1783,6 +1783,60 @@ Bind the response to repository, input revision, actor, scope, and request. If t
 
 Evaluate AI explanations against known evidence: unsupported claims, incorrect suggestions, missing caveats, and erroneous references. Report any evaluation as specific to the fixture, provider/model, prompt version, and task. A good explanation on one example is not evidence that the engine analyzed more source.
 
+### 22.6 Optional modernization execution loop
+
+The first runtime is one bounded modernization session over the existing
+repository, domain services and decision lifecycle. It coordinates the
+`UNDERSTAND → DECIDE → BUILD → VALIDATE` journey. It does not parse Oracle source,
+invent facts, approve decisions or generate artifacts itself. No LLM, cloud
+service, chat transcript or multi-agent framework is required for the core
+workflow.
+
+**RUN-01.** A session must bind its goal, repository, exact source/analysis and
+decision context, actor/authorization, allowed scope and policy. A step using a
+stale or unavailable context stops with an inspectable reason; it does not
+silently adopt the newest revision.
+
+**RUN-02.** Each executable action must be an explicit allowlisted FormsLang
+application capability with typed input/output, authorization, revision fences,
+bounded resource use and declared evidence/coverage limits. The runtime must
+call the shared domain service; it must not edit SQLite, files or a UI-specific
+copy of domain rules directly. Write actions also require the established
+idempotency and confirmation contract.
+
+**RUN-03.** A session must retain a reviewable sequence of goal, context,
+selected capability, input and result references, proposal/decision reference,
+validation reference where applicable, stop reason and replan reason. Reuse the
+accepted event/checkpoint model; do not create an unrelated event authority.
+Sensitive prompts and source excerpts follow retention and visibility policy.
+
+**RUN-04.** AI may suggest the next allowed investigation or a proposal, but its
+text remains untrusted proposal data with provenance and citations. A model
+response cannot change extracted facts, resolve an unknown reference, choose a
+hidden target, grant authorization, approve a decision or claim validation.
+The same deterministic inspection path remains usable without AI.
+
+**RUN-05.** A proposal that affects a modernization decision must pass through
+the existing explicit preview, approve/reject/defer and applicability rules.
+Approval binds the actual revision, subject, payload and actor. A changed
+context requires a new preview; an old approval is never automatically
+replayed. Generation eligibility is recalculated by the deterministic service.
+
+**RUN-06.** When an action depends on an unresolved relationship,
+missing/contradictory evidence, unsupported construct, policy denial, exhausted
+budget or human judgment, the runtime must stop that action. It may inspect or
+replan within the allowed scope, then ask a human or report a concrete safe
+next action. It must distinguish observed, inferred, proposed, approved and
+validated states. A successful static inspection is not runtime or semantic
+validation.
+
+The first proof is one synthetic Form journey: pin the revision, inspect one
+saved relationship and its limits through the project service, identify one
+real blocker, present a cited proposal, obtain an explicit human
+approve/reject/defer choice, record it in versioned decision history, and
+recalculate the blocker without pretending that unresolved evidence vanished.
+No autonomous batch modernization or new generation capability is implied.
+
 ## 23. Security, privacy, access, and operational modes
 
 ### 23.1 Local-first release boundary
@@ -2103,6 +2157,8 @@ Synthetic fixture labels and counts are test requirements, not statements that t
 | AC-46 | Non-ASCII paths, case collisions, and renamed files are used | Stable qualified identities and safe path handling | No merging distinct source/database identifiers by normalization |
 | AC-47 | A target component maps to multiple source decisions or vice versa | Traceability supports declared many-to-many links and consistent counting units | No overwritten mapping or double-counted completion |
 | AC-48 | Report generation is partial or evidence is restricted | Completeness/disclosure states and useful next action remain visible | No full-assessment label on a silently incomplete/redacted dataset |
+| AC-49 | User selects a synthetic Form with an unresolved relationship and a real generation blocker, with AI disabled | One bounded session pins revision, inspects saved service evidence, proposes a cited action, records explicit human approve/reject/defer, reopens history and recalculates blockers | No fabricated resolution, automatic approval, direct storage write or generated artifact from a blocked scope |
+| AC-50 | An AI suggestion contains source instructions, a forbidden action, or a stale revision while a session is active | Egress/context and capability policy deny or stop it; the step and safe reason remain reviewable | No prompt injection authority, silent rebind, automatic retry of approval or success claim without validator execution |
 
 ### 27.3 Test implementation requirements
 
@@ -2139,6 +2195,10 @@ For the XML→AI comparison, preregister the task/rubric, fix source scope and m
 | G-11 Security | Local threat controls and all advertised authenticated-mode controls tested; privacy maintained across projections |
 | G-12 Performance and usability | Ratified fixture budgets and actual five-person acceptance protocol satisfied |
 | G-13 Documentation | README, quickstart, examples, limitations, schemas, migration, and release claims agree with the built product |
+
+The optional execution loop is part of the 3.0 scope added in §22.6. Its
+AC-49/AC-50 evidence contributes to G-05, G-06, G-08 and G-11 as applicable;
+it does not add a fourteenth gate or pass any existing gate by definition.
 
 ### 28.2 Gate evidence register
 
