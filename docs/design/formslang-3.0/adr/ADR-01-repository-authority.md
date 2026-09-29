@@ -31,8 +31,10 @@ not adopt WAL.
 ## Evidence and limits
 
 `examples/verify/repository_spike.py` is outside the product import path. Its
-tests inject a pre-commit failure, post-commit crash, missing accepted object,
-flush interruption and concurrent revision conflict. The spike demonstrates
+tests inject a pre-commit failure, post-commit crash, missing newly referenced
+or inherited accepted object, flush interruption and concurrent revision
+conflict. The inherited-object test first exposed an incorrectly accepted new
+event; verification before the revision transaction repaired it. The spike demonstrates
 the proposed order but does **not** prove power-loss durability of directory
 entries, product migration, idempotency keys, permission checks, safe exports,
 network filesystem support or recovery under real process termination. Those

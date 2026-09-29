@@ -97,6 +97,12 @@ class RepositorySpike:
             raise ValueError("event is required")
         for identity in object_ids:
             self.read_object(identity)
+        # Check the inherited closure before accepting a new event. The
+        # revision fence below rejects a concurrent publisher that changes it.
+        inherited = self.db.execute("SELECT manifest FROM publication WHERE revision=?",
+                                    (expected_revision,)).fetchone()
+        if inherited is not None:
+            self._verify_manifest_objects(inherited[0])
         try:
             self.db.execute("BEGIN IMMEDIATE")
             revision = self.db.execute("SELECT revision FROM state WHERE id=1").fetchone()[0]
@@ -123,11 +129,7 @@ class RepositorySpike:
         return {"revision": revision + 1, "checkpoint_sha256": hashlib.sha256(manifest).hexdigest()}
 
     def _publish_checkpoint(self, revision: int, manifest: bytes) -> None:
-        for identity in json.loads(manifest)["objects"]:
-            try:
-                self.read_object(identity)
-            except FileNotFoundError as exc:
-                raise ValueError("missing accepted object") from exc
+        self._verify_manifest_objects(manifest)
         staged = None
         try:
             with tempfile.NamedTemporaryFile(dir=self.root, prefix=".checkpoint-", delete=False) as stream:
@@ -141,6 +143,13 @@ class RepositorySpike:
         finally:
             if staged is not None:
                 staged.unlink(missing_ok=True)
+
+    def _verify_manifest_objects(self, manifest: bytes) -> None:
+        for identity in json.loads(manifest)["objects"]:
+            try:
+                self.read_object(identity)
+            except FileNotFoundError as exc:
+                raise ValueError("missing accepted object") from exc
 
     def recover(self) -> int:
         rows = self.db.execute("SELECT revision,manifest FROM publication WHERE state='PENDING' ORDER BY revision").fetchall()

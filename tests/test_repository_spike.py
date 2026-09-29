@@ -26,6 +26,27 @@ def test_source_object_id_binds_kind_and_exact_bytes(tmp_path):
         repository.close()
 
 
+def test_checkpoint_bytes_are_independent_of_input_set_and_mapping_order(tmp_path):
+    manifests = []
+    for dirname, object_order, event in (
+        ("one", (0, 1), {"ação": "revisão", "case": "A"}),
+        ("two", (1, 0), {"case": "A", "ação": "revisão"}),
+    ):
+        root = tmp_path / dirname
+        repository = spike(root)
+        try:
+            identities = [repository.put_object("source", value)
+                          for value in (b"first", b"second")]
+            accepted = repository.publish(0, [identities[i] for i in object_order], event)
+            manifest = (root / "checkpoint.json").read_bytes()
+            assert hashlib.sha256(manifest).hexdigest() == accepted["checkpoint_sha256"]
+            assert b'"a\xc3\xa7\xc3\xa3o"' in manifest
+            manifests.append(manifest)
+        finally:
+            repository.close()
+    assert manifests[0] == manifests[1]
+
+
 def test_crash_before_commit_keeps_no_accepted_event(tmp_path):
     repository = spike(tmp_path)
     source_id = repository.put_object("source", b"original bytes")
@@ -98,6 +119,21 @@ def test_recovery_refuses_checkpoint_with_missing_accepted_object(tmp_path):
             repository.recover()
         assert repository.status() == {"revision": 1, "publication": "PENDING"}
         assert not (tmp_path / "checkpoint.json").exists()
+    finally:
+        repository.close()
+
+
+def test_publication_rejects_missing_inherited_object_before_accepting_event(tmp_path):
+    repository = spike(tmp_path)
+    source_id = repository.put_object("source", b"first revision source")
+    try:
+        repository.publish(0, [source_id], {"action": "first"})
+        original_checkpoint = (tmp_path / "checkpoint.json").read_bytes()
+        repository._object_path(source_id).unlink()
+        with pytest.raises(ValueError, match="missing accepted object"):
+            repository.publish(1, [], {"action": "second"})
+        assert repository.status() == {"revision": 1, "publication": "PUBLISHED"}
+        assert (tmp_path / "checkpoint.json").read_bytes() == original_checkpoint
     finally:
         repository.close()
 

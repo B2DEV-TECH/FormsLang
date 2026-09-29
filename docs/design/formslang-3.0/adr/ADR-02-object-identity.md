@@ -25,8 +25,9 @@ matching labels or counters.
 ## Evidence and limits
 
 The spike tests CRLF versus LF, identical bytes, domain separation and
-content verification. Golden checkpoint bytes are pinned in its tests.
-The scheme still needs Unicode, metadata, directory durability, hash-collision
+content verification. Golden checkpoint bytes are pinned in its tests, with
+the same UTF-8 Unicode output for different mapping and set input orders.
+The scheme still needs source metadata, directory durability, hash-collision
 response, cross-platform filename and source-set closure tests. The direct
 Blueprint strict xfail remains unchanged. No product source identity was
 changed in this WP.
