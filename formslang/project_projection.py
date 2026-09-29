@@ -1505,6 +1505,48 @@ def system_map_node(prepared: PreparedProjection, node_id: str) -> dict:
     }
 
 
+def relationship_evidence(prepared: PreparedProjection, edge_id: str) -> dict:
+    """Bounded proof for one saved System Map relationship, without source literals."""
+    from .project_review import safe_excerpt
+
+    if not isinstance(edge_id, str) or not edge_id.startswith('map-edge:') or len(edge_id) > 100:
+        raise ProjectError('Unknown System Map relationship')
+    graph = _architecture_graph(prepared)
+    edge = next((item for item in graph['edges'] if item['id'] == edge_id), None)
+    if edge is None:
+        raise ProjectError('Unknown System Map relationship')
+    blueprint = prepared.raw_blueprint or {}
+    raw_edges = _unique(blueprint.get('edges', []))
+    entities = _unique(blueprint.get('entities', []))
+    proofs = _unique(blueprint.get('evidence', []))
+    sources = []
+    seen = set()
+    for identity in edge['edge_ids']:
+        raw = raw_edges.get(identity, {})
+        entity = entities.get(raw.get('source'), {})
+        source = entity.get('attributes', {}).get('source_text', '')
+        if isinstance(source, str) and source and entity.get('id') not in seen:
+            seen.add(entity['id'])
+            sources.append({'entity_id': entity['id'], 'name': entity.get('name', ''),
+                            'excerpt': safe_excerpt(source),
+                            'truncated': len(source.splitlines()) > 80 or len(source) > 8000})
+    return {
+        'edge': {'id': edge['id'], 'source': edge['source'], 'source_name': edge['source_name'],
+                 'target': edge['target'], 'target_name': edge['target_name'],
+                 'target_layer': graph['nodes'][edge['target']]['layer'],
+                 'target_unresolved': graph['nodes'][edge['target']]['layer'] == 'UNRESOLVED',
+                 'classification': edge['classification'], 'level': edge['level'],
+                 'count': edge['count'], 'evidence_refs': list(edge['evidence'])},
+        'evidence': [{'id': proof_id, 'text': safe_excerpt(proofs[proof_id].get('text', '')),
+                      'level': proofs[proof_id].get('level', 'FACT'),
+                      'location': proofs[proof_id].get('location')}
+                     for proof_id in edge['evidence'] if proof_id in proofs],
+        'source': sources,
+        'sampled': len(edge['edge_ids']) < edge['count'],
+        **_page_meta(prepared),
+    }
+
+
 MODULE_MAX_NEIGHBOURS = 20
 HOTSPOT_EXPLORER_MAX = 50
 _EVIDENCE_MAX_VALUES = 10

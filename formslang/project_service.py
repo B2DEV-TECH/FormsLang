@@ -39,6 +39,9 @@ from .project_projection import (
     overview as project_overview,
 )
 from .project_projection import (
+    relationship_evidence as project_relationship_evidence,
+)
+from .project_projection import (
     system_map as project_system_map,
 )
 from .project_projection import (
@@ -170,6 +173,12 @@ class ProjectService:
         if prepared is None:
             raise ProjectError("Analyze the project before opening System Map")
         return project_system_map_node(prepared, node_id)
+
+    def relationship_evidence(self, edge_id: str, *, freshness=None) -> dict:
+        prepared = self._prepared_projection(freshness)
+        if prepared is None:
+            raise ProjectError("Analyze the project before opening relationship evidence")
+        return project_relationship_evidence(prepared, edge_id)
 
     def module_view(self, *, module=None, node=None, finding=None, freshness=None) -> dict:
         prepared = self._prepared_projection(freshness)

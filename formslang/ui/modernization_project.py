@@ -173,7 +173,7 @@ const projectRecommendationLabels={PRESERVE:'Preserve',CONVERT:'Convert',REPLACE
 const projectInterventionLabels={AUTO:'Mechanical / AUTO',ASSISTED:'Assisted',MANUAL:'Human decision',UNKNOWN:'Unknown'};
 function projectStatusLabel(value){return {CURRENT:'Current',STALE:'Stale',INCOMPLETE:'Incomplete',MISSING_SOURCE:'Missing Source',UNVERIFIED:'Unverified'}[String(value||'UNVERIFIED').toUpperCase()]||'Unverified';}
 function projectSectionNav(active='overview') {
-  const links=[['overview','Overview'],['system-map','System Map'],['hotspots','Hotspots'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
+  const links=[['overview','Overview'],['journey','Explore a Form'],['system-map','System Map'],['hotspots','Hotspots'],['inventory','Inventory'],['review','Review'],['dependencies','Dependencies'],['generate','Generate'],['reports','Reports'],['settings','Project Settings']];
   return `<nav class="project-section-nav" aria-label="Project sections">${links.map(([id,label])=>`<button type="button" class="btn" data-project-section="${id}" ${active===id?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`;
 }
 function projectBindSectionNav() {
@@ -181,6 +181,7 @@ function projectBindSectionNav() {
     const section=el.dataset.projectSection;
     if(typeof visualUI==='object')visualUI.back=null;
     if(section==='overview'){if(projectUI.overview)renderProjectOverview(projectUI.overview);else{projectUI.view='overview';const c=projectContext();projectLoadOverview(c,false).then(data=>{if(data&&projectCurrent(c)&&projectUI.view==='overview')renderProjectOverview(data);});}}
+    else if(section==='journey')projectJourneyOpen();
     else if(section==='system-map')projectSystemMapOpen();
     else if(section==='hotspots'){if(typeof visualHotspotsOpen==='function')visualHotspotsOpen({},{remember:false});else projectOpenInventory({category:'hotspots'});}
     else if(section==='inventory')projectOpenInventory({category:'forms'});
