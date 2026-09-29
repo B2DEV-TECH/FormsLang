@@ -148,7 +148,7 @@ No gate is **passed**. The full 3.0 release is not complete.
 
 - **Branch:** `codex/formslang-3-wp05-sanitization-probe`, based on merged `main` at `b09be2d`.
 - **Evidence:** [wp05-disclosure-probe.md](wp05-disclosure-probe.md) and `tests/test_wp05_disclosure_probe.py`. The local System Map kept the symbolic target name but excluded the synthetic host-path components. `convert.build_prompt` included the exact selected source body, including a synthetic credential and host path; the desired no-disclosure assertion failed before being pinned as strict `xfail`. No provider was called and no production behavior changed.
-- **Local validation:** Windows 11, Python 3.13.15: targeted probe/policy/conversion tests, **39 passed, 1 xfailed**; `py -3.13 -m pytest -q -p no:cacheprovider`, **1970 passed, 5 skipped, 4 xfailed** in 846.41 s; `py -3.13 -m ruff check .` and `git diff --check` passed. CI is pending for this branch.
+- **Validation:** Windows 11, Python 3.13.15: targeted probe/policy/conversion tests, **39 passed, 1 xfailed**; `py -3.13 -m pytest -q -p no:cacheprovider`, **1970 passed, 5 skipped, 4 xfailed** in 846.41 s; `py -3.13 -m ruff check .` and `git diff --check` passed. CI run `36617867680` on `91ba4ad` passed all **13/13** checks across Ubuntu/Windows Python 3.10–3.13, Ruff, both Edge acceptances, deterministic export and SQLcl/APEX validation.
 - **Remaining work:** define context preview, consent and retention before optional AI orchestration (WP-47), with SEC-05/SEC-06 and AI-01..03. The probe does not close G-11.
 
 ## Gates not started
