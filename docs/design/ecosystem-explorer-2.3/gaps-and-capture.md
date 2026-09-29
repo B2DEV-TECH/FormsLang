@@ -5,7 +5,7 @@ the fixtures and a `test_gap_*` test in `tests/test_ecosystem_phase1.py`. Those
 tests pin current behaviour. They do not endorse it. A later phase that
 closes a gap on purpose changes the test and the committed inventory together.
 
-Phase 1 changes nothing in `formslang/`. The three engine defects in §1
+Phase 1 changes nothing in `formslang/`. The engine defects in §1
 predate 2.3 and ship in 2.2.0. The decisions taken at review close §1.
 
 ## 1. Engine defects found while measuring (pre-existing in 2.2.0)
@@ -50,9 +50,13 @@ calls in the same position are captured.
 
 ### G-SCHEMA-BODY — a schema-qualified package body loses its subprograms
 
-`database.parse_package_body` takes the name from a regex that accepts
-`SCHEMA.NAME`. It then looks for the start of the body with
-`tokens[i - 2] == "BODY"` (`formslang/database.py:426`). With `SCHEMA.NAME`,
+**Status: fixed in `blueprint-analysis/2`**, ahead of G-SCHEMA-COLLIDE (FormsLang
+3.0 M0, work package WP-03). The description below is the 2.2.0 behaviour, kept
+as the record of the defect.
+
+In 2.2.0, `database.parse_package_body` took the name from a regex that accepts
+`SCHEMA.NAME`. It then looked for the start of the body with
+`tokens[i - 2] == "BODY"`. With `SCHEMA.NAME`,
 the token two places before `AS` is `.`, not `BODY`. No subprogram is
 parsed, so there is no `SUBPROGRAM_BODY` and no `IMPLEMENTS` edge.
 
@@ -60,7 +64,45 @@ parsed, so there is no `SUBPROGRAM_BODY` and no `IMPLEMENTS` edge.
   SALES_OWNER.ORDER_API` and `BILLING_OWNER.ORDER_API` yield zero subprograms.
   The same `SALES_OWNER` body with the schema prefix removed yields its one
   subprogram, `SUBMIT`.
-- **Test.** `test_gap_case_c_schema_qualified_package_body_loses_its_subprograms`.
+- **Test.** `test_schema_qualified_package_body_keeps_its_subprograms` and
+  `test_case_c_schema_qualified_package_bodies_yield_their_subprograms`
+  (was `test_gap_case_c_schema_qualified_package_body_loses_its_subprograms`).
+- **Fix (applied).** Subprogram scanning starts at the first token after the
+  `AS`/`IS` that the header regex matched, whatever the name looks like.
+- **Effect of the fix (Case C).** The surviving `ORDER_API` body now has its
+  `SUBPROGRAM_BODY ORDER_API.SUBMIT`, which `IMPLEMENTS` the declared
+  subprogram and `WRITES` `SALES_OWNER.SALES_ORDERS`. That write stays a
+  `SYMBOLIC_REFERENCE`: tables are keyed by bare name, so the qualified name is
+  not resolved. Because G-SCHEMA-COLLIDE is still open, the two bodies collapse
+  like the specs: only the `sales_*` body survives. The pinned collision test
+  records this. The unqualified call still resolves to the declared subprogram,
+  as before; no new resolution is made. The committed inventory changed only
+  in Case C (one `SUBPROGRAM_BODY`, two `IMPLEMENTS`, one `WRITES`, one table
+  reference, two findings) and in the engine version.
+- **Existing assessments.** They are not rewritten. The engine identity
+  changes to `blueprint-analysis/2`, so a saved assessment is reported as made
+  by an older engine.
+- **Why separately from G-SCHEMA-COLLIDE.** The 2026-09-24 review planned both
+  fixes for phase 2. This one changes no identity key, and it restores the
+  facts of an estate whose DDL carries one schema prefix, which is the common
+  case. It makes a qualified body behave the way an unqualified one already
+  did, collision included.
+
+### G-DDL-HEADER — an exported package header is dropped without a trace
+
+Found while fixing G-SCHEMA-BODY; open. `parse_package_spec` and
+`parse_package_body` accept only `CREATE [OR REPLACE] PACKAGE [BODY] name`,
+with an unquoted `name` of the form `NAME` or `SCHEMA.NAME`. The
+headers that DDL exports usually write, `CREATE OR REPLACE EDITIONABLE PACKAGE
+BODY "SCHEMA"."NAME"`, `NONEDITIONABLE`, quoted names, and spaces around the dot,
+do not match. The package is then not parsed, and nothing records that the
+file was skipped: it is listed in `DatabaseProject.files` with no object.
+
+- **Measured effect.** With either `EDITIONABLE` or `"S"."P"`, both the spec and
+  the body parse to nothing.
+- **Severity.** Missing data looks like "no database code", which the
+  3.0 invariant *unknown is not zero* forbids.
+- **Test.** `test_gap_exported_package_header_is_dropped_without_a_trace`.
 
 ### G-SCHEMA-COLLIDE — same-named packages in two schemas collapse into one
 
@@ -91,7 +133,10 @@ the `sales_*` file. Tables and views are keyed the same way:
   hotspots that have already been published.
 - **G-SCHEMA-BODY and G-SCHEMA-COLLIDE** are fixed in phase 2. The fix keeps
   the schema and records ambiguities. Existing assessments are not rewritten;
-  they stay under the legacy-resolution rule.
+  they stay under the legacy-resolution rule. *Amended in FormsLang 3.0 M0:*
+  G-SCHEMA-BODY was fixed on its own in `blueprint-analysis/2` because it
+  changes no identity key; G-SCHEMA-COLLIDE still needs the schema-aware
+  identity.
 
 ## 2. Contract gaps (facts 2.2 does not record)
 

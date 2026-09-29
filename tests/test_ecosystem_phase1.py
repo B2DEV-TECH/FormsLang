@@ -1,4 +1,4 @@
-"""FormsLang 2.3 phase 1: what the 2.2 engine records for the ecosystem contract.
+"""FormsLang 2.3 phase 1: historical 2.2 baseline and current engine facts.
 
 These are characterization tests. They pin the facts ``ecosystem/1`` may use
 today and the gaps it must not paper over (docs/design/ecosystem-explorer-2.3/).
@@ -21,6 +21,7 @@ from formslang.parser import parse_xml
 
 REPO = Path(__file__).resolve().parents[1]
 GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-2.2.json"
+CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-m0.json"
 
 
 def build(name):
@@ -73,13 +74,20 @@ def trigger(bp, module, owner, name="WHEN-BUTTON-PRESSED"):
 # Committed inventory
 # ---------------------------------------------------------------------------
 
-def test_inventory_is_deterministic_and_matches_the_committed_baseline():
+def test_original_2_2_inventory_remains_a_historical_baseline():
+    original = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    case_c = original["corpora"]["case_c"]["blueprint"]
+    assert case_c["engine_version"].startswith("blueprint-analysis/1+")
+    assert "SUBPROGRAM_BODY" not in case_c["entities_by_type"]
+
+
+def test_inventory_is_deterministic_and_matches_the_m0_characterization():
     first = inv.render(inv.inventory())
     assert first == inv.render(inv.inventory())
     assert "\\\\" not in first and ":/" not in first  # no absolute or Windows paths leak in
-    assert first == GOLDEN.read_text(encoding="utf-8"), (
+    assert first == CURRENT_GOLDEN.read_text(encoding="utf-8"), (
         "Regenerate with: python examples/verify/ecosystem_inventory.py --output "
-        "docs/design/ecosystem-explorer-2.3/inventory-2.2.json, then review the diff")
+        "docs/design/ecosystem-explorer-2.3/inventory-m0.json, then review the diff")
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +203,10 @@ def test_gap_case_c_same_named_packages_in_two_schemas_collapse_into_one(case_c)
     _, bp = case_c
     specs = [e for e in bp["entities"] if e["type"] == "PACKAGE_SPEC"]
     assert [e["name"] for e in specs] == ["ORDER_API"]  # the schema is dropped; one file wins
+    # The bodies collapse the same way: only the last file's SUBMIT, and its write, survive.
+    [sub] = [e for e in bp["entities"] if e["type"] == "SUBPROGRAM_BODY"]
+    assert Path(sub["module"]).name == "sales_order_api.pkb"
+    assert [e[3] for e in out(bp, sub["id"]) if e[0] == "WRITES"] == ["SALES_OWNER.SALES_ORDERS"]
     # The call without schema is resolved to that survivor, with no ambiguity recorded.
     ref = next(e for e in bp["entities"] if e["type"] == "ROUTINE_REFERENCE" and e["name"] == "ORDER_API.SUBMIT")
     assert ref["resolution"] == "RESOLVED_TO_DATABASE_OBJECT"
@@ -244,14 +256,47 @@ def test_legacy_rule_lifts_only_for_a_schema_aware_engine_and_only_for_database_
     assert inv.explorer_resolution("FORM_REFERENCE", "SYMBOLIC_REFERENCE", schema_aware=False) is None
 
 
-def test_gap_case_c_schema_qualified_package_body_loses_its_subprograms(case_c):
+@pytest.mark.parametrize("header", [
+    "CREATE OR REPLACE PACKAGE BODY P AS",
+    "CREATE OR REPLACE PACKAGE BODY S.P AS",
+    "create package body s.p is",
+])
+def test_schema_qualified_package_body_keeps_its_subprograms(header):
+    # G-SCHEMA-BODY, closed: the body start was found by looking two tokens back
+    # for BODY, which is "." when the name carries its schema.
+    body = database.parse_package_body(
+        f"{header} PROCEDURE X IS BEGIN NULL; END X; "
+        "FUNCTION Y RETURN NUMBER IS BEGIN RETURN 1; END Y; END P;")
+    assert body.name == "P"
+    assert [(s.name, s.subprogram_type) for s in body.subprograms] == [("X", "PROCEDURE"), ("Y", "FUNCTION")]
+
+
+@pytest.mark.parametrize("header", [
+    "CREATE OR REPLACE EDITIONABLE PACKAGE BODY S.P AS",
+    'CREATE OR REPLACE PACKAGE BODY "S"."P" AS',
+])
+def test_gap_exported_package_header_is_dropped_without_a_trace(header, tmp_path):
+    # G-DDL-HEADER: DDL exports write EDITIONABLE and quoted names. Such a package
+    # is not parsed, and nothing records that the file was skipped.
+    source = tmp_path / "p.pkb"
+    source.write_text(f"{header} PROCEDURE X IS BEGIN NULL; END X; END P;\n/\n", encoding="utf-8")
+    project = database.parse_database_file(source)
+    assert project.files == [str(source)]
+    assert project.package_bodies == {} and project.package_specs == {}
+
+
+def test_case_c_schema_qualified_package_bodies_yield_their_subprograms(case_c):
     _, bp = case_c
-    assert [e["name"] for e in bp["entities"] if e["type"] == "PACKAGE_BODY"] == ["ORDER_API"]
-    assert not [e for e in bp["entities"] if e["type"] == "SUBPROGRAM_BODY"]
-    assert database.parse_package_body(
-        "CREATE OR REPLACE PACKAGE BODY S.P AS PROCEDURE X IS BEGIN NULL; END X; END P;").subprograms == []
-    assert [s.name for s in database.parse_package_body(
-        "CREATE OR REPLACE PACKAGE BODY P AS PROCEDURE X IS BEGIN NULL; END X; END P;").subprograms] == ["X"]
+    # A saved 2.2 assessment lacks these facts, so it must read as an older engine.
+    assert bp["engine_version"].startswith("blueprint-analysis/2+")
+    [body] = [e for e in bp["entities"] if e["type"] == "PACKAGE_BODY"]
+    [sub] = [e for e in bp["entities"] if e["type"] == "SUBPROGRAM_BODY"]
+    assert sub["name"] == "ORDER_API.SUBMIT"
+    assert {"source": body["id"], "target": sub["id"], "type": "IMPLEMENTS"}.items() <= next(
+        e for e in bp["edges"] if e["source"] == body["id"] and e["target"] == sub["id"]).items()
+    edges = out(bp, sub["id"])
+    assert ("IMPLEMENTS", "PACKAGE_SUBPROGRAM", "ORDER_API.SUBMIT") in [(e[0], e[2], e[3]) for e in edges]
+    assert [e[0] for e in edges if e[0] == "WRITES"] == ["WRITES"]
 
 
 # ---------------------------------------------------------------------------

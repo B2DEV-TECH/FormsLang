@@ -22,7 +22,8 @@ from .plsql_evidence import VERSION as LEXER_VERSION
 from .store import PENDING, TaskView
 
 VERSION = "blueprint/1"
-ENGINE_VERSION = f"blueprint-analysis/1+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
+# blueprint-analysis/2: schema-qualified package bodies keep their subprograms.
+ENGINE_VERSION = f"blueprint-analysis/2+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
 # MOVE_TO_PLSQL_API and REPLACE_WITH_APEX_NATIVE are outcomes the cross-layer
 # reasoning can reach: logic that belongs in a database API, and logic the target
 # platform already provides natively. Both are decisions, not partial results.

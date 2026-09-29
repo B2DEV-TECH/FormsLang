@@ -10,7 +10,8 @@ start until this phase has been reviewed.
 | Document | What it fixes |
 |---|---|
 | [`contract-ecosystem-1.md`](contract-ecosystem-1.md) | The `ecosystem/1` contract: identities, the relation record, the seven families mapped from the 2.2 edge types, certainty, the visual-attribute origin rule, frontiers, bounds and revision compatibility. |
-| [`inventory-2.2.json`](inventory-2.2.json) | What the 2.2 engine records, measured on four corpora (showcase, modernization lab, Case C and the visual-hierarchy fixture) and Cases A–C. Regenerate or check it with `py examples/verify/ecosystem_inventory.py --output/--check`. |
+| [`inventory-2.2.json`](inventory-2.2.json) | Historical, unchanged 2.2 engine baseline measured on four corpora. Keep it when the analysis engine changes. |
+| [`inventory-m0.json`](inventory-m0.json) | Current M0 engine characterization of the same corpora. Check it with `py examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-m0.json`. |
 | [`gaps-and-capture.md`](gaps-and-capture.md) | Three pre-existing engine defects, the contract gaps, and what phase 2 must capture. |
 | [`performance-2.2-baseline.md`](performance-2.2-baseline.md) | The 500-Form baseline and ecosystem runs, warm-read p50/p95, memory and response sizes. |
 | [`journey-three-steps.md`](journey-three-steps.md) | The three-step journey as text wireframes built from measured facts. |
@@ -27,7 +28,7 @@ Scale: `examples/verify/project_corporate_scale.py --profile ecosystem` and
 | `ecosystem/1` contract written | Done |
 | Case A reproducible up to the limit of the 2.2 facts | Done: `test_case_a_*`, with gaps G-CALL-LOCAL, G-CALL-EXPR and G-RISK-TEXT pinned |
 | Case B reproducible up to the limit of the 2.2 facts | Done: `test_case_b_*`; defect G-DML pinned, then fixed in `plsql-evidence/2` |
-| Case C (homonyms across schemas) measured | Done: two engine defects pinned (G-SCHEMA-BODY, G-SCHEMA-COLLIDE); legacy-resolution rule covered |
+| Case C (homonyms across schemas) measured | Done: two engine defects pinned (G-SCHEMA-BODY, G-SCHEMA-COLLIDE); G-SCHEMA-BODY then fixed in `blueprint-analysis/2`; legacy-resolution rule covered |
 | Gaps documented with a phase-2 capture inventory | Done |
 | Visible/CanvasType origin recorded as not verifiable | Done: contract §6, `CV_VISIBLE_DECLARED` vs `CV_DEFAULTS` |
 | Scale generator reaches ≥5k findings and ≥5k relations | Done: 18,638 findings and 39,571 relations at 500 Forms |
@@ -50,6 +51,8 @@ Scale: `examples/verify/project_corporate_scale.py --profile ecosystem` and
    ([gaps §1](gaps-and-capture.md#g-dml--update-right-after-then-is-not-recorded-as-a-write)).
 3. **G-SCHEMA-BODY and G-SCHEMA-COLLIDE** are fixed in phase 2. The fix keeps
    the schema and records ambiguities. Old assessments are not rewritten.
+   G-SCHEMA-BODY was later fixed on its own in `blueprint-analysis/2`
+   ([gaps §1](gaps-and-capture.md#g-schema-body--a-schema-qualified-package-body-loses-its-subprograms)).
 4. **Read latency.** Phase 3 adds a per-revision read of the Blueprint, then
    re-measures p50/p95 at 500 Forms. The `project_store` timeouts are not
    raised. Today every warm read takes 1.6–2.7 s, mostly in copying the saved
