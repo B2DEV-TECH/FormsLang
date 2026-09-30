@@ -1,5 +1,5 @@
 // WP-12: real browser, real bundled synthetic assessment, no decision writes.
-export async function journeyChecks({evaluate,click,clickSelector,wait,check,screenshot}){
+export async function journeyChecks({evaluate,click,clickSelector,wait,check,screenshot,moduleSuffix='forms/shipments.xml'}){
   const before=await evaluate(`(async()=>{const r=await fetch('/api/v2/projects/'+projectUI.activeId+'/assessment');const a=(await r.json()).assessment;return [a.analysis_revision,a.review_revision,a.blueprint.source_revision];})()`);
   await clickSelector('[data-project-section="journey"]');
   await wait(()=>evaluate(`projectUI.view==='journey'&&projectUI.journeyState?.form?.node.name==='CUSTOMERS'&&!!projectUI.journeyState.generationDetail`),'saved CUSTOMERS Form in journey');
@@ -22,8 +22,8 @@ export async function journeyChecks({evaluate,click,clickSelector,wait,check,scr
   await wait(()=>evaluate(`projectUI.journeyState.detail?.edge.id===${JSON.stringify(openId)}`),'return to resolved edge');
   await click('project-journey-follow');
   check('following clears the previous Form while loading',await evaluate(`!document.getElementById('project-journey-follow')&&document.getElementById('project-journey-body').textContent.includes('Loading selected Form')`));
-  await wait(()=>evaluate(`projectUI.journeyState.form?.node.name==='SHIPMENTS'&&!!projectUI.journeyState.generationDetail&&document.getElementById('project-journey-body').textContent.includes('forms/shipments.xml')`),'follow relationship to SHIPMENTS');
-  check('followed Form shows its own blocker state',await evaluate(`projectUI.journeyState.form.module==='forms/shipments.xml'&&projectUI.journeyState.generationDetail.ready===false&&document.getElementById('project-journey-blockers').textContent.includes('MODULE_NOT_PREPARED')`));
+  await wait(()=>evaluate(`projectUI.journeyState.form?.node.name==='SHIPMENTS'&&!!projectUI.journeyState.generationDetail&&document.getElementById('project-journey-body').textContent.includes(${JSON.stringify(moduleSuffix)})`),'follow relationship to SHIPMENTS');
+  check('followed Form shows its own blocker state',await evaluate(`projectUI.journeyState.form.module.endsWith(${JSON.stringify(moduleSuffix)})&&projectUI.journeyState.generationDetail.ready===false&&document.getElementById('project-journey-blockers').textContent.includes('MODULE_NOT_PREPARED')`));
   await evaluate(`document.getElementById('project-journey-blockers').scrollIntoView({block:'start'})`);
   await screenshot('wp12-followed-form.png');
   const after=await evaluate(`(async()=>{const r=await fetch('/api/v2/projects/'+projectUI.activeId+'/assessment');const a=(await r.json()).assessment;return [a.analysis_revision,a.review_revision,a.blueprint.source_revision];})()`);

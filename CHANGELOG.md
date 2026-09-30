@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0-beta.1] - 2026-09-30
+
+Beta for the saved-project modernization journey. Create or reopen a
+local project, analyze synthetic or authorized Forms and database sources, and
+inspect a Form, its relationships, redacted evidence, unresolved references and
+the linked Form's own generation blockers. Finding reviews and their history
+remain bound to the saved analysis. An eligible, explicitly reviewed module can produce
+a downloadable, hash-checked APEXlang package. Technical and executive reports
+can be exported from the same project.
+
+### Prerelease limits
+
+The [beta release notes](docs/release-notes-3.0.0-beta.1.md) list the 13
+unclosed FormsLang 3.0 release gates and planned capabilities. This beta
+acceptance covers a supported subset; it is not full 3.0 specification
+acceptance.
+
+- The Form journey is read-only. Following a relationship selects the linked
+  Form and clears the prior relationship selection; it does not carry review or
+  generation context into the linked Form.
+- Generation requires separate finding review, target-plan confirmations and
+  executable-code approval. Unsupported mappings remain blocked. No automatic
+  deployment is performed.
+- Offline validation records the artifact and attempted mode; without a working
+  SQLcl with APEXlang support, the result remains **Not Validated**. Syntax
+  validation does not establish runtime or functional equivalence.
+- The beta installers and separate 2.1.0 and 2.2.0 upgrade paths require
+  disposable Windows clean-install and upgrade acceptance before publication.
+
 ## [2.2.0] - 2026-09-24
 
 FormsLang 2.2 Visual Modernization Intelligence lets a team see the

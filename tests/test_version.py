@@ -13,6 +13,10 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
+from formslang import _display_version
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -42,3 +46,12 @@ def test_every_version_declaration_matches_pyproject():
     }
     stale = {path: found for path, found in declared.items() if found != expected}
     assert not stale, f"pyproject.toml says {expected}; out of step: {stale}"
+
+
+@pytest.mark.parametrize(('metadata_version', 'display'), [
+    ('2.2.0', '2.2.0'),
+    ('3.0.0b1', '3.0.0-beta.1'),
+    ('3.0.0b12', '3.0.0-beta.12'),
+])
+def test_beta_metadata_displays_the_installer_version(metadata_version, display):
+    assert _display_version(metadata_version) == display
