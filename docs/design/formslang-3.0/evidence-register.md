@@ -6,28 +6,28 @@ marked passed because the local unit tests are green. Planned work is in
 [implementation-plan.md](implementation-plan.md), and requirement status is in
 [requirements-matrix.md](requirements-matrix.md).
 
-Specification: FL3-MASTER-2026-09-25 revision 1.0. Planning baseline: `main` at
-`1d9cb47`. Active milestone: **M0**. Branches: `codex/formslang-3-m0` (Draft PR #21),
-`codex/formslang-3-wp07` (Draft PR #22, stacked on #21), `codex/formslang-3-wp08`
-(Draft PR #24, stacked on #22), and `codex/formslang-3-wp02`
-(Draft PR #23, against `main`).
+Specification: FL3-MASTER-2026-09-25 revision 1.0. Historical planning baseline:
+`main` at `1d9cb47`. The #21 → #22 → #24 foundation is merged; subsequent
+work spans several milestones. PR #23 remains separate diagnostic instrumentation.
+This register records evidence through the 2026-09-30 ADR review; current heads
+and CI must be checked in GitHub before integration.
 
 ## Summary
 
 | Gate | Status | Evidence so far |
 |---|---|---|
 | G-01 Baseline truth | **In progress** | Baseline audit written against `1d9cb47`, and the §3.3 concerns verified in code (see below) |
-| G-02 Repository integrity | Not started | — (ADR-01..03 not written) |
-| G-03 Portability and Git exchange | Not started | — |
-| G-04 Facts and evidence | **In progress** | G-SCHEMA-BODY and G-DDL-HEADER fixed with failing-then-passing tests (G-DDL-HEADER on the local WP-07 branch). Per-source database coverage added. G-SCHEMA-COLLIDE and G-DDL-EXTRACT stay open. |
+| G-02 Repository integrity | Not assessed | ADR-01..03 accepted as architecture; whole-state product checkpoints, object verification and recovery remain WP-20 work |
+| G-03 Portability and Git exchange | Not assessed | ADR-04/07 accepted as architecture in this PR; product import, origin-trust and clean-workspace exchange remain WP-20 work |
+| G-04 Facts and evidence | **In progress** | M0, WP-07 and WP-08 are merged with focused evidence. Schema identity, graph coverage and documented extraction gaps remain open. |
 | G-05 Language and decisions | Not started | — |
 | G-06 Workbench and CLI | Not started | — |
 | G-07 Target delivery | Not started | 2.2 generator behaviour recorded in the baseline audit only |
 | G-08 Validation | Not started | Offline SQLcl `apex validate` runs in CI for the 2.2 path; this is not a 3.0 gate result |
 | G-09 Reporting | Not started | 2.2 revision-fenced reports recorded in the baseline audit only |
-| G-10 Migration and packaging | Not started | — |
-| G-11 Security | Not started | Two unprobed sanitisation paths are listed as WP-05 |
-| G-12 Performance and usability | Not started | Windows lock contention is open (issue #20). Main CI failed on `1d9cb47` (see G-01). |
+| G-10 Migration and packaging | Not assessed | Existing 2.2 installer harness and a separate beta candidate do not prove 3.0 migration, restore or final same-commit assets |
+| G-11 Security | Not assessed | WP-05 sanitization probe is merged; the full threat and privacy criteria remain unverified |
+| G-12 Performance and usability | Not assessed | Issue #20 covers ProjectBusy/409. The intermittent Windows HTTP 500 has unknown cause; ratified performance and five-person acceptance remain unverified. |
 | G-13 Documentation | Not started | — |
 
 No gate is **passed**. The full 3.0 release is not complete.
@@ -230,8 +230,10 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Decision (2026-09-30):** An imported package's integrity, origin trust, decision applicability and receiving authorization are separate. A trusted clean restore needs an independently retained exact-root receipt and authorized custodian; ordinary Git/review exchange cannot activate a claimed approval. Git is an explicit transport for portable files, with separate operational stores per worktree and content-identity reconciliation. The documented threat/outcome tables and the existing legacy migration preservation behavior support this boundary choice; no product 3.0 import route exists yet.
 - **Boundary:** WP-20 must prove forged claim rejection, trusted versus unverified imports, retained receipt recovery, separate worktrees, external-change detection, preview/apply fences and conflict behavior. WP-22 must preserve legacy history without inventing current authorization. G-02 and G-03 remain open.
 
-## Gates not started
+## Gates still open
 
-G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0
-evidence yet. The 2.2 behaviour described in [baseline-audit.md](baseline-audit.md)
-is a baseline, not a gate result.
+No gate listed above has met its complete 3.0 release criterion. Architecture
+decisions, partial product slices, probes and 2.2 behavior do not close the
+remaining product, portability, external-system or human acceptance work.
+The 2.2 behavior described in [baseline-audit.md](baseline-audit.md) is a
+baseline, not a gate result.
