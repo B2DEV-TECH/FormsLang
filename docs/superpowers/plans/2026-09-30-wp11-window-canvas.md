@@ -85,6 +85,49 @@ The coordinator owns integration and approves this routine bounded scope.
 - This publication adds factual SRC-08 partial status and evidence only.
   SRC-09/10, the remaining WP-11 work and every product gate remain open.
 
+## Composition after WP-07 integration
+
+- PR #43 merged as main `c0b7e341cb12138178562cdb631e9a7c5119bd96`.
+  Backup `codex/backup-wp11-before-wp07-main-20260930` preserves the original
+  Draft #42 head `9d7fef5498ac23934efbee15e42ac7377ee3c9b6`, whose exact-head
+  CI run `36684518353` passed 13/13. That original head also passed a later
+  exact local full: **2088 passed, 5 skipped, 4 xfailed in 880.67 s**.
+- Replayed only the three own commits. The product and minor-plan commits have
+  identical range-diffs; the third changes only documentation context. The
+  single rebase conflict was the adjacent WP-07/WP-11 additions in the evidence
+  register. Both sections were retained; main text outside WP-11 was verified
+  unchanged before the separately authorized factual WP-07 documentation fix.
+- Composed focused suite: **261 passed, 2 skipped in 41.25 s**. Frozen full:
+  **2098 passed, 5 skipped, 2 xfailed in 864.88 s**, Python 3.13, exit 0.
+  Log: `.superpowers/sdd/wp11/full-wp07-main-py313.log`. No assertion weakening
+  or failed-test rerun. The two fewer xfails reflect the inherited WP-07 fixes.
+- Three independent executions of the local `stability_probe.py` used the real
+  SCREENS/SCREENS_PEER and Case C fixtures. Direct loads reversed SQL input order;
+  model builds reversed module order; the project repeated analysis and reopened
+  the same saved assessment. Each execution compared source_revision, sorted
+  entity IDs, full placement edges and visual-node attributes. Results were
+  identical within each pipeline across all three processes:
+
+  | Context | IDs / placement facts | Snapshot SHA-256 |
+  |---|---|---|
+  | direct | 53 / 11 | `ae5160ff5e2c6b3a68a4f7b685f31735b2d3ecc6622eaadcfc4636a0f16da529` |
+  | model order | 41 / 11 | `b9270c1973cb1b3d3b61b86ecd149a49085912447538698decb47c18451c677d` |
+  | project | 53 / 11 | `25c72c03f30cf675c9fa113cbfb19d921a8910fea33ee331aa6c5f46fb01038f` |
+
+  Direct source_revision was `d451aa86679ea7802d21d82aee0015cd7ea5fc1dc24da7821a09b8bcd5368117`;
+  project source_revision was `d24b9e39727185e88f488a894e28e276be7b766dcd1ba2acbe92f7f97bc106c3`.
+  Different contexts are not required to have identical IDs/revisions. The
+  probe's first attempt used an unsupported `read_only` constructor keyword
+  from a different branch; correcting that local harness call required no
+  product/test change. Probe and JSONL results are retained under
+  `.superpowers/sdd/wp11/`.
+- Current `inventory-wp11.json` matches regeneration; all five earlier
+  inventories, including 2.2, are byte-identical to main. Engine transition
+  stays `/5` to `/6`; WP-11 does not change main's revision formulas or parser.
+  Repository Ruff and whitespace checks pass. New exact-head CI remains
+  required before integration; this PR stays Draft and all scope limits below
+  remain open.
+
 ## Persisted contract and limits
 
 New analysis engine `blueprint-analysis/6` stores `window_name` and

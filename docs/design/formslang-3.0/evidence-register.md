@@ -390,6 +390,14 @@ No gate is **passed**. The full 3.0 release is not complete.
   The shared helper is included in engine identity; source-revision formulas
   and parser/model are unchanged. All five previous inventories match main byte
   for byte. Saved snapshots are not backfilled or silently reinterpreted.
+- After WP-07 merged as `c0b7e34`, only the three own WP-11 commits were rebased.
+  Product and minor-plan range-diffs are identical; one evidence-register
+  conflict preserved both adjacent sections. Composed focused tests passed
+  **261 tests, 2 skipped in 41.25 s**; the frozen full passed **2098 tests,
+  5 skipped, 2 xfailed in 864.88 s**. Three independent same-input/order probes
+  preserved IDs, source revisions and all placement facts (direct/project each
+  53 IDs and 11 facts); detailed hashes and harness limits are in the plan.
+  Historical inventory bytes remain unchanged. Final-head CI is still required.
 - SRC-08 remains partial: tab/item hierarchy and conflict presentation are
   open. SRC-09 raw/default provenance and separate raw duplicate declarations
   are open. SRC-10 unplaced/unresolved canvas/item/tab groups remain open.
