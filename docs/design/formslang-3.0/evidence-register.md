@@ -321,7 +321,7 @@ No gate is **passed**. The full 3.0 release is not complete.
 
 - Branch `codex/formslang-3-wp07-gap-composition` replays the coverage commit
   `cf167477` and the three direct revision commits `2341a8c`, `f954ca0`,
-  `99767b5` on main `066288e`. Backup refs preserve the original heads. The
+  `99767b5` originally on main `066288e`. Backup refs preserve the original heads. The
   only cherry-pick conflict was adjacent tests in `test_database_coverage.py`;
   both positive regressions were retained. Range-diff changes are context from
   WP-04 and that test placement, with no lost commit.
@@ -352,7 +352,16 @@ No gate is **passed**. The full 3.0 release is not complete.
   `py -3.13 -m pytest -q -p no:cacheprovider` returned **2082 passed,
   5 skipped, 2 xfailed in 884.60 s**. Ruff, `git diff --check` and the current
   `inventory-wp04.json` generator check passed. Historical inventories have no
-  diff against main. Hosted CI remains required for this Draft head.
+  diff against that main. The original Draft head `e550ce7` passed 13/13 checks
+  in CI run `36689762836`.
+- After the beta merge, backup `backup/wp07-gap-before-beta-20260930` preserves
+  `e550ce7`. All six own commits rebased onto main `1f55ee6` without a conflict;
+  the six range-diff entries are `=` and the production/test patch is unchanged.
+  On that composed tree, the focused Python 3.13 suite returned **257 passed,
+  3 skipped, 1 xfailed**; the frozen full suite returned **2085 passed,
+  5 skipped, 2 xfailed in 877.71 s**. Ruff, `git diff --check`, the current
+  inventory generator and historical inventory blob comparison passed. CI on
+  the rebased Draft head remains required before integration.
 - The `CREATE PACKAGE IF NOT EXISTS` strict `xfail` remains open; the other
   inherited expected failure is outside these two fixes. No 3.0 gate closes.
 
