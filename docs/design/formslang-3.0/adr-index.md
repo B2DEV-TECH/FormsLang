@@ -1,7 +1,7 @@
 # FormsLang 3.0 — Architecture decision index
 
 Status: ADR-01/02/03/04/06/07 are accepted architecture contracts; their
-product work and release-gate evidence remain open. The "Default"
+product work and release-gate evidence remain open. ADR-08 is proposed. The "Default"
 column is the direction the [specification](master-specification.md#31-required-architecture-decision-records)
 proposes. It is a starting hypothesis, and an accepted decision can differ from
 it. A dependent work package ([implementation-plan.md](implementation-plan.md))
@@ -25,7 +25,7 @@ Status values: *Not started* → *Draft* → *Proposed* (evidence attached) →
 | ADR-05 | DSL grammar and versioning | Small strict `.flm` format with typed mappings | Parser/fuzz/round-trip tests, meaningful PR review exercises, schema compatibility | No `.flm`. Decisions are stored as rows in `blueprint_review` and `decision`. | WP-30, WP-31 | Not started |
 | ADR-06 | Cross-revision entity identity | Exact immutable identity + explicit locator/correspondence model | Rename/move/schema/overload/root/engine-change fixtures; no silent rebind | Database objects keyed by bare name (G-SCHEMA-COLLIDE). Blueprint entity IDs derive from names. | **WP-04**, WP-11, WP-31 | Accepted (architecture only); [text](adr/ADR-06-entity-identity.md) |
 | ADR-07 | Git exchange synchronization | Separate operational store per worktree, content-identity detection and explicit semantic reconciliation; no native Git clone | Binding/recovery review; two-worktree, checkout/manual-edit, preview/apply race, conflict and origin-lineage tests | No 3.0 Git exchange or reconciliation service. `.formslang/` holds local databases. | WP-20 | Accepted architecture contract (2026-09-30); [text](adr/ADR-07-git-exchange-synchronization.md) |
-| ADR-08 | Frontend technology and component split | Reuse a lightweight maintainable stack unless a measured alternative wins | Bundle/offline/installer/security/accessibility/CI tradeoffs and real journey prototype | Server-rendered HTML/JS in Python strings, no build step, CSP `default-src 'none'`, one vendored library | WP-41 (WP-12 feeds it) | Not started |
+| ADR-08 | Frontend technology and component split | Reuse a lightweight maintainable stack unless a measured alternative wins | Bundle/offline/installer/security/accessibility/CI tradeoffs and real journey prototype | Server-rendered HTML/JS in Python strings, no build step, CSP `default-src 'none'`, one vendored library | WP-41 (WP-12 feeds it) | Proposed (2026-09-30), owner acceptance pending; [text](adr/ADR-08-frontend-stack.md) |
 | ADR-09 | Report definitions, metrics, and renderers | Shared domain data pipeline and versioned definitions | Reconciliations, complete authorized scope, safe offline HTML/PDF/CSV, packaging tests | Revision-fenced reports in HTML, Markdown, JSON, CSV and ZIP. No PDF, and no definitions stored as data. | WP-21, WP-50 | Not started |
 | ADR-10 | APEX adapter and generation granularity | Existing supported module-scoped capabilities first | Native-component mapping, closure, deterministic output, exact Oracle/target evidence | `apexlang.export_apexlang`, module-scoped, deterministic ZIP. The `target_adapter` registry is test-only. | WP-45 | Not started |
 | ADR-11 | Local versus supported team/server mode | Local-first; broader mode separately gated | Threat model, route/action matrix, cache isolation, proxy/configuration and operational tests | Loopback server. Authenticated mode with RBAC/MFA exists. | WP-60 | Not started |
