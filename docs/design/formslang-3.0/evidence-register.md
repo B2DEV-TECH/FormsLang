@@ -205,11 +205,19 @@ No gate is **passed**. The full 3.0 release is not complete.
   the final full run returned **1992 passed, 5 skipped, 3 xfailed** in 847.99 s,
   again with code held stable.
   An earlier full run was interrupted before the review correction and is
-  discarded. Final review remains pending; no CI result is yet claimed for
-  this follow-up commit.
-- ADR-06 remains Draft. Case C product entities, qualified call resolution,
+  discarded. The coordinating reviewer subsequently approved the architecture
+  after independent review of the corrected contract and three conservative
+  correspondence regressions.
+- The authorized rebase onto `main` at `7dbda54` preserved WP-10 and ADR-06
+  evidence. At `78599b5`, the composed focused suite returned **132 passed,
+  2 xfailed** in 8.77 s; Ruff and diff checks passed. CI run `36658549367`
+  began normally after the documentation conflict was resolved and was still
+  running when acceptance was authorized. Acceptance-head CI is separate.
+- ADR-06 is **Accepted (architecture only)** by a separate authorized commit
+  on 29 September 2026. Case C product entities, qualified call resolution,
   Blueprint/project parity, engine versioning and legacy compatibility are
-  still WP-04 work. No gate is closed by this probe.
+  still WP-04 work on a separate branch. WP-04/G-04 remain open, and historical
+  inventories are unchanged. No product gate is closed by this acceptance.
 
 ## Gates not started
 

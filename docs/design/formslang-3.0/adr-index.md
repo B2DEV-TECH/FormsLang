@@ -1,6 +1,7 @@
 # FormsLang 3.0 — Architecture decision index
 
-Status: **M1.** ADR-01/02/03 are Draft on WP-10; none is accepted. The "Default"
+Status: **M1.** ADR-01/02/03 are Draft on WP-10. ADR-06 is accepted for
+architecture only; WP-04/G-04 product exit remains open. The "Default"
 column is the direction the [specification](master-specification.md#31-required-architecture-decision-records)
 proposes. It is a starting hypothesis, and an accepted decision can differ from
 it. A dependent work package ([implementation-plan.md](implementation-plan.md))
@@ -22,7 +23,7 @@ Status values: *Not started* → *Draft* → *Proposed* (evidence attached) →
 | ADR-03 | Checkpoint and portable-history schema | Whole-state manifests with acyclic references and declared closure | Clean-workspace reopen, history coverage, report/artifact publication acyclicity | No checkpoints. `blueprint_snapshot` is a single overwritten row. | WP-20, WP-21 | Draft; [text](adr/ADR-03-checkpoint-schema.md) |
 | ADR-04 | Trust of imported history and approvals | Preserve provenance; no approval by imported text alone | Forged actor/state tests, trusted-backup versus untrusted-exchange behaviour | Actor derived on the server for review decisions. 1.x import has no product route. | WP-20, WP-22, WP-31 | Not started |
 | ADR-05 | DSL grammar and versioning | Small strict `.flm` format with typed mappings | Parser/fuzz/round-trip tests, meaningful PR review exercises, schema compatibility | No `.flm`. Decisions are stored as rows in `blueprint_review` and `decision`. | WP-30, WP-31 | Not started |
-| ADR-06 | Cross-revision entity identity | Exact immutable identity + explicit locator/correspondence model | Rename/move/schema/overload/root/engine-change fixtures; no silent rebind | Database objects keyed by bare name (G-SCHEMA-COLLIDE). Blueprint entity IDs derive from names. | **WP-04**, WP-11, WP-31 | Draft; [text](adr/ADR-06-entity-identity.md) |
+| ADR-06 | Cross-revision entity identity | Exact immutable identity + explicit locator/correspondence model | Rename/move/schema/overload/root/engine-change fixtures; no silent rebind | Database objects keyed by bare name (G-SCHEMA-COLLIDE). Blueprint entity IDs derive from names. | **WP-04**, WP-11, WP-31 | Accepted (architecture only); [text](adr/ADR-06-entity-identity.md) |
 | ADR-07 | Git exchange synchronization | Explicit preview/apply; external-change detection; no native Git clone | Branch/worktree/checkout/conflict tests; origin-local revision handling | Nothing exists. `.formslang/` holds local databases. | WP-20 | Not started |
 | ADR-08 | Frontend technology and component split | Reuse a lightweight maintainable stack unless a measured alternative wins | Bundle/offline/installer/security/accessibility/CI tradeoffs and real journey prototype | Server-rendered HTML/JS in Python strings, no build step, CSP `default-src 'none'`, one vendored library | WP-41 (WP-12 feeds it) | Not started |
 | ADR-09 | Report definitions, metrics, and renderers | Shared domain data pipeline and versioned definitions | Reconciliations, complete authorized scope, safe offline HTML/PDF/CSV, packaging tests | Revision-fenced reports in HTML, Markdown, JSON, CSV and ZIP. No PDF, and no definitions stored as data. | WP-21, WP-50 | Not started |

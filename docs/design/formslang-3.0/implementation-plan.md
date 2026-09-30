@@ -47,7 +47,9 @@ separate on Draft PR #23; a fix waits for a logged cause. WP-08's independent
 audit corrected a collision merge regression, lexical decoys, quoted member
 loss and invalid package `SHARING` options; see the evidence register. Three
 strict xfails remain visible, including the supported-CREATE/assessment gap.
-WP-04 waits for ADR-06. The post-merge `main` CI had an intermittent
+ADR-06 is accepted for architecture after independent probe review; WP-04 may
+begin on a separate product branch, and its product exit/G-04 remain open.
+The post-merge `main` CI had an intermittent
 Windows/Python 3.13 HTTP 500 in a job-status read; its cause is unknown and it
 does not prove an issue #20 `ProjectBusy`/409 mechanism.
 

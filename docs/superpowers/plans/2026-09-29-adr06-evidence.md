@@ -28,7 +28,7 @@
 1. [x] Add failing probe tests for occurrence identity, analysis-bound IDs, quoted declaration keys, qualified/ambiguous references, overloads and missing bodies.
 2. [x] Extend only `examples/verify/entity_identity_contract.py` until those tests pass; run the focused identity and historical compatibility suites.
 3. [x] Run repository Ruff, full pytest and diff checks with code files stable; record exact evidence. Repeated full suite after the final root-plus-key review correction.
-4. [ ] Review the acceptance evidence and update ADR-06/index in a separate acceptance commit if sufficient. Keep WP-04/G-04 open.
+4. [x] Review the acceptance evidence and update ADR-06/index in a separate acceptance commit if sufficient. Keep WP-04/G-04 open.
 5. [ ] Coordinate the separate product implementation branch and its test-first plan after acceptance.
 
 ## Review checkpoint
@@ -44,5 +44,7 @@ of this evidence commit.
 A further review case changes both root and key. It failed before the probe
 withheld `REMOVED` for a populated scope lacking the original root. Related
 tests and Ruff pass; the final full suite after this correction returned
-1992 passed, 5 skipped, 3 xfailed in 847.99 s. ADR acceptance still awaits the
-coordinator's independent review and separate authorization.
+1992 passed, 5 skipped, 3 xfailed in 847.99 s. The coordinator subsequently
+completed independent review and explicitly authorized architecture acceptance
+on 29 September 2026. The separate acceptance commit leaves WP-04/G-04 open;
+product implementation starts in another isolated branch/worktree.

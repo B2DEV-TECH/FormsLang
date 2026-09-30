@@ -1,8 +1,9 @@
 # ADR-06 — Oracle entity identity and cross-revision correspondence
 
-Status: **Draft**. Architecture acceptance requires the probe evidence below;
-WP-04 product exit evidence is a separate gate. WP-04 must not change product
-identity keys until this ADR is accepted.
+Status: **Accepted (architecture only)**, 29 September 2026, after independent
+review of the probe, alternatives and compatibility boundary. WP-04 may now
+implement this contract on its separate product branch. WP-04 product exit
+evidence and gate G-04 remain open.
 
 ## Context
 
@@ -22,7 +23,7 @@ Treating any of them as a universal name would silently join unrelated evidence.
 3. Use a typed canonical key within a pinned analysis, keep source occurrences
    separately, and represent cross-revision correspondence explicitly.
 
-The proposed decision is **3**.
+The accepted decision is **3**.
 
 The typed key preserves Oracle equivalence without depending on a printable
 label. Separate occurrences prevent a repeated export or redeclaration from
@@ -31,7 +32,7 @@ symbol name from acting as permission to reuse a prior decision. The cost is
 more explicit unresolved results and a new engine version for product facts;
 those costs are preferable to attaching evidence or approval to the wrong object.
 
-## Proposed contract
+## Accepted contract
 
 - An Oracle database symbol key is a typed tuple: object kind, optional schema
   identifier, object identifier, optional package membership, and an overload
@@ -145,11 +146,31 @@ transfer.
   After the root-plus-key correction, the final full run returned
   **1992 passed, 5 skipped, 3 xfailed** in 847.99 s with code held stable.
   The WP-08 inventory generator check passed; product code and historical
-  `inventory-2.2.json` remain unchanged from `360ab80`. The coordinator's final
-  review and a separate acceptance commit are required before Accepted status.
+  `inventory-2.2.json` remain unchanged from `360ab80`.
 - **Existing CI:** Draft PR #32 head `360ab8081d9855310e5029d1e070dc2399c04d78`,
   run `36633010065`, passed 13/13 checks. This evidence predates the new probe
   cases and is not represented as CI for their future commit.
+
+### Independent architecture review and acceptance
+
+The coordinating reviewer independently reviewed the final probe and contract,
+including the three conservative correspondence regressions: changed key at the
+same locator, an unrelated object in that file, and simultaneous root/key change.
+On 29 September 2026 the reviewer explicitly authorized this separate acceptance
+commit. The typed-key alternative is accepted because the fixture evidence
+preserves Oracle spelling, distinct occurrences and explicit uncertainty without
+inferring schema, runtime equivalence or approval transfer.
+
+The eight ADR commits were rebased onto `main` at `7dbda54`, preserving the WP-10
+evidence. At `78599b5`, the probe, its tests and this contract were unchanged by
+that rebase; the composed focused suite returned **132 passed, 2 xfailed** in
+8.77 s, with Ruff and diff checks passing. CI run `36658549367` on that exact
+head was still running when acceptance was authorized. The acceptance commit
+requires its own CI result; no previous result is relabelled as that result.
+
+This decision accepts the architecture only. The product criteria below,
+WP-04/G-04, Oracle runtime validation and any cross-revision approval transfer
+remain unproved or outside this slice. Historical inventories are not rewritten.
 
 ### Earlier probe evidence
 
