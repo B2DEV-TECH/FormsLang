@@ -132,7 +132,7 @@ Found during WP-07. WP-08A/B/C in Draft PR #24 now inventory
 every package declaration in source order, recognise the listed package
 header clauses, and split an isolated SQLcl `/` so following statements are
 read. The original `inventory-2.2.json` remains historical; the current
-characterization is `inventory-wp08.json`. This does not implement ADR-06:
+WP-08 characterization is `inventory-wp08.json`. WP-08 does not implement ADR-06:
 when same-name packages collide, the new inventory shows each owner and
 `AMBIGUOUS_BARE_NAME`, while the Blueprint withholds the bare-name projection
 instead of claiming a resolved target.
@@ -160,6 +160,25 @@ WP-10 and WP-20), not to the DDL parser. The revision semantics are unchanged
 until then.
 
 ### G-SCHEMA-COLLIDE — same-named packages in two schemas collapse into one
+
+**WP-04 package slice, in progress (`blueprint-analysis/5`).** The accepted
+ADR-06 now has a product path for package specs, bodies and members when the
+analysis has an explicit complete byte manifest. The direct input boundary
+stages and hashes every supplied source, including zero-object SQL; project
+analysis uses its existing validated `analysis_revision`. Case C keeps both
+owners, resolves qualified calls and reports the bare call as `AMBIGUOUS`,
+with candidate IDs. Duplicate declarations and incomplete overload information
+cannot choose a winner. The new current snapshot is `inventory-wp04.json`;
+earlier inventory files remain byte-for-byte historical.
+
+This slice does not close G-04. Tables/views/sequences still use conservative
+legacy projections; quoted-call extraction and broader Oracle grammar remain
+separate limits. A model-only Blueprint without complete byte provenance
+reports identity `UNAVAILABLE` and emits no new analysis-bound package IDs.
+The direct `source_revision` gap above is unchanged; the new package identity
+namespace is explicitly separate. Existing saved analyses are never upgraded.
+
+The following describes the original 2.2 measurement:
 
 `DatabaseProject.package_specs` and `package_bodies` are keyed by bare name
 (`formslang/database.py:654`, `:660`). Two `ORDER_API` packages in different

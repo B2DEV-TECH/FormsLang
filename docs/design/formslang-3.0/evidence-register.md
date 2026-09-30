@@ -230,6 +230,93 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Decision (2026-09-30):** An imported package's integrity, origin trust, decision applicability and receiving authorization are separate. A trusted clean restore needs an independently retained exact-root receipt and authorized custodian; ordinary Git/review exchange cannot activate a claimed approval. Git is an explicit transport for portable files, with separate operational stores per worktree and content-identity reconciliation. The documented threat/outcome tables and the existing legacy migration preservation behavior support this boundary choice; no product 3.0 import route exists yet.
 - **Boundary:** WP-20 must prove forged claim rejection, trusted versus unverified imports, retained receipt recovery, separate worktrees, external-change detection, preview/apply fences and conflict behavior. WP-22 must preserve legacy history without inventing current authorization. G-02 and G-03 remain open.
 
+## WP-04 package identity slice (separate product branch)
+
+- Built from architecture acceptance `f04561a`, under the
+  [WP-04 product plan](../../superpowers/plans/2026-09-29-wp04-product.md).
+  Ordered package occurrences supply typed owner/name/member/signature keys;
+  duplicate declarations and overloads stay distinct. Case C retains both
+  schemas, resolves the explicit schema calls and records bare ambiguity.
+- The original Case C end-to-end test failed with zero package specifications
+  instead of two. Separate namespace and input-capture tests also failed before
+  implementation. The same Case C assertions now pass through the direct I/O
+  boundary, which supplies the bytes required for new identity. Model-only and
+  missing-byte negative tests still forbid new analysis-bound IDs.
+- Project IDs use the validated project `analysis_revision`. Direct loading
+  stages and hashes all supplied bytes, including zero-object SQL and Forms,
+  and includes analysis context and engine identity. A changed zero-object file
+  changes the namespace; repeated builds remain deterministic. A real project
+  fixture verifies namespace equality with the published assessment and the
+  same eight Case C package facts as direct loading. Tampered namespaces fail
+  assessment validation.
+- The engine is `blueprint-analysis/5`; the new current characterization is
+  `inventory-wp04.json`. Historical inventories for 2.2, M0, WP-07 and WP-08
+  compare byte for byte with the accepted ADR branch. No historical assessment
+  or inventory is rewritten, and the existing `source_revision` formula and
+  three pinned WP-08 gap tests are unchanged.
+- Final focused Blueprint/project/database regressions: **285 passed, 1 skipped,
+  3 xfailed in 22.55 s** on Windows 11 / Python 3.13.15. Estate, synthetic review
+  scale and direct-input shape regressions: **24 passed in 79.17 s**. Ruff,
+  `git diff --check` and the current inventory generator check pass.
+- The first frozen full run returned **3 failed, 2028 passed, 5 skipped,
+  4 xfailed in 860.36 s**. Two positive estate fixtures lacked the schema evidence
+  now required for a resolved package bridge; their positive assertions now use
+  explicit owners, with a separate ownerless negative. A synthetic scale fixture
+  incorrectly retained the prior namespace after replacing its entire graph;
+  that unrelated metadata is no longer copied. No product validation was weakened.
+  The next frozen full run passed **2039 tests, with 5 skipped and 4 xfailed in
+  854.63 s**. The fourth xfail is inherited from the composed main baseline.
+- Further consumer/revision review added ten failing tests before corrections:
+  occurrence totals across direct/discovery/assessment, onboarding statistics,
+  quoted owner/package case in inventory and System Map, and separation of
+  direct-only engine module hashes from project engine identity. The ten tests
+  then passed in 2.78 s. Occurrence counters are additive and old snapshots keep
+  their fallback. Typed projection groups use exact root/owner/name components;
+  row IDs derive from existing analysis-bound entity IDs. Direct-only module
+  changes no longer invalidate project assessments. The 2039-test full result
+  predates these corrections.
+- Expanded focused regressions for those changes returned **423 passed, 3 skipped,
+  3 xfailed in 108.25 s**. A further test confirms stable package row IDs for
+  repeated direct/project analysis and reversed spec/body input order, using the
+  engine's existing sorted entity output. Row IDs belong to one analysis
+  snapshot; changed bytes create new IDs, without a cross-revision correspondence
+  claim. This additional test passed in 0.96 s.
+- The final frozen full run after these corrections and the stability test passed
+  **2050 tests, with 5 skipped and 4 xfailed in 861.28 s** on Python 3.13.15.
+  This validates the product tree based on accepted ADR head `f04561a`, before
+  the coordinator-authorized rebase onto main; composed verification is separate.
+- Both authorized own-commit rebases, first onto accepted ADR main `01ee926`
+  and then onto WP-12 main `8fa55f9`, were conflict-free with identical
+  range-diffs. Backups preserve `d804f0f` and `35f2317`. Final composed focused
+  regressions including journey/UI passed **433 tests, with 3 skipped and
+  3 xfailed in 128.05 s**. Ruff, diff and current inventory checks pass.
+  Historical inventory worktree bytes and Git blobs are identical. The merged
+  WP-12 project service is unchanged; final exact-head PR CI is still required
+  before integration. Post-rebase evidence updates change only documentation.
+- After ADR-02 PR #37 merged as `dc16e006`, the coordinator authorized another
+  own-commit rebase. Backup `codex/backup-wp04-product-before-adr02-20260930`
+  preserves `c911c9d`. The sole conflict appended evidence to this register;
+  both the ADR-01/02/03 acceptance and WP-04 sections were retained. Range-diff
+  changes only the documentation context. Production, tests, example scripts
+  and inventories are identical to `c911c9d`. Composed identity/project/journey
+  regressions passed **103 tests in 34.89 s**; Ruff, diff and current inventory
+  checks pass, and all five inventory files are byte-identical to their backup
+  Git blobs. A new exact-head PR CI run remains required before integration.
+- After ADR-04/07 PR #35 merged as `4debafa`, another authorized own-commit
+  rebase preserved `c75b234` at
+  `codex/backup-wp04-product-before-adr04-07-20260930`. The sole evidence-register
+  conflict retained the merged main text exactly outside this WP-04 section,
+  including ADR-04/07 acceptance and the corrected open-gate statement.
+  Production, tests, examples and all five inventory bytes remain identical to
+  `c75b234`; range-diff changes only documentation context and this evidence.
+  Focused identity/project/journey tests passed **103 tests in 34.44 s**. Ruff,
+  diff and current inventory checks passed. Exact-head CI on the newly composed
+  PR head is required; earlier CI does not validate this final composition.
+- This is a package-only slice. Tables, views and sequences, additional parser
+  grammar, quoted-call extraction and the remaining ADR-06 product exit still
+  require work. WP-04/G-04 remain open. No runtime Oracle proof or release claim
+  is made by this evidence.
+
 ## Gates still open
 
 No gate listed above has met its complete 3.0 release criterion. Architecture

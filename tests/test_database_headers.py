@@ -106,7 +106,7 @@ def test_exported_package_headers_reach_the_blueprint(tmp_path):
                                     " PROCEDURE X IS BEGIN NULL; END X; END P;\n/\n")
     bp = blueprint.build([], title="headers", database_sources=tmp_path)
     # A saved assessment made before this engine lacks these packages.
-    assert bp["engine_version"].startswith("blueprint-analysis/4+")
+    assert bp["engine_version"].startswith("blueprint-analysis/5+")
     kinds = sorted((e["type"], e["name"]) for e in bp["entities"]
                    if e["type"] in {"PACKAGE_SPEC", "PACKAGE_BODY", "SUBPROGRAM_BODY"})
     assert kinds == [("PACKAGE_BODY", "P"), ("PACKAGE_SPEC", "P"), ("SUBPROGRAM_BODY", "P.X")]

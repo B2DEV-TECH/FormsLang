@@ -5,12 +5,12 @@ from __future__ import annotations
 import time
 from dataclasses import asdict
 
-from . import blueprint
+from . import blueprint, database_identity
 from .project_assessment import bind_assessment
 from .project_conversion import discover_project_sources, intake_options
 from .project_discovery import DB_FAMILIES
 from .project_jobs import AnalysisCancelled, ProjectJobManager, now
-from .project_manifest import engine_identity, source_revision
+from .project_manifest import analysis_revision, engine_identity, source_revision
 from .project_model import ProjectError, canonical_json
 from .project_sources import fingerprint_inputs, parse_staged, stage_sources
 
@@ -87,9 +87,15 @@ def analyze_project(access, *, expected_revision, expected_configuration, author
                         'Select Forms2XML and supported database source, then retry.'))
                 else:
                     phase('BLUEPRINT')
+                    configured = {**options, '_target': asdict(descriptor.target)}
+                    revision = analysis_revision(source_revision(staged.manifest, options['intake']),
+                                                 engines, configured)
+                    scope = database_identity._analysis_scope(staged.manifest, engines=engines,
+                        options=configured, project_revision=revision,
+                        required_source_ids=[entry.source_id for entry in staged.manifest])
                     payload = blueprint.build(parsed.modules, title=descriptor.name,
                         source_keys=parsed.source_keys, database_sources=parsed.database,
-                        failures=[asdict(d) for d in material])
+                        failures=[asdict(d) for d in material], _database_identity_scope=scope)
                     checkpoint()
                     phase('ASSESSMENT')
                     incomplete = bool(material) or any(e.selected and e.status != 'available' for e in staged.manifest)

@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import database, parser
+from . import database, database_identity, parser
 from .project_manifest import SourceCandidate, relative_source_path, source_id
 from .project_model import ProjectDescriptor, ProjectError, SourceRoot, validate_descriptor
 from .projects import ProjectAccess
@@ -106,6 +106,7 @@ def _inspect(path: Path) -> tuple[str, dict]:
                 return ('UNSUPPORTED_XML' if 'no <FormModule>' in str(exc) else 'INVALID_XML'), {}
         parsed = database.parse_database_file(staged)
         counts = {family: len(getattr(parsed, family)) for family in DB_FAMILIES}
+        counts.update(database_identity.package_occurrence_counts(parsed))
         supported = any(counts.values())
         counts['_package_names'] = sorted(set(parsed.package_specs) | set(parsed.package_bodies))
         return ('SUPPORTED' if supported else 'UNSUPPORTED_SQL'), counts
@@ -118,6 +119,8 @@ def discover_sources(access: ProjectAccess, descriptor: ProjectDescriptor, *,
     entries, diagnostics = [], []
     physical_files, visited = set(), set()
     db_counts = Counter({family: 0 for family in DB_FAMILIES})
+    if preview:
+        db_counts.update({'package_spec_occurrences': 0, 'package_body_occurrences': 0})
     package_names = set()
     traversed = 0
 

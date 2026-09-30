@@ -18,7 +18,7 @@ The difference between those layers is the phase-2 enrichment inventory. The
 output is deterministic: no timestamps, no absolute paths, sorted keys.
 
     python examples/verify/ecosystem_inventory.py --output inventory.json
-    python examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-wp08.json
+    python examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-wp04.json
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -33,7 +34,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from formslang import blueprint, database, hotspots
+from formslang import blueprint_io, hotspots
 from formslang.parser import parse_xml
 
 NS = "{http://xmlns.oracle.com/Forms}"
@@ -280,6 +281,8 @@ def explorer_resolution(target_type: str, raw_resolution: str, *, schema_aware: 
         return {"resolution": "LEGACY_RESOLVED", "caveat": "SCHEMA_COLLISION_NOT_VERIFIABLE"}
     if raw_resolution == "SYMBOLIC_REFERENCE":
         return {"resolution": "UNRESOLVED"}
+    if raw_resolution in {'UNRESOLVED', 'AMBIGUOUS'}:
+        return {'resolution': raw_resolution}
     return None
 
 
@@ -298,7 +301,8 @@ def _outgoing(bp, entity_id, *, skip=("INVOKES_BUILTIN",), schema_aware=False):
             "resolution": target.get("resolution") or target["attributes"].get("resolution") or "",
             "resolved_target": names[target["resolved_target"]]["name"] if target.get("resolved_target") else "",
         })
-        explorer = explorer_resolution(target["type"], rows[-1]["resolution"], schema_aware=schema_aware)
+        explorer = explorer_resolution(target["type"], rows[-1]["resolution"],
+                                       schema_aware=schema_aware or target.get('schema_aware', False))
         if explorer:
             rows[-1]["explorer_resolution"] = explorer
     return sorted(rows, key=lambda r: (r["type"], r["target_type"], r["target"]))
@@ -358,8 +362,9 @@ def measure_corpus(name: str, spec: dict) -> dict:
     db_paths = _paths(spec["database"], suffixes=DATABASE_SUFFIXES,
                       exclude_parts=spec.get("exclude_database_parts", ()))
     modules = [parse_xml(p) for p in forms]
-    bp = blueprint.build(modules, title=name, source_keys=[p.name for p in forms],
-                         database_sources=database.parse_database_sources(db_paths) if db_paths else None)
+    with tempfile.TemporaryDirectory(prefix='formslang-inventory-') as output:
+        bp = blueprint_io.load(forms[0].parent if len(forms) > 1 else forms[0], Path(output),
+                               title=name, database_sources=db_paths if db_paths else None)
     visual = {}
     for path, module in zip(forms, modules):
         visual[module.name] = parsed_visual(module, declared_visual(path))

@@ -56,7 +56,8 @@ function newProject(target) {
 function projectButton(id,label,primary=false,name=''){const named=name?` aria-label="${esc(name)}" title="${esc(name)}"`:'';return `<button type="button" class="btn ${primary?'primary':''}" id="${id}"${named}>${esc(label)}</button>`;}
 function projectStats(inventory={}) {
   const f=inventory.forms||{},d=inventory.database||{};
-  const counts=[['Forms candidates',f.discovered],['Forms XML supported',f.parseable],['Forms analyzed',f.analyzed],['FMB needing XML',f.fmb_without_xml],['Database packages',d.packages],['Tables',d.tables],['Views',d.views],['Source warnings',inventory.warnings]];
+  const packages=Number.isInteger(d.package_spec_occurrences)&&Number.isInteger(d.package_body_occurrences)?[['Package specification occurrences',d.package_spec_occurrences],['Package body occurrences',d.package_body_occurrences]]:[['Database packages',d.packages]];
+  const counts=[['Forms candidates',f.discovered],['Forms XML supported',f.parseable],['Forms analyzed',f.analyzed],['FMB needing XML',f.fmb_without_xml],...packages,['Tables',d.tables],['Views',d.views],['Source warnings',inventory.warnings]];
   return '<dl class="project-stats">'+counts.filter(([,n])=>Number.isInteger(n)).map(([label,n])=>`<div><dt>${esc(label)}</dt><dd>${n}</dd></div>`).join('')+'</dl>';
 }
 function projectSourceList(draft) {

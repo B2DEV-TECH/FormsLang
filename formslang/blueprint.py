@@ -17,6 +17,8 @@ from . import dashboard, database, depgraph, modernization, plsql, risk, rules
 from .analysis import ENGINE_VERSION as ANALYSIS_ENGINE_VERSION
 from .analysis import analyze_unit
 from .assess import PortfolioAssessment, assess_module
+from .blueprint_database import _PackageProjection
+from .database_identity import package_occurrence_counts
 from .model import FormModule
 from .plsql_evidence import VERSION as LEXER_VERSION
 from .store import PENDING, TaskView
@@ -26,7 +28,9 @@ VERSION = "blueprint/1"
 # blueprint-analysis/4: every package CREATE is inventoried; ambiguous bare-name
 # projections are withheld instead of choosing one schema's declaration.
 # database source coverage.
-ENGINE_VERSION = f"blueprint-analysis/4+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
+# /5 adds analysis-bound package identities when an exact input scope is supplied.
+# Older/model-only projections retain their explicit legacy limitations.
+ENGINE_VERSION = f"blueprint-analysis/5+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
 # MOVE_TO_PLSQL_API and REPLACE_WITH_APEX_NATIVE are outcomes the cross-layer
 # reasoning can reach: logic that belongs in a database API, and logic the target
 # platform already provides natively. Both are decisions, not partial results.
@@ -496,9 +500,10 @@ def _object_finding(b, nid, signal, proof, categories):
 
 
 def _ingest_database_sources(b: _Builder, db: database.DatabaseProject,
-                             forms: dict, referenced: frozenset):
+                             forms: dict, referenced: frozenset, identity_scope=None):
     """Ingest the database layer and reason across it and the forms that use it."""
     db_subprograms: dict = {}
+    packages = _PackageProjection(db, identity_scope)
     # 1. Ingest tables
     for table_name, tbl in db.tables.items():
         proof = b.proof(tbl.source_file, table_name, f"Database table definition: {table_name}", source=tbl.source_file)
@@ -538,13 +543,14 @@ def _ingest_database_sources(b: _Builder, db: database.DatabaseProject,
                         b.edge(vid, target_tid, "READS", read_proof)
 
     # 3. Ingest package specs
-    for pkg_name, spec in db.package_specs.items():
+    for pkg_name, spec, declaration in packages.rows('PACKAGE'):
         proof = b.proof(spec.source_file, pkg_name, f"Database package spec: {pkg_name}", source=spec.source_file)
         pkg_nid = b.node("PACKAGE_SPEC", pkg_name, spec.source_file, evidence=[proof],
                          constants=[c.to_dict() for c in spec.constants],
-                         source_file=spec.source_file, comment=spec.comment)
+                         source_file=spec.source_file, comment=spec.comment,
+                         **packages.attributes(declaration))
         b.edge(b.app, pkg_nid, "CONTAINS", proof)
-        b.local["database", "package_spec", pkg_name] = pkg_nid
+        packages.register(b, 'package_spec', pkg_name, pkg_nid, declaration)
 
         # A specification that declares business constants is a finding in
         # itself: changing a rate then means recompiling code.
@@ -552,7 +558,8 @@ def _ingest_database_sources(b: _Builder, db: database.DatabaseProject,
             const_proof = b.proof(spec.source_file, pkg_name, "Package spec declares hardcoded business constants", source=spec.source_file)
             cid = b.node("CONSTANT_DECLARATION", f"{pkg_name}.CONSTANTS", spec.source_file, evidence=[const_proof],
                          constants=[c.to_dict() for c in spec.constants], source_entity=pkg_nid,
-                         package=pkg_name, constant=spec.constants[0].name)
+                         package=pkg_name, constant=spec.constants[0].name,
+                         **packages.attributes(declaration, -1))
             b.edge(pkg_nid, cid, "CONTAINS", const_proof)
             b.findings[cid] = {
                 "id": cid, "entity": cid, "recommendation": "REFACTOR",
@@ -568,32 +575,36 @@ def _ingest_database_sources(b: _Builder, db: database.DatabaseProject,
             b.entities[cid]["attributes"]["risk"] = {"level": "MEDIUM", "basis": "Hardcoded constants in package specification"}
 
         # Subprogram specs
-        for sub in spec.subprograms:
-            full_sub_name = f"{pkg_name}.{sub.name}".upper()
+        for member_index, sub in enumerate(spec.subprograms, 1):
+            full_sub_name = packages.member_name(pkg_name, sub.name, declaration)
             sub_proof = b.proof(spec.source_file, full_sub_name, f"Package subprogram spec: {full_sub_name}", source=spec.source_file)
             sub_nid = b.node("PACKAGE_SUBPROGRAM", full_sub_name, spec.source_file, evidence=[sub_proof],
                              subprogram_type=sub.subprogram_type, parameters=[p.to_dict() for p in sub.parameters],
-                             return_type=sub.return_type, package=pkg_name, procedure=sub.name)
+                             return_type=sub.return_type, package=pkg_name, procedure=sub.name,
+                             **packages.attributes(declaration, member_index))
             b.edge(pkg_nid, sub_nid, "DECLARES", sub_proof)
-            b.local["database", "package_subprogram", full_sub_name] = sub_nid
+            packages.register(b, 'package_subprogram', full_sub_name, sub_nid, declaration, member_index)
 
     # 4. Ingest package bodies
-    for pkg_name, body in db.package_bodies.items():
+    for pkg_name, body, declaration in packages.rows('PACKAGE BODY'):
         proof = b.proof(body.source_file, pkg_name, f"Database package body: {pkg_name}", source=body.source_file)
-        body_nid = b.node("PACKAGE_BODY", pkg_name, body.source_file, evidence=[proof], source_file=body.source_file)
+        body_nid = b.node("PACKAGE_BODY", pkg_name, body.source_file, evidence=[proof],
+                          source_file=body.source_file, **packages.attributes(declaration))
         b.edge(b.app, body_nid, "CONTAINS", proof)
-        b.local["database", "package_body", pkg_name] = body_nid
+        packages.register(b, 'package_body', pkg_name, body_nid, declaration)
 
-        for sub in body.subprograms:
-            full_sub_name = f"{pkg_name}.{sub.name}".upper()
+        for member_index, sub in enumerate(body.subprograms, 1):
+            full_sub_name = packages.member_name(pkg_name, sub.name, declaration)
             sub_proof = b.proof(body.source_file, full_sub_name, f"Package body subprogram: {full_sub_name}", source=body.source_file)
             sub_body_nid = b.node("SUBPROGRAM_BODY", full_sub_name, body.source_file, evidence=[sub_proof],
                                   subprogram_type=sub.subprogram_type, parameters=[p.to_dict() for p in sub.parameters],
-                                  return_type=sub.return_type, package=pkg_name, procedure=sub.name)
+                                  return_type=sub.return_type, package=pkg_name, procedure=sub.name,
+                                  **packages.attributes(declaration, member_index))
             b.edge(body_nid, sub_body_nid, "IMPLEMENTS", sub_proof)
-            b.local["database", "subprogram_body", full_sub_name] = sub_body_nid
+            packages.register(b, 'subprogram_body', full_sub_name, sub_body_nid, declaration, member_index)
 
-            spec_sub_nid = b.local.get(("database", "package_subprogram", full_sub_name))
+            spec_sub_nid = (packages.implementation(declaration, member_index) if packages.scope else
+                            b.local.get(("database", "package_subprogram", full_sub_name)))
             if spec_sub_nid:
                 b.edge(sub_body_nid, spec_sub_nid, "IMPLEMENTS", sub_proof)
 
@@ -615,7 +626,12 @@ def _ingest_database_sources(b: _Builder, db: database.DatabaseProject,
             for event in src_unit.get("events", []):
                 if event.get("kind") == "CALL":
                     cname = event.get("name", "").upper()
-                    dst_nid = b.local.get(("database", "subprogram_body", cname)) or b.local.get(("database", "package_subprogram", cname))
+                    if packages.scope:
+                        resolution = packages.resolve(cname)
+                        dst_nid = (packages.ids.get(resolution.candidates[0])
+                                   if resolution.status == 'RESOLVED' else None)
+                    else:
+                        dst_nid = b.local.get(("database", "subprogram_body", cname)) or b.local.get(("database", "package_subprogram", cname))
                     if dst_nid:
                         call_proof = b.proof(src_unit["module"], f"{src_unit['name']}->{cname}", f"Package cross-call to {cname}", source=src_unit["module"])
                         b.edge(src_nid, dst_nid, "CALLS", call_proof)
@@ -630,6 +646,17 @@ def _ingest_database_sources(b: _Builder, db: database.DatabaseProject,
                 entity["resolution"] = "RESOLVED_TO_DATABASE_OBJECT"
                 entity["resolved_target"] = tbl_nid
         elif etype in {"ROUTINE_REFERENCE", "PACKAGE_REFERENCE"}:
+            if packages.scope:
+                resolution = packages.resolve(entity['name'], package=etype == 'PACKAGE_REFERENCE')
+                entity['resolution'] = ('RESOLVED_TO_DATABASE_OBJECT' if resolution.status == 'RESOLVED'
+                                        else resolution.status)
+                entity['attributes']['resolution'] = entity['resolution']
+                entity['resolution_reason'] = resolution.reason
+                entity['resolution_candidates'] = sorted(packages.ids[s] for s in resolution.candidates)
+                entity['schema_aware'] = True
+                if resolution.status == 'RESOLVED':
+                    entity['resolved_target'] = packages.ids[resolution.candidates[0]]
+                continue
             sub_nid = b.local.get(("database", "package_subprogram", ename)) or b.local.get(("database", "subprogram_body", ename)) or b.local.get(("database", "package_spec", ename))
             if sub_nid:
                 entity["resolution"] = "RESOLVED_TO_DATABASE_OBJECT"
@@ -676,10 +703,12 @@ def _ingest_database_sources(b: _Builder, db: database.DatabaseProject,
             proof = b.proof(vw.source_file, view_name, signal.statement or signal.reason,
                             source=vw.source_file)
             _object_finding(b, vid, signal, proof, ["DATA_ACCESS"])
+    return packages.scope
 
 
 def build(modules: list[FormModule], *, title="Forms application", source_keys=None,
-          enterprise=False, failures=None, metadata=None, database_sources=None) -> dict:
+          enterprise=False, failures=None, metadata=None, database_sources=None,
+          _database_identity_scope=None) -> dict:
     keys = source_keys or [Path(m.source_path).name or m.name for m in modules]
     if len(keys) != len(modules) or len(set(keys)) != len(keys):
         raise ValueError("source keys must uniquely identify every module")
@@ -692,13 +721,15 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
         b.unit(nid, unit)
     _metadata(b, metadata or [])
     db_proj = None
+    database_scope = None
     if database_sources is not None:
         if isinstance(database_sources, database.DatabaseProject):
             db_proj = database_sources
         else:
             db_proj = database.parse_database_sources(database_sources)
         forms_blocks, forms_referenced = _form_context(ordered)
-        _ingest_database_sources(b, db_proj, forms_blocks, forms_referenced)
+        database_scope = _ingest_database_sources(b, db_proj, forms_blocks, forms_referenced,
+                                                  _database_identity_scope)
     api = _api_candidates(b)
     _structure_findings(b)
     outgoing = defaultdict(set)
@@ -746,10 +777,14 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
         "architecture": _architecture(b, api)}
     if db_proj:
         result["database"] = {
+            "identity": {"basis": database_scope.basis if database_scope is not None else 'UNAVAILABLE',
+                         "analysis_identity": database_scope.identity if database_scope is not None else None,
+                         "scope": "PACKAGE_DECLARATIONS_ONLY"},
             "tables": len(db_proj.tables),
             "views": len(db_proj.views),
             "package_specs": len(db_proj.package_specs),
             "package_bodies": len(db_proj.package_bodies),
+            **package_occurrence_counts(db_proj),
             "package_declarations": [d.to_dict() for d in db_proj.package_declarations],
             "sequences": len(db_proj.sequences),
             "files": sorted(db_proj.files),

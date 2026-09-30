@@ -344,6 +344,16 @@ def _priority_key(row):
     )
 
 
+def _typed_package_key(entity):
+    attributes = entity.get('attributes') or {}
+    symbol = attributes.get('symbol_key')
+    if attributes.get('analysis_identity') and isinstance(symbol, (list, tuple)) and len(symbol) >= 3:
+        module = _logical_name(entity.get('module'))
+        root = module.split('/', 1)[0] if '/' in module else ''
+        return root, symbol[1], symbol[2]
+    return None
+
+
 def _package_rows(entities, findings_by_entity, edges):
     packages = {}
     for node in entities.values():
@@ -352,11 +362,14 @@ def _package_rows(entities, findings_by_entity, edges):
         module = _logical_name(node.get("module"))
         root_scope = module.split("/", 1)[0].casefold() if "/" in module else ""
         name = _text(node.get("name"), 500)
-        key = (root_scope, name.casefold())
+        typed_key = _typed_package_key(node)
+        key = typed_key or (root_scope, name.casefold())
+        if typed_key:
+            root_scope = typed_key[0]
         row = packages.setdefault(
             key,
             {
-                "id": f"package:{root_scope}:{name.casefold()}",
+                "id": 'package:' + node['id'] if typed_key else f"package:{root_scope}:{name.casefold()}",
                 "name": name,
                 "type": "PACKAGE",
                 "module": root_scope,
@@ -383,7 +396,7 @@ def _package_rows(entities, findings_by_entity, edges):
             package = _text(attributes.get("package"), 500)
             module = _logical_name(node.get("module"))
             root_scope = module.split("/", 1)[0].casefold() if "/" in module else ""
-            key = (root_scope, package.casefold())
+            key = _typed_package_key(node) or (root_scope, package.casefold())
             routine_counts[key] += 1
             if key in packages:
                 packages[key]["_member_ids"].append(node["id"])
@@ -1128,7 +1141,8 @@ def _build_architecture_graph(prepared: PreparedProjection) -> dict:
     def package_key(entity, name):
         # Same-named packages from different source roots stay distinct, as in Inventory.
         module = _logical_name(entity.get("module"))
-        return (module.split("/", 1)[0].casefold() if "/" in module else "", name.upper())
+        return _typed_package_key(entity) or (
+            module.split("/", 1)[0].casefold() if "/" in module else "", name.upper())
 
     packages = {}
     for identity, entity in sorted(entities.items()):
