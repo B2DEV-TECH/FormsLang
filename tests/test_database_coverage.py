@@ -240,7 +240,6 @@ def test_project_pipeline_withholds_table_with_unextracted_quoted_homonym(projec
     assert any(c.not_extracted for c in result.database.coverage)
 
 
-@pytest.mark.xfail(strict=True, reason="WP-07 integration gap: coverage warnings do not affect assessment status")
 def test_known_gap_supported_create_warning_makes_assessment_incomplete(project_sources):
     from formslang.project_service import ProjectService
 
@@ -254,6 +253,25 @@ def test_known_gap_supported_create_warning_makes_assessment_incomplete(project_
         assessment = service.assessment()
         assert assessment["blueprint"]["database"]["source_coverage"]["sources"][0]["not_extracted"]
         assert assessment["completion_state"] == "INCOMPLETE"
+    finally:
+        service.close()
+
+
+def test_informational_unmodelled_create_keeps_assessment_complete(project_sources):
+    from formslang.project_service import ProjectService
+
+    access, descriptor, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        "CREATE TABLE T (ID NUMBER);\nCREATE INDEX T_I ON T (ID);\n", encoding="utf-8")
+    service = ProjectService(access)
+    try:
+        service.create(descriptor.name, roots=descriptor.source_roots)
+        service.analyze(expected_revision=None, expected_configuration=0)
+        assessment = service.assessment()
+        coverage = assessment["blueprint"]["database"]["source_coverage"]["sources"][0]
+        assert coverage["not_extracted"] == []
+        assert coverage["unsupported"][0]["reason"] == "UNSUPPORTED_BY_MODEL"
+        assert assessment["completion_state"] == "COMPLETE"
     finally:
         service.close()
 
