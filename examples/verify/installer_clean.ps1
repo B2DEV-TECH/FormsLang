@@ -34,6 +34,10 @@ python examples/verify/project_engine_check.py --engine $engine --output (Join-P
 if ($LASTEXITCODE -ne 0) { throw 'Clean installed project/review/generation/report acceptance failed' }
 python examples/verify/installed_visual_check.py --engine $engine --version $CandidateVersion --output (Join-Path $qaRoot 'visual-acceptance')
 if ($LASTEXITCODE -ne 0) { throw 'Clean installed browser journey failed' }
+if ($CandidateVersion -match '^3\.0\.0-beta\.[1-9]\d*$') {
+    & ./examples/verify/installer_beta_journey.ps1 -Engine $engine -Version $CandidateVersion -Output (Join-Path $qaRoot 'beta-journey')
+    if ($LASTEXITCODE -ne 0) { throw 'Clean installed beta A to B journey failed' }
+}
 
 $app = Start-Process $desktop -WindowStyle Hidden -PassThru
 try {

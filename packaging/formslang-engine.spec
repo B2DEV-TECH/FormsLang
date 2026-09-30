@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
 from importlib.metadata import version
+from packaging.version import Version
 import re
 
 from PyInstaller.utils.hooks import collect_data_files, copy_metadata
@@ -8,7 +9,7 @@ from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 project_root = Path(SPECPATH).parent
 expected = re.search(r'^version\s*=\s*"([^"]+)"',
                      (project_root / 'pyproject.toml').read_text(encoding='utf-8'), re.MULTILINE)[1]
-if version('formslang') != expected:
+if Version(version('formslang')) != Version(expected):
     raise RuntimeError('Stale FormsLang package metadata. Regenerate egg_info and reinstall '
                        'the editable package before building the engine.')
 

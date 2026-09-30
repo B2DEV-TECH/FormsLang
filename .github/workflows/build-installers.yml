@@ -69,7 +69,14 @@ jobs:
             $tauriConfig = Join-Path $env:RUNNER_TEMP 'formslang-tauri-beta.json'
             @{ bundle = @{ windows = @{ wix = @{ version = $env:MSI_VERSION } } } } |
               ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $tauriConfig -Encoding utf8
-            npm --prefix desktop run tauri -- build --config $tauriConfig
+            Push-Location desktop
+            try {
+              & ./node_modules/.bin/tauri.cmd build --config=$tauriConfig
+              $buildExit = $LASTEXITCODE
+            } finally {
+              Pop-Location
+            }
+            if ($buildExit -ne 0) { throw 'Beta Tauri build failed' }
           } else {
             npm --prefix desktop run tauri -- build
           }

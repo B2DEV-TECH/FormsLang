@@ -41,6 +41,6 @@ if ($LASTEXITCODE -ne 0 -or $saved.assessment.inventory.forms.analyzed -ne 3 -or
 # Required browser contract: open this saved project, inspect the resolved and
 # unresolved CUSTOMERS edges, follow SHIPMENTS, and exercise NOTICE review,
 # generation, validation, reports, and reopen through this installed engine.
-python (Join-Path $repo 'examples/verify/project_browser_check.py') --engine $enginePath --project $project --beta-journey --output (Join-Path $run 'browser')
+python (Join-Path $repo 'examples/verify/installed_beta_browser_check.py') --engine $enginePath --project $project --output (Join-Path $run 'browser')
 if ($LASTEXITCODE -ne 0) { throw 'Installed A to B browser journey failed' }
 Write-Output "PASS: installed beta A to B journey on FormsLang $Version"
