@@ -1699,3 +1699,112 @@ Every limitation recorded for 2.1.0 and 2.0.0 still applies. The 2.2 views
 read the saved assessment and add no analysis claim. Offline SQLcl validation
 is structural evidence, not runtime equivalence. Every figure here comes from
 synthetic fixtures.
+
+## 3.0.0-beta.1 verification (2026-09-30, America/Sao_Paulo)
+
+FormsLang 3.0.0-beta.1 is published as a GitHub **prerelease**. This section
+records the release evidence; every earlier section is unchanged. A beta
+publication is not evidence that any FormsLang 3.0 release gate has passed. All
+13 remain open, as the
+[beta release notes](release-notes-3.0.0-beta.1.md#formslang-30-release-gates)
+state.
+
+Release: <https://github.com/B2DEV-TECH/FormsLang/releases/tag/v3.0.0-beta.1>.
+Annotated tag `v3.0.0-beta.1` (tag object `68db829`) targets
+`c0b7e341cb12138178562cdb631e9a7c5119bd96`. The tag was created once and is not
+moved or recreated. `v2.2.0` remains the latest release, and `releases/latest`
+still resolves to it.
+
+`c0b7e34` is the squash merge of PR #43. Its tree (`56a78cf`) is identical to
+the tested PR head `0128b1a`. The PR CI run
+[36697659721](https://github.com/B2DEV-TECH/FormsLang/actions/runs/36697659721)
+passed on attempt 2. Attempt 1 failed one Windows py3.13 test,
+`test_project_http.py::test_cli_and_http_produce_same_revision`, with
+*Project operation failed*: the job-status HTTP 500 family that #23
+instruments without a known cause.
+
+### Exact-candidate CI (`c0b7e34`)
+
+`main` push CI run
+[36706863618](https://github.com/B2DEV-TECH/FormsLang/actions/runs/36706863618):
+**13/13 green** on the first attempt.
+
+| Job | Result |
+|---|---|
+| pytest ubuntu py3.10 / 3.11 / 3.12 / 3.13 | 2085 passed, 5 skipped, 2 xfailed each |
+| pytest windows py3.10 / 3.11 / 3.12 / 3.13 | 2090 passed, 2 xfailed each (26:02 / 38:11 / 37:30 / 36:25) |
+| ruff, SQLcl `apex validate` (no database), deterministic export, workbench and corporate browser acceptance (Edge) | success |
+
+### Installer acceptance
+
+Two Installer acceptance runs on `c0b7e34`, one per baseline. The checkout in
+each fetched `c0b7e341cb12…`, and each run built its own installers:
+
+- [36707032924](https://github.com/B2DEV-TECH/FormsLang/actions/runs/36707032924),
+  **baseline 2.2.0**, 5/5 jobs;
+- [36707067083](https://github.com/B2DEV-TECH/FormsLang/actions/runs/36707067083),
+  **baseline 2.1.0**, 5/5 jobs.
+
+Every clean and upgrade job in both runs (8 jobs) passed three checks:
+
+- `PASS: installed beta A to B journey on FormsLang 3.0.0-beta.1`, with
+  **30/30** browser checks against the installed engine;
+- the installed visual check, with 25 checks and no failure;
+- the native desktop window starting its engine.
+
+The clean jobs also passed
+`PASS: clean <kind> candidate installation at a non-ASCII user-space path`. The
+upgrade jobs passed
+`PASS: <kind> baseline clean install, upgrade <baseline> -> 3.0.0-beta.1, project workflow, uninstall and reinstall with preserved state`
+and the installed 2.2 journey *Overview -> Start Here -> Hotspot -> System Map
+-> Review -> Module 360 -> Reports*.
+
+Published assets. These are the `installers-3.0.0-beta.1` artifact of run
+36707032924; nothing was rebuilt for publication:
+
+| Asset | Size (bytes) | SHA-256 |
+|---|---|---|
+| `FormsLang_3.0.0-beta.1_x64_en-US.msi` | 15,933,440 | `e9b25313345153e5d073b21817c879db1ee6cc40bc52f714056b5bb8a9200186` |
+| `FormsLang_3.0.0-beta.1_x64-setup.exe` | 14,827,464 | `3768e42624b16a4180fc94ff9b5cdfb81cf9b358fb56c75d91f6ce31735e85c2` |
+
+These exact bytes went through the clean installs and the **2.2.0** upgrade.
+The **2.1.0** upgrade ran on the same commit with the sibling build of run
+36707067083:
+
+- MSI `c9468cb87420c6b3d2c7c0bdb8c1ca62bbceffb02263c5dc4bc4c65b066b046c`;
+- NSIS `bd7c618713a60e988485271aa73127d8a971a62c34b40cc14ed54b67d1241a31`.
+
+That build differs byte for byte and was not published. The release body
+says so.
+
+The EXE reports FileVersion and ProductVersion `3.0.0-beta.1`. The MSI reports
+ProductVersion `2.99.1` and UpgradeCode
+`{9B2C3539-40F3-5FE2-85B0-C9DA2D50D929}`; the release notes explain the numeric
+version. GitHub's asset digests match the hashes above. An anonymous download
+of both assets returned HTTP 200 with the same bytes. The installers are
+unsigned, as earlier releases were.
+
+The installers built for the earlier candidate `1f55ee6` (PR #40) were not
+published. Its `main` push CI, run
+[36695213334](https://github.com/B2DEV-TECH/FormsLang/actions/runs/36695213334),
+still had one failed Windows job after one re-run.
+
+### Not verified for this beta
+
+This record rests on the CI and installer evidence above. For the beta, none of
+the following was run:
+
+- a separate local regression;
+- a backward-compatibility run against real 2.x projects;
+- a frozen-benchmark comparison.
+
+Carried from the release notes:
+
+- a beta-to-final upgrade must be tested with the final artifact;
+- the MSI still permits downgrades;
+- byte-for-byte build reproducibility is not claimed.
+
+The Windows SQLite contention family still recurs. Issue #20 appeared again on
+2026-09-30 in PR #42's CI, which is not part of this release. Runtime acceptance
+against a real Forms and APEX instance is a separate task and is never implied
+by a published build.
