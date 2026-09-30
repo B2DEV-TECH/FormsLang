@@ -714,6 +714,10 @@ Results must display kind, qualified context, revision/checkpoint, certainty/app
 
 A focus transition preserves breadcrumb/history and allows Back to return to the exact prior object and revision. Expanding a graph group must not reset the user's selected evidence or decision draft.
 
+Structured search is the authoritative baseline: typed filters for kind, exact/qualified identity, relationship family, decision state, and bounded text fields run against one pinned authorized context. A result identifies its stable object and evidence references, match field, coverage, omissions, and cursor. The CLI, Workbench, reports where applicable, and an enabled MCP adapter use the same query projection; a different ranking or display must not change identity, certainty, or eligibility.
+
+Semantic search is a later, optional candidate-finding layer over permitted, explicitly selected text. If implemented, it must label candidate matches as suggestions, show the source/evidence that supports each hit, and allow a deterministic structured-search fallback. It must not create facts, resolve references, approve decisions, change counts, or silently send source bodies to an external embedding provider. Indexes must be disposable and scoped by context, authorization and disclosure policy; missing/stale indexes report reduced coverage rather than an empty authoritative result.
+
 ### 10.5 Path search
 
 Search immutable adjacency indexes with stable ordering and explicit relationship-family filters. By default, composition/placement edges do not count as behavioral/data dependencies. Offer a separate structural route when the user is exploring containment.
@@ -1011,6 +1015,18 @@ External tools must be called through runner interfaces with explicit executable
 
 Do not claim Oracle, browser, installer, or security validation from a mocked runner. Keep simulated and actual execution evidence separate.
 
+### 13.6 One engine, multiple surfaces
+
+**SURF-01 — Shared application-service boundary.** CLI, HTTP/Workbench, reports, and an enabled MCP adapter must call typed, versioned application commands and queries over the same `RepositoryContext` and domain rules. The application boundary resolves identity, authorization, disclosure, revision fences, budgets, and domain errors before presentation mapping. Adapters may format or paginate a result; they must not read storage directly to invent a second search, blocker, metric, or approval rule. Existing `ProjectService` is a reuse starting point, not evidence that the full 3.0 contract exists.
+
+**SURF-02 — CLI as a first-class surface.** Every supported local core journey must be operable and inspectable from the CLI without launching the Workbench, an AI account, or a live Oracle environment when that journey does not require one. Commands must have discoverable help, documented stable JSON/stdout/stderr and exit behavior, explicit project/context/scope, and the same evidence and limits as the other surfaces. Existing command names remain compatible or have documented aliases. Authenticated mode is supported only after its CLI identity and permission path is proven; the current local CLI's authenticated-mode refusal is an honest limit, not permission to bypass the server.
+
+**SURF-03 — MCP foundation.** The first opt-in local MCP adapter must expose only a small, read-only, allowlisted set of repository discovery, structured search, object/evidence inspection, and context/status capabilities through a pinned protocol version and local stdio transport. It resolves the host-selected project through the supported local authorization path rather than trusting caller-supplied actor or permission claims, applies the same disclosure and query bounds, returns stable object/evidence references with coverage and truncation, and closes or rejects stale/unauthorized context. Read operations must not trigger hidden storage writes. Prompts, source text and tool descriptions are untrusted; MCP does not grant agent authority, write access, approval, external egress, or a second persistence path. Before any future write capability, the normal domain preview, actor, revision, idempotency, confirmation and audit contract must be implemented and reviewed. No agent runtime or remote MCP deployment is implied.
+
+**SURF-04 — Shared structured search.** The first supported search path is deterministic and structured. It must use the repository query service described in §10.4, with typed filters, exact/qualified identities, evidence-backed match reasons, authorized totals where known, stable ordering, bounded pages, context-bound cursors, and distinct no-match/unknown/truncated states. CLI and Workbench must agree for the same context; an enabled MCP search uses that same service contract.
+
+**SURF-05 — Optional semantic discovery.** Semantic ranking may be added only after the structured path is correct and measured on representative fixtures. It is a candidate retrieval aid with explicit opt-in, model/index provenance, policy-controlled text selection and egress, stale-index behavior, and traceable source hits. It is not required for the 3.0 core journey or any release gate; absence of a semantic index must leave structured search usable.
+
 ## 14. CLI product contract
 
 ### 14.1 Design principles
@@ -1024,6 +1040,8 @@ Use the existing `formslang project` command family where compatible. Names belo
 **CLI-02.** `--json` emits only the documented JSON result on stdout. Progress, warnings intended for humans, and diagnostics go to stderr. The JSON also includes structured warnings needed by automation.
 
 **CLI-03.** The CLI must enforce the same permissions, revision fences, eligibility rules, redaction, and confirmation requirements as HTTP/Workbench in the applicable operating mode.
+
+The first-class CLI contract in SURF-02 applies to every implemented family below; a listed proposed command is not a claim that it exists today.
 
 ### 14.2 Required command families
 
@@ -2021,7 +2039,7 @@ Repository semantics precede wholesale UI construction. A small read-only UX pro
 | M2 — Stabilize facts and exploration queries | Resolve actual extraction defects; preserve legacy semantics; capture placement provenance; schema-aware resolution; bounded graph/search/path services | M0; M1 contracts where persistence changes | Positive/negative fixtures, G-DML/schema regressions, connected focal view, query limits, 100/500-Form measurements |
 | M3 — Whole-repository history and exchange | Context pinning, checkpoints, status/log/show/diff, baseline labels, object verification, full/review exports, clean-workspace reopen, initial report dataset | M1 and sufficient M2 domain contracts | Portability/closure tests, import conflicts, no forged approval, external-Git-change detection, recovery and disclosure tests |
 | M4 — Decision language and lifecycle | `.flm` parser/serializer/diagnostics; typed mapping schemas; preview/apply/approval/supersession; applicability; origin-local revisions; legacy decision migration | M2–M3 | Round trips, deterministic snapshots, review exercises, stale-binding/conflict tests, bulk atomicity, legacy history preserved |
-| M5 — New Workbench and CLI parity | New shell/design system; Explore/Decisions/History/Reports entry points; evidence inspector; semantic diffs; supported commands; legacy-route transition | M2–M4; approved UX findings | End-to-end journeys, context preservation, installed browser tests, keyboard/narrow/error states, CLI/UI equality |
+| M5 — Shared services, Workbench, CLI, and local MCP foundation | Typed application-service slice; structured search; new shell/design system; Explore/Decisions/History/Reports entry points; evidence inspector; semantic diffs; supported headless commands; opt-in read-only MCP; legacy-route transition | M2–M4; approved UX findings | End-to-end journeys, context preservation, installed browser tests, keyboard/narrow/error states, CLI/UI/MCP equality where supported; denial and no-write proofs |
 | M6 — Plan, build, and validate | Harden neutral IR/adapter; scope closure; generation manifest; target mapping; validation records/applicability; return from failure to evidence | M3–M5 | Deterministic supported output, blocked cases fail honestly, real tool evidence where available, exact target/version matrix |
 | M7 — Complete reporting | Full report catalog/templates; defined metrics; large-scope queries; executive/technical/change/delivery packages; JSON/HTML/Markdown/PDF/CSV; disclosure | Shared report slice from M3 plus M4–M6 data | Reconciled counts, full-scope tests, evidence drill-down, offline and PDF inspection, safe exports, baseline comparisons |
 | M8 — Product hardening and acceptance | Performance/concurrency, migration/installers, security, usability, actual Oracle cases, documentation verification | Required M1–M7 scope | Five-person study, paired acceptance cases, repeatable Windows stability, upgrade/restore, adversarial tests, no unclosed required gates |
@@ -2059,8 +2077,8 @@ Keep related responsibility boundaries in separate reviewable changes:
 | P05 | Evidence capture/query/index improvements without wholesale UI replacement |
 | P06 | DSL parser/serializer and pure domain validation |
 | P07 | Decision transactions, approval/applicability/import, legacy migration |
-| P08 | Read-only new shell/explorer, accessible list, context inspector, CLI exploration |
-| P09 | Decision/history/diff interactions and CLI parity |
+| P08 | Shared structured query slice, read-only new shell/explorer, accessible list, context inspector, CLI exploration |
+| P09 | Decision/history/diff interactions, CLI parity, and a separate opt-in read-only local MCP foundation |
 | P10 | Planner/adapter/manifest/validation integration |
 | P11 | Report definitions/datasets/metrics and initial viewer |
 | P12 | Full report renderers/catalog, disclosure, and export verification |
@@ -2153,7 +2171,7 @@ Synthetic fixture labels and counts are test requirements, not statements that t
 | AC-42 | A report is generated from checkpoint C | Report references C; later checkpoint can reference report; unchanged input dependencies do not become stale merely on report publication | No self-referential checkpoint digest or mutation of C |
 | AC-43 | Cancellation occurs before/after an accepted transaction | Exact committed/uncommitted state disclosed; safe cleanup | No falsely reported rollback of an accepted event |
 | AC-44 | Risky retirement/replacement or bulk action is requested | Payload/revision-bound explicit confirmation | No deletion or scope change caused merely by selecting intent |
-| AC-45 | Same context is queried in CLI, Workbench, and reports | Matching IDs, counts, applicability, blockers, and redaction | No surface-specific eligibility rules |
+| AC-45 | Same context is queried in CLI, Workbench, reports, and opt-in MCP where supported | Matching IDs, counts, applicability, blockers, search evidence/limits, and redaction | No surface-specific eligibility or search truth; MCP denial/stale context does not leak or write |
 | AC-46 | Non-ASCII paths, case collisions, and renamed files are used | Stable qualified identities and safe path handling | No merging distinct source/database identifiers by normalization |
 | AC-47 | A target component maps to multiple source decisions or vice versa | Traceability supports declared many-to-many links and consistent counting units | No overwritten mapping or double-counted completion |
 | AC-48 | Report generation is partial or evidence is restricted | Completeness/disclosure states and useful next action remain visible | No full-assessment label on a silently incomplete/redacted dataset |
@@ -2195,6 +2213,8 @@ For the XML→AI comparison, preregister the task/rubric, fix source scope and m
 | G-11 Security | Local threat controls and all advertised authenticated-mode controls tested; privacy maintained across projections |
 | G-12 Performance and usability | Ratified fixture budgets and actual five-person acceptance protocol satisfied |
 | G-13 Documentation | README, quickstart, examples, limitations, schemas, migration, and release claims agree with the built product |
+
+The shared-surface requirements SURF-01..04 use G-06 and G-11 evidence as applicable. SURF-05 is an optional later extension; no semantic index is required to pass either gate.
 
 The optional execution loop is part of the 3.0 scope added in §22.6. Its
 AC-49/AC-50 evidence contributes to G-05, G-06, G-08 and G-11 as applicable;
@@ -2406,7 +2426,7 @@ The next agent must read this handoff and verify the checkout. It must not repea
 | ADR-10 | APEX adapter and generation granularity | Existing supported module-scoped capabilities first | Native-component mapping, closure, deterministic output, exact Oracle/target evidence |
 | ADR-11 | Local versus supported team/server mode | Local-first; broader mode separately gated | Threat model, route/action matrix, cache isolation, proxy/configuration and operational tests |
 | ADR-12 | Backup/restore/retention and migration | Consistent backup, explicit migration, verified restore, reachable-object protection | Interrupted upgrade/restore/GC tests and legacy data reconciliation |
-| ADR-13 | CLI/API compatibility and errors | Shared schemas, origin-aware fences, stable exit/error meanings | Old-command compatibility, JSON/stdout/stderr tests, cursor and conflict behavior |
+| ADR-13 | CLI/API/MCP compatibility, local transport and errors | Shared service schemas, origin-aware fences, stable exit/error meanings; opt-in MCP starts read-only over local stdio | Old-command compatibility, JSON/stdout/stderr, MCP protocol/transport and no-write tests, cursor and conflict behavior |
 | ADR-14 | Performance and resource limits | Bounded queries and ratified fixture-specific budgets | Hardware/fixture baseline, p50/p95/memory, Windows stability, limit and cancellation tests |
 | ADR-15 | Validation applicability and acceptance | Artifact/case/environment-bound evidence; separate UAT | Changed-artifact/criteria tests, stale-run handling, human acceptance provenance |
 

@@ -113,6 +113,11 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 | ARCH-02 | Preserve public aliases and migration adapters during the transition. New and legacy views may coexist behind a feature flag, but they must read the same accepted project state. | [13. Services, module boundaries, and integration contracts](master-specification.md#13-services-module-boundaries-and-integration-contracts) | AC-10, AC-13, AC-27, AC-45 | NOT ASSESSED |
 | ARCH-03 | Every new module must have a narrow public responsibility, testable boundary, and clear dependency direction. A new service layer that merely forwards arbitrary dictionaries to a… | [13. Services, module boundaries, and integration contracts](master-specification.md#13-services-module-boundaries-and-integration-contracts) | AC-10, AC-13, AC-27, AC-45 | NOT ASSESSED |
 | ARCH-04 | Report metrics, CLI summaries, and Workbench badges must call the same domain aggregation definitions. Test equality on the same context, not just approximate visual agreement. | [13. Services, module boundaries, and integration contracts](master-specification.md#13-services-module-boundaries-and-integration-contracts) | AC-10, AC-13, AC-27, AC-45 | NOT ASSESSED |
+| SURF-01 | One typed, versioned application-service contract owns context, authorization, fences, budgets and errors across CLI, HTTP/Workbench, reports and enabled MCP. | [13.6 One engine, multiple surfaces](master-specification.md#136-one-engine-multiple-surfaces) | AC-13, AC-32, AC-45 | NOT ASSESSED |
+| SURF-02 | CLI is a documented, headless first-class local journey with stable output/errors and equivalent evidence; authenticated CLI needs a proven identity path. | [13.6 One engine, multiple surfaces](master-specification.md#136-one-engine-multiple-surfaces) | AC-13, AC-33, AC-45 | NOT ASSESSED |
+| SURF-03 | Opt-in local MCP foundation exposes only allowlisted, read-only shared-service queries with pinned protocol, authorized context, bounds and no-write proof. | [13.6 One engine, multiple surfaces](master-specification.md#136-one-engine-multiple-surfaces) | AC-20, AC-32, AC-45 | NOT ASSESSED |
+| SURF-04 | Deterministic structured search is shared across surfaces with typed filters, identity/evidence, bounded context-bound pages and honest coverage. | [13.6 One engine, multiple surfaces](master-specification.md#136-one-engine-multiple-surfaces) | AC-06, AC-09, AC-20, AC-45 | NOT ASSESSED |
+| SURF-05 | Optional semantic candidate discovery preserves cited source hits, policy/egress and deterministic no-index fallback; it is outside required 3.0 gates. | [13.6 One engine, multiple surfaces](master-specification.md#136-one-engine-multiple-surfaces) | AC-20, AC-33, AC-45 if offered | DIRECTION ONLY; NOT ASSESSED |
 | CLI-01 | All relevant commands must accept a project path/identity, explicit historical context where appropriate, stable machine-readable output, bounded scope, and predictable errors. | [14. CLI product contract](master-specification.md#14-cli-product-contract) | AC-13, AC-16, AC-18, AC-45 | NOT ASSESSED |
 | CLI-02 | `--json` emits only the documented JSON result on stdout. Progress, warnings intended for humans, and diagnostics go to stderr. The JSON also includes structured warnings needed by… | [14. CLI product contract](master-specification.md#14-cli-product-contract) | AC-13, AC-16, AC-18, AC-45 | NOT ASSESSED |
 | CLI-03 | The CLI must enforce the same permissions, revision fences, eligibility rules, redaction, and confirmation requirements as HTTP/Workbench in the applicable operating mode. | [14. CLI product contract](master-specification.md#14-cli-product-contract) | AC-13, AC-16, AC-18, AC-45 | NOT ASSESSED |
@@ -235,7 +240,7 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 | AC-42 | A report is generated from checkpoint C | NOT ASSESSED |
 | AC-43 | Cancellation occurs before/after an accepted transaction | NOT ASSESSED |
 | AC-44 | Risky retirement/replacement or bulk action is requested | NOT ASSESSED |
-| AC-45 | Same context is queried in CLI, Workbench, and reports | NOT ASSESSED |
+| AC-45 | Same context is queried in CLI, Workbench, reports, and opt-in MCP where supported | NOT ASSESSED |
 | AC-46 | Non-ASCII paths, case collisions, and renamed files are used | NOT ASSESSED |
 | AC-47 | A target component maps to multiple source decisions or vice versa | NOT ASSESSED |
 | AC-48 | Report generation is partial or evidence is restricted | NOT ASSESSED |
@@ -288,7 +293,7 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 | ADR-10 | APEX adapter and generation granularity | NOT ASSESSED |
 | ADR-11 | Local versus supported team/server mode | NOT ASSESSED |
 | ADR-12 | Backup/restore/retention and migration | NOT ASSESSED |
-| ADR-13 | CLI/API compatibility and errors | NOT ASSESSED |
+| ADR-13 | CLI/API/MCP compatibility, local transport and errors | NOT ASSESSED |
 | ADR-14 | Performance and resource limits | NOT ASSESSED |
 | ADR-15 | Validation applicability and acceptance | NOT ASSESSED |
 
