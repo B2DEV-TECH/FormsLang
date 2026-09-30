@@ -19,6 +19,9 @@ def test_5000_findings_and_history_preserve_bounded_reads(reviewed_project, caps
     saved = service.assessment()
     _, synthetic, _ = build_fixture()
     payload = {**saved['blueprint'], **synthetic['blueprint']}
+    # These replacement entities have no captured package identity. Do not copy
+    # the original analysis namespace onto a different synthetic graph/context.
+    payload.pop('database', None)
     for finding in payload['findings']:
         finding['revision'] = blueprint.digest(finding['id'])
         finding['coverage'] = {'status': 'REQUIRES_REVIEW', 'target': '', 'evidence': ''}

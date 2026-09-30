@@ -8,7 +8,13 @@ import os
 import tempfile
 from pathlib import Path
 
-from . import blueprint, blueprint_view
+from . import blueprint, blueprint_view, database, database_identity
+from .blueprint_inputs import (
+    _database_inputs,
+    _direct_engine_identity,
+    _InputSnapshot,
+    _logical_sources,
+)
 from .oracle import convert_module, detect_toolchain
 from .parser import parse_xml
 from .store import Store
@@ -30,26 +36,60 @@ def load(source: Path, out: Path, *, title="", oracle_home=None, enterprise=Fals
     if not paths:
         raise ValueError("No Forms .fmb/.xml sources found")
     base = source if source.is_dir() else source.parent
+    with _InputSnapshot() as snapshot:
+        forms = [(path, snapshot.capture('forms', path.relative_to(base).as_posix(), path,
+                                         'xml' if path.suffix.lower() == '.xml' else 'binary'))
+                 for path in paths]
+        db_project = database_sources
+        if not isinstance(database_sources, database.DatabaseProject):
+            db_paths, logical = [], {}
+            missing = []
+            for root, relative, path in _database_inputs(database_sources):
+                staged = snapshot.capture(root, relative, path, 'database')
+                if staged is None:
+                    missing.append(database.SourceCoverage(root + '/' + relative,
+                        database.REJECTED_OR_UNREADABLE, reason='SOURCE_UNAVAILABLE'))
+                else:
+                    db_paths.append(staged)
+                    logical[str(staged)] = root + '/' + relative
+            db_project = database.parse_database_sources(db_paths) if database_sources is not None else None
+            if db_project is not None:
+                db_project.coverage.extend(missing)
+                _logical_sources(db_project, logical)
+        metadata_source = (snapshot.capture('metadata', Path(metadata_path).name,
+                            metadata_path, 'supporting', max_bytes=32 * 1024 * 1024)
+                           if metadata_path else None)
+        return _load_snapshot(source, out, base, forms, snapshot, db_project,
+            title=title, oracle_home=oracle_home, enterprise=enterprise,
+            metadata_path=metadata_path, metadata_source=metadata_source,
+            identity_available=not isinstance(database_sources, database.DatabaseProject))
+
+
+def _load_snapshot(source, out, base, forms, snapshot, db_project, *, title, oracle_home,
+                   enterprise, metadata_path, metadata_source, identity_available):
     modules, keys, failures = [], [], []
     tc = None
-    for path in paths:
+    for path, staged in forms:
         key = path.relative_to(base).as_posix()
         try:
-            if path.stat().st_size > MAX_SOURCE_BYTES:
-                raise ValueError("source exceeds 256 MiB limit")
+            if staged is None:
+                raise ValueError('Source could not be captured within the 256 MiB limit')
             if path.suffix.lower() == ".xml":
-                xml, log = path, ""
+                xml, log = staged, ""
             else:
                 tc = tc or detect_toolchain(oracle_home)
                 # Paths with matching basenames and changed binaries never share
                 # an Oracle conversion cache entry.
                 import hashlib
 
-                cache = hashlib.sha256(path.read_bytes()).hexdigest()
+                cache = hashlib.sha256(staged.read_bytes()).hexdigest()
                 cache_dir = out / "xml" / cache
                 if not cache_dir.resolve().is_relative_to(out):
                     raise ValueError("Blueprint conversion cache escapes output directory")
-                xml, log = convert_module(path, cache_dir, tc)
+                xml, log = convert_module(staged, cache_dir, tc)
+                xml = snapshot.capture('converted', key + '.xml', xml, 'xml')
+                if xml is None:
+                    raise ValueError('Converted XML could not be captured')
             module = parse_xml(xml, convert_log=log)
             module.source_path = key
             modules.append(module)
@@ -62,16 +102,20 @@ def load(source: Path, out: Path, *, title="", oracle_home=None, enterprise=Fals
                              "detail": "Source could not be parsed; inspect the original input locally."})
     metadata = []
     if metadata_path:
-        path = Path(metadata_path)
-        if path.stat().st_size > 32 * 1024 * 1024:
-            raise ValueError("metadata exceeds 32 MiB limit")
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        if metadata_source is None:
+            raise ValueError('metadata could not be captured within the 32 MiB limit')
+        payload = json.loads(metadata_source.read_text(encoding="utf-8-sig"))
         if not isinstance(payload, dict) or not isinstance(payload.get("objects"), list):
             raise ValueError("metadata must contain an objects array")
         metadata = payload["objects"]
+    scope = (database_identity._analysis_scope(snapshot.manifest, engines=_direct_engine_identity(),
+        options={'title': title or source.stem, 'enterprise': enterprise, 'metadata': metadata,
+                 'failures': failures, 'source_keys': keys},
+        required_source_ids=[entry.source_id for entry in snapshot.manifest])
+             if identity_available else None)
     return blueprint.build(modules, title=title or source.stem, source_keys=keys,
                            failures=failures, enterprise=enterprise, metadata=metadata,
-                           database_sources=database_sources)
+                           database_sources=db_project, _database_identity_scope=scope)
 
 
 def save_session(payload, out: Path, source: Path) -> Path:

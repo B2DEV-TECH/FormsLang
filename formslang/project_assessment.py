@@ -70,6 +70,14 @@ def validate_assessment(descriptor: ProjectDescriptor, value: dict) -> None:
         if (bp["schema_version"] != blueprint.VERSION or bp["source_revision"] != expected_source
                 or bp["project_analysis_revision"] != expected_analysis):
             raise ProjectError("Blueprint provenance mismatch")
+        identity = bp.get('database', {}).get('identity', {})
+        if identity.get('analysis_identity') is not None and (
+                identity.get('basis') != 'PROJECT_ANALYSIS_REVISION'
+                or identity['analysis_identity'] != expected_analysis):
+            raise ProjectError('Database identity namespace mismatch')
+        if any(entity.get('attributes', {}).get('analysis_identity') not in {None, expected_analysis}
+               for entity in bp['entities']):
+            raise ProjectError('Database entity identity does not match project analysis')
         for finding in bp["findings"]:
             original = finding.get("engine_finding_revision")
             if not isinstance(original, str) or finding["revision"] != blueprint.digest([

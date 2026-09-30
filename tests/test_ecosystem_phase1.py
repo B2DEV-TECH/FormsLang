@@ -21,7 +21,7 @@ from formslang.parser import parse_xml
 
 REPO = Path(__file__).resolve().parents[1]
 GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-2.2.json"
-CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-wp08.json"
+CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-wp04.json"
 
 
 def build(name):
@@ -87,7 +87,7 @@ def test_inventory_is_deterministic_and_matches_the_current_characterization():
     assert "\\\\" not in first and ":/" not in first  # no absolute or Windows paths leak in
     assert first == CURRENT_GOLDEN.read_text(encoding="utf-8"), (
         "Regenerate with: python examples/verify/ecosystem_inventory.py --output "
-        "docs/design/ecosystem-explorer-2.3/inventory-wp08.json, then review the diff")
+        "docs/design/ecosystem-explorer-2.3/inventory-wp04.json, then review the diff")
 
 
 # ---------------------------------------------------------------------------

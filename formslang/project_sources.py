@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass, replace
 from pathlib import Path
 
-from . import database, parser
+from . import database, database_identity, parser
 from .model import FormModule
 from .project_discovery import (
     DB_FAMILIES,
@@ -237,6 +237,7 @@ def parse_staged(descriptor, discovery: DiscoveryResult, staged: StagedSources, 
     inventory['database'] = {family: len(getattr(merged, family)) for family in DB_FAMILIES}
     inventory['database']['packages'] = len(set(merged.package_specs) | set(merged.package_bodies))
     inventory['database']['package_declarations'] = len(merged.package_declarations)
+    inventory['database'].update(database_identity.package_occurrence_counts(merged))
     # Deduplicate preview/parse diagnostics without changing immutable source content.
     diagnostics = sorted(set(diagnostics), key=lambda d: (d.source_id, d.stage, d.error_code))
     inventory['warnings'] = len(diagnostics)

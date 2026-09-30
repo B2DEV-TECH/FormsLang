@@ -79,6 +79,18 @@ assert.equal(projectUI.activeId,'a');assert.equal(options.category,'dependencies
 ''')
 
 
+def test_source_stats_show_package_occurrences_without_reinterpreting_legacy_counts(tmp_path):
+    run_js(tmp_path, r'''
+const typed=projectStats({database:{packages:0,package_spec_occurrences:2,package_body_occurrences:2}});
+assert.match(typed,/Package specification occurrences<\/dt><dd>2/);
+assert.match(typed,/Package body occurrences<\/dt><dd>2/);
+assert.doesNotMatch(typed,/Database packages<\/dt><dd>0/);
+const legacy=projectStats({database:{packages:1}});
+assert.match(legacy,/Database packages<\/dt><dd>1/);
+assert.doesNotMatch(legacy,/Package specification occurrences/);
+''')
+
+
 def test_name_and_sources_are_required_before_analysis(tmp_path):
     run_js(tmp_path, r'''
 api=async()=>{throw new Error('No API call expected');};

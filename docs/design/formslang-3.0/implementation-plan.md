@@ -47,8 +47,12 @@ separate on Draft PR #23; a fix waits for a logged cause. WP-08's independent
 audit corrected a collision merge regression, lexical decoys, quoted member
 loss and invalid package `SHARING` options; see the evidence register. Three
 strict xfails remain visible, including the supported-CREATE/assessment gap.
-ADR-06 is accepted for architecture after independent probe review; WP-04 may
-begin on a separate product branch, and its product exit/G-04 remain open.
+ADR-06 is accepted for architecture after independent probe review. The separate
+WP-04 product branch implements the package-only Case C slice with typed
+candidates, explicit byte capture and project analysis binding; tables, views,
+sequences and the remaining product exit/G-04 stay open. See the
+[product plan](../../superpowers/plans/2026-09-29-wp04-product.md) for red/green
+evidence and limits. This is not a completed WP-04 or gate result.
 The post-merge `main` CI had an intermittent
 Windows/Python 3.13 HTTP 500 in a job-status read; its cause is unknown and it
 does not prove an issue #20 `ProjectBusy`/409 mechanism.

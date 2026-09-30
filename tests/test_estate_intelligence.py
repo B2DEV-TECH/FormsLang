@@ -50,6 +50,25 @@ def estate(tmp_path):
         service.close()
 
 
+@pytest.fixture
+def qualified_estate(tmp_path):
+    """Positive service bridges require an explicit owner on both sides."""
+    sources = tmp_path / 'qualified'
+    shutil.copytree(ESTATE, sources)
+    for path in sources.rglob('*'):
+        if path.is_file():
+            text = path.read_text(encoding='utf-8')
+            text = text.replace('package body work_api', 'package body estate_owner.work_api')
+            text = text.replace('package work_api', 'package estate_owner.work_api')
+            text = text.replace('work_api.', 'estate_owner.work_api.')
+            path.write_text(text, encoding='utf-8')
+    _, _, service = open_estate(tmp_path, sources / 'forms', sources / 'database')
+    try:
+        yield service
+    finally:
+        service.close()
+
+
 def hotspots_of(service):
     page = service.inventory("hotspots", limit=200)
     return {row["hotspot_type"]: row for row in page["rows"]}, page["rows"]
@@ -164,14 +183,15 @@ def test_trigger_calling_the_writer_is_not_a_bypass(tmp_path):
         service.close()
 
 
-def test_system_map_folds_form_components_into_module_dependencies(estate):
+def test_system_map_folds_form_components_into_module_dependencies(qualified_estate):
+    estate = qualified_estate
     forms = {f["name"]: f["id"] for f in estate.system_map()["available_forms"]}
     result = estate.system_map(focus=forms["INTAKE"], depth=1)
     assert result["mode"] == "MODULE_ARCHITECTURE"
     nodes = {n["id"]: n for n in result["nodes"]}
     names = {n["name"]: n for n in result["nodes"]}
     assert names["WORK_ITEMS"]["layer"] == "DATABASE" and names["WORK_ITEMS"]["type"] == "TABLE"
-    assert names["WORK_API"]["type"] == "PACKAGE" and names["WORK_API"]["layer"] == "DATABASE"
+    assert names["ESTATE_OWNER.WORK_API"]["type"] == "PACKAGE" and names["ESTATE_OWNER.WORK_API"]["layer"] == "DATABASE"
     assert names["REVIEWS"]["layer"] == "FORM"
     assert all(n["layer"] != "OTHER" for n in result["nodes"])
     edges = {(nodes[e["source"]]["name"], nodes[e["target"]]["name"], e["classification"]): e
@@ -179,13 +199,27 @@ def test_system_map_folds_form_components_into_module_dependencies(estate):
     writes = edges[("INTAKE", "WORK_ITEMS", "WRITES")]
     assert writes["is_hotspot"] and "WHEN-BUTTON-PRESSED" in writes["components"]
     assert ("INTAKE", "REVIEWS", "OPENS_FORM") in edges
-    assert ("INTAKE", "WORK_API", "CALLS") in edges
+    assert ("INTAKE", "ESTATE_OWNER.WORK_API", "CALLS") in edges
     assert ("INTAKE", "STAGING_ROWS", "WRITES") in edges
     assert not any(e["classification"] == "CONTAINS" for e in result["edges"])
     # Findings count once, on the module their component folds into.
     intake_findings = [r for r in estate.inventory("findings", limit=200)["rows"]
                        if r["module"].endswith("intake.xml")]
     assert names["INTAKE"]["findings_count"] == len(intake_findings)
+
+
+def test_ownerless_package_reference_is_retained_without_a_resolved_map_bridge(estate):
+    references = [e for e in estate.assessment()['blueprint']['entities']
+                  if e['type'] == 'ROUTINE_REFERENCE' and e['name'] == 'WORK_API.LOG_NOTE']
+    assert references
+    assert all(e['resolution'] == 'UNRESOLVED' and e['resolution_candidates']
+               and e['resolution_reason'] == 'MISSING_SCHEMA_CONTEXT'
+               and 'resolved_target' not in e for e in references)
+    forms = {f['name']: f['id'] for f in estate.system_map()['available_forms']}
+    result = estate.system_map(focus=forms['INTAKE'], depth=1)
+    names = {n['id']: n['name'] for n in result['nodes']}
+    assert not any(names[e['source']] == 'INTAKE' and names[e['target']] == 'WORK_API'
+                   and e['classification'] == 'CALLS' for e in result['edges'])
 
 
 def test_system_map_limits_and_invalid_inputs_are_explicit(estate):
@@ -309,7 +343,8 @@ def test_duplicated_rule_owner_comes_from_the_duplication_not_the_top_signal(tmp
         service.close()
 
 
-def test_module_360_and_hotspot_explorer_come_from_the_real_assessment(estate):
+def test_module_360_and_hotspot_explorer_come_from_the_real_assessment(qualified_estate):
+    estate = qualified_estate
     forms = {f["name"]: f["id"] for f in estate.system_map()["available_forms"]}
     by_node = estate.module_view(node=forms["INTAKE"])
     by_module = estate.module_view(module=by_node["module"])
@@ -319,7 +354,7 @@ def test_module_360_and_hotspot_explorer_come_from_the_real_assessment(estate):
     assert "FORM" not in {c["type"] for c in by_node["composition"]}
     outbound = {(n["name"], n["classification"]): n for n in by_node["neighbours"]["outbound"]["items"]}
     assert outbound[("WORK_ITEMS", "WRITES")]["is_hotspot"]
-    assert outbound[("WORK_API", "CALLS")]["presentation_label"]["executive"] == "Uses service"
+    assert outbound[("ESTATE_OWNER.WORK_API", "CALLS")]["presentation_label"]["executive"] == "Uses service"
     assert sum(by_node["risk_distribution"].values()) == by_node["findings_total"]
     assert "not a migration plan" in by_node["boundary"]
     # A finding opens the module it folds into.
@@ -337,7 +372,7 @@ def test_module_360_and_hotspot_explorer_come_from_the_real_assessment(estate):
     bypass = by_type[HOTSPOT_API_BYPASS]
     assert bypass["uncertainty"] and bypass["statement"]
     assert bypass["evidence"]["table"] == "WORK_ITEMS"
-    assert bypass["evidence"]["potential_existing_api_owners"] == {"values": ["WORK_API.CLOSE_ITEM"], "total": 1}
+    assert bypass["evidence"]["potential_existing_api_owners"] == {"values": ["ESTATE_OWNER.WORK_API.CLOSE_ITEM"], "total": 1}
     assert "INTAKE" in {n["name"] for n in bypass["nodes"]} and bypass["nodes_total"] >= 1
     assert explorer["matrix"]["classification"] == "CANDIDATE"
     only_high = estate.hotspot_explorer(severity="HIGH")
