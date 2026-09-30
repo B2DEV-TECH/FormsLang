@@ -286,7 +286,7 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 | ADR-03 | Checkpoint and portable-history schema | ACCEPTED architecture contract; WP-20 product schema and reopen proof open |
 | ADR-04 | Trust of imported history and approvals | ACCEPTED architecture contract; imported-approval product tests open |
 | ADR-05 | DSL grammar and versioning | NOT ASSESSED |
-| ADR-06 | Cross-revision entity identity | NOT ASSESSED |
+| ADR-06 | Cross-revision entity identity | ACCEPTED architecture contract in PR #32; WP-04 product identity and G-04 proof open |
 | ADR-07 | Git exchange synchronization | ACCEPTED architecture contract; worktree reconciliation product tests open |
 | ADR-08 | Frontend technology and component split | NOT ASSESSED |
 | ADR-09 | Report definitions, metrics, and renderers | NOT ASSESSED |
