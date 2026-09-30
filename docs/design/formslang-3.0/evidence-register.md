@@ -190,13 +190,20 @@ No gate is **passed**. The full 3.0 release is not complete.
   review then found false `REMOVED` results when the key changed at the same
   source locator: two tests failed first, and now yield `NOT_COMPARABLE` with
   no inferred rename target, including an unrelated object in the same file.
-- Final focused evidence: **121 passed, 1 xfailed** in 6.65 s across identity,
+- Further independent review reproduced a false `REMOVED` when both logical
+  root and key changed. One new case failed first; a nonempty scope lacking the
+  original root now returns `NOT_COMPARABLE`. A complete empty scope, or an
+  original-root scope with no matching key/locator, still permits `REMOVED`.
+- Final focused evidence: **122 passed, 1 xfailed** in 6.46 s across identity,
   WP-08, Case C, project-source and assessment tests on Windows 11 /
-  Python 3.13.15; **22 passed** in 0.34 s for the contract on Python 3.12.10.
+  Python 3.13.15; **23 passed** in 0.29 s for the contract on Python 3.12.10.
   Repository Ruff, `git diff --check` and the `inventory-wp08.json` generator
   check pass. The product and historical `inventory-2.2.json` have no diff from
-  `360ab80`. The full suite (`py -3.13 -m pytest -q -p no:cacheprovider`), with
-  code held stable, returned **1991 passed, 5 skipped, 3 xfailed** in 903.85 s.
+  `360ab80`. Before the root-plus-key correction, the full suite at `07c3f6f`
+  (`py -3.13 -m pytest -q -p no:cacheprovider`), with code held stable, returned
+  **1991 passed, 5 skipped, 3 xfailed** in 903.85 s. After the correction,
+  the final full run returned **1992 passed, 5 skipped, 3 xfailed** in 847.99 s,
+  again with code held stable.
   An earlier full run was interrupted before the review correction and is
   discarded. Final review remains pending; no CI result is yet claimed for
   this follow-up commit.

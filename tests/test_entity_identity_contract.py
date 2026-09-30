@@ -193,3 +193,14 @@ def test_unrelated_object_in_same_file_is_not_an_automatic_rename_candidate():
     assert classify(before, [unrelated]) == ('NOT_COMPARABLE', ())
     assert classify(before, [replace(unrelated, path='db/other.sql')]) == ('REMOVED', ())
     assert classify(before, []) == ('REMOVED', ())
+
+
+def test_changed_root_and_key_do_not_prove_removal_from_original_scope():
+    before = Entity('analysis-a', 'engine/4', 'root-a', 'db/p.sql', 'sha256:old',
+                    symbol_key('PACKAGE', 'SALES', 'P'))
+    other_root = replace(before, analysis='analysis-b', root='root-b',
+                         key=symbol_key('PACKAGE', 'BILLING', 'P'))
+    assert classify(before, [other_root]) == ('NOT_COMPARABLE', ())
+    original_scope = replace(other_root, root='root-a', path='db/other.sql')
+    assert classify(before, [other_root, original_scope]) == ('REMOVED', ())
+    assert classify(before, []) == ('REMOVED', ())

@@ -123,20 +123,27 @@ transfer.
   changes while the same source locator remains, the result is `NOT_COMPARABLE`
   with no inferred target. An unrelated object in the same export is never
   guessed to be a rename. `REMOVED` requires no matching key or same source
-  locator within the complete comparable candidate scope.
-- **Fresh local verification:** 22 focused contract cases; 13 new cases failed
+  locator within the complete comparable candidate scope. A nonempty scope
+  containing only other logical roots is `NOT_COMPARABLE`, even when the keys
+  also differ. An empty complete scope still permits `REMOVED`.
+- **Fresh local verification:** 23 focused contract cases; 13 new cases failed
   before their probe implementation, and an additional case exposed a false
   resolution of a lone incomplete signature before its fix. Independent review
   exposed false `REMOVED` results for changed keys at the same source locator;
   two further tests failed first, then passed after the conservative
-  `NOT_COMPARABLE` correction. The combined
+  `NOT_COMPARABLE` correction. A third review regression failed when both the
+  logical root and key changed; the probe now withholds removal if the populated
+  scope contains no original root. The combined
   identity, WP-08, Case C, project-source and assessment suites returned
-  **121 passed, 1 xfailed** in 6.65 s on Windows 11 / Python 3.13.15. The final
-  22 contract tests also passed on Python 3.12.10 in 0.34 s. Repository
-  Ruff and `git diff --check` passed. The complete suite, with code files held
-  stable, returned **1991 passed, 5 skipped, 3 xfailed** in 903.85 s on
+  **122 passed, 1 xfailed** in 6.46 s on Windows 11 / Python 3.13.15. The final
+  23 contract tests also passed on Python 3.12.10 in 0.29 s. Repository
+  Ruff and `git diff --check` passed. Before the root-plus-key correction, the
+  complete suite at `07c3f6f`, with code files held stable, returned
+  **1991 passed, 5 skipped, 3 xfailed** in 903.85 s on
   Python 3.13.15 (`py -3.13 -m pytest -q -p no:cacheprovider`). An earlier run
   was interrupted before applying the review correction and is discarded.
+  After the root-plus-key correction, the final full run returned
+  **1992 passed, 5 skipped, 3 xfailed** in 847.99 s with code held stable.
   The WP-08 inventory generator check passed; product code and historical
   `inventory-2.2.json` remain unchanged from `360ab80`. The coordinator's final
   review and a separate acceptance commit are required before Accepted status.

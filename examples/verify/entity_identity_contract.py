@@ -135,4 +135,8 @@ def classify(before: Entity, candidates: list[Entity]) -> tuple[str, tuple[Entit
         # A file can contain many entities. A changed key at that source locator
         # proves neither removal nor which other declaration is a rename.
         return "NOT_COMPARABLE", ()
+    if candidates and not any(item.root == before.root for item in candidates):
+        # A populated scope from different roots says nothing about removal
+        # from the original source namespace, even if every key also changed.
+        return "NOT_COMPARABLE", ()
     return "REMOVED", ()
