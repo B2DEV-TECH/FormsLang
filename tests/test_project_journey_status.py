@@ -2,20 +2,23 @@
 # ruff: noqa: F811 -- imported pytest fixtures are injected by name
 
 import hashlib
+import json
 import re
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from formslang import apeximport, rbac
 from formslang import project_journey_status as journey
+from formslang.project_generation import ProjectGenerationService
 from formslang.project_generation_policy import (
     dependency_edges,
     related_scope,
     unresolved_findings,
 )
 from formslang.project_intake import ProjectIntake
-from formslang.project_model import ProjectError, RevisionConflict
+from formslang.project_model import ProjectBusy, ProjectError, RevisionConflict
 from formslang.project_review import ProjectReviewService
 from formslang.project_service import ProjectService
 from tests.test_project_generation import generation_project, prepared  # noqa: F401
@@ -52,6 +55,19 @@ def test_unresolved_findings_match_generation_review_blockers(demo):
         assert unresolved == blocked
         checked += len(blocked)
     assert checked > 0
+
+
+def test_unresolved_findings_counts_an_unknown_review_state():
+    """A review state outside RESOLVED_REVIEWS counts as unresolved, even if it is unknown.
+
+    This is distinct from UNCLASSIFIED: unknown *freshness*, *blocker* and *validation*
+    values get that reason code, but an unknown *review state* simply keeps Decide open,
+    the same as PENDING or REJECT would.
+    """
+    blueprint = {'entities': [{'id': 'form:x', 'type': 'FORM', 'module': 'forms/x.xml'}],
+                 'edges': [], 'findings': [
+                     {'id': 'finding:x', 'entity': 'form:x', 'review_state': 'SOMETHING_NEW'}]}
+    assert unresolved_findings(blueprint, 'forms/x.xml') == blueprint['findings']
 
 
 def _tree_digest(root):
@@ -343,9 +359,36 @@ def test_missing_prepared_source_copy_blocks_build_without_failing_the_journey(g
     prepared(service)
     record = service._store.module_sessions()[0]
     service._generation_service()._path(record['provenance']['xml']).unlink()
-    build = service.journey(freshness=service.freshness())['forms'][0]['steps'][2]
+    payload = service.journey(freshness=service.freshness())
+    build = payload['forms'][0]['steps'][2]
     assert build['state'] == 'BLOCKED'
     assert build['reasons'][0]['code'] == 'GENERATION_DETAIL_UNAVAILABLE'
+    # The underlying OSError message carries an absolute server path; the journey
+    # must report a fixed, authored message instead and never leak that path.
+    assert build['reasons'][0]['message'] == (
+        'Prepared generation files are unavailable; restore them before generation.')
+    assert str(service.access.root) not in json.dumps(payload)
+
+
+def test_journey_never_absorbs_project_busy(generation_project, monkeypatch):
+    service = generation_project
+
+    def busy(self, *args, **kwargs):
+        raise ProjectBusy('busy')
+
+    monkeypatch.setattr(ProjectGenerationService, '_detail', busy)
+    with pytest.raises(ProjectBusy):
+        service.journey(freshness=service.freshness())
+
+
+def test_latest_module_artifacts_skips_a_malformed_record():
+    db = sqlite3.connect(':memory:')
+    db.execute('CREATE TABLE project_artifact (artifact_id TEXT, created_at TEXT, metadata_json TEXT)')
+    # source_id present, target_revision and code_revision missing: this must not raise
+    # KeyError downstream and must not be surfaced as a usable artifact.
+    db.execute('INSERT INTO project_artifact VALUES (?, ?, ?)',
+              ('a1', '2026-01-01T00:00:00Z', json.dumps({'source_id': 'sid'})))
+    assert journey._latest_module_artifacts(db) == {}
 
 
 def test_edited_artifact_is_stale_even_after_validation(generation_project, monkeypatch):

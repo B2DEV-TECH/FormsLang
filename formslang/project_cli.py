@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import authstore, config, rbac
 from .project_intake import ProjectIntake
+from .project_journey_status import FormNotFound
 from .project_model import TARGET_CHOICES, ProjectError, TargetProfile, target_from_choice
 from .project_projection import CATEGORIES, INTERVENTIONS, RECOMMENDATIONS, RISK_LEVELS, SORTS
 from .project_service import ProjectService
@@ -136,9 +137,10 @@ def _operation(args):
                 raise ProjectError('Analyze the project before requesting its summary')
             return result, 0
         if operation == 'journey':
+            freshness = service.freshness()
             try:
-                return service.journey(freshness=service.freshness(), form=args.form), 0
-            except LookupError as exc:
+                return service.journey(freshness=freshness, form=args.form), 0
+            except FormNotFound as exc:
                 raise ProjectError('Form not found; run project journey without --form to list Forms') from exc
         if operation == 'inventory':
             filters = {key: value for key, value in {

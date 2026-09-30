@@ -41,6 +41,10 @@ VALIDATION_STATES = {'Validated': ('DONE', None, None),
 OPEN_STATES = frozenset({'ACTION', 'BLOCKED', 'STALE'})
 
 
+class FormNotFound(LookupError):
+    """No Form in the project matches the requested entity id or name."""
+
+
 def classify_blocker(code):
     """The step that resolves a generation blocker: UNDERSTAND, DECIDE, LIMIT or UNCLASSIFIED."""
     return BLOCKER_CLASS.get(code, 'UNCLASSIFIED')
@@ -154,7 +158,7 @@ def _select_form(entities, form):
     if len(by_name) > 1:
         raise ProjectError('Form name is ambiguous; use its entity id')
     if not by_name:
-        raise LookupError('Form not found')
+        raise FormNotFound('Form not found')
     return by_name
 
 
@@ -192,7 +196,8 @@ def _latest_module_artifacts(db):
     latest = {}
     for (metadata,) in db.execute('SELECT metadata_json FROM project_artifact ORDER BY created_at, artifact_id'):
         artifact = json.loads(metadata)
-        if artifact.get('artifact_kind') or not artifact.get('source_id'):
+        if artifact.get('artifact_kind') or not all(
+                key in artifact for key in ('source_id', 'target_revision', 'code_revision')):
             continue
         latest[artifact['source_id']] = artifact
     return latest
@@ -219,8 +224,11 @@ def journey_status(service, *, freshness, form=None):
             facts = {'blockers': generation._detail(assessment, freshness, source_id, read_only=True)['blockers']}
         except ProjectBusy:
             raise
-        except (ProjectError, OSError) as exc:
+        except ProjectError as exc:
             return {'detail_error': str(exc)}
+        except OSError:
+            # OSError messages carry absolute server paths; never surface them.
+            return {'detail_error': 'Prepared generation files are unavailable; restore them before generation.'}
         artifact = artifacts.get(source_id)
         if artifact is None:
             return facts
