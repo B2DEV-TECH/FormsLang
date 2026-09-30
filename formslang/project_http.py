@@ -375,6 +375,11 @@ class ProjectHTTP:
                     raise ProjectError('System Map node requires only an id')
                 freshness = self._freshness(service)
                 return 200, service.system_map_node(query['id'], freshness=freshness)
+            if tail == ['system-map', 'edge'] and method == 'GET':
+                if set(query) != {'id'}:
+                    raise ProjectError('System Map relationship requires only an id')
+                freshness = self._freshness(service)
+                return 200, service.relationship_evidence(query['id'], freshness=freshness)
             if tail == ['module-360'] and method == 'GET':
                 if len(query) != 1 or not set(query) <= {'module', 'node', 'finding'}:
                     raise ProjectError('Module 360 requires exactly one of module, node or finding')

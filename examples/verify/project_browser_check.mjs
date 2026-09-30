@@ -112,6 +112,8 @@ try{
   await click('project-demo');
   await wait(()=>evaluate(`projectUI.view==='overview'&&projectUI.summary?.project.name==='Synthetic dispatch desk'&&!projectUI.jobId&&projectUI.overview?.assessment.freshness==='CURRENT'&&document.getElementById('project-status').textContent==='Source freshness checked.'`),'real demo Overview');
   check('bundled demo follows real project path',await evaluate(`projectUI.summary.inventory.forms.analyzed===2&&projectUI.summary.inventory.database.package_bodies===1&&projectUI.overview.inventory.forms_modules===2&&projectUI.overview.risk_distribution.CRITICAL>0`));
+  const {journeyChecks}=await import('./project_journey_browser_check.mjs');
+  await journeyChecks({evaluate,click,clickSelector,wait,check,screenshot});
   await clickSelector('[data-project-filter="risk"][data-project-value="CRITICAL"]');await wait(()=>evaluate(`projectUI.inventoryState?.filters.risk==='CRITICAL'&&projectUI.inventoryState.page?.rows.length>0`),'demo Critical inventory');
   check('demo Critical card is evidence-backed',await evaluate(`projectUI.inventoryState.page.rows.every(row=>row.risk==='CRITICAL')`));
   await clickSelector('[data-project-category="packages"]');await wait(()=>evaluate(`projectUI.inventoryState?.category==='packages'&&!!projectUI.inventoryState.page`),'package inventory');

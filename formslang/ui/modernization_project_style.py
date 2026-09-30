@@ -1,6 +1,9 @@
 """Project screens reuse the existing corporate theme and responsive shell."""
 
 PROJECT_STYLE = r'''
+  .project-journey-relations { list-style:none; padding:0; }
+  .project-journey-relations li { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:8px 0; }
+  #project-journey-evidence pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto; }
   #project-workspace[hidden] { display:none; }
   body.project-mode main { display:block; overflow:auto; }
   body.project-mode main > :not(#project-workspace), body.project-mode .header-actions,
