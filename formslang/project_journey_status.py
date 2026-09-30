@@ -5,7 +5,12 @@ no persistence authority and no domain rule. Design:
 docs/design/formslang-3.0/journey-shell-design.md §2.
 """
 
+import json
 from collections import Counter
+
+from .project_generation_policy import dependency_edges, unresolved_findings
+from .project_model import ProjectBusy, ProjectError, RevisionConflict
+from .project_review import _binding
 
 SCHEMA = 'formslang-journey/1'
 STEPS = ('UNDERSTAND', 'DECIDE', 'BUILD', 'VALIDATE')
@@ -139,3 +144,101 @@ def focus_step(steps):
         if step['step'] == 'UNDERSTAND' and step['project']['state'] != 'DONE':
             return 'UNDERSTAND'
     return None
+
+
+def _select_form(entities, form):
+    by_id = [e for e in entities if e['id'] == form]
+    if by_id:
+        return by_id
+    by_name = [e for e in entities if str(e.get('name', '')).casefold() == str(form).casefold()]
+    if len(by_name) > 1:
+        raise ProjectError('Form name is ambiguous; use its entity id')
+    if not by_name:
+        raise LookupError('Form not found')
+    return by_name
+
+
+def build_journey(assessment, freshness, *, has_sources, scopes=None, module_facts=None, form=None):
+    """Compose the journey from saved facts; module_facts(source_id) supplies Build and Validate inputs."""
+    scopes = scopes or {}
+    blueprint = assessment['blueprint'] if assessment else {'entities': [], 'edges': [], 'findings': []}
+    entities = sorted((e for e in blueprint['entities'] if e.get('type') == 'FORM'),
+                      key=lambda e: (str(e.get('name', '')).casefold(), e['id']))
+    if form is not None:
+        entities = _select_form(entities, form)
+    outgoing = dependency_edges(blueprint)
+    forms = []
+    for entity in entities:
+        module = entity.get('module')
+        source_id = scopes.get(module)
+        facts = module_facts(source_id) if (source_id and module_facts) else {}
+        blockers = facts.get('blockers', [])
+        unresolved = len(unresolved_findings(blueprint, module, outgoing=outgoing)) if module else 0
+        build = build_step(has_scope=source_id is not None, blockers=blockers,
+                           detail_error=facts.get('detail_error'), artifact=facts.get('artifact'))
+        forms.append({'entity_id': entity['id'], 'name': entity.get('name'), 'module': module,
+                      'source_id': source_id, 'steps': [
+                          understand_step(freshness, has_sources=has_sources, blockers=blockers),
+                          decide_step(freshness, has_sources=has_sources, unresolved=unresolved, blockers=blockers),
+                          build,
+                          validate_step(build, validation=facts.get('validation'))]})
+    steps = project_steps(forms, understand_step(freshness, has_sources=has_sources))
+    return {'schema': SCHEMA, 'freshness': freshness, 'focus': focus_step(steps),
+            'steps': steps, 'forms': forms}
+
+
+def _latest_module_artifacts(db):
+    """The newest selected-module artifact per source_id; generic packages have no Form."""
+    latest = {}
+    for (metadata,) in db.execute('SELECT metadata_json FROM project_artifact ORDER BY created_at, artifact_id'):
+        artifact = json.loads(metadata)
+        if artifact.get('artifact_kind') or not artifact.get('source_id'):
+            continue
+        latest[artifact['source_id']] = artifact
+    return latest
+
+
+def journey_status(service, *, freshness, form=None):
+    """The project's journey, read without writing; the caller supplies one freshness value."""
+    descriptor = service.open()
+    has_sources = bool(descriptor.source_roots)
+    assessment = service.assessment(freshness=freshness)
+    if assessment is None:
+        payload = build_journey(None, freshness, has_sources=has_sources, form=form)
+        return {**payload, 'project_id': descriptor.id, 'binding': None}
+    generation = service._generation_service()
+    db = service._store.session.db
+    scopes = {entry['module']: entry['source_id'] for entry in generation._sources(assessment)}
+    artifacts = _latest_module_artifacts(db)
+    latest_plans = {(row[0], row[1]): row[2] for row in db.execute(
+        'SELECT source_id,analysis_revision,revision FROM project_target_plan ORDER BY id')}
+    sessions = {(s['source_id'], s['revision']): s for s in service._store.module_sessions()}
+
+    def module_facts(source_id):
+        try:
+            facts = {'blockers': generation._detail(assessment, freshness, source_id, read_only=True)['blockers']}
+        except ProjectBusy:
+            raise
+        except ProjectError as exc:
+            return {'detail_error': str(exc)}
+        artifact = artifacts.get(source_id)
+        if artifact is None:
+            return facts
+        reason = generation.artifact_currency(assessment, artifact, freshness_status=freshness.get('status'),
+                                              latest_plans=latest_plans, sessions=sessions)
+        if reason is None:
+            try:
+                generation._artifact_bytes(artifact['artifact_id'])
+            except (OSError, ProjectError):
+                reason = 'ARTIFACT_INTEGRITY'
+        facts['artifact'] = {'artifact_id': artifact['artifact_id'], 'reason': reason}
+        if reason is None:
+            facts['validation'] = generation.latest_validation(artifact['artifact_id'])
+        return facts
+
+    payload = build_journey(assessment, freshness, has_sources=has_sources, scopes=scopes,
+                            module_facts=module_facts, form=form)
+    row = db.execute('SELECT analysis_revision,review_revision FROM modernization_project WHERE id=1').fetchone()
+    if tuple(row) != (assessment['analysis_revision'], assessment['review_revision']):
+        raise RevisionConflict('The project changed while its journey was read; reload.')
+    return {**payload, 'project_id': descriptor.id, 'binding': _binding(assessment)}

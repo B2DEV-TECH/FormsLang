@@ -15,6 +15,7 @@ from formslang.project_generation_policy import (
     unresolved_findings,
 )
 from formslang.project_intake import ProjectIntake
+from formslang.project_model import ProjectError, RevisionConflict
 from formslang.project_review import ProjectReviewService
 from formslang.project_service import ProjectService
 from tests.test_project_generation import generation_project, prepared  # noqa: F401
@@ -230,3 +231,137 @@ def test_project_focus_is_the_first_step_with_work():
     assert journey.focus_step(journey.project_steps([form('DONE', 'DONE', 'DONE', 'DONE')], done)) is None
     no_sources = journey.understand_step(CURRENT, has_sources=False)
     assert journey.focus_step(journey.project_steps([], no_sources)) == 'UNDERSTAND'
+
+
+def _assessment(*names):
+    entities = [{'id': f'form:{n.lower()}', 'type': 'FORM', 'name': n, 'module': f'forms/{n.lower()}.xml'}
+                for n in names]
+    return {'blueprint': {'entities': entities, 'edges': [], 'findings': []}}
+
+
+def test_build_journey_selects_forms_by_id_or_name():
+    assessment = _assessment('SHIPMENTS', 'CUSTOMERS')
+    everything = journey.build_journey(assessment, CURRENT, has_sources=True)
+    assert everything['schema'] == 'formslang-journey/1'
+    assert [f['name'] for f in everything['forms']] == ['CUSTOMERS', 'SHIPMENTS']
+    assert [f['name'] for f in journey.build_journey(
+        assessment, CURRENT, has_sources=True, form='form:shipments')['forms']] == ['SHIPMENTS']
+    assert [f['name'] for f in journey.build_journey(
+        assessment, CURRENT, has_sources=True, form='customers')['forms']] == ['CUSTOMERS']
+    with pytest.raises(LookupError):
+        journey.build_journey(assessment, CURRENT, has_sources=True, form='GHOST')
+    twins = _assessment('CUSTOMERS')
+    twins['blueprint']['entities'].append(
+        {'id': 'form:other', 'type': 'FORM', 'name': 'Customers', 'module': 'other/customers.xml'})
+    with pytest.raises(ProjectError, match='ambiguous'):
+        journey.build_journey(twins, CURRENT, has_sources=True, form='CUSTOMERS')
+
+
+def test_build_journey_without_scope_or_analysis():
+    unscoped = journey.build_journey(_assessment('NOTICE'), CURRENT, has_sources=True)
+    assert [s['state'] for s in unscoped['forms'][0]['steps']] == ['DONE', 'DONE', 'BLOCKED', 'WAITING']
+    assert unscoped['focus'] == 'BUILD'
+    empty = journey.build_journey(None, {'status': 'INCOMPLETE', 'reasons': ['NOT_ANALYZED']}, has_sources=True)
+    assert empty['forms'] == [] and empty['focus'] == 'UNDERSTAND'
+    assert empty['steps'][0]['project']['reasons'] == [{'code': 'NOT_ANALYZED', 'resolved_in': 'UNDERSTAND'}]
+    with pytest.raises(LookupError):
+        journey.build_journey(None, CURRENT, has_sources=True, form='NOTICE')
+
+
+def _states(service):
+    return [s['state'] for s in service.journey(freshness=service.freshness())['forms'][0]['steps']]
+
+
+def _validated(monkeypatch):
+    monkeypatch.setattr(apeximport, 'sqlcl_version', lambda: 'SQLcl 26.2.2')
+    monkeypatch.setattr(apeximport, 'run_import',
+                        lambda path, **kwargs: apeximport.ImportResult(True, 0, 'Validation successful.', ''))
+
+
+def test_journey_follows_the_generation_lifecycle(generation_project, monkeypatch):
+    service = generation_project
+    first = service.journey(freshness=service.freshness())
+    assert first['project_id'] == service.open().id
+    assert first['binding']['analysis_revision'] == service.open().analysis_revision
+    build = first['forms'][0]['steps'][2]
+    assert build['state'] == 'WAITING'
+    assert 'MODULE_NOT_PREPARED' in {r['code'] for r in build['reasons']}
+    detail = prepared(service)
+    assert detail['ready'], detail['blockers']
+    assert _states(service) == ['DONE', 'DONE', 'ACTION', 'WAITING']
+    generated = service.generate({**detail['binding'], 'scopes': [detail]})
+    assert _states(service) == ['DONE', 'DONE', 'DONE', 'ACTION']
+    monkeypatch.setattr(apeximport, 'sqlcl_version', lambda: '')
+    service.generation_validate(generated['artifact_id'])
+    validate = service.journey(freshness=service.freshness())['forms'][0]['steps'][3]
+    assert validate['state'] == 'ACTION' and validate['reasons'][0]['code'] == 'NOT_VALIDATED'
+    _validated(monkeypatch)
+    service.generation_validate(generated['artifact_id'])
+    assert _states(service) == ['DONE', 'DONE', 'DONE', 'DONE']
+    assert service.journey(freshness=service.freshness())['focus'] is None
+
+
+def test_changed_source_makes_the_journey_wait_for_understand(generation_project):
+    service = generation_project
+    source = service.access.source_roots[0] / 'forms/notice.xml'
+    source.write_text(source.read_text(encoding='utf-8') + '\n<!-- changed -->', encoding='utf-8')
+    assert _states(service) == ['STALE', 'WAITING', 'WAITING', 'WAITING']
+
+
+def test_decide_count_equals_generation_review_blockers(demo):
+    payload = demo.journey(freshness=demo.freshness())
+    assert [f['name'] for f in payload['forms']] == ['CUSTOMERS', 'SHIPMENTS']
+    for form in payload['forms']:
+        detail = demo.generation_module(form['source_id'])
+        expected = sum(1 for b in detail['blockers'] if b['code'] == 'UNRESOLVED_REVIEW')
+        counted = [r['count'] for r in form['steps'][1]['reasons'] if r['code'] == 'UNRESOLVED_REVIEW']
+        assert counted == ([expected] if expected else [])
+    assert sum(payload['steps'][1]['counts'].values()) == 2
+
+
+def test_journey_writes_nothing(generation_project):
+    service = generation_project
+    prepared(service)
+    fresh = service.freshness()
+    before = _tree_digest(service.access.root)
+    service.journey(freshness=fresh)
+    assert _tree_digest(service.access.root) == before
+
+
+def test_unavailable_prepared_session_blocks_build_without_failing_the_journey(generation_project):
+    service = generation_project
+    prepared(service)
+    record = service._store.module_sessions()[0]
+    service._generation_service()._path(record['relative_store']).unlink()
+    build = service.journey(freshness=service.freshness())['forms'][0]['steps'][2]
+    assert build['state'] == 'BLOCKED'
+    assert build['reasons'][0]['code'] == 'GENERATION_DETAIL_UNAVAILABLE'
+
+
+def test_edited_artifact_is_stale_even_after_validation(generation_project, monkeypatch):
+    service = generation_project
+    detail = prepared(service)
+    generated = service.generate({**detail['binding'], 'scopes': [detail]})
+    _validated(monkeypatch)
+    service.generation_validate(generated['artifact_id'])
+    archive = service._store.directory / 'artifacts' / generated['artifact_id'] / 'application.apex.zip'
+    archive.write_bytes(b'edited by human')
+    steps = service.journey(freshness=service.freshness())['forms'][0]['steps']
+    assert [s['state'] for s in steps[2:]] == ['STALE', 'WAITING']
+    assert steps[2]['reasons'][0]['code'] == 'ARTIFACT_INTEGRITY'
+
+
+def test_journey_rejects_a_review_that_lands_while_it_is_read(demo, monkeypatch):
+    fresh = demo.freshness()
+    original = journey.build_journey
+
+    def interleaved(*args, **kwargs):
+        payload = original(*args, **kwargs)
+        row = demo.review_queue()['rows'][0]
+        detail = demo.review_detail(row['id'])
+        demo.review_decide(row['id'], {**detail['binding'], 'action': 'DEFER'})
+        return payload
+
+    monkeypatch.setattr(journey, 'build_journey', interleaved)
+    with pytest.raises(RevisionConflict):
+        demo.journey(freshness=fresh)
