@@ -127,9 +127,18 @@ reachable, as §3 shows.
 - It composes facts the product already computes and assigns each one to a
   step. That classification lives in the service. The UI and the CLI render it
   and never recompute it.
-- Each response evaluates freshness **once**. Every step derives from that one
-  value, which is returned with its `checked_at`, so Understand and Build
-  cannot contradict each other.
+- Each response uses **one** freshness value, and every step derives from it,
+  so Understand and Build cannot contradict each other. The value is returned
+  with its `checked_at`. The caller supplies it, following the existing
+  conventions:
+  - HTTP passes the last saved source check (`ProjectHTTP._freshness`), like
+    every other projection route. It does not re-hash sources on each page
+    load. With no saved check, the value is `UNVERIFIED` /
+    `SOURCE_CHECK_REQUIRED`.
+  - The CLI runs and saves a new check (`service.freshness()`), as
+    `project summary` does.
+- Generation detail is read with its module session opened **read-only**. A
+  journey request writes nothing.
 
 ### Step states
 
@@ -152,7 +161,11 @@ per-Form freshness exists.
 
 **Decide (Form).**
 
-- `WAITING` when Understand is not `DONE`.
+- `WAITING` (reason `NEEDS_CURRENT_ANALYSIS`) when the project has no sources
+  or its freshness is not `CURRENT`. Reviews can be recorded only on current
+  evidence. A Form's own Understand-class blockers, such as an unresolved
+  dependency, do **not** make Decide wait, because its findings can still be
+  reviewed.
 - Otherwise `ACTION` when there are unresolved findings or any Decide-class
   blocker is present.
 - Otherwise `DONE`.
@@ -169,18 +182,27 @@ Review → Decisions*), so they belong to Decide.
    the Form has no generation scope. A generation scope is a selected XML
    manifest entry whose module matches the Form entity, which is the only
    case where a `source_id` exists. Validate is then `WAITING`.
-2. `BLOCKED` if any product-limit blocker is present. All reasons are listed,
+2. `BLOCKED` with reason `GENERATION_DETAIL_UNAVAILABLE` and the error message
+   when reading the generation detail fails. This happens, for example, when
+   a prepared session is missing or its source was edited. `ProjectBusy` is
+   never absorbed; it propagates as a conflict.
+3. `BLOCKED` if any product-limit blocker is present. All reasons are listed,
    including any Decide-class ones.
-3. `WAITING` if any Understand-class or Decide-class blocker is present.
-4. `DONE` if an artifact for the Form's `source_id` is current under the
-   report currency rules.
-5. `STALE` if an artifact exists but is not current.
-6. Otherwise `ACTION` (*Generate*).
+4. `WAITING` if any Understand-class or Decide-class blocker is present.
+5. `ACTION` with `UNCLASSIFIED` reasons if only unknown blocker codes remain.
+6. `DONE` if the Form's latest selected-module artifact is current.
+7. `STALE` if that artifact exists but is not current.
+8. Otherwise `ACTION` (`READY_TO_GENERATE`).
 
-The service **reuses the report currency rules exactly**. If those rules mark
-an artifact stale after a review on an unrelated Form (the binding carries the
-project-wide `review_revision`), the journey shows it as the rules say. WP-39a
-records that as a finding and does not change the rule.
+An artifact is **current** when the delivery-report currency rule finds no
+reason (`ARTIFACT_REVISION_STALE`, `ARTIFACT_CODE_UNAVAILABLE` or
+`ARTIFACT_CODE_STALE`) **and** the archive passes the generation service's own
+integrity check (`ARTIFACT_INTEGRITY` otherwise). The currency rule moves out of
+`ProjectReportService._artifacts` into one `ProjectGenerationService` method,
+and reports and the journey share it. The report's behavior does not change.
+If that rule marks an artifact stale after a review on an unrelated Form (the
+binding carries the project-wide `review_revision`), the journey shows it as
+the rule says. WP-39a records that as a finding and does not change the rule.
 
 **Validate (Form).**
 
@@ -202,8 +224,21 @@ in a Form journey.
 | Class | Resolved in | Codes |
 |---|---|---|
 | Understand | Understand | `SOURCE_NOT_CURRENT`, `MODULE_NOT_OBSERVED`, `UNRESOLVED_DEPENDENCY` |
-| Decide | Decide | `UNRESOLVED_REVIEW`, `PREREQUISITE_NOT_CONFIRMED`, `TARGET_STRATEGY_UNSELECTED`, `UNRESOLVED_ARCHITECTURE`, `ROW_KEY_NOT_CONFIRMED`, `TARGET_KEYS_CHANGED`, `MODULE_NOT_PREPARED`, `CODE_NOT_APPROVED`, `CODE_NEEDS_REVALIDATION`, `TARGET_NAME_COLLISION`, `TARGET_NOT_GENERATING` |
-| Product limit | not by deciding; shown as "outside supported scope" | `UNSUPPORTED_TARGET`, `UNSUPPORTED_TARGET_DECISION`, `UNSUPPORTED_TABLE_IDENTITY`, `UNSUPPORTED_COLUMN_IDENTITY`, `UNSUPPORTED_LAYOUT`, `UNSUPPORTED_TARGET_CODE`, `UNSUPPORTED_EXECUTION_MAPPING`, `UNSUPPORTED_ITEM_CONTROL`, `UNSUPPORTED_DATA_CONTROL`, `UNSUPPORTED_DATABASE_MAPPING` |
+| Decide | Decide | `UNRESOLVED_REVIEW`, `UNSUPPORTED_TARGET_DECISION`, `UNRESOLVED_ARCHITECTURE`, `PREREQUISITE_NOT_CONFIRMED`, `UNSUPPORTED_TARGET`, `TARGET_STRATEGY_UNSELECTED`, `TARGET_NOT_GENERATING`, `TARGET_KEYS_CHANGED`, `ROW_KEY_NOT_CONFIRMED`, `MODULE_NOT_PREPARED`, `CODE_NOT_APPROVED`, `CODE_NEEDS_REVALIDATION`, `UNSUPPORTED_TARGET_CODE` |
+| Product limit | not by deciding; shown as "outside supported scope" | `UNSUPPORTED_TABLE_IDENTITY`, `UNSUPPORTED_COLUMN_IDENTITY`, `UNSUPPORTED_LAYOUT`, `UNSUPPORTED_EXECUTION_MAPPING`, `UNSUPPORTED_ITEM_CONTROL`, `UNSUPPORTED_DATA_CONTROL`, `UNSUPPORTED_DATABASE_MAPPING`, `TARGET_NAME_COLLISION` |
+
+Three `UNSUPPORTED_*` codes are Decide-class, because a decision resolves them:
+
+- `UNSUPPORTED_TARGET_DECISION` is emitted for every finding that has no
+  reviewed, supported recommendation yet;
+- `UNSUPPORTED_TARGET` asks for a supported target profile;
+- `UNSUPPORTED_TARGET_CODE` means the reviewed code still carries Forms runtime
+  behavior, which the reviewer can rewrite.
+
+If they were classified as product limits, every newly analyzed Form would
+show Build as blocked instead of waiting for decisions.
+`UNSUPPORTED_TABLE_IDENTITY` stays a limit even when the table is merely
+missing from the sources, and its message says which case applies.
 
 The service never guesses an unknown value. That covers blocker codes,
 freshness values, review states and validation statuses. An unknown value
@@ -216,8 +251,10 @@ generation modules has no class.
 - For each step, the service counts Forms per state.
 - The focus step is the first step, in order, where any Form is `ACTION`,
   `BLOCKED` or `STALE`. When every Form is `DONE`, there is no focus.
-- Packages and libraries appear in the Understand counts only, because only
-  Forms have a generation scope.
+- The journey counts Forms only, because only Forms have a generation scope.
+  The Explore step shows package and library counts from the existing
+  overview inventory, which already groups package specs and bodies. The
+  journey does not recount them.
 - At project scope, Understand also takes its state straight from project
   freshness and source roots. A project with no sources, or no analyzed Form,
   still has a state and a next action.
@@ -226,29 +263,40 @@ generation modules has no class.
 
 - HTTP: `GET /api/v2/projects/{pid}/journey` and
   `GET /api/v2/projects/{pid}/journey?form=<form entity id>`.
-- CLI: `formslang project journey [--form <id or name>] [--json]`.
-- Code: a new module, `formslang/project_journey.py`.
+- CLI: `formslang project journey <project> [--form <id or name>] [--json]`.
+  Like every project command, it takes the project directory or descriptor.
+- `form` matches an entity id first, then a case-insensitive name. An unknown
+  Form gives 404 (HTTP) or exit 2 (CLI). An ambiguous name is rejected.
+- Code: a new module, `formslang/project_journey_status.py`.
+  `tests/test_project_journey.py` already holds the WP-12 journey tests, so the
+  name stays distinct.
+- If the project's analysis or review revision changes while the journey is
+  read, the request fails with `RevisionConflict` (409), as delivery reports
+  do.
 
 ```json
 {
   "schema": "formslang-journey/1",
   "project_id": "…",
+  "binding": {"project_id": "…", "analysis_revision": "…", "source_revision": "…", "review_revision": 12},
   "freshness": {"status": "CURRENT", "reasons": [], "checked_at": "…"},
-  "revisions": {"analysis": "…", "source": "…", "review": 12},
   "focus": "DECIDE",
   "steps": [
-    {"step": "UNDERSTAND", "counts": {"DONE": 3}, "summary": {"forms": 3, "packages": 1}},
+    {"step": "UNDERSTAND", "counts": {"DONE": 3},
+     "project": {"step": "UNDERSTAND", "state": "DONE", "reasons": []}},
     {"step": "DECIDE", "counts": {"ACTION": 1, "DONE": 2}}
   ],
   "forms": [
-    {"entity_id": "form:…", "name": "CUSTOMERS", "source_id": "…",
+    {"entity_id": "form:…", "name": "CUSTOMERS", "module": "forms/customers.xml", "source_id": "…",
      "steps": [
        {"step": "DECIDE", "state": "ACTION",
-        "reasons": [{"code": "UNRESOLVED_REVIEW", "count": 2, "resolved_in": "DECIDE"}]}
+        "reasons": [{"code": "UNRESOLVED_REVIEW", "resolved_in": "DECIDE", "count": 2}]}
      ]}
   ]
 }
 ```
+
+A reason's `resolved_in` is `null` for product limits and unclassified values.
 
 `schema` is an internal payload label. It is not the ADR-13 CLI envelope, which
 stays with WP-39b and WP-40.
@@ -262,9 +310,15 @@ relative to the same run:
 
 - The **cold project journey median must not exceed 1.5× the cold Overview
   median** measured in that run.
-- If it does, the project scope computes Build from cheap facts (the prepared
-  flag and artifacts), and the full blockers load when a Form opens. The gate
-  is then measured again.
+- This fixture has no generation scope, so the gate measures:
+  - the composition;
+  - the freshness rules;
+  - the Decide scope walk over 500 Forms and 5,000 findings.
+
+  The per-Form generation detail is not part of this gate. That limit is
+  recorded with the numbers.
+- If the gate fails, implementation stops and the owner decides. One possible
+  remedy is to load the full Build facts only when a Form opens.
 - The numbers go into the evidence register.
 
 ## 3. Transition (WP-41 slice 1)
