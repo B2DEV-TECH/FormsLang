@@ -160,12 +160,12 @@ No gate is **passed**. The full 3.0 release is not complete.
 ### WP-10 — repository transaction and checkpoint spike
 
 - **Branch:** `codex/formslang-3-wp10-repository-spike`, stacked on the reconciled WP-06 commit `024b088` and WP-05 commit `5e34693`. The two own WP-10 commits were replayed without conflicts; `range-diff` marks both equivalent.
-- **Draft contracts:** [ADR-01](adr/ADR-01-repository-authority.md), [ADR-02](adr/ADR-02-object-identity.md), [ADR-03](adr/ADR-03-checkpoint-schema.md), and the [portable-state schema draft](wp10-portable-state-schema-draft.md). None is accepted.
+- **Contracts introduced as drafts:** [ADR-01](adr/ADR-01-repository-authority.md), [ADR-02](adr/ADR-02-object-identity.md), [ADR-03](adr/ADR-03-checkpoint-schema.md), and the [portable-state schema draft](wp10-portable-state-schema-draft.md). The architectural contracts were accepted after independent review; the portable example remains a draft, not a product format.
 - **Executable evidence:** `examples/verify/repository_spike.py` stays outside the product path. `tests/test_repository_spike.py` proves exact-byte and kind-separated IDs, canonical manifests across different input orders, rollback before commit, pending and idempotent recovery after commit, missing-object refusal, interrupted object flush and one winner under two concurrent publishers. The recovery missing-object test failed first because recovery published a manifest with an unavailable accepted object. A second red test found that a new event was accepted despite a missing object inherited from the previous checkpoint. Both repairs passed. Focused local run: **9 passed** on Windows 11 / Python 3.13.15.
-- **Local verification:** Windows 11 / Python 3.12.10 on the final composed head: **1979 passed, 5 skipped, 4 xfailed** in 918.63 s. Focused WP-10 plus WP-05 suite: **10 passed, 1 xfailed**. Ruff and `git diff --check` passed. The extra xfail is the WP-05 egress probe; the three prior strict xfails remain. PRs #29 and #30 are merged; #31 now targets `main`. Final 13-check CI on #31 remains pending.
+- **Local verification:** Windows 11 / Python 3.12.10 on the final composed head: **1979 passed, 5 skipped, 4 xfailed** in 918.63 s. Focused WP-10 plus WP-05 suite: **10 passed, 1 xfailed**. Ruff and `git diff --check` passed. The extra xfail is the WP-05 egress probe; the three prior strict xfails remain. PR #31 (`55b81c3`) passed 13/13 checks in CI run `36654894144` and merged as `7dbda54`.
 - **Limits:** This is not a product migration or a complete crash/power-loss, portability, authorization or export proof. G-02 and G-03 remain open.
 
-### ADR-06 — identity contract probe on Draft PR #32
+### ADR-06 — identity contract probe on PR #32
 
 - The probe is outside the product path. It cannot change entity IDs, reference
   resolution, decision binding or historical snapshots. Its first four focused
@@ -212,12 +212,18 @@ No gate is **passed**. The full 3.0 release is not complete.
   evidence. At `78599b5`, the composed focused suite returned **132 passed,
   2 xfailed** in 8.77 s; Ruff and diff checks passed. CI run `36658549367`
   began normally after the documentation conflict was resolved and was still
-  running when acceptance was authorized. Acceptance-head CI is separate.
+  running when acceptance was authorized. The accepted head `f04561a` later
+  passed 13/13 checks in run `36658930446` and merged as `01ee926`.
 - ADR-06 is **Accepted (architecture only)** by a separate authorized commit
   on 29 September 2026. Case C product entities, qualified call resolution,
   Blueprint/project parity, engine versioning and legacy compatibility are
   still WP-04 work on a separate branch. WP-04/G-04 remain open, and historical
   inventories are unchanged. No product gate is closed by this acceptance.
+
+### ADR-01/02/03 architecture acceptance
+
+- **Decision (2026-09-30):** Accept the SQLite-coordinated, verified-object and root-last publication contract, versioned kind-separated object identity with exact source bytes, and an acyclic whole-state checkpoint with declared omissions. WP-06's read/write inventory and WP-10's nine failure-injection/golden-byte tests support the architectural choice. Alternatives and failure paths are recorded in the three ADRs.
+- **Boundary:** The WP-10 script is outside the product path. Its example JSON is not a product exchange schema. WP-20 must test real migration, durable recovery, no-write reads, source-set closure, collision handling, full/review export, import trust, origin conflicts and clean-workspace reopen before G-02 or G-03 can close. The direct Blueprint `source_revision` strict xfail stays open.
 
 ## Gates not started
 

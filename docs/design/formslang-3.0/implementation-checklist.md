@@ -281,9 +281,9 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 
 | ID | Scope | Status / evidence |
 |---|---|---|
-| ADR-01 | Repository authority and transaction boundary | NOT ASSESSED |
-| ADR-02 | Object identities and canonicalization | NOT ASSESSED |
-| ADR-03 | Checkpoint and portable-history schema | NOT ASSESSED |
+| ADR-01 | Repository authority and transaction boundary | ACCEPTED architecture contract; WP-20 product durability proof open |
+| ADR-02 | Object identities and canonicalization | ACCEPTED architecture contract; WP-20 product object format proof open |
+| ADR-03 | Checkpoint and portable-history schema | ACCEPTED architecture contract; WP-20 product schema and reopen proof open |
 | ADR-04 | Trust of imported history and approvals | NOT ASSESSED |
 | ADR-05 | DSL grammar and versioning | NOT ASSESSED |
 | ADR-06 | Cross-revision entity identity | NOT ASSESSED |

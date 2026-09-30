@@ -1,8 +1,9 @@
 # ADR-01 — Repository authority and transaction boundary
 
-Status: **Draft**. Owner acceptance of the transaction contract and product
-migration are separate pending steps. Accepting this ADR will not validate a
-product repository or close a release gate.
+Status: **Accepted (architecture contract, 2026-09-30)**. This selects the
+transaction ordering for WP-20. Product migration and durability still require
+their own tests; this acceptance does not validate a product repository or close
+a release gate.
 
 ## Context
 
@@ -53,9 +54,12 @@ must record them as unproven rather than treating the spike as product proof.
 
 ## Acceptance work
 
-Before owner acceptance of this architecture, review the spike's transaction
-ordering, verified-object rule, recovery/idempotency behavior and conflict
-tests, and the WP-06 write-side-effect inventory. WP-20 must then prove failure
+The WP-06 read/write inventory and WP-10 spike were reviewed together. The
+spike's pre-commit, post-commit, inherited-object, flush-interruption and
+concurrent-publisher tests establish the proposed ordering and expose the
+verification-before-publication requirement. The accepted decision is the
+coordinator/verified-object/revision-fence/recovery contract above, not a claim
+that the spike is the product implementation. WP-20 must prove failure
 injection across real project migration, a Windows/Linux reader and writer
 matrix, explicit no-write reads, idempotency and authorization, recoverable
 mirror/checkpoint publication, and backup/restore. The intermittent HTTP 500
