@@ -2,6 +2,7 @@
 
 import json
 import signal
+import sqlite3
 
 import pytest
 
@@ -28,10 +29,57 @@ def test_create_analyze_status_json(tmp_path, sample_xml, capsys):
     assert 'FORMS_PARSING' in progress
     status, _ = run_json(capsys, ['status', destination / '.formslang/project.json'])
     assert status['assessment']['analysis_revision'] == first['analysis_revision']
-    assert status['freshness']['status'] == 'CURRENT'
+    assert status['freshness']['status'] == 'UNVERIFIED'
     assert status['last_job']['status'] == 'COMPLETED'
+    checked, _ = run_json(capsys, ['freshness', destination])
+    assert checked['status'] == 'CURRENT'
+    status, _ = run_json(capsys, ['status', destination])
+    assert status['freshness']['status'] == 'CURRENT'
+    assert status['last_job']['operation'] == 'FRESHNESS'
     again, _ = run_json(capsys, ['analyze', destination])
     assert again['analysis_revision'] == first['analysis_revision']
+
+
+def test_project_reads_use_saved_freshness_until_explicit_check(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    analyzed, _ = run_json(capsys, ['analyze', destination])
+    database = destination / '.formslang' / 'project.session.db'
+
+    def jobs():
+        with sqlite3.connect(database) as db:
+            return db.execute('SELECT COUNT(*) FROM project_job').fetchone()[0]
+
+    before = jobs()
+    status, _ = run_json(capsys, ['status', destination])
+    summary, _ = run_json(capsys, ['summary', destination])
+    inventory, _ = run_json(capsys, ['inventory', destination, '--category', 'forms'])
+    assert status['freshness']['status'] == 'UNVERIFIED'
+    assert status['freshness']['analysis_revision'] == analyzed['analysis_revision']
+    assert summary['assessment']['analysis_revision'] == analyzed['analysis_revision']
+    assert inventory['analysis_revision'] == analyzed['analysis_revision']
+    assert jobs() == before
+
+    checked, _ = run_json(capsys, ['freshness', destination])
+    assert checked['status'] == 'CURRENT'
+    assert jobs() == before + 1
+    status, _ = run_json(capsys, ['status', destination])
+    assert status['freshness']['status'] == 'CURRENT'
+    assert jobs() == before + 1
+
+    # Saved CURRENT describes the check at checked_at; it is not a live scan.
+    checked_at = status['freshness']['checked_at']
+    sample_xml.write_text(sample_xml.read_text(encoding='utf-8') + '\n<!-- changed after check -->\n',
+                          encoding='utf-8')
+    cached, _ = run_json(capsys, ['status', destination])
+    summary, _ = run_json(capsys, ['summary', destination])
+    assert cached['freshness']['status'] == 'CURRENT'
+    assert cached['freshness']['checked_at'] == checked_at
+    assert summary['assessment']['freshness'] == 'CURRENT'
+    assert jobs() == before + 1
+    refreshed, _ = run_json(capsys, ['freshness', destination])
+    assert refreshed['status'] == 'STALE'
+    assert refreshed['reasons'] == ['SOURCE_CHANGED']
+    assert jobs() == before + 2
 
 
 def test_project_reports_use_snapshot_and_exclusive_download(tmp_path, sample_xml, capsys):

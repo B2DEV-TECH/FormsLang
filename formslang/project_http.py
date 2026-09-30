@@ -173,13 +173,7 @@ class ProjectHTTP:
 
     @staticmethod
     def _freshness(service):
-        descriptor = service.open()
-        row = service._store.session.db.execute("SELECT outcome_json,requested_configuration FROM project_job WHERE operation='FRESHNESS' AND status IN ('COMPLETED','COMPLETED_WITH_WARNINGS') ORDER BY rowid DESC LIMIT 1").fetchone()
-        if row and row['requested_configuration'] == service._store.configuration_revision():
-            result = json.loads(row['outcome_json'] or '{}')
-            if result.get('analysis_revision') == descriptor.analysis_revision:
-                return result
-        return {'status': 'UNVERIFIED', 'reasons': ['SOURCE_CHECK_REQUIRED'], 'analysis_revision': descriptor.analysis_revision}
+        return service.last_freshness()
 
     def dispatch(self, method, path, query, body, auth):
         try:

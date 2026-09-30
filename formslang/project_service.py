@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -308,6 +309,21 @@ class ProjectService:
         self.open()
         return convert_selected(self._job_authority(), source_id, expected_configuration=expected_configuration,
                                 confirmed=confirmed, authorize=self._job_authority)
+
+    def last_freshness(self) -> dict:
+        """Read the last completed check without starting a new source scan."""
+        descriptor = self.open()
+        row = self._store.session.db.execute(
+            "SELECT outcome_json,requested_configuration FROM project_job "
+            "WHERE operation='FRESHNESS' AND status IN ('COMPLETED','COMPLETED_WITH_WARNINGS') "
+            "ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        if row and row['requested_configuration'] == self._store.configuration_revision():
+            result = json.loads(row['outcome_json'] or '{}')
+            if result.get('analysis_revision') == descriptor.analysis_revision:
+                return result
+        return {'status': 'UNVERIFIED', 'reasons': ['SOURCE_CHECK_REQUIRED'],
+                'analysis_revision': descriptor.analysis_revision}
 
     def freshness(self, *, started=None):
         from .project_freshness import check_freshness

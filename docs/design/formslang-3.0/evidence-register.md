@@ -230,6 +230,13 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Decision (2026-09-30):** An imported package's integrity, origin trust, decision applicability and receiving authorization are separate. A trusted clean restore needs an independently retained exact-root receipt and authorized custodian; ordinary Git/review exchange cannot activate a claimed approval. Git is an explicit transport for portable files, with separate operational stores per worktree and content-identity reconciliation. The documented threat/outcome tables and the existing legacy migration preservation behavior support this boundary choice; no product 3.0 import route exists yet.
 - **Boundary:** WP-20 must prove forged claim rejection, trusted versus unverified imports, retained receipt recovery, separate worktrees, external-change detection, preview/apply fences and conflict behavior. WP-22 must preserve legacy history without inventing current authorization. G-02 and G-03 remain open.
 
+### WP-20 partial product slice: explicit source freshness
+
+- **Scope:** Project CLI `status`, `summary`, and `inventory` now read the last completed freshness result through `ProjectService.last_freshness()`, shared with HTTP. `fl project freshness <project>` explicitly runs and records the existing source check. An analyzed project with no bound check reports `UNVERIFIED` and `SOURCE_CHECK_REQUIRED`.
+- **Failing-first evidence:** `test_project_reads_use_saved_freshness_until_explicit_check` first failed because `status` returned `CURRENT` by starting an implicit freshness job. The implementation stopped that job creation for the three CLI reads; the test then passed. The final related suite passed **51 tests, 1 skipped**. The final full local suite passed **1980 tests, 5 skipped, 4 xfailed** in 945.67 s on Windows/Python 3.12; Ruff and `git diff --check` passed. CI evidence still belongs to the final PR head.
+- **Time boundary:** A saved `CURRENT` means the sources matched **at `checked_at`**. A file edit after that check leaves the saved result unchanged until another explicit check; CLI and HTTP tests prove that later check returns `STALE` with `SOURCE_CHANGED`. This matches the existing HTTP contract and must not be presented as live certainty.
+- **Remaining gap:** `ProjectStore.open()` can still migrate, repair a descriptor mirror, or recover jobs, so this slice is not a no-write read path or a whole-state checkpoint. HIST-03 and API-03 remain incomplete; WP-20 product durability, portable history, and gates G-02/G-03 remain open.
+
 ## Gates not started
 
 G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0
