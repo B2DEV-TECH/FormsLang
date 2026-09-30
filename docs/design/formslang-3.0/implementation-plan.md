@@ -29,6 +29,37 @@ generate APEXlang, validate offline, and write revision-fenced reports.
 - Nothing is pushed, merged, tagged or released without the owner's explicit
   authorization for that specific operation.
 
+## Owner-approved re-sequencing (2026-09-30)
+
+After installing 3.0.0-beta.1, the owner reported that the Workbench is too
+complex. The causes were too many menus, no clear next step, and the 1.x module
+flow mixed with the 2.x project flow. The owner chose to bring a UX-only slice
+of M5 forward:
+
+1. **ADR-08** (frontend stack) moves from *Proposed* to *Accepted*.
+2. **WP-39a** adds the read-only journey status service.
+3. **WP-41 slice 1** adds the journey shell that hosts the existing views.
+
+The design is [journey-shell-design.md](journey-shell-design.md).
+
+After those, the order resumes:
+
+1. the rest of WP-11 (M2);
+2. the WP-20 reconciliation of PRs #38 → #41 (M3);
+3. M4;
+4. WP-39b, WP-40 and the later WP-41 slices.
+
+What does not change:
+
+- The specification, its requirements and its release gates. §26 still places
+  M5 after M2–M4, and the M5 exit still requires M2–M4.
+- The scope and dependencies of every other work package, except that WP-39 is
+  split into WP-39a and WP-39b and WP-41 gains slice 1 (see M5).
+- The working rules above.
+
+One consequence is that PRs #38 and #41 stay parked for longer, and they need a
+new rebase onto `main` before they are reconciled.
+
 ## M0 — Establish the real baseline (PR group P01, P02)
 
 | WP | Scope | Requirements | Depends on | Tests / exit evidence |
@@ -101,12 +132,14 @@ conflict, recovery and no-forged-approval cases listed in those ADRs.
 
 | WP | Scope | Requirements | Depends on | Exit evidence |
 |---|---|---|---|---|
-| WP-39 | Extract one typed application-service slice for pinned context, structured search, evidence and blocker inspection, and decision preview. Keep existing `ProjectService` behavior and public adapters compatible; no new persistence authority. | SURF-01, SURF-04, ARCH-01..04 | WP-11, WP-20, WP-31; ADR-13 for public error/schema mapping | Same fixture/context returns matching identities, evidence, omissions, budgets and domain errors through service, CLI and HTTP; stale/denied requests stay controlled |
-| WP-40 | CLI envelope with `schema` and warnings, exit codes 3–10, idempotency keys, cursors (ADR-13); complete the first supported headless journey using WP-39, keeping old commands or documented aliases. | CLI-*, API-*, SURF-02 | WP-39; M3–M4 | Old-command compatibility, JSON/stdout/stderr tests, offline no-browser journey and CLI/HTTP equality |
-| WP-41 | New shell and design system (ADR-08): Explore, Decisions, Build, Validate, Reports, History, with a shared evidence inspector. The legacy routes move over journey by journey. | UX-*, ARCH-01/02, SURF-01 | WP-12 findings, WP-39, WP-40 | Installed-browser journeys, keyboard, narrow-screen and error states, UI/CLI equality |
-| WP-42 | Opt-in local MCP foundation: pinned protocol/local stdio transport, allowlisted read-only discovery, structured search, object/evidence and status tools over WP-39. No writes, remote server or agent runtime. | SURF-03, SURF-04 | WP-39, WP-20; ADR-13 compatibility contract; WP-06 read/write inventory | Protocol and adapter tests prove context/permission isolation, no writes on read paths, bounded responses, stale-context denial, and service/CLI/MCP equality. Record actual installed integration evidence separately. |
+| WP-39a | Read-only journey status service (`formslang/project_journey_status.py`): the per-Form and project state of the Understand/Decide/Build/Validate steps, composed from existing freshness, review, generation-blocker, artifact and validation facts, served by `GET /api/v2/projects/{pid}/journey` and `formslang project journey`. No new table, persistence authority or domain rule. Design: [journey-shell-design.md](journey-shell-design.md) §2. | SURF-01 (partial), ARCH-01..04 | Existing services only; one shared definition of `RESOLVED_REVIEWS` | State-rule and exhaustiveness tests (24 generation blocker codes, freshness, review and validation values); Decide count equals the `UNRESOLVED_REVIEW` scope; CLI/HTTP equality; 500-Form gate (cold journey median ≤ 1.5× the cold Overview median of the same run) recorded in the evidence register |
+| WP-39b | The remainder of the original WP-39: a typed application-service slice for pinned context, structured search, evidence and blocker inspection, and decision preview. Keep existing `ProjectService` behavior and public adapters compatible; no new persistence authority. | SURF-01, SURF-04, ARCH-01..04 | WP-39a, WP-11, WP-20, WP-31; ADR-13 for public error/schema mapping | Same fixture/context returns matching identities, evidence, omissions, budgets and domain errors through service, CLI and HTTP; stale/denied requests stay controlled |
+| WP-40 | CLI envelope with `schema` and warnings, exit codes 3–10, idempotency keys, cursors (ADR-13); complete the first supported headless journey using WP-39a/39b, keeping old commands or documented aliases. | CLI-*, API-*, SURF-02 | WP-39a, WP-39b; M3–M4 | Old-command compatibility, JSON/stdout/stderr tests, offline no-browser journey and CLI/HTTP equality |
+| WP-41 slice 1 | Journey shell (ADR-08): a top bar and a rail labelled Explore · Decisions · Build · Validate (the Understand/Decide/Build/Validate steps) that is a state map in project and Form scope, plus Reports, History and Advanced. The existing views are hosted per step. The former navigation leaves the primary path, and every task it supported stays reachable. Design: [journey-shell-design.md](journey-shell-design.md) §1 and §3. | UX-01/02/03 (partial), ARCH-01/02 | ADR-08 Accepted, WP-39a, WP-12 findings | Edge acceptance of the three shell states in both scopes; navigation inventory test; keyboard operation of the shell controls; no regression at 390/720/1366 px; installed journeys updated with check accounting; Installer acceptance before merge |
+| WP-41 later slices | New shell and design system completed: Explore, Decisions, Build, Validate, Reports and History workspaces redesigned, with a shared evidence inspector. The legacy routes move over journey by journey. | UX-*, ARCH-01/02, SURF-01 | WP-41 slice 1, WP-12 findings, WP-39b, WP-40 | Installed-browser journeys, keyboard, narrow-screen and error states, UI/CLI equality |
+| WP-42 | Opt-in local MCP foundation: pinned protocol/local stdio transport, allowlisted read-only discovery, structured search, object/evidence and status tools over WP-39a/39b. No writes, remote server or agent runtime. | SURF-03, SURF-04 | WP-39b, WP-20; ADR-13 compatibility contract; WP-06 read/write inventory | Protocol and adapter tests prove context/permission isolation, no writes on read paths, bounded responses, stale-context denial, and service/CLI/MCP equality. Record actual installed integration evidence separately. |
 
-WP-42 can follow WP-40/41 independently after WP-39. It does not unblock
+WP-42 can follow WP-40/41 independently after WP-39b. It does not unblock
 WP-48; the optional execution loop calls the application service directly.
 The WP-48 contract was merged through PR #33; WP-39, WP-42 and the shared
 surface contracts in this PR are specification only, not implemented commands
@@ -116,7 +149,7 @@ or an installed MCP server.
 
 | WP | Scope | Requirements | Depends on | Exit evidence |
 |---|---|---|---|---|
-| WP-43 (optional, later) | Evaluate a policy-scoped semantic candidate index after structured search; implement only if measured retrieval value justifies it. | SURF-05 | WP-39, WP-11, WP-05 disclosure findings | If offered: cited source hits, model/index provenance, stale-index and no-index fallback, and disclosure tests. Not an M5 exit dependency or 3.0 release gate. |
+| WP-43 (optional, later) | Evaluate a policy-scoped semantic candidate index after structured search; implement only if measured retrieval value justifies it. | SURF-05 | WP-39b, WP-11, WP-05 disclosure findings | If offered: cited source hits, model/index provenance, stale-index and no-index fallback, and disclosure tests. Not an M5 exit dependency or 3.0 release gate. |
 
 ## M6 — Plan, build, and validate (P10)
 
