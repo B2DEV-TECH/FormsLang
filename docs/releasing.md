@@ -34,22 +34,35 @@ at the new tag. Run `python -m pytest -q` and `python -m ruff check .`.
 
 Commit and push the candidate branch. Run the full CI matrix through a PR to main.
 Run **Installer acceptance** on that exact candidate branch/ref (Actions, Installer
-acceptance, Run workflow), explicitly using baseline `1.6.0` for 2.0. It calls
-`build-installers.yml`, which freezes
-the engine from `packaging/formslang-engine.spec`, then on two disposable
-Windows runners installs the latest published release, saves an approval
-through it, upgrades to the candidate and verifies that the approval, the
-export and the native desktop survived, once for NSIS and once for MSI. The candidate
-also exercises packaged project/review/generation/report commands and uninstall/
-reinstall preservation. A same-binary smoke is not an upgrade result.
+acceptance, Run workflow). It calls `build-installers.yml`, which freezes the
+engine from `packaging/formslang-engine.spec` and builds the MSI and NSIS
+installers once for the run. Four jobs then use them on disposable Windows
+runners:
 
-Leave the baseline input empty unless the candidate version is already
-published; then name the release to upgrade from.
+- `clean (nsis)` and `clean (msi)` install the candidate on a fresh runner at a
+  non-ASCII user-space path and drive the packaged product.
+- `upgrade (nsis)` and `upgrade (msi)` install the baseline release, save an
+  approval through it, upgrade to the candidate and verify that the approval,
+  the export and the native desktop survived. They also exercise packaged
+  project/review/generation/report commands and uninstall/reinstall
+  preservation.
 
-Download the `installers-<version>` artifact from that run. Those are the
-files to publish, and the build log prints their SHA-256. A local build
-from the README recipe is fine for trying things out, but publish the CI
-artifact, since that is what the acceptance ran against.
+A same-binary smoke is not an upgrade result.
+
+The `baseline` input names the release to upgrade from. Empty means the latest
+published release, which GitHub resolves without prereleases. Name it
+explicitly when the candidate version is already published or when more than
+one upgrade path must be accepted, and run the workflow once per baseline:
+3.0.0-beta.1 used two runs, with baselines `2.2.0` and `2.1.0`.
+
+Download the `installers-<version>` artifact from one of those runs. Those are
+the files to publish, and the build log prints their SHA-256. Every run builds
+its own installers, and rebuilding the same commit has produced different
+bytes, so record which run built the published files and which baselines
+exercised those exact bytes. The other runs cover the same commit with a
+sibling build. A local build from the README recipe is fine for trying things
+out, but publish the CI artifact, since that is what the acceptance ran
+against.
 
 Any candidate code change invalidates the previous exact-candidate acceptance.
 Do not tag if matrix, browser, generation, frozen benchmark, security, installer,
@@ -74,7 +87,10 @@ may become release assets.
 ## 4. Publish and record
 
 Create the GitHub release from the existing tag, attach the two installers
-from the artifact and paste the changelog entry as the body. Then add a
+from the artifact and paste the changelog entry as the body, or the version's
+`docs/release-notes-<version>.md` when one exists. Publish a beta
+with `gh release create --prerelease --latest=false`, so the stable release
+stays the latest one. Then add a
 section to `docs/quality-acceptance.md` with the tested commit, the CI and
 acceptance run links, the installer hashes and what remains untested.
 Compare the published digests with the ones you recorded:

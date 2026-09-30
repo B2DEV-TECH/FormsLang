@@ -1463,7 +1463,8 @@ build yet -- the roadmap item in `README.md` stays unchecked until it has.
   CLI providers (Claude Code, Codex), offline Echo mode, APEXlang 26.1
   export ZIP, Windows desktop app (Tauri) with MSI and NSIS installers.
 
-[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/B2DEV-TECH/FormsLang/compare/v3.0.0-beta.1...HEAD
+[3.0.0-beta.1]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.2.0...v3.0.0-beta.1
 [2.2.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/B2DEV-TECH/FormsLang/compare/v1.6.0...v2.0.0
