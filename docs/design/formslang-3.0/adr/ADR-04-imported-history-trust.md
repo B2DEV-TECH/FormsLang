@@ -31,6 +31,49 @@ authorization** as separate determinations:
 | Applicability | Each decision binds its original analysis, subject, evidence, policy and target. Changed or unavailable bindings remain historical or need revalidation even if origin is trusted. |
 | Authorization | The receiving actor and current workspace policy control preview, apply, disclosure and any new approval. Imported policy cannot weaken them. |
 
+### Anchor custody and clean-workspace restore
+
+At backup creation, the accepted local coordinator must produce a receipt for
+the exact published backup root. The receipt identifies the digest algorithm
+and schema, repository and origin IDs, event frontier, export profile, root
+digest and closure-manifest digest. The custodian retains that receipt
+**outside the package and its Git branch** in an independently controlled
+backup inventory or offline record. A duplicate receipt carried in the archive, placed beside
+it by the sender, or calculated from the archive during restore is package
+data, not a trust anchor.
+
+For restore, an authorized local custodian selects the independently retained
+receipt and records its custody source and the restore actor. The application
+verifies the package schema and closure, recomputes the root digest, and
+compares every receipt field above before assigning `TRUSTED_RESTORE`. The
+receiving policy must allow restoration of that repository/origin into this
+destination. This procedure also works in a clean workspace when the
+original local catalog is gone **if** the independent receipt survived and
+its custody can be established through a configured independent inventory or
+a policy-approved local custodian's recorded offline-record attestation. A
+typed digest alone does not establish custody. This supports local disaster
+recovery; it does not cryptographically authenticate a named historical
+reviewer. An authenticated/team-mode trust source needs its own accepted
+policy under ADR-11 before it may activate imported approvals.
+
+If the receipt or independent custody is unavailable, the package can only
+enter the ordinary `UNVERIFIED_EXCHANGE` path after integrity checks. A
+digest printed by the package itself, matching repository ID, owner
+attestation without an independent receipt, or a Git commit cannot upgrade
+it. A mismatched receipt stops the trusted-restore attempt; any later
+unverified inspection must be a separately chosen operation, not a silent
+fallback.
+
+| Input and destination | Classification after integrity checks | Approval consequence |
+|---|---|---|
+| Complete backup, matching independently held receipt, permitted clean restore of the same origin; original catalog unavailable | `TRUSTED_RESTORE` | Original accepted decisions may resume only at their original applicable binding and under receiving policy. |
+| Same bytes with only an embedded/adjacent receipt or self-calculated hash | `UNVERIFIED_EXCHANGE` | Claimed approvals are historical and inactive. |
+| No independent receipt or no established custody, even if repository/origin IDs match | `UNVERIFIED_EXCHANGE` | Claimed approvals are historical; a current actor must make a new local decision. |
+| Independent receipt disagrees with root, profile, frontier or closure | Trusted restore rejected | No approval activation; no automatic downgrade to exchange. |
+| Missing/corrupt object or invalid declared closure | Import rejected/quarantined | No accepted import or approval activation. |
+| Matching trusted receipt, but changed analysis/evidence binding or stricter receiving policy | Trusted history, inapplicable decision | Preserve the old decision; require explicit revalidation or new approval. |
+| Valid review/Git package or backup applied into a distinct existing workspace | `UNVERIFIED_EXCHANGE` | Preserve foreign provenance; no local approval promotion. |
+
 Import preview parses and verifies in isolated staging, then reports repository
 identity, ancestry, included/omitted objects, source availability, trust
 classification, actor claims, decision kinds, applicability and semantic
@@ -74,12 +117,16 @@ its own accepted trust policy; this ADR does not claim signatures exist.
 
 ## Acceptance work and implementation boundary
 
-Before accepting this architecture, review the anchor custody/recovery
-procedure and a table of trusted-restore versus untrusted-exchange outcomes.
+Before accepting this architecture, ratify the custody source and recovery
+procedure above, including how an independent receipt survives loss of the
+original local catalog and how its custodian establishes control. Review the
+outcome table as the expected trust contract.
 WP-20 must then test forged actor/approved fields, identical bytes supplied
-through both paths, wrong or missing trusted anchor, duplicate foreign ID with
-different payload, repeat apply, restricted-profile omissions, weaker imported
-policy, changed analysis binding, and preview without accepted-state writes.
+through both paths, a clean restore with no original catalog but a retained
+independent receipt, a package-supplied receipt, wrong or missing trusted
+anchor, duplicate foreign ID with different payload, repeat apply,
+restricted-profile omissions, weaker imported policy, changed analysis
+binding, and preview without accepted-state writes.
 It must prove the receiving actor and permission checks at apply time. WP-22
 must separately prove lossless legacy preservation without promoting old
 review rows to new authenticated approvals. No such product tests are supplied
