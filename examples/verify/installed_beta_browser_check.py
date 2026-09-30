@@ -24,6 +24,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--engine', required=True, type=Path)
     parser.add_argument('--project', required=True, type=Path)
+    parser.add_argument('--project-id', required=True)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--browser')
     args = parser.parse_args()
@@ -36,7 +37,7 @@ def main() -> int:
     url = f'http://127.0.0.1:{port}'
     environment = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
     (run / 'state.json').write_text(json.dumps({'url': url, 'debug_port': debug_port,
-        'project': str(project)}), encoding='utf-8')
+        'project': str(project), 'project_id': args.project_id}), encoding='utf-8')
     server = edge = node = None
     print(f'Installed beta browser evidence: {run}', flush=True)
     try:

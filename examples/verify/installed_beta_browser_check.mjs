@@ -26,8 +26,8 @@ try{
   await send('Runtime.enable');await send('Page.enable');await send('Page.navigate',{url:config.url});
   await wait(()=>evaluate(`!!document.querySelector('[data-project-open]')`),'saved project on Workbench landing');
   const candidates=await evaluate(`[...document.querySelectorAll('[data-project-open]')].map(n=>({id:n.dataset.projectOpen,text:n.textContent}))`);
-  const match=candidates.find(c=>c.text.includes('Synthetic beta A to B journey'));
-  check('CLI-created project appears in frozen Workbench',!!match,candidates);
+  const match=candidates.find(c=>c.id===config.project_id);
+  check('exact CLI-created project appears in frozen Workbench',!!match&&match.text.includes('Synthetic beta A to B journey'),candidates);
   await clickSelector(`[data-project-open="${match.id}"]`);
   await wait(()=>evaluate(`projectUI.view==='overview'&&!!projectUI.overview?.assessment`),'saved composite Overview');
   check('same composite project contains three Forms and one package',await evaluate(`projectUI.summary.inventory.forms.analyzed===3&&projectUI.summary.inventory.database.package_bodies===1`));
