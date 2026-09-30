@@ -165,6 +165,60 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Local verification:** Windows 11 / Python 3.12.10 on the final composed head: **1979 passed, 5 skipped, 4 xfailed** in 918.63 s. Focused WP-10 plus WP-05 suite: **10 passed, 1 xfailed**. Ruff and `git diff --check` passed. The extra xfail is the WP-05 egress probe; the three prior strict xfails remain. PRs #29 and #30 are merged; #31 now targets `main`. Final 13-check CI on #31 remains pending.
 - **Limits:** This is not a product migration or a complete crash/power-loss, portability, authorization or export proof. G-02 and G-03 remain open.
 
+### ADR-06 — identity contract probe on Draft PR #32
+
+- The probe is outside the product path. It cannot change entity IDs, reference
+  resolution, decision binding or historical snapshots. Its first four focused
+  tests and the original full suite passed; CI run `36625615586` passed all
+  13 checks on head `1ed32f2` before the following probe correction.
+- Two additional focused tests failed first: a matching symbol in a different
+  logical source root was labelled `REMOVED`, and duplicate candidate rows were
+  labelled `AMBIGUOUS`. The corrected probe returns `NOT_COMPARABLE` for the
+  changed root, deduplicates candidates and orders them deterministically with
+  the exact locator first. The six focused tests pass; the full suite on
+  Windows 11 / Python 3.12.10 returned **1975 passed, 5 skipped, 3 xfailed** in
+  916.64 s. Ruff and `git diff --check` pass. CI run `36633010065` passed all
+  13 checks on corrected head `360ab80`; this predates the additional evidence
+  below.
+- The 29 September follow-up separates architecture acceptance from the product
+  exit criteria of WP-04/G-04, removing a circular prerequisite without passing
+  either gate. The outside-product probe now exercises typed symbols, distinct
+  source occurrences, analysis-bound IDs, quoted spelling, qualified Case C
+  member selection, bare-name withholding, overload limits and missing bodies.
+  Thirteen new cases failed before implementation; one further failing case
+  exposed a false resolution with a lone incomplete signature. Independent
+  review then found false `REMOVED` results when the key changed at the same
+  source locator: two tests failed first, and now yield `NOT_COMPARABLE` with
+  no inferred rename target, including an unrelated object in the same file.
+- Further independent review reproduced a false `REMOVED` when both logical
+  root and key changed. One new case failed first; a nonempty scope lacking the
+  original root now returns `NOT_COMPARABLE`. A complete empty scope, or an
+  original-root scope with no matching key/locator, still permits `REMOVED`.
+- Final focused evidence: **122 passed, 1 xfailed** in 6.46 s across identity,
+  WP-08, Case C, project-source and assessment tests on Windows 11 /
+  Python 3.13.15; **23 passed** in 0.29 s for the contract on Python 3.12.10.
+  Repository Ruff, `git diff --check` and the `inventory-wp08.json` generator
+  check pass. The product and historical `inventory-2.2.json` have no diff from
+  `360ab80`. Before the root-plus-key correction, the full suite at `07c3f6f`
+  (`py -3.13 -m pytest -q -p no:cacheprovider`), with code held stable, returned
+  **1991 passed, 5 skipped, 3 xfailed** in 903.85 s. After the correction,
+  the final full run returned **1992 passed, 5 skipped, 3 xfailed** in 847.99 s,
+  again with code held stable.
+  An earlier full run was interrupted before the review correction and is
+  discarded. The coordinating reviewer subsequently approved the architecture
+  after independent review of the corrected contract and three conservative
+  correspondence regressions.
+- The authorized rebase onto `main` at `7dbda54` preserved WP-10 and ADR-06
+  evidence. At `78599b5`, the composed focused suite returned **132 passed,
+  2 xfailed** in 8.77 s; Ruff and diff checks passed. CI run `36658549367`
+  began normally after the documentation conflict was resolved and was still
+  running when acceptance was authorized. Acceptance-head CI is separate.
+- ADR-06 is **Accepted (architecture only)** by a separate authorized commit
+  on 29 September 2026. Case C product entities, qualified call resolution,
+  Blueprint/project parity, engine versioning and legacy compatibility are
+  still WP-04 work on a separate branch. WP-04/G-04 remain open, and historical
+  inventories are unchanged. No product gate is closed by this acceptance.
+
 ## Gates not started
 
 G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0
