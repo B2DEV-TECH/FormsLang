@@ -297,6 +297,15 @@ def test_direct_blueprint_source_revision_tracks_unextracted_sql_bytes(tmp_path)
     assert restored == before
 
 
+def test_direct_blueprint_source_revision_includes_missing_supplied_path(tmp_path):
+    source = tmp_path / "existing.sql"
+    source.write_text("CREATE TABLE T (ID NUMBER);\n", encoding="utf-8")
+    missing = tmp_path / "missing.sql"
+    before = blueprint.build([], title="revision", database_sources=[source])["source_revision"]
+    after = blueprint.build([], title="revision", database_sources=[source, missing])["source_revision"]
+    assert before != after
+
+
 def test_a_project_records_a_source_that_could_not_be_staged(project_sources, monkeypatch):
     from formslang import project_sources as sources
 

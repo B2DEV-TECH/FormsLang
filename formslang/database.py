@@ -1053,6 +1053,8 @@ def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProj
         merged.source_digests.extend(proj.source_digests)
         merged.coverage.extend(proj.coverage)
     merged.coverage.extend(missing)
+    # A supplied but absent path is still part of the direct Blueprint source set.
+    merged.source_digests.extend((item.source_file, "SOURCE_NOT_FOUND") for item in missing)
     _project_unique_packages(merged)
     _withhold_colliding_nonpackages(merged)
     return merged
