@@ -96,6 +96,9 @@ that only WP-20 can produce.
 
 WP-42 can follow WP-40/41 independently after WP-39. It does not unblock
 WP-48; the optional execution loop calls the application service directly.
+The WP-48 contract was merged through PR #33; WP-39, WP-42 and the shared
+surface contracts in this PR are specification only, not implemented commands
+or an installed MCP server.
 
 ### Later optional surface extension
 
