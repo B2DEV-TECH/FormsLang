@@ -80,6 +80,12 @@ that only WP-20 can produce.
 | WP-21 | First report dataset and the metric-definition slice. It reuses the revision-fenced report capture. | RPT-01..04, MET-01..03 | WP-20 | Reconciled counts between the report, the CLI and the UI |
 | WP-22 | Legacy migration: 2.x project database and 1.x sessions into 3.0 state, preserving review history | MIG-01..05 | WP-20, ADR-12 | Migration of real 2.2 fixture projects, a backup-and-restore proof, and history preserved |
 
+ADR-04 and ADR-07 must be accepted as architecture contracts before WP-20
+implements exchange import or Git reconciliation. Their Draft texts select
+trust and synchronization boundaries; they do not supply WP-20's product
+tests or pass G-02/G-03/G-05. WP-20 must prove the import, two-worktree,
+conflict, recovery and no-forged-approval cases listed in those ADRs.
+
 ## M4 — Decision language and lifecycle (P06, P07)
 
 | WP | Scope | Requirements | Depends on | Exit evidence |
