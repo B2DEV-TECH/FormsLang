@@ -168,7 +168,7 @@ class ProjectJobManager:
 
     def get(self, job_id):
         fresh = self._authorize(rbac.VIEW_PROJECT)
-        store = ProjectStore.open(fresh.root)
+        store = ProjectStore.open(fresh.root, read_only=True)
         try:
             row = _job(store, job_id)
             for key in ('owner_token', 'owner_pid'):

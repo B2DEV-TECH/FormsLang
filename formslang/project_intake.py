@@ -23,7 +23,6 @@ from .project_model import (
     SourceRoot,
     TargetProfile,
     canonical_json,
-    descriptor_to_dict,
     validate_descriptor,
 )
 from .project_service import ProjectService
@@ -419,6 +418,19 @@ class ProjectIntake:
         self._remember(descriptor.id, path, actor, [], relocate=True)
         return self._summary(descriptor.id)
 
+    def inspect_locator(self, locator):
+        """Local read access to a selected project without changing its locator registry."""
+        self._local()
+        path = _plain_path(locator)
+        if path.name != 'project.json' or path.parent.name != '.formslang':
+            raise ProjectError('Select a .formslang/project.json descriptor')
+        access = local_project_access(path.parent.parent, approved_roots=())
+        service = ProjectService(access, read_only=True)
+        try:
+            return service.project_summary(), access
+        finally:
+            service.close()
+
     def access(self, project_id, action):
         if self.identity is not None:
             with self._auth() as registry:
@@ -446,14 +458,11 @@ class ProjectIntake:
     def _summary(self, project_id):
         service = ProjectService(self.access(project_id, rbac.VIEW_PROJECT))
         try:
-            project = descriptor_to_dict(service.open())
+            result = service.project_summary()
             if self.identity is not None:
+                project = result['project']
                 project['source_roots'] = [{'id': r['id'], 'kind': r['kind']} for r in project['source_roots']]
-            assessment = service.assessment()
-            return {'project': project, 'configuration_revision': service._store.configuration_revision(),
-                'analyzed_at': assessment['analyzed_at'] if assessment else None,
-                'inventory': assessment.get('inventory', {}) if assessment else {},
-                'source_status': 'UNVERIFIED' if assessment else 'INCOMPLETE'}
+            return result
         finally:
             service.close()
 

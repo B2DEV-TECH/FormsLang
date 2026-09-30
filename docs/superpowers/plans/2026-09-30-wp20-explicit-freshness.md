@@ -6,6 +6,8 @@
 
 **Architecture:** Move the existing last-completed freshness lookup from the HTTP adapter into `ProjectService`, so HTTP and CLI share one interpretation. Keep the existing explicit `ProjectService.freshness()` job operation. This is a bounded WP-20 read-contract slice, not a whole-state checkpoint or a claim that `ProjectStore.open` is mutation-free.
 
+The second bounded change adds a read-only storage open for the local CLI `status` query. Other project reads still require a separate no-write audit and migration contract.
+
 **Tech Stack:** Python 3.10+, SQLite, argparse, pytest.
 
 **Spec:** `docs/design/formslang-3.0/master-specification.md` §7.3 HIST-03; `docs/design/formslang-3.0/wp06-read-write-inventory.md`.
@@ -35,3 +37,18 @@
 - [x] Implement `last_freshness()` using the existing HTTP SQL/binding rule, route HTTP `_freshness` through it, and replace the three CLI implicit checks. Add the explicit CLI command.
 - [x] Run the focused CLI/HTTP/service tests, then full pytest, Ruff and `git diff --check`.
 - [x] Record precise requirement scope and remaining `ProjectStore.open` mutation gap in evidence; commit the change on this branch.
+
+### Task 2: No-write local status open
+
+**Files:** Modify `formslang/project_store.py`, `formslang/project_service.py`, `formslang/project_intake.py`, `formslang/project_cli.py`, `formslang/project_jobs.py`, and `tests/test_cli_project.py`.
+
+- [x] RED: a `status` query republishes a missing `project.json` mirror; `test_status_does_not_republish_missing_descriptor_mirror` failed at the mirror assertion.
+- [x] GREEN: a local `status` query uses one read-only project connection and never registers the locator. A nested job detail read also uses read-only storage. The mirror test and adjacent freshness tests passed (3/3).
+- [x] RED: with a missing run table, the read-only query returned generic exit 1; `test_status_requires_explicit_storage_upgrade_without_writing` expected a domain error and failed.
+- [x] GREEN: read-only open reports an explicit migration-required domain error, with the existing `formslang project open <project>` remedy, without repairing the database or mirror. The test also verifies that explicit open migrates the missing run table and makes status usable again.
+- [x] RED: a regression forced writable SQLite connections to fail and showed the read-only preflight still opened `mode=rw`.
+- [x] GREEN: the read-only preflight now opens `mode=ro`; the writable open path retains `mode=rw`.
+- [x] Focused CLI/store/service/jobs/intake/HTTP regression: 121 passed, 1 skipped. Ruff and diff check passed before this documentation update.
+- [ ] Re-run the final focused and full suites, Ruff/diff check, commit and exact-head CI after stacked ADR branches are integrated.
+
+This is a local CLI `status` boundary only. Other CLI/HTTP GET paths, authenticated intake and full WP-20 checkpoint/export/reopen work remain open. No HTTP 500 cause was established by this change.

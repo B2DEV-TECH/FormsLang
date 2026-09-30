@@ -82,6 +82,41 @@ def test_project_reads_use_saved_freshness_until_explicit_check(tmp_path, sample
     assert jobs() == before + 2
 
 
+def test_status_does_not_republish_missing_descriptor_mirror(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    mirror = destination / '.formslang' / 'project.json'
+    mirror.unlink()
+
+    status, _ = run_json(capsys, ['status', destination])
+
+    assert status['assessment']['analysis_revision']
+    assert not mirror.exists()
+
+
+def test_status_requires_explicit_storage_upgrade_without_writing(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    database = destination / '.formslang' / 'project.session.db'
+    mirror = destination / '.formslang' / 'project.json'
+    with sqlite3.connect(database) as db:
+        db.execute('DROP TABLE project_job')
+    mirror.unlink()
+
+    error, _ = run_json(capsys, ['status', destination], expected=2)
+
+    assert 'migration' in error['error'].lower()
+    assert 'formslang project open' in error['error']
+    assert not mirror.exists()
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT name FROM sqlite_master WHERE name='project_job'").fetchone() is None
+
+    opened, _ = run_json(capsys, ['open', destination])
+    assert opened['project']['id']
+    assert mirror.exists()
+    status, _ = run_json(capsys, ['status', destination])
+    assert status['project']['id'] == opened['project']['id']
+
+
 def test_project_reports_use_snapshot_and_exclusive_download(tmp_path, sample_xml, capsys):
     destination, _ = create(capsys, tmp_path, sample_xml)
     run_json(capsys, ['analyze', destination])

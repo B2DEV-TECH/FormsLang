@@ -58,9 +58,11 @@ from .projects import ProjectAccess
 class ProjectService:
     """One authorized project and one worker-owned connection per instance."""
 
-    def __init__(self, access: ProjectAccess, *, authorize=None, projection_cache=None):
+    def __init__(self, access: ProjectAccess, *, authorize=None, projection_cache=None,
+                 read_only: bool = False):
         self.access = access
         self._authorize_callback = authorize
+        self._read_only = read_only
         self._store: ProjectStore | None = None
         self._projection_cache = projection_cache if projection_cache is not None else ProjectionCache()
 
@@ -106,15 +108,27 @@ class ProjectService:
     def open(self) -> ProjectDescriptor:
         self._require(rbac.VIEW_PROJECT)
         if self._store is None:
-            self._store = ProjectStore.open(self.access.root)
+            self._store = ProjectStore.open(self.access.root, read_only=self._read_only)
             # Recovery needs the exclusive worker lock. Taking it on every open made
             # concurrent requests collide with real operations (ProjectBusy), so
             # only a QUEUED/RUNNING row, read on this connection, triggers it.
-            if (self.access.org_id is None or self._authorize_callback is not None) and self._store.has_unfinished_jobs():
+            if (not self._read_only and
+                    (self.access.org_id is None or self._authorize_callback is not None)
+                    and self._store.has_unfinished_jobs()):
                 from .project_jobs import ProjectJobManager
                 authorize = lambda: self._job_authority(rbac.VIEW_PROJECT)
                 ProjectJobManager(authorize(), authorize).recover()
         return self._store.descriptor()
+
+    def project_summary(self) -> dict:
+        """Saved project overview without a source scan or implicit freshness job."""
+        project = descriptor_to_dict(self.open())
+        assessment = self.assessment()
+        return {'project': project,
+                'configuration_revision': self._store.configuration_revision(),
+                'analyzed_at': assessment['analyzed_at'] if assessment else None,
+                'inventory': assessment.get('inventory', {}) if assessment else {},
+                'source_status': 'UNVERIFIED' if assessment else 'INCOMPLETE'}
 
     def assessment(self, *, freshness=None) -> dict | None:
         self.open()
