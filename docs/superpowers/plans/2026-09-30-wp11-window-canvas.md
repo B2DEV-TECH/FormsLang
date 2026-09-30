@@ -6,7 +6,7 @@ Approved bounded design: preserve the existing parsed `Canvas.window_name` and
 remain separate observed facts; missing targets produce scoped unresolved
 references. No default placement is inferred.
 
-Base: WP-04 PR #39 head `c911c9d81bc1eb5d1190ae083a00eb2123967e64`.
+Initial base: WP-04 PR #39 head `c911c9d81bc1eb5d1190ae083a00eb2123967e64`.
 Worktree: `.worktrees/wp11`; branch `codex/formslang-3-wp11-placement`.
 The coordinator owns integration and approves this routine bounded scope.
 
@@ -29,10 +29,12 @@ The coordinator owns integration and approves this routine bounded scope.
   withholds their properties and links with AMBIGUOUS source state, explicit
   reason and source declaration count because legacy visual IDs collapse names.
 - SRC-10 unplaced/unresolved groups for canvases without a resolved window and
-  for items/tabs, bounded focus/path/search and product
-  `LEGACY_RESOLVED` handling remain open.
+  for items/tabs remain open. Full graph metadata, bounded focus/path/search
+  and product `LEGACY_RESOLVED` handling remain WP-11 work.
 - Do not claim `visual_hierarchy_version: 1` for this incomplete hierarchy.
-- Do not edit master spec, matrix or shared evidence register in this slice.
+- Shared matrix/evidence updates were deferred until #39 integration. The
+  coordinator then authorized factual partial-slice updates; master spec and
+  gate criteria remain unchanged.
 - Installer agent owns browser helpers. No merge, tag, release or gate closure.
 
 ## Evidence
@@ -59,10 +61,29 @@ The coordinator owns integration and approves this routine bounded scope.
   blobs, including inventory-wp04; inventory-wp11 matches regeneration.
 - Full suite with code frozen on Python 3.13: **2088 passed, 5 skipped,
   4 xfailed in 898.28 s (14:58)**, exit 0. Log:
-  `.superpowers/sdd/wp11/full-py313.log`. No CI or PR claimed.
+  `.superpowers/sdd/wp11/full-py313.log`. No CI or PR was claimed at that checkpoint.
   WP-04 #39 was independently rebased onto ADR-02 main while this
   WP-11 worktree stayed isolated. Its production/test bytes remained identical,
-  and WP-11 merge-base reconciliation still waits for #39 integration.
+  and WP-11 merge-base reconciliation was deferred until #39 integration.
+
+## Main composition and publication
+
+- WP-04 #39 passed exact-head 13/13 CI at `9b688ed` and was squash-merged by
+  the coordinator as `066288e64c83a11c7b6d78dc26def7e2310f423b`.
+- Backup `codex/backup-wp11-before-final-wp04-20260930` preserves `8c5d834`;
+  rebasing the two own commits onto `9b688ed` produced identical range-diffs.
+  That composed focused run passed **202 tests, 1 skipped in 37.87 s**.
+- Backup `codex/backup-wp11-before-main-20260930` preserves `f84f06c`. Rebase
+  onto squash main `066288e` was conflict-free; both own commits again have
+  identical range-diffs. Final composed focused tests passed **202 tests,
+  1 skipped in 37.91 s**. Ruff, diff and current inventory checks passed.
+- All five historical inventory files are byte-identical to main; the new
+  inventory and all production/test/example bytes are identical to the frozen
+  full-suite product tree. The engine transition remains `/5` to `/6`. The full
+  local suite was not repeated for these documentation-only base changes;
+  exact-head CI is required on the Draft PR before any integration.
+- This publication adds factual SRC-08 partial status and evidence only.
+  SRC-09/10, the remaining WP-11 work and every product gate remain open.
 
 ## Persisted contract and limits
 
