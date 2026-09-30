@@ -315,7 +315,7 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 | G-12 | Performance and usability: Ratified fixture budgets and actual five-person acceptance protocol satisfied | NOT ASSESSED |
 | G-13 | Documentation: README, quickstart, examples, limitations, schemas, migration, and release claims agree with the built product | NOT ASSESSED |
 
-## WP-08 audit overlay (Draft PR #24, not a release-gate pass)
+## WP-08 audit overlay (historical Draft PR #24 review, not a release-gate pass)
 
 | Requirement | Current evidence | State |
 |---|---|---|
@@ -324,6 +324,19 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 | INV-07 | Per-source coverage and occurrence inventory are present. Supported CREATE warnings do not yet affect assessment completeness; no 3.0 reporting surface exists. | PARTIAL, unmerged |
 | SRC-01 / SRC-06 | A supported CREATE can be visible as `not_extracted` while the project assessment remains `COMPLETE`; pinned by a strict `xfail`. | OPEN integration gap |
 | ADR-02 | The project manifest binds source bytes; direct Blueprint's `source_revision` still uses database paths only, pinned by a strict `xfail`. | OPEN design gap |
+
+## WP-07 follow-up on the current main (Draft, pending integration)
+
+The table above records the state at the WP-08 review. The two pinned gaps below
+have failing-first corrections on `codex/formslang-3-wp07-gap-composition`:
+
+| Requirement | Current evidence | State |
+|---|---|---|
+| INV-07 / SRC-01 / SRC-06 | Supported `CREATE` statements reported as `not_extracted` now make the project assessment `INCOMPLETE`; informational unmodelled `CREATE` statements remain informational. | Implemented and tested on Draft branch; not yet merged; G-04 open |
+| ADR-02 / INV-08 | Direct Blueprint revisions now include raw SQL byte digests, unavailable supplied paths, and stable logical paths after staging. The project manifest revision formula and historical inventories are unchanged. | Implemented and tested on Draft branch; not yet merged; G-02/G-04 open |
+
+The `CREATE PACKAGE IF NOT EXISTS` strict `xfail` remains open for Oracle
+target-version grammar policy. This follow-up does not close a release gate.
 
 G-01 and G-04 are **in progress**; the other 11 gate rows remain **NOT ASSESSED**. None of the 13 gates is passed.
 
