@@ -306,6 +306,20 @@ def test_direct_blueprint_source_revision_includes_missing_supplied_path(tmp_pat
     assert before != after
 
 
+def test_direct_blueprint_source_revision_ignores_supplied_list_order(tmp_path):
+    first = tmp_path / "first.sql"
+    second = tmp_path / "second.sql"
+    first.write_text("SELECT 1;\n", encoding="utf-8")
+    second.write_text("SELECT 2;\n", encoding="utf-8")
+    missing_first = tmp_path / "missing_first.sql"
+    missing_second = tmp_path / "missing_second.sql"
+    before = blueprint.build([], title="revision", database_sources=[
+        first, missing_first, second, missing_second])["source_revision"]
+    after = blueprint.build([], title="revision", database_sources=[
+        missing_second, second, missing_first, first])["source_revision"]
+    assert before == after
+
+
 def test_a_project_records_a_source_that_could_not_be_staged(project_sources, monkeypatch):
     from formslang import project_sources as sources
 
