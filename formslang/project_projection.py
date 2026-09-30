@@ -757,7 +757,7 @@ def prepare_projection(
         "review_progress": {
             "total": total,
             "reviewed": sum(
-                row["review_state"] in {"APPROVE", "MODIFY"} for row in finding_rows
+                row["review_state"] in RESOLVED_REVIEWS for row in finding_rows
             ),
             "critical_total": sum(row["risk"] == "CRITICAL" for row in finding_rows),
             "critical_resolved": sum(
