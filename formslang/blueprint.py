@@ -741,7 +741,8 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
     context_hash = digest({"modules": [(key, {**asdict(m), "source_path": key}) for key, m in ordered],
                            "metadata": metadata or [], "enterprise": enterprise,
                            "failures": failures or [], "engine": ENGINE_VERSION,
-                           "database": db_proj.files if db_proj else []})
+                           "database": (db_proj.source_digests if db_proj.source_digests is not None
+                                        else db_proj.files) if db_proj else []})
     for finding in b.findings.values():
         finding["revision"] = digest([VERSION, context_hash, finding])
     assessments = []
