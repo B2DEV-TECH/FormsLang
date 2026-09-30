@@ -1,6 +1,7 @@
 # ADR-02 — Immutable object identity and canonical bytes
 
-Status: **Draft**. The example scheme is a spike, not a shipped object format.
+Status: **Accepted (architecture contract, 2026-09-30)**. The example scheme
+is a spike; WP-20 must version and test the shipped object format.
 
 ## Context
 
@@ -31,3 +32,13 @@ The scheme still needs source metadata, directory durability, hash-collision
 response, cross-platform filename and source-set closure tests. The direct
 Blueprint strict xfail remains unchanged. No product source identity was
 changed in this WP.
+
+## Acceptance record
+
+The WP-10 golden-byte and negative tests establish exact source-byte identity,
+kind separation, deterministic canonical structured bytes and the distinction
+between identity and approval. The accepted contract is versioned,
+kind-separated digest identity with exact source bytes and declared canonical
+structured encoding. WP-20 must prove source-set closure, collision handling,
+cross-platform storage and verification in the product before publishing a
+product object format. The direct Blueprint revision gap remains open.
