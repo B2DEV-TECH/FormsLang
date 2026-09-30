@@ -2,6 +2,10 @@
 
 JOURNEY_PROJECT_JS = r'''
 function projectJourneyCurrent(c,s){return projectCurrent(c)&&projectUI.view==='journey'&&projectUI.journeyState===s;}
+function projectJourneySameRevision(a,b){return !!a?.analysis_revision&&!!b?.analysis_revision&&
+  a.analysis_revision===b.analysis_revision&&a.source_revision===b.source_revision&&
+  a.review_revision===b.review_revision;}
+function projectJourneyRevisionChanged(){throw Error('The saved assessment or review changed. Reload the project before continuing.');}
 async function projectJourneyOpen(){
   projectUI.view='journey';const c=projectContext(),s={serial:0,edge:null,detail:null};projectUI.journeyState=s;
   $('project-content').innerHTML=projectSectionNav('journey')+'<header><h2 id="project-step-title" tabindex="-1">Explore a Form</h2><p>Follow saved relationships, inspect bounded source evidence and see current generation blockers. Read-only prototype.</p></header><p id="project-journey-status" role="status">Loading saved assessment...</p><div id="project-journey-body"></div>';
@@ -21,12 +25,19 @@ async function projectJourneyForm(nodeId){
     const form=await api(`/api/v2/projects/${encodeURIComponent(c.id)}/module-360?node=${encodeURIComponent(nodeId)}`);
     if(!projectJourneyCurrent(c,s)||serial!==s.serial)return;
     if(form.node.type!=='FORM')throw Error('The selected node is not a confirmed Form.');
+    if(!projectJourneySameRevision(s.map,form))projectJourneyRevisionChanged();
     s.form=form;
     const generation=await api(`/api/v2/projects/${encodeURIComponent(c.id)}/generation`);
     if(!projectJourneyCurrent(c,s)||serial!==s.serial)return;
+    if(generation.binding?.project_id!==c.id||!projectJourneySameRevision(form,generation.binding))projectJourneyRevisionChanged();
     s.generation=generation;s.generationDetail=null;
     const scope=(generation.modules||[]).find(m=>m.module===form.module);
-    if(scope)s.generationDetail=await api(`/api/v2/projects/${encodeURIComponent(c.id)}/generation/modules/${encodeURIComponent(scope.source_id)}`);
+    if(scope){
+      const detail=await api(`/api/v2/projects/${encodeURIComponent(c.id)}/generation/modules/${encodeURIComponent(scope.source_id)}`);
+      if(!projectJourneyCurrent(c,s)||serial!==s.serial)return;
+      if(detail.binding?.project_id!==c.id||!projectJourneySameRevision(form,detail.binding))projectJourneyRevisionChanged();
+      s.generationDetail=detail;
+    }
     if(projectJourneyCurrent(c,s)&&serial===s.serial)projectJourneyRender();
   }catch(e){if(projectJourneyCurrent(c,s)&&serial===s.serial)$('project-journey-status').textContent=e.message;}
 }
@@ -36,6 +47,7 @@ async function projectJourneyEdge(edgeId){
   try{
     const detail=await api(`/api/v2/projects/${encodeURIComponent(c.id)}/system-map/edge?id=${encodeURIComponent(edgeId)}`);
     if(!projectJourneyCurrent(c,s)||serial!==s.serial)return;
+    if(!projectJourneySameRevision(s.form,detail))projectJourneyRevisionChanged();
     if(detail.edge.source!==s.form.node.id)throw Error('Relationship no longer belongs to this Form. Reload the project.');
     s.detail=detail;projectJourneyRender();
   }catch(e){if(projectJourneyCurrent(c,s)&&serial===s.serial)$('project-journey-status').textContent=e.message;}

@@ -1527,7 +1527,7 @@ def relationship_evidence(prepared: PreparedProjection, edge_id: str) -> dict:
         source = entity.get('attributes', {}).get('source_text', '')
         if isinstance(source, str) and source and entity.get('id') not in seen:
             seen.add(entity['id'])
-            sources.append({'entity_id': entity['id'], 'name': entity.get('name', ''),
+            sources.append({'entity_id': entity['id'], 'name': _text(entity.get('name'), 500),
                             'excerpt': safe_excerpt(source),
                             'truncated': len(source.splitlines()) > 80 or len(source) > 8000})
     return {
