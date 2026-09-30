@@ -99,6 +99,7 @@ that only WP-20 can produce.
 | WP-45 | Neutral IR and adapter hardening (ADR-10): plan object, scope closure, generation manifest | BUILD-* | M3–M5 | Deterministic supported output; blocked cases fail honestly |
 | WP-46 | Validation records and applicability (ADR-15) | VAL-* | WP-45 | Real tool evidence where it is available; an exact target and version matrix |
 | WP-47 | AI assistance boundaries | AI-* | WP-05, WP-45 | Egress-policy tests; the core works without AI |
+| WP-48 | One optional modernization execution loop over the shared project services and durable decision history; first journey pins a Form revision, inspects evidence and a blocker, presents a proposal for explicit human disposition, then recalculates eligibility. No new parser, target generator or multi-agent framework. | RUN-01..06 | WP-20, WP-31, WP-40, WP-45, WP-46, WP-47; WP-12 task findings | One real synthetic journey through the product service boundary, persisted/reopened step and decision evidence, stale-context/denied-action tests, offline no-AI path, and UI/CLI agreement |
 
 ## M7 — Complete reporting (P12)
 

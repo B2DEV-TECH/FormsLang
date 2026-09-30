@@ -1,7 +1,9 @@
 # FormsLang 3.0 — Requirements matrix
 
-Status: **M0.** Every row is at status *Specified*: no 3.0 requirement is
-implemented yet. The "Baseline" column records what the audited commit
+Status: **M0 baseline mapping, with later evidence tracked separately.** Rows
+remain at *Specified* here until updated with requirement-specific evidence;
+this status does not mean later merged work packages are absent. The "Baseline"
+column records what the audited commit
 `1d9cb47` already has, so later work reuses it instead of rebuilding it. Status
 values follow §26.5 of the [specification](master-specification.md):
 Specified → Implemented locally → Tested with fixtures → Validated in packaged
@@ -9,7 +11,7 @@ build → Validated with actual external environment → Human-reviewed → Merg
 Released. A row moves only with evidence recorded in
 [evidence-register.md](evidence-register.md).
 
-Derived from [implementation-checklist.md](implementation-checklist.md) (172
+Derived from [implementation-checklist.md](implementation-checklist.md) (178
 named requirements; summaries are truncated — the specification text is
 authoritative). Work-package IDs refer to
 [implementation-plan.md](implementation-plan.md). Acceptance scenarios (AC-*),
@@ -169,6 +171,12 @@ report catalog entries (RC-*), ADRs and gates are tracked in the checklist, in
 | AI-01 | Core intake, analysis, exploration, decisions, history, reporting, and supported deterministic generation m… | [§22](master-specification.md#22-optional-ai-and-controlled-information-disclosure) | M6/M8 | WP-47 | AI optional; core works without it; `convert.build_prompt` sends unit source under egress policy | — | AC-20, AC-33, AC-34 | Specified |
 | AI-02 | AI may explain selected evidence, summarize measured report data, suggest investigation questions, draft de… | [§22](master-specification.md#22-optional-ai-and-controlled-information-disclosure) | M6/M8 | WP-47 | AI optional; core works without it; `convert.build_prompt` sends unit source under egress policy | — | AC-20, AC-33, AC-34 | Specified |
 | AI-03 | AI must not become the source of authoritative dependency counts, database objects, business rules, approva… | [§22](master-specification.md#22-optional-ai-and-controlled-information-disclosure) | M6/M8 | WP-47 | AI optional; core works without it; `convert.build_prompt` sends unit source under egress policy | — | AC-20, AC-33, AC-34 | Specified |
+| RUN-01 | Sessions bind goal, exact context, actor, scope and policy; stale context stops explicitly. | [§22.6](master-specification.md#226-optional-modernization-execution-loop) | M6/M8 | WP-48 | No modernization session; project revisions and service fences exist in limited paths | `project_service.py`, `project_review.py` | AC-49, AC-50 | Specified |
+| RUN-02 | Runtime actions use allowlisted shared services with authorization, fences, bounds and declared limits. | [§22.6](master-specification.md#226-optional-modernization-execution-loop) | M6/M8 | WP-48 | `ProjectService` exposes separate read, decision, generation and validation methods; no runtime action contract | `project_service.py` | AC-49, AC-50 | Specified |
+| RUN-03 | Goal, steps, inputs/results, proposal, decision, validation and stop/replan reasons remain reviewable history. | [§22.6](master-specification.md#226-optional-modernization-execution-loop) | M6/M8 | WP-48 | No durable modernization session or whole-repository checkpoint | — | AC-49, AC-50 | Specified |
+| RUN-04 | AI output stays a cited, untrusted proposal; deterministic inspection works without AI. | [§22.6](master-specification.md#226-optional-modernization-execution-loop) | M6/M8 | WP-48 | AI optional; no agentic runtime or proposal promotion contract | `project_service.py`, `convert.py` | AC-49, AC-50 | Specified |
+| RUN-05 | Human preview/approve/reject/defer and applicability govern decisions; eligibility is recalculated. | [§22.6](master-specification.md#226-optional-modernization-execution-loop) | M6/M8 | WP-48 | Existing review decisions have fences; 3.0 lifecycle and applicability are not built | `project_review.py` | AC-49, AC-50 | Specified |
+| RUN-06 | A blocked action stops; the loop may inspect/replan within scope or ask a human, preserving honest state. | [§22.6](master-specification.md#226-optional-modernization-execution-loop) | M6/M8 | WP-48 | Existing blockers and unresolved references are exposed, but no execution loop uses them | `project_generation_policy.py`, `project_projection.py` | AC-49, AC-50 | Specified |
 | SEC-01 | Default to local loopback operation and offline core workflows. Do not instruct users to expose the current… | [§23](master-specification.md#23-security-privacy-access-and-operational-modes) | M8 (continuous) | WP-05, WP-60 | Loopback server, CSRF/origin checks, RBAC, MFA, report sanitisation | — | AC-16, AC-20, AC-30, AC-32, AC-33, AC-34, AC-41 | Specified |
 | SEC-02 | Do not advertise server mode based solely on the presence of an RBAC class or a login page. Demonstrate the… | [§23](master-specification.md#23-security-privacy-access-and-operational-modes) | M8 (continuous) | WP-05, WP-60 | Loopback server, CSRF/origin checks, RBAC, MFA, report sanitisation | — | AC-16, AC-20, AC-30, AC-32, AC-33, AC-34, AC-41 | Specified |
 | SEC-03 | Every route, CLI path in authenticated mode, job worker, source access, report generation, export, and down… | [§23](master-specification.md#23-security-privacy-access-and-operational-modes) | M8 (continuous) | WP-05, WP-60 | Loopback server, CSRF/origin checks, RBAC, MFA, report sanitisation | — | AC-16, AC-20, AC-30, AC-32, AC-33, AC-34, AC-41 | Specified |
