@@ -144,6 +144,13 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Pinned gaps outside this slice:** three minimal tests failed before being marked strict `xfail`: a supported CREATE warning in source coverage can leave a project assessment `COMPLETE` (WP-07/project integration); direct `blueprint.build` hashes database file paths rather than changed SQL bytes for its local `source_revision` (ADR-02; the manifest-bound project path does hash source content); documented `CREATE PACKAGE IF NOT EXISTS` is not recognized (future DDL grammar, target-version policy required). Full schema-aware identity and qualified call resolution still belong to ADR-06/WP-04. Oracle runtime validation was not performed.
 - **Gate status:** G-04 remains **in progress**. No release gate is passed by this audit.
 
+### WP-05 — synthetic disclosure probe
+
+- **Branch:** `codex/formslang-3-wp05-sanitization-probe`, based on merged `main` at `b09be2d`.
+- **Evidence:** [wp05-disclosure-probe.md](wp05-disclosure-probe.md) and `tests/test_wp05_disclosure_probe.py`. The local System Map kept the symbolic target name but excluded the synthetic host-path components. `convert.build_prompt` included the exact selected source body, including a synthetic credential and host path; the desired no-disclosure assertion failed before being pinned as strict `xfail`. No provider was called and no production behavior changed.
+- **Validation:** Windows 11, Python 3.13.15: targeted probe/policy/conversion tests, **39 passed, 1 xfailed**; `py -3.13 -m pytest -q -p no:cacheprovider`, **1970 passed, 5 skipped, 4 xfailed** in 846.41 s; `py -3.13 -m ruff check .` and `git diff --check` passed. CI run `36617867680` on `91ba4ad` passed all **13/13** checks across Ubuntu/Windows Python 3.10–3.13, Ruff, both Edge acceptances, deterministic export and SQLcl/APEX validation.
+- **Remaining work:** define context preview, consent and retention before optional AI orchestration (WP-47), with SEC-05/SEC-06 and AI-01..03. The probe does not close G-11.
+
 ## Gates not started
 
 G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0
