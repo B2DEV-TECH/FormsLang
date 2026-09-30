@@ -89,8 +89,22 @@ that only WP-20 can produce.
 
 | WP | Scope | Requirements | Depends on | Exit evidence |
 |---|---|---|---|---|
-| WP-40 | CLI envelope with `schema` and warnings, exit codes 3–10, idempotency keys, cursors (ADR-13) | CLI-*, API-* | M3–M4 | Old-command compatibility, JSON/stdout/stderr tests |
-| WP-41 | New shell and design system (ADR-08): Explore, Decisions, Build, Validate, Reports, History, with a shared evidence inspector. The legacy routes move over journey by journey. | UX-*, ARCH-01/02 | WP-12 findings, WP-40 | Installed-browser journeys, keyboard, narrow-screen and error states, UI/CLI equality |
+| WP-39 | Extract one typed application-service slice for pinned context, structured search, evidence and blocker inspection, and decision preview. Keep existing `ProjectService` behavior and public adapters compatible; no new persistence authority. | SURF-01, SURF-04, ARCH-01..04 | WP-11, WP-20, WP-31; ADR-13 for public error/schema mapping | Same fixture/context returns matching identities, evidence, omissions, budgets and domain errors through service, CLI and HTTP; stale/denied requests stay controlled |
+| WP-40 | CLI envelope with `schema` and warnings, exit codes 3–10, idempotency keys, cursors (ADR-13); complete the first supported headless journey using WP-39, keeping old commands or documented aliases. | CLI-*, API-*, SURF-02 | WP-39; M3–M4 | Old-command compatibility, JSON/stdout/stderr tests, offline no-browser journey and CLI/HTTP equality |
+| WP-41 | New shell and design system (ADR-08): Explore, Decisions, Build, Validate, Reports, History, with a shared evidence inspector. The legacy routes move over journey by journey. | UX-*, ARCH-01/02, SURF-01 | WP-12 findings, WP-39, WP-40 | Installed-browser journeys, keyboard, narrow-screen and error states, UI/CLI equality |
+| WP-42 | Opt-in local MCP foundation: pinned protocol/local stdio transport, allowlisted read-only discovery, structured search, object/evidence and status tools over WP-39. No writes, remote server or agent runtime. | SURF-03, SURF-04 | WP-39, WP-20; ADR-13 compatibility contract; WP-06 read/write inventory | Protocol and adapter tests prove context/permission isolation, no writes on read paths, bounded responses, stale-context denial, and service/CLI/MCP equality. Record actual installed integration evidence separately. |
+
+WP-42 can follow WP-40/41 independently after WP-39. It does not unblock
+WP-48; the optional execution loop calls the application service directly.
+The WP-48 contract was merged through PR #33; WP-39, WP-42 and the shared
+surface contracts in this PR are specification only, not implemented commands
+or an installed MCP server.
+
+### Later optional surface extension
+
+| WP | Scope | Requirements | Depends on | Exit evidence |
+|---|---|---|---|---|
+| WP-43 (optional, later) | Evaluate a policy-scoped semantic candidate index after structured search; implement only if measured retrieval value justifies it. | SURF-05 | WP-39, WP-11, WP-05 disclosure findings | If offered: cited source hits, model/index provenance, stale-index and no-index fallback, and disclosure tests. Not an M5 exit dependency or 3.0 release gate. |
 
 ## M6 — Plan, build, and validate (P10)
 
@@ -99,7 +113,7 @@ that only WP-20 can produce.
 | WP-45 | Neutral IR and adapter hardening (ADR-10): plan object, scope closure, generation manifest | BUILD-* | M3–M5 | Deterministic supported output; blocked cases fail honestly |
 | WP-46 | Validation records and applicability (ADR-15) | VAL-* | WP-45 | Real tool evidence where it is available; an exact target and version matrix |
 | WP-47 | AI assistance boundaries | AI-* | WP-05, WP-45 | Egress-policy tests; the core works without AI |
-| WP-48 | One optional modernization execution loop over the shared project services and durable decision history; first journey pins a Form revision, inspects evidence and a blocker, presents a proposal for explicit human disposition, then recalculates eligibility. No new parser, target generator or multi-agent framework. | RUN-01..06 | WP-20, WP-31, WP-40, WP-45, WP-46, WP-47; WP-12 task findings | One real synthetic journey through the product service boundary, persisted/reopened step and decision evidence, stale-context/denied-action tests, offline no-AI path, and UI/CLI agreement |
+| WP-48 | One optional modernization execution loop over the shared project services and durable decision history; first journey pins a Form revision, inspects evidence and a blocker, presents a proposal for explicit human disposition, then recalculates eligibility. No new parser, target generator or multi-agent framework. | RUN-01..06 | WP-20, WP-31, WP-39, WP-40, WP-45, WP-46, WP-47; WP-12 task findings | One real synthetic journey through the product service boundary, persisted/reopened step and decision evidence, stale-context/denied-action tests, offline no-AI path, and UI/CLI agreement |
 
 ## M7 — Complete reporting (P12)
 
