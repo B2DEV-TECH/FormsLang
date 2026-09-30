@@ -1,10 +1,9 @@
 name: Installer acceptance
 
-# Manual. Builds the installers from the selected ref, then on separate
-# disposable Windows runners installs the previous release, saves a review
-# through it, upgrades to the freshly built candidate and verifies that the
-# review, the export and the native desktop survived, then walks the 2.2 visual
-# journey on the installed engine. The candidate version comes from the
+# Manual. Builds the installers from the selected ref, then on fresh
+# disposable Windows runners smoke-tests clean candidate installs and, separately,
+# installs the previous release, saves a review, upgrades to the candidate and
+# verifies that the review, export, and native desktop survived. The candidate version comes from the
 # checkout; the baseline defaults to the latest published release, so a
 # candidate that is already published must name its baseline.
 on:
@@ -21,6 +20,37 @@ permissions:
 jobs:
   build:
     uses: ./.github/workflows/build-installers.yml
+
+  clean:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [nsis, msi]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: installer-assets/candidate
+      - name: Install candidate on a fresh runner and smoke the packaged product
+        shell: pwsh
+        run: ./examples/verify/installer_clean.ps1 -Kind '${{ matrix.kind }}' -CandidateVersion '${{ needs.build.outputs.version }}'
+      - name: Preserve clean-install evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.kind }}-clean-evidence
+          path: ${{ runner.temp }}/formslang-installer-clean-${{ matrix.kind }}/
+          retention-days: 7
 
   upgrade:
     needs: build

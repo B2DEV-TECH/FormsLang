@@ -75,4 +75,4 @@ if ($Kind -eq 'msi') {
 if ($removed.ExitCode -notin @(0,3010)) { throw "Uninstall failed: $($removed.ExitCode)" }
 if (-not (Test-Path -LiteralPath (Join-Path $qaRoot 'acceptance/session'))) { throw 'Uninstall removed user session data' }
 Install-Version $CandidateVersion 'candidate'
-Write-Output "PASS: $Kind clean install, upgrade $BaselineVersion -> $CandidateVersion, project workflow, uninstall and reinstall with preserved state"
+Write-Output "PASS: $Kind baseline clean install, upgrade $BaselineVersion -> $CandidateVersion, project workflow, uninstall and reinstall with preserved state"

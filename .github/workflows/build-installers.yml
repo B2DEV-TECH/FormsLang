@@ -36,9 +36,18 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Unexpected version in tauri.conf.json: $version" }
+          $msiVersion = ''
+          if ($version -match '^3\.0\.0-beta\.([1-9]\d*)$') {
+            $betaNumber = [long]::Parse($Matches[1])
+            if ($betaNumber -gt 65535) { throw "Beta number exceeds MSI version range: $version" }
+            # MSI compares only numeric fields; keep beta below 3.0.0 final.
+            $msiVersion = "2.99.$betaNumber"
+          } elseif ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Unexpected version in tauri.conf.json: $version"
+          }
           "version=$version" >> $env:GITHUB_OUTPUT
           "artifact=installers-$version" >> $env:GITHUB_OUTPUT
+          "msi_version=$msiVersion" >> $env:GITHUB_OUTPUT
       - name: Build frozen engine
         shell: pwsh
         run: |
@@ -50,11 +59,20 @@ jobs:
           Copy-Item dist/formslang-engine.exe desktop/src-tauri/binaries/formslang-engine-x86_64-pc-windows-msvc.exe
       - name: Build Windows installers
         shell: pwsh
+        env:
+          MSI_VERSION: ${{ steps.version.outputs.msi_version }}
         run: |
           npm --prefix desktop ci
           if ($LASTEXITCODE -ne 0) { throw 'Desktop dependencies failed' }
           $env:CI='true'
-          npm --prefix desktop run tauri -- build
+          if ($env:MSI_VERSION) {
+            $tauriConfig = Join-Path $env:RUNNER_TEMP 'formslang-tauri-beta.json'
+            @{ bundle = @{ windows = @{ wix = @{ version = $env:MSI_VERSION } } } } |
+              ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $tauriConfig -Encoding utf8
+            npm --prefix desktop run tauri -- build --config $tauriConfig
+          } else {
+            npm --prefix desktop run tauri -- build
+          }
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
       - name: Check the installers carry that version
         shell: pwsh
