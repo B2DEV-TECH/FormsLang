@@ -1,5 +1,6 @@
 import json
 
+from examples.verify import project_overview_performance_check as perf_check
 from examples.verify.project_overview_performance_check import build_fixture, run_measurements
 from formslang.project_projection import inventory_page, overview, prepare_projection
 
@@ -55,8 +56,12 @@ def test_journey_composes_500_forms_on_the_scale_fixture():
     assert payload['focus'] == 'DECIDE'
 
 
-def test_scale_report_carries_the_journey_gate(tmp_path):
+def test_scale_report_carries_the_journey_gate(tmp_path, monkeypatch):
+    # run_measurements shells out to `git rev-parse HEAD` only to stamp the report;
+    # a fixed string keeps this test independent of a git binary being on PATH.
+    monkeypatch.setattr(perf_check.subprocess, 'check_output', lambda *a, **k: 'deadbeefcafe')
     report = run_measurements(tmp_path, iterations=1)
+    assert report['commit'] == 'deadbeefcafe'
     gate = report['journey_gate']
     assert set(gate) == {'cold_journey_median_ms', 'cold_overview_median_ms', 'ratio', 'limit', 'within_limit'}
     assert gate['limit'] == 1.5

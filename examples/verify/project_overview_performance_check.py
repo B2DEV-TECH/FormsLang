@@ -142,8 +142,18 @@ def run_measurements(directory: Path, *, iterations=5):
     )), iterations)
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
+    # The gate compares like with like: both the Overview and the journey below are
+    # measured untraced. tracemalloc.start()/stop() above slows the Overview roughly
+    # 5x (it is only there to capture python_tracemalloc_peak_bytes), so the traced
+    # `cold` measurement above must never feed the gate ratio.
+    cold_untraced = _measure(lambda: overview(prepare_projection(
+        descriptor, assessment, freshness, store_scope="cold-scale",
+    )), iterations)
+    journey = _measure(lambda: build_journey(assessment, freshness, has_sources=True), iterations)
     measurements = {
         "cold_overview": cold,
+        "cold_overview_untraced": cold_untraced,
+        "cold_journey": journey,
         "inventory_first_page": _measure(
             lambda: inventory_page(prepared, "forms", limit=50), iterations),
         "combined_filter": _measure(lambda: inventory_page(
@@ -161,11 +171,10 @@ def run_measurements(directory: Path, *, iterations=5):
             key, lambda: prepared,
         )), iterations),
     }
-    journey = _measure(lambda: build_journey(assessment, freshness, has_sources=True), iterations)
-    measurements["cold_journey"] = journey
-    ratio = journey["median_ms"] / cold["median_ms"] if cold["median_ms"] else float("inf")
+    ratio = (journey["median_ms"] / cold_untraced["median_ms"]
+             if cold_untraced["median_ms"] else float("inf"))
     journey_gate = {"cold_journey_median_ms": journey["median_ms"],
-                    "cold_overview_median_ms": cold["median_ms"],
+                    "cold_overview_median_ms": cold_untraced["median_ms"],
                     "ratio": round(ratio, 3), "limit": 1.5, "within_limit": ratio <= 1.5}
     summary = overview(prepared)
     semantic_ok = (
