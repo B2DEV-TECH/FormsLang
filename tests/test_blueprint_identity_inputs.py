@@ -91,6 +91,15 @@ def test_direct_missing_supplied_source_withholds_new_identity(tmp_path, sample_
     assert result['database']['source_coverage']['summary']['rejected_or_unreadable'] == 1
 
 
+def test_direct_load_revision_includes_missing_supplied_source(tmp_path, sample_xml):
+    source = tmp_path / 'p.sql'
+    source.write_text('CREATE PACKAGE S.P AS PROCEDURE X; END;', encoding='utf-8')
+    first = blueprint_io.load(sample_xml, tmp_path / 'out', database_sources=[source])
+    missing = tmp_path / 'missing.sql'
+    second = blueprint_io.load(sample_xml, tmp_path / 'out', database_sources=[source, missing])
+    assert first['source_revision'] != second['source_revision']
+
+
 @pytest.mark.parametrize('shape', ['path', 'str', 'list', 'tuple', 'iterator', 'directory', 'project'])
 def test_direct_load_preserves_database_source_shapes(tmp_path, sample_xml, shape):
     root = tmp_path / 'sql'

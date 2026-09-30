@@ -55,6 +55,8 @@ def load(source: Path, out: Path, *, title="", oracle_home=None, enterprise=Fals
             db_project = database.parse_database_sources(db_paths) if database_sources is not None else None
             if db_project is not None:
                 db_project.coverage.extend(missing)
+                db_project.source_digests.extend(
+                    (item.source_file, 'SOURCE_UNAVAILABLE') for item in missing)
                 _logical_sources(db_project, logical)
         metadata_source = (snapshot.capture('metadata', Path(metadata_path).name,
                             metadata_path, 'supporting', max_bytes=32 * 1024 * 1024)
