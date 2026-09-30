@@ -317,6 +317,54 @@ No gate is **passed**. The full 3.0 release is not complete.
   require work. WP-04/G-04 remain open. No runtime Oracle proof or release claim
   is made by this evidence.
 
+## WP-07 follow-up — coverage completeness and direct Blueprint revision (Draft)
+
+- Branch `codex/formslang-3-wp07-gap-composition` replays the coverage commit
+  `cf167477` and the three direct revision commits `2341a8c`, `f954ca0`,
+  `99767b5` originally on main `066288e`. Backup refs preserve the original heads. The
+  only cherry-pick conflict was adjacent tests in `test_database_coverage.py`;
+  both positive regressions were retained. Range-diff changes are context from
+  WP-04 and that test placement, with no lost commit.
+- Coverage RED: a supported `CREATE TABLE` present in `not_extracted` left the
+  project assessment `COMPLETE`. GREEN: it is `INCOMPLETE`, while an unmodelled
+  informational `CREATE INDEX` does not demote a complete assessment. The
+  strict coverage `xfail` became a positive regression.
+- Direct revision RED: changed SQL bytes at the same path kept the same
+  `source_revision`. GREEN: raw SHA-256 digests distinguish changed bytes,
+  including SQL with no extracted objects; absent supplied paths contribute a
+  marker; sorting the revision inputs preserves source-order independence. The
+  strict direct revision `xfail` became a positive regression.
+- Composition with WP-04 exposed one more RED in the existing repeat-build
+  regression: a temporary staging path entered `source_digests`, making identical
+  builds differ. Remapping it to the logical source path made that test GREEN.
+  A new direct `blueprint_io.load` test was RED because an unavailable supplied
+  SQL path left `source_revision` unchanged; adding an explicit unavailable
+  marker made it GREEN. No source bytes or temporary paths are serialized in
+  the database inventory. Project manifest revision semantics are unchanged.
+- Focused composed suite: `python -m pytest tests/test_database_coverage.py
+  tests/test_blueprint_identity_inputs.py tests/test_database_wp04.py
+  tests/test_database_wp08.py tests/test_blueprint.py
+  tests/test_blueprint_backend.py tests/test_project_analysis.py
+  tests/test_project_service.py tests/test_project_sources.py
+  tests/test_project_discovery.py -q` returned **257 passed, 3 skipped,
+  1 xfailed**. Three repeated Python 3.13 revision/ID/order checks returned
+  **3 passed** each. Frozen full suite on Python 3.13:
+  `py -3.13 -m pytest -q -p no:cacheprovider` returned **2082 passed,
+  5 skipped, 2 xfailed in 884.60 s**. Ruff, `git diff --check` and the current
+  `inventory-wp04.json` generator check passed. Historical inventories have no
+  diff against that main. The original Draft head `e550ce7` passed 13/13 checks
+  in CI run `36689762836`.
+- After the beta merge, backup `backup/wp07-gap-before-beta-20260930` preserves
+  `e550ce7`. All six own commits rebased onto main `1f55ee6` without a conflict;
+  the six range-diff entries are `=` and the production/test patch is unchanged.
+  On that composed tree, the focused Python 3.13 suite returned **257 passed,
+  3 skipped, 1 xfailed**; the frozen full suite returned **2085 passed,
+  5 skipped, 2 xfailed in 877.71 s**. Ruff, `git diff --check`, the current
+  inventory generator and historical inventory blob comparison passed. CI on
+  the rebased Draft head remains required before integration.
+- The `CREATE PACKAGE IF NOT EXISTS` strict `xfail` remains open; the other
+  inherited expected failure is outside these two fixes. No 3.0 gate closes.
+
 ## Gates still open
 
 No gate listed above has met its complete 3.0 release criterion. Architecture

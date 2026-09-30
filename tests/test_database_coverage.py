@@ -240,7 +240,6 @@ def test_project_pipeline_withholds_table_with_unextracted_quoted_homonym(projec
     assert any(c.not_extracted for c in result.database.coverage)
 
 
-@pytest.mark.xfail(strict=True, reason="WP-07 integration gap: coverage warnings do not affect assessment status")
 def test_known_gap_supported_create_warning_makes_assessment_incomplete(project_sources):
     from formslang.project_service import ProjectService
 
@@ -258,14 +257,67 @@ def test_known_gap_supported_create_warning_makes_assessment_incomplete(project_
         service.close()
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-02 gap: direct Blueprint revision hashes database paths, not bytes")
-def test_known_gap_direct_blueprint_source_revision_tracks_sql_bytes(tmp_path):
+def test_informational_unmodelled_create_keeps_assessment_complete(project_sources):
+    from formslang.project_service import ProjectService
+
+    access, descriptor, _ = project_sources
+    (access.source_roots[1] / "orders.sql").write_text(
+        "CREATE TABLE T (ID NUMBER);\nCREATE INDEX T_I ON T (ID);\n", encoding="utf-8")
+    service = ProjectService(access)
+    try:
+        service.create(descriptor.name, roots=descriptor.source_roots)
+        service.analyze(expected_revision=None, expected_configuration=0)
+        assessment = service.assessment()
+        coverage = assessment["blueprint"]["database"]["source_coverage"]["sources"][0]
+        assert coverage["not_extracted"] == []
+        assert coverage["unsupported"][0]["reason"] == "UNSUPPORTED_BY_MODEL"
+        assert assessment["completion_state"] == "COMPLETE"
+    finally:
+        service.close()
+
+
+def test_direct_blueprint_source_revision_tracks_sql_bytes(tmp_path):
     source = tmp_path / "same.sql"
     source.write_text("CREATE PACKAGE P AS PROCEDURE X; END P;\n/\n", encoding="utf-8")
     before = blueprint.build([], title="revision", database_sources=source)["source_revision"]
     source.write_text("CREATE PACKAGE P AS PROCEDURE Y; END P;\n/\n", encoding="utf-8")
     after = blueprint.build([], title="revision", database_sources=source)["source_revision"]
     assert before != after
+
+
+def test_direct_blueprint_source_revision_tracks_unextracted_sql_bytes(tmp_path):
+    source = tmp_path / "unsupported.sql"
+    source.write_bytes(b"SELECT 1;\n")
+    before = blueprint.build([], title="revision", database_sources=source)["source_revision"]
+    source.write_bytes(b"SELECT 2;\n")
+    after = blueprint.build([], title="revision", database_sources=source)["source_revision"]
+    source.write_bytes(b"SELECT 1;\n")
+    restored = blueprint.build([], title="revision", database_sources=source)["source_revision"]
+    assert before != after
+    assert restored == before
+
+
+def test_direct_blueprint_source_revision_includes_missing_supplied_path(tmp_path):
+    source = tmp_path / "existing.sql"
+    source.write_text("CREATE TABLE T (ID NUMBER);\n", encoding="utf-8")
+    missing = tmp_path / "missing.sql"
+    before = blueprint.build([], title="revision", database_sources=[source])["source_revision"]
+    after = blueprint.build([], title="revision", database_sources=[source, missing])["source_revision"]
+    assert before != after
+
+
+def test_direct_blueprint_source_revision_ignores_supplied_list_order(tmp_path):
+    first = tmp_path / "first.sql"
+    second = tmp_path / "second.sql"
+    first.write_text("SELECT 1;\n", encoding="utf-8")
+    second.write_text("SELECT 2;\n", encoding="utf-8")
+    missing_first = tmp_path / "missing_first.sql"
+    missing_second = tmp_path / "missing_second.sql"
+    before = blueprint.build([], title="revision", database_sources=[
+        first, missing_first, second, missing_second])["source_revision"]
+    after = blueprint.build([], title="revision", database_sources=[
+        missing_second, second, missing_first, first])["source_revision"]
+    assert before == after
 
 
 def test_a_project_records_a_source_that_could_not_be_staged(project_sources, monkeypatch):

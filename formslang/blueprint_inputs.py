@@ -107,6 +107,9 @@ def _logical_sources(value, mapping):
                 setattr(value, field.name, mapping.get(current, current))
             elif field.name == 'files':
                 setattr(value, field.name, [mapping.get(path, path) for path in current])
+            elif field.name == 'source_digests' and current is not None:
+                setattr(value, field.name, [(mapping.get(path, path), digest)
+                                                for path, digest in current])
             else:
                 _logical_sources(current, mapping)
     elif isinstance(value, dict):

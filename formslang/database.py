@@ -6,6 +6,7 @@ and package bodies (.pkb) into structured, queryable models with lexical evidenc
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass, field
@@ -280,6 +281,8 @@ class DatabaseProject:
     # which is unknown, not an estate without gaps.
     coverage: list[SourceCoverage] | None = None
     package_declarations: list[PackageDeclaration] = field(default_factory=list)
+    # Internal parse-time provenance; excluded from serialized inventory.
+    source_digests: list[tuple[str, str]] | None = None
 
     def coverage_summary(self) -> dict[str, int] | None:
         if self.coverage is None:
@@ -965,10 +968,14 @@ def parse_create_sequence(sql: str, source_file: str = "") -> Sequence | None:
 def parse_database_file(path: Path | str) -> DatabaseProject:
     """Parse a single SQL, PKS, or PKB database source file into a DatabaseProject."""
     p = Path(path)
-    text = p.read_text(encoding="utf-8", errors="replace")
+    raw = p.read_bytes()
+    source_digest = hashlib.sha256(raw).hexdigest()
+    # Match Path.read_text's universal-newline decoding while hashing raw bytes.
+    text = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    del raw
     rel_path = str(p)
 
-    project = DatabaseProject(files=[rel_path])
+    project = DatabaseProject(files=[rel_path], source_digests=[(rel_path, source_digest)])
 
     project.package_declarations = _package_occurrences(text, rel_path)
     _project_unique_packages(project)
@@ -1035,7 +1042,7 @@ def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProj
                 # Supplied but absent: reported, never silently skipped.
                 missing.append(SourceCoverage(str(ip), REJECTED_OR_UNREADABLE, reason="SOURCE_NOT_FOUND"))
 
-    merged = DatabaseProject(coverage=[])
+    merged = DatabaseProject(coverage=[], source_digests=[])
     for fp in file_paths:
         proj = parse_database_file(fp)
         merged.tables.update(proj.tables)
@@ -1043,8 +1050,11 @@ def parse_database_sources(paths: list[Path | str] | Path | str) -> DatabaseProj
         merged.package_declarations.extend(proj.package_declarations)
         merged.sequences.update(proj.sequences)
         merged.files.extend(proj.files)
+        merged.source_digests.extend(proj.source_digests)
         merged.coverage.extend(proj.coverage)
     merged.coverage.extend(missing)
+    # A supplied but absent path is still part of the direct Blueprint source set.
+    merged.source_digests.extend((item.source_file, "SOURCE_NOT_FOUND") for item in missing)
     _project_unique_packages(merged)
     _withhold_colliding_nonpackages(merged)
     return merged

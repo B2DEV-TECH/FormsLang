@@ -98,7 +98,9 @@ def analyze_project(access, *, expected_revision, expected_configuration, author
                         failures=[asdict(d) for d in material], _database_identity_scope=scope)
                     checkpoint()
                     phase('ASSESSMENT')
-                    incomplete = bool(material) or any(e.selected and e.status != 'available' for e in staged.manifest)
+                    coverage_gap = any(c.not_extracted for c in parsed.database.coverage or ())
+                    incomplete = (bool(material) or coverage_gap or
+                                  any(e.selected and e.status != 'available' for e in staged.manifest))
                     assessment = bind_assessment(descriptor, staged.manifest, payload, engines=engines,
                         options=options, analyzed_at=now(), status='Incomplete' if incomplete else 'Current')
                     assessment.update(inventory=parsed.inventory, diagnostics=[asdict(d) for d in parsed.diagnostics],

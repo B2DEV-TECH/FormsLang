@@ -738,10 +738,12 @@ def build(modules: list[FormModule], *, title="Forms application", source_keys=N
             outgoing[edge["source"]].add(edge["target"])
     for finding in b.findings.values():
         finding["dependencies"] = sorted(outgoing[finding["entity"]])
+    revision_sources = (sorted(db_proj.source_digests if db_proj.source_digests is not None
+                               else db_proj.files) if db_proj else [])
     context_hash = digest({"modules": [(key, {**asdict(m), "source_path": key}) for key, m in ordered],
                            "metadata": metadata or [], "enterprise": enterprise,
                            "failures": failures or [], "engine": ENGINE_VERSION,
-                           "database": db_proj.files if db_proj else []})
+                           "database": revision_sources})
     for finding in b.findings.values():
         finding["revision"] = digest([VERSION, context_hash, finding])
     assessments = []
