@@ -48,7 +48,9 @@ The second bounded change adds a read-only storage open for the local CLI `statu
 - [x] GREEN: read-only open reports an explicit migration-required domain error, with the existing `formslang project open <project>` remedy, without repairing the database or mirror. The test also verifies that explicit open migrates the missing run table and makes status usable again.
 - [x] RED: a regression forced writable SQLite connections to fail and showed the read-only preflight still opened `mode=rw`.
 - [x] GREEN: the read-only preflight now opens `mode=ro`; the writable open path retains `mode=rw`.
-- [x] Focused CLI/store/service/jobs/intake/HTTP regression: 121 passed, 1 skipped. Ruff and diff check passed before this documentation update.
-- [ ] Re-run the final focused and full suites, Ruff/diff check, commit and exact-head CI after stacked ADR branches are integrated.
+- [x] Focused CLI/store/service/jobs/intake/HTTP regression after the SQLite preflight correction: 122 passed, 1 skipped in 170.85 s. Ruff and diff check passed.
+- [x] Full pre-reconciliation run: 1982 passed, 5 skipped, 4 xfailed, 1 failed in 1001.47 s. The sole failure was a Windows `PermissionError` in the unchanged concurrent locator lock path. Its single directed rerun passed; no mechanism or correction is claimed.
+- [x] Rebased both own commits unchanged on the reconciled ADR-04/07 head; `range-diff` marks both equivalent. The composed CLI/store/service/jobs/intake/HTTP/WP-12 journey regression passed **131 tests, 1 skipped** in 197.17 s.
+- [ ] Run the final composed full suite, Ruff/diff check and exact-head CI after the stacked ADR branches are integrated; require a green full run before merge.
 
 This is a local CLI `status` boundary only. Other CLI/HTTP GET paths, authenticated intake and full WP-20 checkpoint/export/reopen work remain open. No HTTP 500 cause was established by this change.
