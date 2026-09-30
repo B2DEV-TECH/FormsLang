@@ -415,8 +415,11 @@ Scope: `formslang/project_journey_status.py`, `GET /api/v2/projects/{pid}/journe
 `formslang project journey`. Design: [journey-shell-design.md](journey-shell-design.md) §2.
 
 - State rules and exhaustiveness: the 24 generation blocker codes in the
-  generation modules are classified as 3 UNDERSTAND, 13 DECIDE and 8 LIMIT.
-  Unknown values yield `UNCLASSIFIED`.
+  generation modules are classified as 3 UNDERSTAND, 13 DECIDE and 8 LIMIT. An
+  unknown freshness status, blocker code or validation status yields
+  `UNCLASSIFIED` with the raw value. A review state is different: any value
+  outside `RESOLVED_REVIEWS` (`APPROVE`/`MODIFY`), known or unknown, counts as
+  unresolved and keeps Decide open; it never produces `UNCLASSIFIED`.
 - Decide consistency: the unresolved count equals the `UNRESOLVED_REVIEW`
   blockers of the same Form on the bundled demo.
 - Read-only: a journey read leaves the project tree byte-identical, including
@@ -424,15 +427,21 @@ Scope: `formslang/project_journey_status.py`, `GET /api/v2/projects/{pid}/journe
 - Composition cases covered by tests:
   - a missing session, or an `OSError` reading a Form's prepared source copy,
     gives `GENERATION_DETAIL_UNAVAILABLE` for that Form only, without failing
-    the journey (found and fixed in Task 4, commit `da210d7`);
+    the journey, and reports a fixed, authored message rather than the raw
+    `OSError` text (which would otherwise carry an absolute server path);
   - an edited validated artifact makes Build `STALE (ARTIFACT_INTEGRITY)`;
   - a review during the read gives `RevisionConflict`;
-  - the first HTTP visit gives `SOURCE_CHECK_REQUIRED`.
+  - the first HTTP visit gives `SOURCE_CHECK_REQUIRED`;
+  - a malformed artifact record (missing `target_revision` or
+    `code_revision`) is skipped rather than raising `KeyError`.
 - CLI/HTTP equality on the demo project.
-- 500-Form gate: cold journey median 281.057 ms, cold Overview median
-  1408.317 ms, ratio 0.2 (limit 1.5), run `run-b39893fa49f3`. The fixture has
-  no generation scope, so per-Form generation detail is not measured.
-- Full suite: 2125 passed, 5 skipped, 2 xfailed in 1013.26s (0:16:53). Ruff
+- 500-Form gate: cold journey median 372.986 ms, cold Overview median
+  264.623 ms (measured without tracemalloc; the traced Overview measurement
+  used to size `python_tracemalloc_peak_bytes` is kept separately and is not
+  used for the gate), ratio 1.409 (limit 1.5), `within_limit: true`, run
+  `run-dcec50d907b2`. The fixture has no generation scope, so per-Form
+  generation detail is not measured.
+- Full suite: 2128 passed, 5 skipped, 2 xfailed in 989.45s (0:16:29). Ruff
   clean.
 - Finding (not changed): artifact currency binds the project-wide
   `review_revision`, so a review on any Form marks every artifact

@@ -7,6 +7,7 @@ formslang project create ./assessment --name "Orders" --forms ./forms --database
 formslang project discover ./assessment --json
 formslang project analyze ./assessment --json
 formslang project summary ./assessment --json
+formslang project journey ./assessment --form CUSTOMERS --json
 formslang project inventory ./assessment --category findings --risk HIGH --json
 formslang project review list ./assessment --json
 formslang project generation status ./assessment --json
@@ -15,6 +16,8 @@ formslang project report ./assessment --format package --include-artifacts --out
 ```
 
 Use `project review show --finding ID` to obtain the exact binding before `decide` or `annotate`. Generation commands use JSON request files with returned revision bindings. Do not fabricate revision tokens or auto-replay a conflicted approval.
+
+`project journey [--form <id or name>]` gives the read-only journey status per Form (Understand/Decide/Build/Validate) with reasons; omit `--form` to list every Form. It runs and saves a source check first, the same as `project summary` does.
 
 `--json` gives machine-readable output; analysis progress goes to stderr. Downloads refuse existing output paths. Use each command's `--help` for exact parameters.
 
