@@ -409,6 +409,45 @@ No gate is **passed**. The full 3.0 release is not complete.
   presentation are remaining WP-11 work. No `visual_hierarchy_version: 1`, complete WP-11 or gate closure is
   claimed. Empty parsed targets do not establish raw XML attribute absence.
 
+## WP-39a — read-only journey status (2026-09-30)
+
+Scope: `formslang/project_journey_status.py`, `GET /api/v2/projects/{pid}/journey`,
+`formslang project journey`. Design: [journey-shell-design.md](journey-shell-design.md) §2.
+
+- State rules and exhaustiveness: the 24 generation blocker codes in the
+  generation modules are classified as 3 UNDERSTAND, 13 DECIDE and 8 LIMIT.
+  Unknown values yield `UNCLASSIFIED`.
+- Decide consistency: the unresolved count equals the `UNRESOLVED_REVIEW`
+  blockers of the same Form on the bundled demo.
+- Read-only: a journey read leaves the project tree byte-identical, including
+  a prepared module session.
+- Composition cases covered by tests:
+  - a missing session, or an `OSError` reading a Form's prepared source copy,
+    gives `GENERATION_DETAIL_UNAVAILABLE` for that Form only, without failing
+    the journey (found and fixed in Task 4, commit `da210d7`);
+  - an edited validated artifact makes Build `STALE (ARTIFACT_INTEGRITY)`;
+  - a review during the read gives `RevisionConflict`;
+  - the first HTTP visit gives `SOURCE_CHECK_REQUIRED`.
+- CLI/HTTP equality on the demo project.
+- 500-Form gate: cold journey median 281.057 ms, cold Overview median
+  1408.317 ms, ratio 0.2 (limit 1.5), run `run-b39893fa49f3`. The fixture has
+  no generation scope, so per-Form generation detail is not measured.
+- Full suite: 2125 passed, 5 skipped, 2 xfailed in 1013.26s (0:16:53). Ruff
+  clean.
+- Finding (not changed): artifact currency binds the project-wide
+  `review_revision`, so a review on any Form marks every artifact
+  `ARTIFACT_REVISION_STALE`.
+- Finding (not changed): per-Form generation detail re-reads
+  `_sources()`/`module_sessions()`, and Forms with artifacts re-open their
+  module session, so cost grows roughly quadratically with XML-scoped Forms;
+  the 500-Form gate has no generation scope and does not measure it.
+- Finding (not changed): `ProjectService.open()` may run pre-existing job
+  recovery (writes) on the first open of a project that has QUEUED/RUNNING
+  jobs; "writes nothing" holds for an open or quiescent store (the test
+  digests a quiescent store).
+- Not claimed: no UI (WP-41 slice 1), no UX requirement completed, no ADR-13
+  envelope.
+
 ## Gates still open
 
 No gate listed above has met its complete 3.0 release criterion. Architecture

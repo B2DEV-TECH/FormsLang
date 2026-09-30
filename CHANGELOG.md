@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Read-only journey status for a saved project: for each Form, the state of the
+  Understand, Decide, Build and Validate steps and the reasons, composed from
+  existing freshness, review, generation, artifact and validation facts. Served
+  by `GET /api/v2/projects/{pid}/journey` and `formslang project journey`. It
+  writes nothing and adds no stored state.
+
 ## [3.0.0-beta.1] - 2026-09-30
 
 Beta for the saved-project modernization journey. Create or reopen a
