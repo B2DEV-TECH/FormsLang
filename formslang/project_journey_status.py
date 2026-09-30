@@ -219,7 +219,7 @@ def journey_status(service, *, freshness, form=None):
             facts = {'blockers': generation._detail(assessment, freshness, source_id, read_only=True)['blockers']}
         except ProjectBusy:
             raise
-        except ProjectError as exc:
+        except (ProjectError, OSError) as exc:
             return {'detail_error': str(exc)}
         artifact = artifacts.get(source_id)
         if artifact is None:

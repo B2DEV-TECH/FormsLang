@@ -338,6 +338,16 @@ def test_unavailable_prepared_session_blocks_build_without_failing_the_journey(g
     assert build['reasons'][0]['code'] == 'GENERATION_DETAIL_UNAVAILABLE'
 
 
+def test_missing_prepared_source_copy_blocks_build_without_failing_the_journey(generation_project):
+    service = generation_project
+    prepared(service)
+    record = service._store.module_sessions()[0]
+    service._generation_service()._path(record['provenance']['xml']).unlink()
+    build = service.journey(freshness=service.freshness())['forms'][0]['steps'][2]
+    assert build['state'] == 'BLOCKED'
+    assert build['reasons'][0]['code'] == 'GENERATION_DETAIL_UNAVAILABLE'
+
+
 def test_edited_artifact_is_stale_even_after_validation(generation_project, monkeypatch):
     service = generation_project
     detail = prepared(service)
