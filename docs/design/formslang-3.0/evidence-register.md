@@ -177,7 +177,29 @@ No gate is **passed**. The full 3.0 release is not complete.
   changed root, deduplicates candidates and orders them deterministically with
   the exact locator first. The six focused tests pass; the full suite on
   Windows 11 / Python 3.12.10 returned **1975 passed, 5 skipped, 3 xfailed** in
-  916.64 s. Ruff and `git diff --check` pass. CI on the corrected head is pending.
+  916.64 s. Ruff and `git diff --check` pass. CI run `36633010065` passed all
+  13 checks on corrected head `360ab80`; this predates the additional evidence
+  below.
+- The 29 September follow-up separates architecture acceptance from the product
+  exit criteria of WP-04/G-04, removing a circular prerequisite without passing
+  either gate. The outside-product probe now exercises typed symbols, distinct
+  source occurrences, analysis-bound IDs, quoted spelling, qualified Case C
+  member selection, bare-name withholding, overload limits and missing bodies.
+  Thirteen new cases failed before implementation; one further failing case
+  exposed a false resolution with a lone incomplete signature. Independent
+  review then found false `REMOVED` results when the key changed at the same
+  source locator: two tests failed first, and now yield `NOT_COMPARABLE` with
+  no inferred rename target, including an unrelated object in the same file.
+- Final focused evidence: **121 passed, 1 xfailed** in 6.65 s across identity,
+  WP-08, Case C, project-source and assessment tests on Windows 11 /
+  Python 3.13.15; **22 passed** in 0.34 s for the contract on Python 3.12.10.
+  Repository Ruff, `git diff --check` and the `inventory-wp08.json` generator
+  check pass. The product and historical `inventory-2.2.json` have no diff from
+  `360ab80`. The full suite (`py -3.13 -m pytest -q -p no:cacheprovider`), with
+  code held stable, returned **1991 passed, 5 skipped, 3 xfailed** in 903.85 s.
+  An earlier full run was interrupted before the review correction and is
+  discarded. Final review remains pending; no CI result is yet claimed for
+  this follow-up commit.
 - ADR-06 remains Draft. Case C product entities, qualified call resolution,
   Blueprint/project parity, engine versioning and legacy compatibility are
   still WP-04 work. No gate is closed by this probe.
