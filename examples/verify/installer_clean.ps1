@@ -11,7 +11,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 $qaRoot = Join-Path $env:RUNNER_TEMP "formslang-installer-clean-$Kind"
 $installDir = Join-Path $qaRoot 'install café'
 $fileName = if ($Kind -eq 'msi') { "FormsLang_${CandidateVersion}_x64_en-US.msi" } else { "FormsLang_${CandidateVersion}_x64-setup.exe" }
-$asset = (Resolve-Path "installer-assets/candidate/$fileName").Path
+$asset = (Resolve-Path "installer-assets/candidate/$Kind/$fileName").Path
 if (Test-Path -LiteralPath $installDir) { throw "Clean install directory already exists: $installDir" }
 New-Item -ItemType Directory -Force -Path $qaRoot | Out-Null
 

@@ -26,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE = REPO_ROOT / "tests" / "fixtures" / "showcase" / "module.xml"
 REVIEWER = "installer QA"
 APPROVED_CODE = "begin null; end;"
+BLUEPRINT_COMMENT = "Synthetic pre-upgrade architecture decision"
 EXPORT = {"alias": "installer-qa", "app_id": 190122}
 
 
@@ -36,6 +37,34 @@ class CheckFailed(AssertionError):
 def check(condition: bool, message: str, detail: object = None) -> None:
     if not condition:
         raise CheckFailed(message if detail is None else f"{message}: {detail!r}")
+
+
+def verify_preserved_blueprint_review(
+    prior: dict, seed: dict, *, stale_engine: bool, current_source_revision: str
+) -> None:
+    """Keep the historical decision while respecting its current applicability."""
+    check(current_source_revision == seed["blueprint_source_revision"],
+          "baseline Blueprint source revision changed without explicit reanalysis")
+    check(prior.get("entity") == seed["blueprint_entity"], "baseline Blueprint entity changed")
+    check(prior.get("revision") == seed["blueprint_revision"],
+          "baseline Blueprint finding revision changed")
+    history = prior.get("review_history")
+    check(isinstance(history, list) and len(history) == 1,
+          "baseline Blueprint decision history changed", history)
+    decision = history[0]
+    check((decision.get("entity"), decision.get("revision"), decision.get("action")) ==
+          (seed["blueprint_entity"], seed["blueprint_revision"], "DEFER"),
+          "baseline Blueprint decision binding or action changed", decision)
+    check(decision.get("reviewer") == REVIEWER and decision.get("comment") == BLUEPRINT_COMMENT,
+          "baseline Blueprint decision attribution changed", decision)
+    snapshot = decision.get("finding_snapshot") or {}
+    check(snapshot.get("engine_version") == seed["blueprint_engine_version"] and
+          snapshot.get("source_revision") == seed["blueprint_source_revision"],
+          "baseline Blueprint decision snapshot changed", snapshot)
+    expected_state = "STALE" if stale_engine else "DEFER"
+    check(prior.get("review_state") == expected_state,
+          "baseline Blueprint decision applicability changed unexpectedly", prior.get("review_state"))
+    check(not prior.get("human_decision"), "baseline Blueprint decision was promoted to approval")
 
 
 def sha256(path: Path) -> str:
@@ -154,9 +183,13 @@ def main() -> None:
                 finding = request('/api/blueprint/explore?node=' + entity + '&context_id=' + context)['selected']['finding']
                 request('/api/blueprint/review', {'context_id': context, 'entity': finding['entity'],
                     'revision': finding['revision'], 'action': 'DEFER', 'reviewer': REVIEWER,
-                    'comment': 'Synthetic pre-upgrade architecture decision'})
+                    'comment': BLUEPRINT_COMMENT})
+                reviewed = request('/api/blueprint/explore?node=' + entity + '&context_id=' + context)['selected']['finding']
+                snapshot = reviewed['review_history'][0]['finding_snapshot']
                 result.update(settings_seeded=True, blueprint_entity=finding['entity'],
-                    blueprint_revision=finding['revision'])
+                    blueprint_revision=finding['revision'],
+                    blueprint_source_revision=baseline_blueprint['source_revision'],
+                    blueprint_engine_version=snapshot['engine_version'])
             else:
                 task = next((t for t in state["tasks"] if t["id"] == seed["task_id"]), None)
                 check(task is not None, "approved unit disappeared after upgrade", seed["task_id"])
@@ -170,8 +203,13 @@ def main() -> None:
                 check(request('/api/settings')['deployment'] == 'synthetic-upgrade-setting', 'saved setting lost')
                 prior = request('/api/blueprint/explore?node=' + seed['blueprint_entity'] +
                                 '&context_id=' + state['context_id'])['selected']['finding']
-                check(prior['review_state'] == 'DEFER', 'baseline Blueprint decision lost')
-                result.update(settings_preserved=True, blueprint_history_preserved=True)
+                blueprint_before_reanalysis = request('/api/blueprint')
+                verify_preserved_blueprint_review(
+                    prior, seed, stale_engine=blueprint_before_reanalysis['stale_engine'],
+                    current_source_revision=blueprint_before_reanalysis['source_revision'],
+                )
+                result.update(settings_preserved=True, blueprint_history_preserved=True,
+                              blueprint_review_stale=blueprint_before_reanalysis['stale_engine'])
 
                 # Exercise the new modules inside the frozen candidate, not only
                 # the editable Python checkout. Baseline versions need not have
