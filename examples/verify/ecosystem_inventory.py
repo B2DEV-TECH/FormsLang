@@ -18,7 +18,7 @@ The difference between those layers is the phase-2 enrichment inventory. The
 output is deterministic: no timestamps, no absolute paths, sorted keys.
 
     python examples/verify/ecosystem_inventory.py --output inventory.json
-    python examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-wp04.json
+    python examples/verify/ecosystem_inventory.py --check docs/design/ecosystem-explorer-2.3/inventory-wp11.json
 """
 
 from __future__ import annotations

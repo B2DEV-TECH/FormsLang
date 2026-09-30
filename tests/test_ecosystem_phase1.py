@@ -21,7 +21,7 @@ from formslang.parser import parse_xml
 
 REPO = Path(__file__).resolve().parents[1]
 GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-2.2.json"
-CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-wp04.json"
+CURRENT_GOLDEN = REPO / "docs/design/ecosystem-explorer-2.3/inventory-wp11.json"
 
 
 def build(name):
@@ -87,7 +87,7 @@ def test_inventory_is_deterministic_and_matches_the_current_characterization():
     assert "\\\\" not in first and ":/" not in first  # no absolute or Windows paths leak in
     assert first == CURRENT_GOLDEN.read_text(encoding="utf-8"), (
         "Regenerate with: python examples/verify/ecosystem_inventory.py --output "
-        "docs/design/ecosystem-explorer-2.3/inventory-wp04.json, then review the diff")
+        "docs/design/ecosystem-explorer-2.3/inventory-wp11.json, then review the diff")
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +291,7 @@ def test_case_c_schema_qualified_package_bodies_yield_their_subprograms(case_c):
 # Visual hierarchy: positive and negative declarations
 # ---------------------------------------------------------------------------
 
-def test_parser_carries_the_visual_hierarchy_the_blueprint_drops(screens):
+def test_window_canvas_declarations_persist_while_tabs_and_visibility_remain_open(screens):
     modules, bp = screens
     main = next(m for m in modules if m.name == "SCREENS")
     canvas = {c.name: c for c in main.canvases}
@@ -299,16 +299,23 @@ def test_parser_carries_the_visual_hierarchy_the_blueprint_drops(screens):
     assert canvas["CV_HIDDEN"].visible is False
     assert main.window_details["WIN_SIDE"].primary_canvas == "CV_SHARED"
     assert canvas["CV_SHARED"].window_name == "WIN_MAIN"
-    # The Blueprint keeps the nodes but none of those attributes, and no TAB_PAGE node.
+    # WP-11 persists window/canvas facts only; visibility/default provenance and
+    # tab placement remain explicit gaps of this bounded slice.
     for entity in bp["entities"]:
-        if entity["type"] in {"CANVAS", "WINDOW"}:
-            assert entity["attributes"] == {}
+        if entity["type"] == "CANVAS":
+            assert 'window_placement' in entity['attributes']
+            assert 'visible' not in entity['attributes']
+        elif entity['type'] == 'WINDOW':
+            assert 'primary_canvas_placement' in entity['attributes']
     assert not [e for e in bp["entities"] if e["type"] == "TAB_PAGE"]
     types = {e["id"]: e["type"] for e in bp["entities"]}
     visual = {(types[e["source"]], e["type"], types[e["target"]]) for e in bp["edges"]
               if {types[e["source"]], types[e["target"]]} & {"CANVAS", "WINDOW"}}
     assert visual == {("FORM", "CONTAINS", "CANVAS"), ("FORM", "CONTAINS", "WINDOW"),
-                      ("ITEM", "REFERENCES", "CANVAS")}
+                      ("ITEM", "REFERENCES", "CANVAS"),
+                      ("CANVAS", "CANVAS_IN_WINDOW", "WINDOW"),
+                      ("CANVAS", "CANVAS_IN_WINDOW", "WINDOW_REFERENCE"),
+                      ("WINDOW", "WINDOW_PRIMARY_CANVAS", "CANVAS")}
 
 
 def test_gap_visible_true_and_content_cannot_be_told_from_parser_defaults(screens):

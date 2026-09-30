@@ -118,7 +118,7 @@ def source_revision(entries: tuple[ManifestEntry, ...], options: dict) -> str:
 
 
 def engine_identity() -> dict[str, str]:
-    names = ("parser", "database", "database_identity", "blueprint_database",
+    names = ("parser", "database", "database_identity", "blueprint_database", "blueprint_placement",
              "analysis", "plsql", "plsql_evidence", "rules",
              "risk", "modernization", "blueprint", "assess", "depgraph", "behavior",
              "dashboard", "testspec", "sensitive", "model", "store", "convert",

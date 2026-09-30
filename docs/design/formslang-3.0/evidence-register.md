@@ -317,7 +317,7 @@ No gate is **passed**. The full 3.0 release is not complete.
   require work. WP-04/G-04 remain open. No runtime Oracle proof or release claim
   is made by this evidence.
 
-## WP-07 follow-up — coverage completeness and direct Blueprint revision (Draft)
+## WP-07 follow-up — coverage completeness and direct Blueprint revision (PR #43 merged)
 
 - Branch `codex/formslang-3-wp07-gap-composition` replays the coverage commit
   `cf167477` and the three direct revision commits `2341a8c`, `f954ca0`,
@@ -360,10 +360,54 @@ No gate is **passed**. The full 3.0 release is not complete.
   On that composed tree, the focused Python 3.13 suite returned **257 passed,
   3 skipped, 1 xfailed**; the frozen full suite returned **2085 passed,
   5 skipped, 2 xfailed in 877.71 s**. Ruff, `git diff --check`, the current
-  inventory generator and historical inventory blob comparison passed. CI on
-  the rebased Draft head remains required before integration.
+  inventory generator and historical inventory blob comparison passed.
+- Final exact-head CI at `0128b1ad7e819208afb613c26ef9b9e51c395e5c` passed
+  **13/13** in run `36697659721` (attempt 2). Attempt 1 had one Windows Python
+  3.13 job-status GET HTTP 500; its single failed-job rerun passed. The generic
+  response did not establish a causal fix. PR #43 was merged as main
+  `c0b7e341cb12138178562cdb631e9a7c5119bd96`, whose tree matches the tested head.
 - The `CREATE PACKAGE IF NOT EXISTS` strict `xfail` remains open; the other
   inherited expected failure is outside these two fixes. No 3.0 gate closes.
+
+## WP-11 window/canvas declaration slice
+
+- The [WP-11 plan](../../superpowers/plans/2026-09-30-wp11-window-canvas.md)
+  records a bounded new-analysis persistence slice. Existing parsed
+  `Canvas.window_name` and `Window.primary_canvas` values become separate FACT
+  relations with property evidence, local target resolution and explicit
+  conflicting-evidence references. Missing targets stay scoped references;
+  duplicate source declarations retain an ambiguity reason/count without an
+  arbitrary property or relation. No inverse placement is inferred.
+- Original Case D RED: **3 failed in 0.32 s**, then **3 passed in 0.42 s**.
+  Boundary RED: **2 failed, 6 passed in 0.39 s**, then **8 passed in 0.28 s**.
+  Duplicate-source RED: **2 failed, 11 deselected in 0.32 s**, then the complete
+  new suite passed **13 tests in 0.69 s**. Real fixtures exercise direct/project
+  persistence parity, reopen, conflicts, absent/ambiguous targets and scoping.
+- The frozen full suite passed **2088 tests, 5 skipped, 4 xfailed in 898.28 s**
+  on Python 3.13.15 before composition onto merged main. Own-commit rebases
+  onto `9b688ed` and squash main `066288e` were conflict-free with identical
+  range-diffs. The final composed focused run passed **202 tests, 1 skipped
+  in 37.91 s**. Production/tests/examples and inventories retain the verified
+  full-run bytes; Ruff, diff and current inventory checks passed. New exact-head
+  Draft PR CI remains required before integration.
+- `blueprint-analysis/6` and `inventory-wp11.json` identify the added extraction.
+  The shared helper is included in engine identity; source-revision formulas
+  and parser/model are unchanged. All five previous inventories match main byte
+  for byte. Saved snapshots are not backfilled or silently reinterpreted.
+- After WP-07 merged as `c0b7e34`, only the three own WP-11 commits were rebased.
+  Product and minor-plan range-diffs are identical; one evidence-register
+  conflict preserved both adjacent sections. Composed focused tests passed
+  **261 tests, 2 skipped in 41.25 s**; the frozen full passed **2098 tests,
+  5 skipped, 2 xfailed in 864.88 s**. Three independent same-input/order probes
+  preserved IDs, source revisions and all placement facts (direct/project each
+  53 IDs and 11 facts); detailed hashes and harness limits are in the plan.
+  Historical inventory bytes remain unchanged. Final-head CI is still required.
+- SRC-08 remains partial: tab/item hierarchy and conflict presentation are
+  open. SRC-09 raw/default provenance and separate raw duplicate declarations
+  are open. SRC-10 unplaced/unresolved canvas/item/tab groups remain open.
+  Full graph metadata, focal/path/search budgets and legacy-resolution
+  presentation are remaining WP-11 work. No `visual_hierarchy_version: 1`, complete WP-11 or gate closure is
+  claimed. Empty parsed targets do not establish raw XML attribute absence.
 
 ## Gates still open
 

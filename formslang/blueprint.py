@@ -18,6 +18,7 @@ from .analysis import ENGINE_VERSION as ANALYSIS_ENGINE_VERSION
 from .analysis import analyze_unit
 from .assess import PortfolioAssessment, assess_module
 from .blueprint_database import _PackageProjection
+from .blueprint_placement import project_window_canvas
 from .database_identity import package_occurrence_counts
 from .model import FormModule
 from .plsql_evidence import VERSION as LEXER_VERSION
@@ -30,7 +31,8 @@ VERSION = "blueprint/1"
 # database source coverage.
 # /5 adds analysis-bound package identities when an exact input scope is supplied.
 # Older/model-only projections retain their explicit legacy limitations.
-ENGINE_VERSION = f"blueprint-analysis/5+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
+# /6 persists window/canvas property facts with explicit target resolution.
+ENGINE_VERSION = f"blueprint-analysis/6+{LEXER_VERSION}+{ANALYSIS_ENGINE_VERSION}"
 # MOVE_TO_PLSQL_API and REPLACE_WITH_APEX_NATIVE are outcomes the cross-layer
 # reasoning can reach: logic that belongs in a database API, and logic the target
 # platform already provides natively. Both are decisions, not partial results.
@@ -145,6 +147,7 @@ class _Builder:
                "evidence": [proof]}
         eid = identifier("edge", src, dst, kind, proof)
         self.edges[eid] = {"id": eid, **row}
+        return eid
 
     def reference(self, kind, name, proof):
         return self.node(kind, name.upper(), "", evidence=[proof], external=True,
@@ -189,6 +192,7 @@ class _Builder:
                 nid = self.node(typ, name, key, evidence=[proof])
                 self.local[key, typ.lower(), name.upper()] = nid
                 self.edge(root, nid, "CONTAINS", proof)
+        project_window_canvas(self, mod, key)
         for b in mod.blocks:
             bid = self.local[key, "block", b.name.upper()]
             if b.database_block and b.query_data_source_name:

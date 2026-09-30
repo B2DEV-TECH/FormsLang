@@ -317,23 +317,29 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 
 ## WP-08 audit overlay (historical Draft PR #24 review, not a release-gate pass)
 
-| Requirement | Current evidence | State |
-|---|---|---|
-| SRC-11 | Package occurrence inventory preserves owner, qualified name, quoted case, declaration order, physical lines, and member signatures. Ambiguous bare-name projections are withheld. Schema-aware entity identity and call resolution remain ADR-06/WP-04. | PARTIAL, unmerged |
-| SRC-14 | Package clauses, SQLcl slash splitting, consecutive CREATEs, lexical decoys, collision accounting, and quoted package members have failing-first tests on #24. Other DDL forms and documented `IF NOT EXISTS` remain outside this slice. | PARTIAL, unmerged |
-| INV-07 | Per-source coverage and occurrence inventory are present. Supported CREATE warnings do not yet affect assessment completeness; no 3.0 reporting surface exists. | PARTIAL, unmerged |
-| SRC-01 / SRC-06 | A supported CREATE can be visible as `not_extracted` while the project assessment remains `COMPLETE`; pinned by a strict `xfail`. | OPEN integration gap |
-| ADR-02 | The project manifest binds source bytes; direct Blueprint's `source_revision` still uses database paths only, pinned by a strict `xfail`. | OPEN design gap |
+These rows preserve the evidence as of that review; they do not describe the
+current merged state. The later WP-07 correction is recorded separately below.
 
-## WP-07 follow-up on the current main (Draft, pending integration)
+| Requirement | Evidence as of WP-08 review | State as of review |
+|---|---|---|
+| SRC-11 | Package occurrence inventory preserves owner, qualified name, quoted case, declaration order, physical lines, and member signatures. Ambiguous bare-name projections are withheld. Schema-aware entity identity and call resolution remain ADR-06/WP-04. | PARTIAL, unmerged (as of review) |
+| SRC-14 | Package clauses, SQLcl slash splitting, consecutive CREATEs, lexical decoys, collision accounting, and quoted package members have failing-first tests on #24. Other DDL forms and documented `IF NOT EXISTS` remain outside this slice. | PARTIAL, unmerged (as of review) |
+| INV-07 | Per-source coverage and occurrence inventory are present. Supported CREATE warnings do not yet affect assessment completeness; no 3.0 reporting surface exists. | PARTIAL, unmerged (as of review) |
+| SRC-01 / SRC-06 | A supported CREATE can be visible as `not_extracted` while the project assessment remains `COMPLETE`; pinned by a strict `xfail`. | OPEN integration gap (as of review) |
+| ADR-02 | The project manifest binds source bytes; direct Blueprint's `source_revision` still uses database paths only, pinned by a strict `xfail`. | OPEN design gap (as of review) |
+
+## WP-07 follow-up on main (PR #43 merged)
 
 The table above records the state at the WP-08 review. The two pinned gaps below
-have failing-first corrections on `codex/formslang-3-wp07-gap-composition`:
+have failing-first corrections merged in PR #43 as
+`c0b7e341cb12138178562cdb631e9a7c5119bd96`. Exact-head CI at `0128b1a`
+passed 13/13 in run `36697659721`, after one failed-job rerun of a Windows
+Python 3.13 job-status HTTP 500. The rerun passed; no causal fix is claimed.
 
 | Requirement | Current evidence | State |
 |---|---|---|
-| INV-07 / SRC-01 / SRC-06 | Supported `CREATE` statements reported as `not_extracted` now make the project assessment `INCOMPLETE`; informational unmodelled `CREATE` statements remain informational. | Implemented and tested on Draft branch; not yet merged; G-04 open |
-| ADR-02 / INV-08 | Direct Blueprint revisions now include raw SQL byte digests, unavailable supplied paths, and stable logical paths after staging. The project manifest revision formula and historical inventories are unchanged. | Implemented and tested on Draft branch; not yet merged; G-02/G-04 open |
+| INV-07 / SRC-01 / SRC-06 | Supported `CREATE` statements reported as `not_extracted` now make the project assessment `INCOMPLETE`; informational unmodelled `CREATE` statements remain informational. | Implemented, tested and merged in PR #43; G-04 open |
+| ADR-02 / INV-08 | Direct Blueprint revisions now include raw SQL byte digests, unavailable supplied paths, and stable logical paths after staging. The project manifest revision formula and historical inventories are unchanged. | Implemented, tested and merged in PR #43; G-02/G-04 open |
 
 The `CREATE PACKAGE IF NOT EXISTS` strict `xfail` remains open for Oracle
 target-version grammar policy. This follow-up does not close a release gate.
