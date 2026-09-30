@@ -103,6 +103,13 @@ CREATE TABLE IF NOT EXISTS project_artifact_validation (
 );
 """
 
+RUN_TABLES = frozenset({
+    'project_configuration', 'project_discovery_run', 'project_discovery_entry',
+    'project_discovery_diagnostic', 'project_job', 'project_analysis_run',
+    'project_derived_source', 'blueprint_annotation', 'project_target_plan',
+    'project_artifact', 'project_artifact_validation',
+})
+
 
 def contained_path(directory: Path, relative: str) -> Path:
     base = directory.resolve()
@@ -162,7 +169,7 @@ class ProjectStore:
         return cls.open(root)
 
     @classmethod
-    def open(cls, root: Path) -> ProjectStore:
+    def open(cls, root: Path, *, read_only: bool = False) -> ProjectStore:
         root = Path(root).resolve()
         directory = root / ".formslang"
         if directory.resolve() != directory:
@@ -172,7 +179,8 @@ class ProjectStore:
             raise ProjectError("Project database is missing; select an existing project")
         mirror_current = False
         try:
-            with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as check:
+            mode = "ro" if read_only else "rw"
+            with closing(sqlite3.connect(path.as_uri() + f"?mode={mode}", uri=True)) as check:
                 # A read transaction: its SHARED lock is held until close and
                 # excludes mirror publication, which takes the EXCLUSIVE lock
                 # (see _mirror_publication), across processes too. Readers do not
@@ -212,16 +220,20 @@ class ProjectStore:
         # publication can hold the lock here too; report it as retryable
         # ProjectBusy, not as a raw sqlite3 error the HTTP boundary answers with 500.
         try:
-            session = Store(path, reconcile_jobs=False)
+            session = Store(path, reconcile_jobs=False, read_only=read_only)
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():
                 raise ProjectBusy("Project is busy; retry after the current operation") from exc
             raise ProjectError("Not a valid FormsLang project database") from exc
         result = cls(root, session)
         try:
-            result._migrate_runs()
-            if not mirror_current:
-                result.sync_descriptor()
+            if read_only:
+                if not result._has_run_schema():
+                    raise ProjectError('Project storage migration required; run formslang project open <project>')
+            else:
+                result._migrate_runs()
+                if not mirror_current:
+                    result.sync_descriptor()
         except sqlite3.OperationalError as exc:
             result.close()
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():
@@ -234,19 +246,18 @@ class ProjectStore:
 
     def _migrate_runs(self) -> None:
         db = self.session.db
-        required = {'project_configuration', 'project_discovery_run',
-                    'project_discovery_entry', 'project_discovery_diagnostic',
-                    'project_job', 'project_analysis_run', 'project_derived_source',
-                    'blueprint_annotation', 'project_target_plan', 'project_artifact',
-                    'project_artifact_validation'}
-        present = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if required <= present:
+        if self._has_run_schema():
             return
         try:
             db.executescript('BEGIN IMMEDIATE;\n' + RUN_SCHEMA + '\nCOMMIT;')
         except sqlite3.Error as exc:
             db.rollback()
             raise ProjectError('Project run schema could not be migrated; existing state is preserved') from exc
+
+    def _has_run_schema(self) -> bool:
+        present = {row[0] for row in self.session.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        return RUN_TABLES <= present
 
     @contextmanager
     def _write(self, *, exclusive: bool = False):

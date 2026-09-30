@@ -49,6 +49,18 @@ def _operation(args):
                              target=target_profile), 0
     path = Path(args.project)
     locator = path if path.name == 'project.json' else path / '.formslang/project.json'
+    if operation == 'status':
+        summary, access = intake.inspect_locator(locator)
+        service = ProjectService(access, read_only=True)
+        try:
+            freshness = service.last_freshness()
+            row = service._store.session.db.execute(
+                'SELECT job_id FROM project_job ORDER BY rowid DESC LIMIT 1').fetchone()
+            return {**summary, 'freshness': freshness,
+                    'assessment': service.assessment(freshness=freshness),
+                    'last_job': service.job(row[0]) if row else None}, 0
+        finally:
+            service.close()
     summary = intake.open_locator(locator)
     pid = summary['project']['id']
     if operation in {'open', 'info'}:
@@ -59,7 +71,7 @@ def _operation(args):
             raise ProjectError('Unknown source root; use project info to list root IDs')
         selection = intake.select_source(args.path, root['kind'])
         return intake.relink(pid, args.root, selection, expected_configuration=summary['configuration_revision']), 0
-    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory', 'search'} else rbac.RUN_CONVERSION
+    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory', 'search', 'freshness'} else rbac.RUN_CONVERSION
     authorize = lambda: intake.access(pid, action)
     service = ProjectService(authorize(), authorize=authorize)
     try:
@@ -68,6 +80,8 @@ def _operation(args):
                          'expected_configuration': summary['configuration_revision']}
         if operation == 'search':
             return service.search(args.query, limit=args.limit), 0
+        if operation == 'freshness':
+            return service.freshness(), 0
         if operation == 'report':
             state = service.report_overview()
             if args.format == 'status':
@@ -125,13 +139,8 @@ def _operation(args):
             return service.review_decide(args.finding, {**binding, 'action': args.action,
                 'recommendation': args.recommendation, 'rationale': args.rationale,
                 'reason_code': args.reason, 'critical_confirmed': args.confirm_critical}), 0
-        if operation == 'status':
-            freshness = service.freshness()
-            row = service._store.session.db.execute('SELECT job_id FROM project_job ORDER BY rowid DESC LIMIT 1').fetchone()
-            return {**summary, 'freshness': freshness, 'assessment': service.assessment(freshness=freshness),
-                    'last_job': service.job(row[0]) if row else None}, 0
         if operation == 'summary':
-            result = service.overview(freshness=service.freshness())
+            result = service.overview(freshness=service.last_freshness())
             if result is None:
                 raise ProjectError('Analyze the project before requesting its summary')
             return result, 0
@@ -144,7 +153,7 @@ def _operation(args):
             return service.inventory(
                 args.category, query=args.query, filters=filters, sort=args.sort,
                 offset=args.offset, limit=args.limit, expected_revision=args.revision,
-                freshness=service.freshness(),
+                freshness=service.last_freshness(),
             ), 0
         if operation == 'discover':
             return service.discover(**preconditions), 0
@@ -236,9 +245,15 @@ def add_project_parser(subparsers):
         if operation == 'annotate':
             command.add_argument('--kind', required=True)
             command.add_argument('--note', default='')
-    for name in ('create', 'demo', 'discover', 'analyze', 'status', 'summary',
+    for name in ('create', 'demo', 'discover', 'analyze', 'freshness', 'status', 'summary',
                  'inventory', 'info', 'open', 'relink'):
-        command = commands.add_parser(name)
+        help_text = {
+            'freshness': 'explicitly check source freshness and save the checked_at result',
+            'status': 'show saved project status; freshness is last checked, not a live source scan',
+            'summary': 'show saved assessment with last-checked source freshness',
+            'inventory': 'list saved evidence with last-checked source freshness',
+        }.get(name)
+        command = commands.add_parser(name, help=help_text)
         command.add_argument('project', help='project directory or .formslang/project.json descriptor')
         command.add_argument('--json', action='store_true', help='machine-readable stdout; progress goes to stderr')
         command.set_defaults(func=run_project)

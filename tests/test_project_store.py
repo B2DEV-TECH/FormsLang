@@ -54,6 +54,23 @@ def test_open_repairs_descriptor_from_sqlite(tmp_path, corruption):
         reopened.close()
 
 
+def test_read_only_open_does_not_need_a_writable_validation_connection(tmp_path, monkeypatch):
+    create(tmp_path).close()
+    real_connect = sqlite3.connect
+
+    def refuse_writable_open(database, *args, **kwargs):
+        if isinstance(database, str) and 'mode=rw' in database:
+            raise sqlite3.OperationalError('writable open is unavailable')
+        return real_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, 'connect', refuse_writable_open)
+    opened = ProjectStore.open(tmp_path, read_only=True)
+    try:
+        assert opened.descriptor().name == 'Orders'
+    finally:
+        opened.close()
+
+
 @pytest.mark.parametrize("change", [{"id": "c" * 32}, {"store": "../outside.db"},
                                    {"project_version": "future/99"}])
 def test_foreign_or_unsafe_mirror_fails_closed(tmp_path, change):

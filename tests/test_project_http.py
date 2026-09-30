@@ -230,11 +230,15 @@ def test_saved_assessment_freshness_and_relink_routes(project_server, project_so
     fresh = client.post(f'/api/v2/projects/{pid}/freshness', {})
     assert fresh.status == 202
     client.wait_job(pid, fresh.json['job_id'])
-    assert client.get(f'/api/v2/projects/{pid}/freshness').json['status'] == 'CURRENT'
+    saved_freshness = client.get(f'/api/v2/projects/{pid}/freshness').json
+    assert saved_freshness['status'] == 'CURRENT'
     summary = client.get(f'/api/v2/projects/{pid}')
     assert summary.json['freshness']['status'] == 'CURRENT'
     source = project_sources[2]
     source.write_bytes(source.read_bytes() + b'\n')
+    still_saved = client.get(f'/api/v2/projects/{pid}/freshness').json
+    assert still_saved['status'] == 'CURRENT'
+    assert still_saved['checked_at'] == saved_freshness['checked_at']
     check = client.post(f'/api/v2/projects/{pid}/freshness', {})
     client.wait_job(pid, check.json['job_id'])
     assert client.get(f'/api/v2/projects/{pid}/freshness').json['status'] == 'STALE'

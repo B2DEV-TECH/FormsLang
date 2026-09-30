@@ -2,6 +2,7 @@
 
 import json
 import signal
+import sqlite3
 
 import pytest
 
@@ -28,10 +29,92 @@ def test_create_analyze_status_json(tmp_path, sample_xml, capsys):
     assert 'FORMS_PARSING' in progress
     status, _ = run_json(capsys, ['status', destination / '.formslang/project.json'])
     assert status['assessment']['analysis_revision'] == first['analysis_revision']
-    assert status['freshness']['status'] == 'CURRENT'
+    assert status['freshness']['status'] == 'UNVERIFIED'
     assert status['last_job']['status'] == 'COMPLETED'
+    checked, _ = run_json(capsys, ['freshness', destination])
+    assert checked['status'] == 'CURRENT'
+    status, _ = run_json(capsys, ['status', destination])
+    assert status['freshness']['status'] == 'CURRENT'
+    assert status['last_job']['operation'] == 'FRESHNESS'
     again, _ = run_json(capsys, ['analyze', destination])
     assert again['analysis_revision'] == first['analysis_revision']
+
+
+def test_project_reads_use_saved_freshness_until_explicit_check(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    analyzed, _ = run_json(capsys, ['analyze', destination])
+    database = destination / '.formslang' / 'project.session.db'
+
+    def jobs():
+        with sqlite3.connect(database) as db:
+            return db.execute('SELECT COUNT(*) FROM project_job').fetchone()[0]
+
+    before = jobs()
+    status, _ = run_json(capsys, ['status', destination])
+    summary, _ = run_json(capsys, ['summary', destination])
+    inventory, _ = run_json(capsys, ['inventory', destination, '--category', 'forms'])
+    assert status['freshness']['status'] == 'UNVERIFIED'
+    assert status['freshness']['analysis_revision'] == analyzed['analysis_revision']
+    assert summary['assessment']['analysis_revision'] == analyzed['analysis_revision']
+    assert inventory['analysis_revision'] == analyzed['analysis_revision']
+    assert jobs() == before
+
+    checked, _ = run_json(capsys, ['freshness', destination])
+    assert checked['status'] == 'CURRENT'
+    assert jobs() == before + 1
+    status, _ = run_json(capsys, ['status', destination])
+    assert status['freshness']['status'] == 'CURRENT'
+    assert jobs() == before + 1
+
+    # Saved CURRENT describes the check at checked_at; it is not a live scan.
+    checked_at = status['freshness']['checked_at']
+    sample_xml.write_text(sample_xml.read_text(encoding='utf-8') + '\n<!-- changed after check -->\n',
+                          encoding='utf-8')
+    cached, _ = run_json(capsys, ['status', destination])
+    summary, _ = run_json(capsys, ['summary', destination])
+    assert cached['freshness']['status'] == 'CURRENT'
+    assert cached['freshness']['checked_at'] == checked_at
+    assert summary['assessment']['freshness'] == 'CURRENT'
+    assert jobs() == before + 1
+    refreshed, _ = run_json(capsys, ['freshness', destination])
+    assert refreshed['status'] == 'STALE'
+    assert refreshed['reasons'] == ['SOURCE_CHANGED']
+    assert jobs() == before + 2
+
+
+def test_status_does_not_republish_missing_descriptor_mirror(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    mirror = destination / '.formslang' / 'project.json'
+    mirror.unlink()
+
+    status, _ = run_json(capsys, ['status', destination])
+
+    assert status['assessment']['analysis_revision']
+    assert not mirror.exists()
+
+
+def test_status_requires_explicit_storage_upgrade_without_writing(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    database = destination / '.formslang' / 'project.session.db'
+    mirror = destination / '.formslang' / 'project.json'
+    with sqlite3.connect(database) as db:
+        db.execute('DROP TABLE project_job')
+    mirror.unlink()
+
+    error, _ = run_json(capsys, ['status', destination], expected=2)
+
+    assert 'migration' in error['error'].lower()
+    assert 'formslang project open' in error['error']
+    assert not mirror.exists()
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT name FROM sqlite_master WHERE name='project_job'").fetchone() is None
+
+    opened, _ = run_json(capsys, ['open', destination])
+    assert opened['project']['id']
+    assert mirror.exists()
+    status, _ = run_json(capsys, ['status', destination])
+    assert status['project']['id'] == opened['project']['id']
 
 
 def test_project_reports_use_snapshot_and_exclusive_download(tmp_path, sample_xml, capsys):
