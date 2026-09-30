@@ -11,7 +11,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 $qaRoot = Join-Path $env:RUNNER_TEMP "formslang-installer-$Kind"
 $installDir = Join-Path $qaRoot 'installed'
 New-Item -ItemType Directory -Force -Path $qaRoot | Out-Null
-function Install-Version([string]$Version, [string]$Phase) {
+function Install-Version([string]$Version, [string]$Phase, [string]$AcceptancePhase = '') {
     $fileName = if ($Kind -eq 'msi') { "FormsLang_${Version}_x64_en-US.msi" } else { "FormsLang_${Version}_x64-setup.exe" }
     $asset = (Resolve-Path "installer-assets/$Phase/$fileName").Path
     if ($Kind -eq 'msi') {
@@ -23,7 +23,8 @@ function Install-Version([string]$Version, [string]$Phase) {
     if ($process.ExitCode -notin @(0,3010)) { throw "$Phase installer exited $($process.ExitCode)" }
     $engine = Join-Path $installDir 'formslang-engine.exe'
     if (-not (Test-Path -LiteralPath $engine)) { throw "Missing installed engine: $engine" }
-    python examples/verify/installed_engine_check.py $engine (Join-Path $qaRoot 'acceptance') --version $Version --phase $(if ($Phase -eq 'baseline') { 'seed' } else { 'verify' })
+    if (-not $AcceptancePhase) { $AcceptancePhase = if ($Phase -eq 'baseline') { 'seed' } else { 'verify' } }
+    python examples/verify/installed_engine_check.py $engine (Join-Path $qaRoot 'acceptance') --version $Version --phase $AcceptancePhase
     if ($LASTEXITCODE -ne 0) { throw "$Phase installed-engine acceptance failed" }
 }
 Install-Version $BaselineVersion 'baseline'
@@ -74,5 +75,5 @@ if ($Kind -eq 'msi') {
 }
 if ($removed.ExitCode -notin @(0,3010)) { throw "Uninstall failed: $($removed.ExitCode)" }
 if (-not (Test-Path -LiteralPath (Join-Path $qaRoot 'acceptance/session'))) { throw 'Uninstall removed user session data' }
-Install-Version $CandidateVersion 'candidate'
+Install-Version $CandidateVersion 'candidate' 'reinstall'
 Write-Output "PASS: $Kind baseline clean install, upgrade $BaselineVersion -> $CandidateVersion, project workflow, uninstall and reinstall with preserved state"
