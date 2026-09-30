@@ -339,6 +339,41 @@ class ProjectService:
         return {'status': 'UNVERIFIED', 'reasons': ['SOURCE_CHECK_REQUIRED'],
                 'analysis_revision': descriptor.analysis_revision}
 
+    def analysis_history(self, *, limit: int = 50, offset: int = 0) -> dict:
+        """List saved analyses only; this is not the whole repository event log."""
+        if not self._read_only:
+            raise ProjectError('Analysis history requires a read-only project service')
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ProjectError('Analysis-history limit must be between 1 and 200')
+        if type(offset) is not int or not 0 <= offset <= 2**63 - 1:
+            raise ProjectError('Analysis-history offset must fit a nonnegative SQLite integer')
+        self.open()
+        db = self._store.session.db
+        own_snapshot = not db.in_transaction
+        if own_snapshot:
+            db.execute('BEGIN')
+        try:
+            descriptor = self._store.descriptor()
+            if (descriptor.analysis_revision is not None and
+                    db.execute('SELECT 1 FROM project_assessment WHERE revision=?',
+                               (descriptor.analysis_revision,)).fetchone() is None):
+                raise ProjectError('Saved analysis history integrity error: current assessment is missing')
+            total = db.execute('SELECT COUNT(*) FROM project_assessment').fetchone()[0]
+            rows = db.execute(
+                'SELECT revision,source_revision,analyzed_at FROM project_assessment '
+                'ORDER BY analyzed_at DESC,revision ASC LIMIT ? OFFSET ?', (limit, offset))
+            return {'scope': 'SAVED_ANALYSES_ONLY',
+                    'current_analysis_revision': descriptor.analysis_revision,
+                    'total': total,
+                    'rows': [{'analysis_revision': row['revision'],
+                              'source_revision': row['source_revision'],
+                              'analyzed_at': row['analyzed_at'],
+                              'current': row['revision'] == descriptor.analysis_revision}
+                             for row in rows]}
+        finally:
+            if own_snapshot:
+                db.rollback()
+
     def freshness(self, *, started=None):
         from .project_freshness import check_freshness
         from .project_jobs import ProjectJobManager
