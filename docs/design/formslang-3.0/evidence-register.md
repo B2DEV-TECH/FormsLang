@@ -225,6 +225,11 @@ No gate is **passed**. The full 3.0 release is not complete.
 - **Decision (2026-09-30):** Accept the SQLite-coordinated, verified-object and root-last publication contract, versioned kind-separated object identity with exact source bytes, and an acyclic whole-state checkpoint with declared omissions. WP-06's read/write inventory and WP-10's nine failure-injection/golden-byte tests support the architectural choice. Alternatives and failure paths are recorded in the three ADRs.
 - **Boundary:** The WP-10 script is outside the product path. Its example JSON is not a product exchange schema. WP-20 must test real migration, durable recovery, no-write reads, source-set closure, collision handling, full/review export, import trust, origin conflicts and clean-workspace reopen before G-02 or G-03 can close. The direct Blueprint `source_revision` strict xfail stays open.
 
+### ADR-04/07 architecture acceptance
+
+- **Decision (2026-09-30):** An imported package's integrity, origin trust, decision applicability and receiving authorization are separate. A trusted clean restore needs an independently retained exact-root receipt and authorized custodian; ordinary Git/review exchange cannot activate a claimed approval. Git is an explicit transport for portable files, with separate operational stores per worktree and content-identity reconciliation. The documented threat/outcome tables and the existing legacy migration preservation behavior support this boundary choice; no product 3.0 import route exists yet.
+- **Boundary:** WP-20 must prove forged claim rejection, trusted versus unverified imports, retained receipt recovery, separate worktrees, external-change detection, preview/apply fences and conflict behavior. WP-22 must preserve legacy history without inventing current authorization. G-02 and G-03 remain open.
+
 ## Gates not started
 
 G-02, G-03, G-05, G-06, G-07, G-08, G-09, G-10, G-11, G-12 and G-13 have no 3.0

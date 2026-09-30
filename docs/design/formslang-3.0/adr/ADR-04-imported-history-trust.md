@@ -1,7 +1,8 @@
 # ADR-04 — Trust of imported history and approvals
 
-Status: **Draft**. This selects a pre-WP-20 trust boundary for review; it does
-not authorize a product import route, accept an ADR, or satisfy a release gate.
+Status: **Accepted (architecture contract, 2026-09-30)**. This selects the
+pre-WP-20 trust boundary; it does not authorize a product import route or
+satisfy a release gate.
 
 ## Context
 
@@ -117,10 +118,11 @@ its own accepted trust policy; this ADR does not claim signatures exist.
 
 ## Acceptance work and implementation boundary
 
-Before accepting this architecture, ratify the custody source and recovery
-procedure above, including how an independent receipt survives loss of the
-original local catalog and how its custodian establishes control. Review the
-outcome table as the expected trust contract.
+The custody source, clean-workspace recovery procedure and outcome table above
+were reviewed as the accepted trust contract. An independently retained receipt
+and an authorized custodian are mandatory for `TRUSTED_RESTORE`; otherwise
+verified bytes enter only the unverified path. This is an architecture decision,
+not evidence that the product already enforces the policy.
 WP-20 must then test forged actor/approved fields, identical bytes supplied
 through both paths, a clean restore with no original catalog but a retained
 independent receipt, a package-supplied receipt, wrong or missing trusted

@@ -284,10 +284,10 @@ Use the suggested scenarios as starting points, then record exact tests, fixture
 | ADR-01 | Repository authority and transaction boundary | ACCEPTED architecture contract; WP-20 product durability proof open |
 | ADR-02 | Object identities and canonicalization | ACCEPTED architecture contract; WP-20 product object format proof open |
 | ADR-03 | Checkpoint and portable-history schema | ACCEPTED architecture contract; WP-20 product schema and reopen proof open |
-| ADR-04 | Trust of imported history and approvals | NOT ASSESSED |
+| ADR-04 | Trust of imported history and approvals | ACCEPTED architecture contract; imported-approval product tests open |
 | ADR-05 | DSL grammar and versioning | NOT ASSESSED |
 | ADR-06 | Cross-revision entity identity | NOT ASSESSED |
-| ADR-07 | Git exchange synchronization | NOT ASSESSED |
+| ADR-07 | Git exchange synchronization | ACCEPTED architecture contract; worktree reconciliation product tests open |
 | ADR-08 | Frontend technology and component split | NOT ASSESSED |
 | ADR-09 | Report definitions, metrics, and renderers | NOT ASSESSED |
 | ADR-10 | APEX adapter and generation granularity | NOT ASSESSED |

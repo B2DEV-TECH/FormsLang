@@ -1,8 +1,8 @@
 # ADR-07 — Git exchange synchronization
 
-Status: **Draft**. This selects a pre-WP-20 reconciliation contract for
-review; it is not a Git implementation, a tested worktree integration, or a
-release-gate result.
+Status: **Accepted (architecture contract, 2026-09-30)**. This selects the
+pre-WP-20 reconciliation boundary; it is not a Git implementation, a tested
+worktree integration, or a release-gate result.
 
 ## Context
 
@@ -87,8 +87,10 @@ filenames and source bodies may be exported.
 
 ## Acceptance work and implementation boundary
 
-Before accepting the architecture, review the binding identity, content
-fingerprint, state transition and interruption contract against ADR-01/03/04.
+The binding identity, content fingerprint, state transition and interruption
+contract were reviewed against ADR-01/03/04 as the accepted architecture.
+Local SQLite remains authoritative; Git transports explicit exchange files
+and cannot grant an approval or silently apply a checkout.
 WP-20 must prove two Git worktrees with separate operational stores, checkout
 and manual-edit detection without a watcher, identical bytes on another
 branch, deleted/corrupt/restricted files, changed bytes between preview and
