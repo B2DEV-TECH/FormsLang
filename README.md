@@ -36,10 +36,11 @@ or customer application.
 
 | Status | Version | What it contains |
 |---|---|---|
-| **Released** | [2.2.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.2.0) — Visual Modernization Intelligence | Executive and Technical views of the same evidence, an Overview command center, a Hotspot Explorer, System Map 2.2 with a focus view, Module 360, architecture context in Review, and static SVG figures in the reports. Views only: no new analysis claims. Everything in 2.1.0 is kept. |
+| **Beta build** | 3.0.0-beta.1 — [scope and limits](docs/release-notes-3.0.0-beta.1.md) | Installed saved-project Form exploration, finding review history and explicitly approved APEXlang output for supported scope. All 13 final 3.0 gates remain open. |
+| **Released · current stable** | [2.2.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.2.0) — Visual Modernization Intelligence | Executive and Technical views of the same evidence, an Overview command center, a Hotspot Explorer, System Map 2.2 with a focus view, Module 360, architecture context in Review, and static SVG figures in the reports. Views only: no new analysis claims. Everything in 2.1.0 is kept. |
 | **Released** | [2.1.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.1.0) — Estate Intelligence | Target-neutral projects (*Analyze my Forms estate*), evidence-backed hotspot candidates, a module-level System Map, project search, suggested investigation groups, and executive/technical assessment reports that work before any target technology is chosen. Everything in 2.0.0 is kept. |
 | **Released** | [2.0.0](https://github.com/B2DEV-TECH/FormsLang/releases/tag/v2.0.0) | Corporate project workflow: inventory, dependencies, prioritized review, reviewed Oracle APEX 26.1 / APEXlang generation, offline SQLcl validation, reports. |
-| **Future** | 2.3+ | Ideas only, not implemented: an authoritative target-neutral modernization model, enforced architecture policy, dependency-aware planning, and further implementation targets. See [roadmap](docs/roadmap-2.md). |
+| **Planned** | Further work | Whole-state history, the `.flm` decision lifecycle, opt-in MCP parity, policy-scoped AI assistance, and complete target and validation coverage remain unimplemented. See the [beta limits](docs/release-notes-3.0.0-beta.1.md) and [roadmap](docs/roadmap-2.md). |
 
 Exact accepted versions, test results and limitations are in
 [quality acceptance](docs/quality-acceptance.md).
