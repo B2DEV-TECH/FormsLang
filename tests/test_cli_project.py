@@ -82,6 +82,133 @@ def test_project_reads_use_saved_freshness_until_explicit_check(tmp_path, sample
     assert jobs() == before + 2
 
 
+def test_analysis_history_lists_saved_revisions_without_repair_or_scan(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    first, _ = run_json(capsys, ['analyze', destination])
+    sample_xml.write_text(sample_xml.read_text(encoding='utf-8') + '\n<!-- second source revision -->\n',
+                          encoding='utf-8')
+    second, _ = run_json(capsys, ['analyze', destination])
+    assert first['analysis_revision'] != second['analysis_revision']
+    database = destination / '.formslang' / 'project.session.db'
+    mirror = destination / '.formslang' / 'project.json'
+    mirror.unlink()
+    with sqlite3.connect(database) as db:
+        jobs_before = db.execute('SELECT COUNT(*) FROM project_job').fetchone()[0]
+
+    history, _ = run_json(capsys, ['analysis-history', destination])
+
+    assert history['scope'] == 'SAVED_ANALYSES_ONLY'
+    assert history['current_analysis_revision'] == second['analysis_revision']
+    assert history['total'] == 2
+    assert [row['analysis_revision'] for row in history['rows']] == [
+        second['analysis_revision'], first['analysis_revision']]
+    assert [row['current'] for row in history['rows']] == [True, False]
+    assert all(len(row['source_revision']) == 64 and row['analyzed_at'] for row in history['rows'])
+    assert history['rows'][0]['source_revision'] != history['rows'][1]['source_revision']
+    assert not mirror.exists()
+    with sqlite3.connect(database) as db:
+        assert db.execute('SELECT COUNT(*) FROM project_job').fetchone()[0] == jobs_before
+
+
+@pytest.mark.parametrize('arguments', [['--limit', '0'], ['--limit', '201'], ['--offset', '-1'],
+                                         ['--offset', '9223372036854775808']])
+def test_analysis_history_rejects_unbounded_or_negative_pagination(tmp_path, sample_xml, capsys, arguments):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    result, _ = run_json(capsys, ['analysis-history', destination, *arguments], expected=2)
+    assert 'limit' in result['error'].lower() or 'offset' in result['error'].lower()
+
+
+def test_analysis_history_direct_service_requires_read_only_open(tmp_path, sample_xml, capsys):
+    from formslang.project_model import ProjectError
+    from formslang.project_service import ProjectService
+    from formslang.projects import local_project_access
+
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    mirror = destination / '.formslang' / 'project.json'
+    mirror.unlink()
+    service = ProjectService(local_project_access(destination, approved_roots=()))
+    try:
+        with pytest.raises(ProjectError, match='read-only'):
+            service.analysis_history()
+    finally:
+        service.close()
+    assert not mirror.exists()
+
+
+def test_analysis_history_reads_one_sqlite_snapshot_during_publication(tmp_path, sample_xml, capsys):
+    from formslang.project_service import ProjectService
+    from formslang.projects import local_project_access
+
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    first, _ = run_json(capsys, ['analyze', destination])
+    database = destination / '.formslang' / 'project.session.db'
+    service = ProjectService(local_project_access(destination, approved_roots=()), read_only=True)
+    service.open()
+    db = service._store.session.db
+    attempts = []
+
+    def concurrent_publication(statement):
+        if 'SELECT COUNT(*) FROM project_assessment' not in statement or attempts:
+            return
+        writer = sqlite3.connect(database, timeout=0)
+        try:
+            writer.execute('INSERT INTO project_assessment VALUES (?,?,?,?)',
+                           ('f' * 64, 'e' * 64, '2099-01-01T00:00:00+00:00', '{}'))
+            writer.commit()
+            attempts.append('published')
+        except sqlite3.OperationalError:
+            attempts.append('blocked')
+        finally:
+            writer.close()
+
+    db.set_trace_callback(concurrent_publication)
+    try:
+        history = service.analysis_history()
+    finally:
+        db.set_trace_callback(None)
+        service.close()
+    assert attempts == ['blocked']
+    assert history['current_analysis_revision'] == first['analysis_revision']
+    assert history['total'] == len(history['rows']) == 1
+
+
+def test_analysis_history_distinguishes_empty_project_from_missing_current_assessment(
+        tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    empty, _ = run_json(capsys, ['analysis-history', destination])
+    assert empty['total'] == 0 and empty['rows'] == []
+    assert empty['current_analysis_revision'] is None
+    analyzed, _ = run_json(capsys, ['analyze', destination])
+    database = destination / '.formslang' / 'project.session.db'
+    with sqlite3.connect(database) as db:
+        db.execute('DELETE FROM project_assessment WHERE revision=?', (analyzed['analysis_revision'],))
+
+    result, _ = run_json(capsys, ['analysis-history', destination], expected=2)
+    assert 'integrity' in result['error'].lower()
+
+
+def test_analysis_history_tied_timestamps_have_stable_revision_order(tmp_path, sample_xml, capsys):
+    destination, _ = create(capsys, tmp_path, sample_xml)
+    run_json(capsys, ['analyze', destination])
+    sample_xml.write_text(sample_xml.read_text(encoding='utf-8') + '\n<!-- next -->\n',
+                          encoding='utf-8')
+    run_json(capsys, ['analyze', destination])
+    database = destination / '.formslang' / 'project.session.db'
+    with sqlite3.connect(database) as db:
+        rows = db.execute('SELECT * FROM project_assessment').fetchall()
+        assert len(rows) == 2
+        db.execute('DELETE FROM project_assessment')
+        for revision, source_revision, _, payload in sorted(rows, reverse=True):
+            db.execute('INSERT INTO project_assessment VALUES (?,?,?,?)',
+                       (revision, source_revision, '2026-09-30T00:00:00+00:00', payload))
+
+    first, _ = run_json(capsys, ['analysis-history', destination])
+    second, _ = run_json(capsys, ['analysis-history', destination])
+    assert first == second
+    assert [row['analysis_revision'] for row in first['rows']] == sorted(row[0] for row in rows)
+
+
 def test_status_does_not_republish_missing_descriptor_mirror(tmp_path, sample_xml, capsys):
     destination, _ = create(capsys, tmp_path, sample_xml)
     run_json(capsys, ['analyze', destination])

@@ -49,6 +49,13 @@ def _operation(args):
                              target=target_profile), 0
     path = Path(args.project)
     locator = path if path.name == 'project.json' else path / '.formslang/project.json'
+    if operation == 'analysis-history':
+        _, access = intake.inspect_locator(locator)
+        service = ProjectService(access, read_only=True)
+        try:
+            return service.analysis_history(limit=args.limit, offset=args.offset), 0
+        finally:
+            service.close()
     if operation == 'status':
         summary, access = intake.inspect_locator(locator)
         service = ProjectService(access, read_only=True)
@@ -245,16 +252,20 @@ def add_project_parser(subparsers):
         if operation == 'annotate':
             command.add_argument('--kind', required=True)
             command.add_argument('--note', default='')
-    for name in ('create', 'demo', 'discover', 'analyze', 'freshness', 'status', 'summary',
+    for name in ('create', 'demo', 'discover', 'analyze', 'freshness', 'status', 'analysis-history', 'summary',
                  'inventory', 'info', 'open', 'relink'):
         help_text = {
             'freshness': 'explicitly check source freshness and save the checked_at result',
             'status': 'show saved project status; freshness is last checked, not a live source scan',
+            'analysis-history': 'list saved analysis revisions only; this is not the full project log',
             'summary': 'show saved assessment with last-checked source freshness',
             'inventory': 'list saved evidence with last-checked source freshness',
         }.get(name)
         command = commands.add_parser(name, help=help_text)
         command.add_argument('project', help='project directory or .formslang/project.json descriptor')
+        if name == 'analysis-history':
+            command.add_argument('--limit', type=int, default=50)
+            command.add_argument('--offset', type=int, default=0)
         command.add_argument('--json', action='store_true', help='machine-readable stdout; progress goes to stderr')
         command.set_defaults(func=run_project)
         if name == 'create':
