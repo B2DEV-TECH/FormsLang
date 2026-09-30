@@ -317,7 +317,7 @@ No gate is **passed**. The full 3.0 release is not complete.
   require work. WP-04/G-04 remain open. No runtime Oracle proof or release claim
   is made by this evidence.
 
-## WP-07 follow-up — coverage completeness and direct Blueprint revision (Draft)
+## WP-07 follow-up — coverage completeness and direct Blueprint revision (PR #43 merged)
 
 - Branch `codex/formslang-3-wp07-gap-composition` replays the coverage commit
   `cf167477` and the three direct revision commits `2341a8c`, `f954ca0`,
@@ -360,8 +360,12 @@ No gate is **passed**. The full 3.0 release is not complete.
   On that composed tree, the focused Python 3.13 suite returned **257 passed,
   3 skipped, 1 xfailed**; the frozen full suite returned **2085 passed,
   5 skipped, 2 xfailed in 877.71 s**. Ruff, `git diff --check`, the current
-  inventory generator and historical inventory blob comparison passed. CI on
-  the rebased Draft head remains required before integration.
+  inventory generator and historical inventory blob comparison passed.
+- Final exact-head CI at `0128b1ad7e819208afb613c26ef9b9e51c395e5c` passed
+  **13/13** in run `36697659721` (attempt 2). Attempt 1 had one Windows Python
+  3.13 job-status GET HTTP 500; its single failed-job rerun passed. The generic
+  response did not establish a causal fix. PR #43 was merged as main
+  `c0b7e341cb12138178562cdb631e9a7c5119bd96`, whose tree matches the tested head.
 - The `CREATE PACKAGE IF NOT EXISTS` strict `xfail` remains open; the other
   inherited expected failure is outside these two fixes. No 3.0 gate closes.
 
