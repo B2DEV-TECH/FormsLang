@@ -28,7 +28,8 @@ The coordinator owns integration and approves this routine bounded scope.
   Distinct raw duplicate declarations remain pending there too; this slice
   withholds their properties and links with AMBIGUOUS source state, explicit
   reason and source declaration count because legacy visual IDs collapse names.
-- SRC-10 item/tab unplaced groups, bounded focus/path/search and product
+- SRC-10 unplaced/unresolved groups for canvases without a resolved window and
+  for items/tabs, bounded focus/path/search and product
   `LEGACY_RESOLVED` handling remain open.
 - Do not claim `visual_hierarchy_version: 1` for this incomplete hierarchy.
 - Do not edit master spec, matrix or shared evidence register in this slice.
