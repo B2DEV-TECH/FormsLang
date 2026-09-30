@@ -26,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE = REPO_ROOT / "tests" / "fixtures" / "showcase" / "module.xml"
 REVIEWER = "installer QA"
 APPROVED_CODE = "begin null; end;"
+BLUEPRINT_COMMENT = "Synthetic pre-upgrade architecture decision"
 EXPORT = {"alias": "installer-qa", "app_id": 190122}
 
 
@@ -36,6 +37,64 @@ class CheckFailed(AssertionError):
 def check(condition: bool, message: str, detail: object = None) -> None:
     if not condition:
         raise CheckFailed(message if detail is None else f"{message}: {detail!r}")
+
+
+def _check_blueprint_decision(decision: dict, *, entity: str, revision: str,
+                              source_revision: str, engine_version: str,
+                              comment: str) -> None:
+    check((decision.get("entity"), decision.get("revision"), decision.get("action")) ==
+          (entity, revision, "DEFER"), "Blueprint decision binding or action changed", decision)
+    check(decision.get("reviewer") == REVIEWER and decision.get("comment") == comment,
+          "Blueprint decision attribution changed", decision)
+    snapshot = decision.get("finding_snapshot") or {}
+    check(snapshot.get("engine_version") == engine_version and
+          snapshot.get("source_revision") == source_revision,
+          "Blueprint decision snapshot changed", snapshot)
+
+
+def verify_preserved_blueprint_review(
+    prior: dict, seed: dict, *, stale_engine: bool, current_source_revision: str
+) -> None:
+    """Keep the historical decision while respecting its current applicability."""
+    check(current_source_revision == seed["blueprint_source_revision"],
+          "baseline Blueprint source revision changed without explicit reanalysis")
+    check(prior.get("entity") == seed["blueprint_entity"], "baseline Blueprint entity changed")
+    check(prior.get("revision") == seed["blueprint_revision"],
+          "baseline Blueprint finding revision changed")
+    history = prior.get("review_history")
+    check(isinstance(history, list) and len(history) == 1,
+          "baseline Blueprint decision history changed", history)
+    _check_blueprint_decision(history[0], entity=seed["blueprint_entity"],
+        revision=seed["blueprint_revision"], source_revision=seed["blueprint_source_revision"],
+        engine_version=seed["blueprint_engine_version"], comment=BLUEPRINT_COMMENT)
+    expected_state = "STALE" if stale_engine else "DEFER"
+    check(prior.get("review_state") == expected_state,
+          "baseline Blueprint decision applicability changed unexpectedly", prior.get("review_state"))
+    check(not prior.get("human_decision"), "baseline Blueprint decision was promoted to approval")
+
+
+def verify_reinstalled_blueprint_reviews(
+    prior: dict, seed: dict, candidate: dict, *, stale_engine: bool, current_source_revision: str
+) -> None:
+    """After reinstall, preserve both the old history and the fresh candidate decision."""
+    check(not stale_engine, "reinstalled candidate Blueprint engine became stale")
+    check(current_source_revision == candidate["blueprint_source_revision"],
+          "reinstalled candidate Blueprint source revision changed")
+    check(prior.get("entity") == seed["blueprint_entity"], "reinstalled Blueprint entity changed")
+    check(prior.get("revision") == candidate["blueprint_revision"],
+          "reinstalled candidate Blueprint finding revision changed")
+    history = prior.get("review_history")
+    check(isinstance(history, list) and len(history) == 2,
+          "reinstalled Blueprint decision history changed", history)
+    _check_blueprint_decision(history[0], entity=seed["blueprint_entity"],
+        revision=candidate["blueprint_revision"], source_revision=candidate["blueprint_source_revision"],
+        engine_version=candidate["blueprint_engine_version"],
+        comment="Installer acceptance: investigate after upgrade")
+    _check_blueprint_decision(history[1], entity=seed["blueprint_entity"],
+        revision=seed["blueprint_revision"], source_revision=seed["blueprint_source_revision"],
+        engine_version=seed["blueprint_engine_version"], comment=BLUEPRINT_COMMENT)
+    check(prior.get("review_state") == "DEFER", "reinstalled candidate decision is not current")
+    check(not prior.get("human_decision"), "reinstalled decision was promoted to approval")
 
 
 def sha256(path: Path) -> str:
@@ -80,7 +139,7 @@ def main() -> None:
     parser.add_argument("engine", type=Path)
     parser.add_argument("work", type=Path)
     parser.add_argument("--version", required=True)
-    parser.add_argument("--phase", choices=["seed", "verify"], required=True)
+    parser.add_argument("--phase", choices=["seed", "verify", "reinstall"], required=True)
     args = parser.parse_args()
     work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -90,8 +149,8 @@ def main() -> None:
     check(reported == f"FormsLang {args.version}", "installed engine reports another version", reported)
 
     seed_result = work / "seed-result.json"
-    seed = json.loads(seed_result.read_text(encoding="utf-8")) if args.phase == "verify" else {}
-    if args.phase == "verify":
+    seed = json.loads(seed_result.read_text(encoding="utf-8")) if args.phase != "seed" else {}
+    if args.phase != "seed":
         check("task_id" in seed, "seed phase left no task id to verify", seed_result)
 
     port = free_port()
@@ -154,9 +213,13 @@ def main() -> None:
                 finding = request('/api/blueprint/explore?node=' + entity + '&context_id=' + context)['selected']['finding']
                 request('/api/blueprint/review', {'context_id': context, 'entity': finding['entity'],
                     'revision': finding['revision'], 'action': 'DEFER', 'reviewer': REVIEWER,
-                    'comment': 'Synthetic pre-upgrade architecture decision'})
+                    'comment': BLUEPRINT_COMMENT})
+                reviewed = request('/api/blueprint/explore?node=' + entity + '&context_id=' + context)['selected']['finding']
+                snapshot = reviewed['review_history'][0]['finding_snapshot']
                 result.update(settings_seeded=True, blueprint_entity=finding['entity'],
-                    blueprint_revision=finding['revision'])
+                    blueprint_revision=finding['revision'],
+                    blueprint_source_revision=baseline_blueprint['source_revision'],
+                    blueprint_engine_version=snapshot['engine_version'])
             else:
                 task = next((t for t in state["tasks"] if t["id"] == seed["task_id"]), None)
                 check(task is not None, "approved unit disappeared after upgrade", seed["task_id"])
@@ -168,53 +231,78 @@ def main() -> None:
                 result.update(task_id=task["id"], approval_preserved=True,
                               baseline_export_sha256=seed.get("export_sha256"))
                 check(request('/api/settings')['deployment'] == 'synthetic-upgrade-setting', 'saved setting lost')
-                prior = request('/api/blueprint/explore?node=' + seed['blueprint_entity'] +
-                                '&context_id=' + state['context_id'])['selected']['finding']
-                check(prior['review_state'] == 'DEFER', 'baseline Blueprint decision lost')
-                result.update(settings_preserved=True, blueprint_history_preserved=True)
+                if args.phase == 'reinstall':
+                    candidate_result = work / 'verify-result.json'
+                    check(candidate_result.is_file(), 'candidate phase left no result to verify')
+                    candidate = json.loads(candidate_result.read_text(encoding='utf-8'))
+                    prior = request('/api/blueprint/explore?node=' + seed['blueprint_entity'] +
+                                    '&context_id=' + state['context_id'])['selected']['finding']
+                    current_blueprint = request('/api/blueprint')
+                    verify_reinstalled_blueprint_reviews(
+                        prior, seed, candidate, stale_engine=current_blueprint['stale_engine'],
+                        current_source_revision=current_blueprint['source_revision'],
+                    )
+                    result.update(settings_preserved=True, blueprint_history_preserved=True,
+                                  blueprint_candidate_review_preserved=True)
+                else:
+                    prior = request('/api/blueprint/explore?node=' + seed['blueprint_entity'] +
+                                    '&context_id=' + state['context_id'])['selected']['finding']
+                    blueprint_before_reanalysis = request('/api/blueprint')
+                    verify_preserved_blueprint_review(
+                        prior, seed, stale_engine=blueprint_before_reanalysis['stale_engine'],
+                        current_source_revision=blueprint_before_reanalysis['source_revision'],
+                    )
+                    result.update(settings_preserved=True, blueprint_history_preserved=True,
+                                  blueprint_review_stale=blueprint_before_reanalysis['stale_engine'])
 
-                # Exercise the new modules inside the frozen candidate, not only
-                # the editable Python checkout. Baseline versions need not have
-                # the guided projection, so this belongs to the verify phase.
-                context = state.get("context_id", "")
-                check(isinstance(context, str) and len(context) == 64
-                      and all(c in "0123456789abcdef" for c in context),
-                      "session context is missing or is not an opaque identifier")
-                initial = request("/api/blueprint")
-                check(initial.get("context_id") == context, "initial Blueprint points to another session")
-                blueprint = request("/api/blueprint/build", {"context_id": context})
-                check(blueprint.get("context_id") == context, "Blueprint regeneration changed session identity")
-                check(blueprint["guide"]["code_total"] > 0, "Blueprint has no code reading guide")
-                check(bool(blueprint["guide"]["paths"]), "Blueprint has no observed paths")
-                ai = request("/api/blueprint/ai?scope=application&context_id=" + context)
-                check(ai == {"status": "idle"}, "reading AI status started or returned a provider request", ai)
-                page = request("/api/blueprint/explore?entity_type=TRIGGER&context_id=" + context)
-                check(bool(page["nodes"]), "Blueprint explorer returned no triggers")
-                check(all("source_text" not in node["attributes"] for node in page["nodes"]),
-                      "Blueprint list repeats source bodies")
-                entity = blueprint["guide"]["start_here"][0]["id"]
-                detail_route = "/api/blueprint/explore?node=" + entity + "&context_id=" + context
-                detail = request(detail_route)["selected"]
-                check(bool(detail["source_context"]["text"]), "Blueprint lost decoded source context")
-                finding = detail["finding"]
-                review = {
-                    "entity": finding["entity"], "revision": finding["revision"],
-                    "action": "DEFER", "reviewer": REVIEWER,
-                    "comment": "Installer acceptance: investigate after upgrade",
-                    "context_id": context,
-                }
-                wrong_context = "0" * 64 if context != "0" * 64 else "1" * 64
-                reject_stale_context("/api/blueprint/explore?context_id=" + wrong_context)
-                reject_stale_context("/api/blueprint/ai?scope=application&context_id=" + wrong_context)
-                reject_stale_context("/api/blueprint/review", {**review, "context_id": wrong_context})
-                check(request(detail_route)["selected"]["finding"] == finding,
-                      "rejected context changed a Blueprint review")
-                request("/api/blueprint/review", review)
-                saved = request(detail_route)["selected"]["finding"]
-                check(saved["review_state"] == "DEFER", "Blueprint review was not retained")
-                result.update(blueprint_guide=True, blueprint_source_context=True, blueprint_review=True,
-                              opaque_session_context=True, blueprint_ai_idle=True,
-                              blueprint_context_rejected=True, blueprint_list_compact=True)
+                    # Exercise the new modules inside the frozen candidate, not only
+                    # the editable Python checkout. Baseline versions need not have
+                    # the guided projection, so this belongs to the verify phase.
+                    context = state.get("context_id", "")
+                    check(isinstance(context, str) and len(context) == 64
+                          and all(c in "0123456789abcdef" for c in context),
+                          "session context is missing or is not an opaque identifier")
+                    initial = request("/api/blueprint")
+                    check(initial.get("context_id") == context, "initial Blueprint points to another session")
+                    blueprint = request("/api/blueprint/build", {"context_id": context})
+                    check(blueprint.get("context_id") == context, "Blueprint regeneration changed session identity")
+                    check(blueprint["guide"]["code_total"] > 0, "Blueprint has no code reading guide")
+                    check(bool(blueprint["guide"]["paths"]), "Blueprint has no observed paths")
+                    ai = request("/api/blueprint/ai?scope=application&context_id=" + context)
+                    check(ai == {"status": "idle"}, "reading AI status started or returned a provider request", ai)
+                    page = request("/api/blueprint/explore?entity_type=TRIGGER&context_id=" + context)
+                    check(bool(page["nodes"]), "Blueprint explorer returned no triggers")
+                    check(all("source_text" not in node["attributes"] for node in page["nodes"]),
+                          "Blueprint list repeats source bodies")
+                    entity = blueprint["guide"]["start_here"][0]["id"]
+                    detail_route = "/api/blueprint/explore?node=" + entity + "&context_id=" + context
+                    detail = request(detail_route)["selected"]
+                    check(bool(detail["source_context"]["text"]), "Blueprint lost decoded source context")
+                    finding = detail["finding"]
+                    review = {
+                        "entity": finding["entity"], "revision": finding["revision"],
+                        "action": "DEFER", "reviewer": REVIEWER,
+                        "comment": "Installer acceptance: investigate after upgrade",
+                        "context_id": context,
+                    }
+                    wrong_context = "0" * 64 if context != "0" * 64 else "1" * 64
+                    reject_stale_context("/api/blueprint/explore?context_id=" + wrong_context)
+                    reject_stale_context("/api/blueprint/ai?scope=application&context_id=" + wrong_context)
+                    reject_stale_context("/api/blueprint/review", {**review, "context_id": wrong_context})
+                    check(request(detail_route)["selected"]["finding"] == finding,
+                          "rejected context changed a Blueprint review")
+                    request("/api/blueprint/review", review)
+                    saved = request(detail_route)["selected"]["finding"]
+                    check(saved["review_state"] == "DEFER", "Blueprint review was not retained")
+                    candidate_snapshot = saved['review_history'][0]['finding_snapshot']
+                    check(candidate_snapshot['source_revision'] == blueprint['source_revision'],
+                          'candidate Blueprint decision bound to another source revision')
+                    result.update(blueprint_guide=True, blueprint_source_context=True, blueprint_review=True,
+                                  opaque_session_context=True, blueprint_ai_idle=True,
+                                  blueprint_context_rejected=True, blueprint_list_compact=True,
+                                  blueprint_revision=finding['revision'],
+                                  blueprint_source_revision=candidate_snapshot['source_revision'],
+                                  blueprint_engine_version=candidate_snapshot['engine_version'])
 
             zip_path = Path(request("/api/export", EXPORT)["zip"])
             first = sha256(zip_path)
@@ -222,12 +310,12 @@ def main() -> None:
             check(sha256(zip_path) == first, "second export differs from the first")
             check(sha256(SOURCE) == source_hash, "source file was modified")
             result.update(deterministic_export=True, source_unchanged=True, export_sha256=first)
-            if args.phase == 'verify':
+            if args.phase != 'seed':
                 check(first == seed['export_sha256'], 'upgrade changed the approved legacy export bytes')
                 result['baseline_export_preserved'] = True
 
             verify_key_session(engine, work, args.phase, env)
-            result['key_confirmation_preserved' if args.phase == 'verify' else 'key_confirmation_seeded'] = True
+            result['key_confirmation_seeded' if args.phase == 'seed' else 'key_confirmation_preserved'] = True
             (work / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(result))
         finally:
