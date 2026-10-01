@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import authstore, config, rbac
 from .project_intake import ProjectIntake
+from .project_journey_status import FormNotFound
 from .project_model import TARGET_CHOICES, ProjectError, TargetProfile, target_from_choice
 from .project_projection import CATEGORIES, INTERVENTIONS, RECOMMENDATIONS, RISK_LEVELS, SORTS
 from .project_service import ProjectService
@@ -59,7 +60,7 @@ def _operation(args):
             raise ProjectError('Unknown source root; use project info to list root IDs')
         selection = intake.select_source(args.path, root['kind'])
         return intake.relink(pid, args.root, selection, expected_configuration=summary['configuration_revision']), 0
-    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory', 'search'} else rbac.RUN_CONVERSION
+    action = rbac.VIEW_PROJECT if operation in {'status', 'summary', 'inventory', 'search', 'journey'} else rbac.RUN_CONVERSION
     authorize = lambda: intake.access(pid, action)
     service = ProjectService(authorize(), authorize=authorize)
     try:
@@ -135,6 +136,12 @@ def _operation(args):
             if result is None:
                 raise ProjectError('Analyze the project before requesting its summary')
             return result, 0
+        if operation == 'journey':
+            freshness = service.freshness()
+            try:
+                return service.journey(freshness=freshness, form=args.form), 0
+            except FormNotFound as exc:
+                raise ProjectError('Form not found; run project journey without --form to list Forms') from exc
         if operation == 'inventory':
             filters = {key: value for key, value in {
                 'risk': args.risk, 'recommendation': args.recommendation,
@@ -237,7 +244,7 @@ def add_project_parser(subparsers):
             command.add_argument('--kind', required=True)
             command.add_argument('--note', default='')
     for name in ('create', 'demo', 'discover', 'analyze', 'status', 'summary',
-                 'inventory', 'info', 'open', 'relink'):
+                 'inventory', 'info', 'open', 'relink', 'journey'):
         command = commands.add_parser(name)
         command.add_argument('project', help='project directory or .formslang/project.json descriptor')
         command.add_argument('--json', action='store_true', help='machine-readable stdout; progress goes to stderr')
@@ -254,6 +261,8 @@ def add_project_parser(subparsers):
         elif name == 'relink':
             command.add_argument('--root', required=True, help='stable source root ID from project info')
             command.add_argument('--path', required=True, help='explicitly authorize the replacement source folder')
+        elif name == 'journey':
+            command.add_argument('--form', help='Form entity id or name; omit for every Form')
         elif name == 'inventory':
             command.add_argument('--category', choices=CATEGORIES, default='forms')
             command.add_argument('--query', default='')

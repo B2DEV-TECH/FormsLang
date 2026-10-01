@@ -5,6 +5,7 @@ from dataclasses import asdict
 
 from . import plsql
 from .project_model import TargetProfile
+from .review_states import RESOLVED_REVIEWS
 
 POLICY_VERSION = 'project-generation/1'
 SUPPORTED_DIRECTIONS = frozenset({'PRESERVE', 'CONVERT', 'REFACTOR',
@@ -57,15 +58,21 @@ def table_mapping_blockers(module, blueprint):
     return blockers
 
 
-def related_scope(blueprint, module):
-    """Follow observed dependencies, retaining shared API/control findings."""
-    included = {n['id'] for n in blueprint['entities'] if n.get('module') == module}
+def dependency_edges(blueprint):
+    """Observed outgoing dependencies, including resolved references, by source entity."""
     outgoing = {}
     for edge in blueprint.get('edges', []):
         outgoing.setdefault(edge['source'], []).append(edge['target'])
     for node in blueprint['entities']:
         if node.get('resolved_target'):
             outgoing.setdefault(node['id'], []).append(node['resolved_target'])
+    return outgoing
+
+
+def related_scope(blueprint, module, *, outgoing=None):
+    """Follow observed dependencies, retaining shared API/control findings."""
+    included = {n['id'] for n in blueprint['entities'] if n.get('module') == module}
+    outgoing = dependency_edges(blueprint) if outgoing is None else outgoing
     pending = list(included)
     while pending:
         for target in outgoing.get(pending.pop(), []):
@@ -73,6 +80,16 @@ def related_scope(blueprint, module):
                 included.add(target)
                 pending.append(target)
     return included
+
+
+def unresolved_findings(blueprint, module, *, outgoing=None):
+    """Findings in the module's related scope whose current review does not resolve them.
+
+    The same scope and review set as the UNRESOLVED_REVIEW generation blocker.
+    """
+    included = related_scope(blueprint, module, outgoing=outgoing)
+    return [finding for finding in blueprint['findings']
+            if finding['entity'] in included and finding.get('review_state') not in RESOLVED_REVIEWS]
 
 
 def module_blockers(assessment, module, plan, *, freshness, code_blockers):
@@ -103,7 +120,7 @@ def module_blockers(assessment, module, plan, *, freshness, code_blockers):
         if finding['entity'] not in included:
             continue
         identity = finding['id']
-        if finding.get('review_state') not in {'APPROVE', 'MODIFY'}:
+        if finding.get('review_state') not in RESOLVED_REVIEWS:
             add('UNRESOLVED_REVIEW', identity, 'Resolve the current modernization decision before generation.')
         decision = finding.get('human_decision') or {}
         if decision.get('recommendation') not in SUPPORTED_DIRECTIONS:

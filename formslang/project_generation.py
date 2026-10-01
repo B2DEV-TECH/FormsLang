@@ -195,7 +195,7 @@ class ProjectGenerationService:
                         {'xml': prefix + '.xml', 'source_sha256': entry['sha256'], **_binding(assessment)})
         return self.module(source_id)
 
-    def _detail(self, assessment, fresh, source_id):
+    def _detail(self, assessment, fresh, source_id, *, read_only=False):
         entry = self._entry(assessment, source_id)
         revision, plan = self._plan(assessment, source_id)
         code, tasks, bindings = None, [], []
@@ -208,7 +208,7 @@ class ProjectGenerationService:
                           if target_platform == 'UNSELECTED' else
                           f"Target strategy '{target_platform}' does not support executable generation."})
         if self._session_record(assessment, source_id):
-            with self._module(assessment, source_id) as (_, module, session):
+            with self._module(assessment, source_id, read_only=read_only) as (_, module, session):
                 code = self._code_revision(session)
                 layout = apexlayout.build_layout(module, 1)
                 extra.extend(table_mapping_blockers(module, assessment['blueprint']))
@@ -292,12 +292,10 @@ class ProjectGenerationService:
         artifacts = [json.loads(row[0]) for row in self.store.session.db.execute(
             'SELECT metadata_json FROM project_artifact ORDER BY created_at DESC LIMIT 50')]
         for artifact in artifacts:
-            validation = self.store.session.db.execute(
-                'SELECT payload_json FROM project_artifact_validation WHERE artifact_id=? ORDER BY id DESC LIMIT 1',
-                (artifact['artifact_id'],)).fetchone()
+            validation = self.latest_validation(artifact['artifact_id'])
             if validation:
-                artifact['validation'] = json.loads(validation[0])
-                artifact['validation_status'] = artifact['validation']['status']
+                artifact['validation'] = validation
+                artifact['validation_status'] = validation['status']
                 try:
                     self._artifact_bytes(artifact['artifact_id'])
                 except (OSError, ProjectError):
@@ -305,6 +303,33 @@ class ProjectGenerationService:
                     artifact['integrity'] = 'Modified or unavailable; historical validation does not apply.'
         return {'binding': _binding(assessment), 'target': assessment['target'], 'freshness': fresh['status'],
                 'modules': modules, 'artifacts': artifacts, 'policy': POLICY_VERSION}
+
+    def latest_validation(self, artifact_id):
+        """The newest validation record of one artifact, or None."""
+        row = self.store.session.db.execute(
+            'SELECT payload_json FROM project_artifact_validation WHERE artifact_id=? ORDER BY id DESC LIMIT 1',
+            (artifact_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def artifact_currency(self, assessment, artifact, *, freshness_status, latest_plans, sessions):
+        """Why a selected-module artifact no longer matches current evidence, or None when it does.
+
+        Delivery reports and the journey status share this rule. Archive
+        integrity is checked by each caller.
+        """
+        if (freshness_status != 'CURRENT'
+                or any(artifact.get(k) != v for k, v in _binding(assessment).items())
+                or latest_plans.get((artifact['source_id'], artifact['analysis_revision'])) != artifact['target_revision']):
+            return 'ARTIFACT_REVISION_STALE'
+        if sessions.get((artifact['source_id'], artifact['analysis_revision'])) is None:
+            return 'ARTIFACT_CODE_UNAVAILABLE'
+        try:
+            with self._module(assessment, artifact['source_id'], read_only=True) as (_, _, session):
+                if self._code_revision(session) != artifact['code_revision']:
+                    return 'ARTIFACT_CODE_STALE'
+        except (OSError, sqlite3.Error, ProjectError):
+            return 'ARTIFACT_CODE_UNAVAILABLE'
+        return None
 
     def configure(self, source_id, request):
         with self._operation(request) as assessment:

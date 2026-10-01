@@ -19,6 +19,7 @@ from collections import Counter, defaultdict
 from fractions import Fraction
 
 from .estate_triage import investigation_groups
+from .review_states import RESOLVED_REVIEWS
 
 LAYOUT_ALGORITHM = "formslang-lanes/1"
 NODE_WIDTH = 184
@@ -82,7 +83,6 @@ STATUSES = {
     "DECIDED": "Human decision recorded",
     "UNRESOLVED": "Referenced but not found in the supplied sources",
 }
-RESOLVED_REVIEWS = frozenset({"APPROVE", "MODIFY"})
 RISK_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4, "NONE": 5}
 LENSES = ("ARCHITECTURE", "DATA_ACCESS", "SHARED_LOGIC", "HOTSPOTS", "REVIEW")
 MATRIX_MAX_MODULES = 15

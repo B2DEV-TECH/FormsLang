@@ -380,6 +380,10 @@ class ProjectHTTP:
                     raise ProjectError('System Map relationship requires only an id')
                 freshness = self._freshness(service)
                 return 200, service.relationship_evidence(query['id'], freshness=freshness)
+            if tail == ['journey'] and method == 'GET':
+                if set(query) - {'form'}:
+                    raise ProjectError('Journey accepts only the form query parameter')
+                return 200, service.journey(freshness=self._freshness(service), form=query.get('form'))
             if tail == ['module-360'] and method == 'GET':
                 if len(query) != 1 or not set(query) <= {'module', 'node', 'finding'}:
                     raise ProjectError('Module 360 requires exactly one of module, node or finding')
