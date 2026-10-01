@@ -1,6 +1,8 @@
 """Project v2 routes run through real loopback guards, services and worker jobs."""
 
 import json
+import sqlite3
+import sys
 import threading
 import time
 import urllib.error
@@ -13,6 +15,7 @@ import pytest
 
 from formslang import authstore, config, rbac
 from formslang.ai import EchoProvider
+from formslang.project_intake import ProjectIntake
 from formslang.project_service import ProjectService
 from formslang.store import Store
 from formslang.workbench import Handler, Workbench
@@ -316,6 +319,84 @@ def test_unknown_server_error_is_sanitized(project_server, project_sources, monk
     result = client.get(f'/api/v2/projects/{pid}/assessment')
     assert result.status == 500 and result.json['correlation_id']
     assert 'secret' not in str(result.json) and 'credentials' not in str(result.json)
+
+
+SANITISED_500 = 'Project operation failed. View saved evidence and retry.'
+
+
+def failure_log(caplog, correlation_id):
+    [record] = [r for r in caplog.records
+                if r.name == 'formslang.project_http' and correlation_id in r.getMessage()]
+    return record
+
+
+def test_unknown_server_error_is_logged_with_type_frames_and_route(project_server, project_sources,
+                                                                   monkeypatch, caplog):
+    client, _ = project_server
+    pid, _ = create_project(client, project_sources[2].parent)
+    def fail(*a, **k):
+        raise RuntimeError('secret source and private credentials')
+    monkeypatch.setattr(ProjectService, 'assessment', fail)
+    with caplog.at_level('ERROR', logger='formslang.project_http'):
+        result = client.get(f'/api/v2/projects/{pid}/assessment?token=secret-query')
+    assert result.status == 500
+    assert result.json == {'error': SANITISED_500, 'correlation_id': result.json['correlation_id']}
+    record = failure_log(caplog, result.json['correlation_id'])
+    message = record.getMessage()
+    # pytest and the server log show only the message, so the evidence lives in it.
+    assert record.levelname == 'ERROR'
+    assert f'GET /api/v2/projects/{pid}/assessment' in message
+    assert 'RuntimeError' in message
+    assert 'in fail' in message and 'project_http.py' in message
+    # The exception message and the query string can hold source text or credentials.
+    for leak in ('secret', 'credentials', 'token'):
+        assert leak not in message
+    # exc_info would make every handler print the exception message.
+    assert record.exc_info is None
+
+
+def test_a_wrapped_sqlite_error_is_logged_with_its_type_and_code(project_server, project_sources,
+                                                                  monkeypatch, caplog, tmp_path):
+    client, _ = project_server
+    pid, _ = create_project(client, project_sources[2].parent)
+    holder = sqlite3.connect(tmp_path / 'held.db', isolation_level=None)
+    holder.execute('BEGIN EXCLUSIVE')
+    def fail(*a, **k):
+        waiter = sqlite3.connect(tmp_path / 'held.db', timeout=0, isolation_level=None)
+        try:
+            waiter.execute('BEGIN EXCLUSIVE')
+        except sqlite3.OperationalError as error:
+            raise RuntimeError('secret wrapper') from error
+        finally:
+            waiter.close()
+    monkeypatch.setattr(ProjectService, 'assessment', fail)
+    try:
+        with caplog.at_level('ERROR', logger='formslang.project_http'):
+            result = client.get(f'/api/v2/projects/{pid}/assessment')
+    finally:
+        holder.close()
+    assert result.status == 500
+    assert result.json == {'error': SANITISED_500, 'correlation_id': result.json['correlation_id']}
+    message = failure_log(caplog, result.json['correlation_id']).getMessage()
+    assert 'RuntimeError' in message and 'sqlite3.OperationalError' in message
+    if sys.version_info >= (3, 11):  # sqlite_errorname exists from Python 3.11
+        assert 'SQLITE_BUSY' in message
+    assert 'secret' not in message and 'locked' not in message
+
+
+def test_route_data_in_a_failed_request_is_not_logged(project_server, monkeypatch, caplog):
+    client, _ = project_server
+    def fail(*a, **k):
+        raise OSError('secret path C:/clients/acme')
+    monkeypatch.setattr(ProjectIntake, 'browse', fail)
+    with caplog.at_level('ERROR', logger='formslang.project_http'):
+        result = client.get('/api/v2/source-areas/acme-private-area/browse?relative=acme-payroll')
+    assert result.status == 500
+    assert result.json == {'error': SANITISED_500, 'correlation_id': result.json['correlation_id']}
+    message = failure_log(caplog, result.json['correlation_id']).getMessage()
+    assert 'GET /api/v2/source-areas/{…}/browse' in message and 'OSError' in message
+    for leak in ('acme', 'secret', 'clients'):
+        assert leak not in message and leak not in str(result.json)
 
 
 @pytest.fixture

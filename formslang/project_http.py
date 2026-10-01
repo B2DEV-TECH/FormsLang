@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import re
 import threading
+import traceback
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -28,6 +30,41 @@ from .project_projection import ProjectionCache
 from .project_service import ProjectService
 
 logger = logging.getLogger(__name__)
+
+# Path segments the router matches literally. Any other segment, except a
+# 32-hex project or job id, is request data and is logged as '{…}'.
+_ROUTE_WORDS = frozenset({
+    'analyze', 'artifacts', 'assessment', 'browse', 'bulk', 'bulk-preview', 'cancel', 'code',
+    'convert', 'demo', 'discover', 'discovery', 'discovery-preview', 'download', 'freshness',
+    'generation', 'hotspots', 'inventory', 'jobs', 'module-360', 'modules', 'node', 'open',
+    'overview', 'plan', 'prepare', 'projects', 'relink', 'reports', 'review', 'search',
+    'source-areas', 'source-selections', 'system-map', 'validate', 'visual',
+})
+
+
+def _route(path):
+    parts = path.removeprefix('/api/v2/').strip('/').split('/')
+    return '/api/v2/' + '/'.join(
+        part if part in _ROUTE_WORDS or re.fullmatch('[a-f0-9]{32}', part) else '{…}' for part in parts)
+
+
+def _failure(exc):
+    """Exception types, safe error codes and stack frames of a failure and its causes.
+
+    Never the exception message: it can carry source text, paths or credentials.
+    """
+    lines, seen = [], set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        kind = type(exc)
+        name = kind.__qualname__ if kind.__module__ == 'builtins' else f'{kind.__module__}.{kind.__qualname__}'
+        # sqlite_errorname exists from Python 3.11 (e.g. SQLITE_BUSY); errno for OS errors.
+        code = getattr(exc, 'sqlite_errorname', None) or getattr(exc, 'errno', None)
+        lines.append(('caused by ' if lines else '') + name + (f' ({code})' if code else ''))
+        lines += [f'  {os.path.basename(frame.filename)}:{frame.lineno} in {frame.name}'
+                  for frame in traceback.extract_tb(exc.__traceback__)]
+        exc = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+    return '\n'.join(lines)
 
 
 def _page(values):
@@ -196,9 +233,12 @@ class ProjectHTTP:
             return 404, {'error': 'Project resource not found'}
         except (TypeError, ValueError):
             return 400, {'error': 'Invalid project request; check the supplied fields'}
-        except Exception:  # noqa: BLE001 - one safe boundary; no raw paths/source/credentials
+        except Exception as exc:  # noqa: BLE001 - one safe boundary; no raw paths/source/credentials
             correlation = uuid.uuid4().hex
-            logger.error('Project request failed', extra={'correlation_id': correlation})
+            # The evidence goes in the message, which is what pytest and the server
+            # log show. No exc_info: handlers would print the exception message.
+            logger.error('Project request failed [%s] %s %s: %s', correlation, method, _route(path),
+                         _failure(exc), extra={'correlation_id': correlation})
             return 500, {'error': 'Project operation failed. View saved evidence and retry.', 'correlation_id': correlation}
 
     def _dispatch(self, method, path, query, body, intake):
