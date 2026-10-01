@@ -16,6 +16,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+from formslang.project_journey_status import build_journey
 from formslang.project_projection import (
     ProjectionCache,
     inventory_page,
@@ -141,8 +142,18 @@ def run_measurements(directory: Path, *, iterations=5):
     )), iterations)
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
+    # The gate compares like with like: both the Overview and the journey below are
+    # measured untraced. tracemalloc.start()/stop() above slows the Overview roughly
+    # 5x (it is only there to capture python_tracemalloc_peak_bytes), so the traced
+    # `cold` measurement above must never feed the gate ratio.
+    cold_untraced = _measure(lambda: overview(prepare_projection(
+        descriptor, assessment, freshness, store_scope="cold-scale",
+    )), iterations)
+    journey = _measure(lambda: build_journey(assessment, freshness, has_sources=True), iterations)
     measurements = {
         "cold_overview": cold,
+        "cold_overview_untraced": cold_untraced,
+        "cold_journey": journey,
         "inventory_first_page": _measure(
             lambda: inventory_page(prepared, "forms", limit=50), iterations),
         "combined_filter": _measure(lambda: inventory_page(
@@ -160,6 +171,11 @@ def run_measurements(directory: Path, *, iterations=5):
             key, lambda: prepared,
         )), iterations),
     }
+    ratio = (journey["median_ms"] / cold_untraced["median_ms"]
+             if cold_untraced["median_ms"] else float("inf"))
+    journey_gate = {"cold_journey_median_ms": journey["median_ms"],
+                    "cold_overview_median_ms": cold_untraced["median_ms"],
+                    "ratio": round(ratio, 3), "limit": 1.5, "within_limit": ratio <= 1.5}
     summary = overview(prepared)
     semantic_ok = (
         summary["inventory"]["forms_modules"] == 500
@@ -175,8 +191,9 @@ def run_measurements(directory: Path, *, iterations=5):
         ).strip(),
         "measurements": measurements, "python_tracemalloc_peak_bytes": peak,
         "semantic_reconciliation": semantic_ok,
+        "journey_gate": journey_gate,
         "persistence_strategy": "saved assessment JSON + bounded in-memory projections; no projection tables",
-        "limitations": "Synthetic read-model scale only; not engine throughput, browser rendering, customer data, or an analyst-time claim.",
+        "limitations": "Synthetic read-model scale only; not engine throughput, browser rendering, customer data, or an analyst-time claim. The journey gate has no generation scope in this fixture; per-Form generation detail is not measured.",
     }
 
 
@@ -193,7 +210,7 @@ def main():
     (run / "result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"Phase C projection evidence: {run}")
     print(json.dumps(report, indent=2))
-    return 0 if report["semantic_reconciliation"] else 1
+    return 0 if report["semantic_reconciliation"] and report["journey_gate"]["within_limit"] else 1
 
 
 if __name__ == "__main__":

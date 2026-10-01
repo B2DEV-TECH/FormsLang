@@ -6,7 +6,6 @@ import copy
 import hashlib
 import io
 import json
-import sqlite3
 import zipfile
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -188,21 +187,11 @@ class ProjectReportService:
                 reason = 'ARTIFACT_KIND_UNSUPPORTED'
             elif not include:
                 reason = 'ARTIFACTS_NOT_REQUESTED'
-            elif (snapshot['overview']['assessment']['freshness'] != 'CURRENT'
-                  or any(artifact.get(k) != v for k, v in _binding(assessment).items())
-                  or latest_plans.get((artifact['source_id'], artifact['analysis_revision'])) != artifact['target_revision']):
-                reason = 'ARTIFACT_REVISION_STALE'
             else:
-                record = sessions.get((artifact['source_id'], artifact['analysis_revision']))
-                if record is None:
-                    reason = 'ARTIFACT_CODE_UNAVAILABLE'
-                else:
-                    try:
-                        with generation._module(assessment, artifact['source_id'], read_only=True) as (_, _, session):
-                            if generation._code_revision(session) != artifact['code_revision']:
-                                reason = 'ARTIFACT_CODE_STALE'
-                    except (OSError, sqlite3.Error, ProjectError):
-                        reason = 'ARTIFACT_CODE_UNAVAILABLE'
+                reason = generation.artifact_currency(
+                    assessment, artifact,
+                    freshness_status=snapshot['overview']['assessment']['freshness'],
+                    latest_plans=latest_plans, sessions=sessions)
                 if reason is None:
                     try:
                         data = generation._artifact_bytes(identity)

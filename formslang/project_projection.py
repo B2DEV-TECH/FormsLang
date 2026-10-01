@@ -34,6 +34,7 @@ from .project_visualization import (
     visual_edge,
     visual_node,
 )
+from .review_states import RESOLVED_REVIEWS
 
 RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 RECOMMENDATIONS = (
@@ -50,7 +51,6 @@ INTERVENTIONS = ("AUTO", "ASSISTED", "MANUAL", "UNKNOWN")
 LIBRARY_SUFFIXES = {".pll", ".mmb", ".olb"}
 FORM_SUFFIXES = {".xml", ".fmb", ".pll", ".mmb", ".olb"}
 ROUTINE_TYPES = {"PACKAGE_SUBPROGRAM", "SUBPROGRAM_BODY", "PROGRAM_UNIT"}
-RESOLVED_REVIEWS = {"APPROVE", "MODIFY"}
 RISK_RANK = {value: index for index, value in enumerate(RISK_LEVELS)}
 BASE_SEVERITY = {
     "CRITICAL": 100.0,
@@ -757,7 +757,7 @@ def prepare_projection(
         "review_progress": {
             "total": total,
             "reviewed": sum(
-                row["review_state"] in {"APPROVE", "MODIFY"} for row in finding_rows
+                row["review_state"] in RESOLVED_REVIEWS for row in finding_rows
             ),
             "critical_total": sum(row["risk"] == "CRITICAL" for row in finding_rows),
             "critical_resolved": sum(

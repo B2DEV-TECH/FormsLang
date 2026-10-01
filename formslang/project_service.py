@@ -240,6 +240,12 @@ class ProjectService:
     def generation_module(self, source_id):
         return self._generation_service().module(source_id)
 
+    def journey(self, *, freshness, form=None) -> dict:
+        """Read-only journey status (WP-39a); the caller supplies one freshness value."""
+        from .project_journey_status import journey_status
+        self.open()
+        return journey_status(self, freshness=freshness, form=form)
+
     def generation_prepare(self, source_id, request):
         return self._generation_service().prepare(source_id, request)
 

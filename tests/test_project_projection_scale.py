@@ -1,6 +1,7 @@
 import json
 
-from examples.verify.project_overview_performance_check import build_fixture
+from examples.verify import project_overview_performance_check as perf_check
+from examples.verify.project_overview_performance_check import build_fixture, run_measurements
 from formslang.project_projection import inventory_page, overview, prepare_projection
 
 
@@ -42,3 +43,25 @@ def test_large_projection_filters_searches_and_pages_by_one_revision():
                for row in critical['rows'])
     assert searched['total'] == 1 and searched['rows'][0]['name'] == 'TRIGGER_04999'
     assert second['offset'] == 50 and len(second['rows']) == 50
+
+
+def test_journey_composes_500_forms_on_the_scale_fixture():
+    from formslang.project_journey_status import build_journey
+
+    _, assessment, freshness = build_fixture()
+    payload = build_journey(assessment, freshness, has_sources=True)
+    assert len(payload['forms']) == 500
+    assert [step['counts'] for step in payload['steps']] == [
+        {'DONE': 500}, {'ACTION': 500}, {'BLOCKED': 500}, {'WAITING': 500}]
+    assert payload['focus'] == 'DECIDE'
+
+
+def test_scale_report_carries_the_journey_gate(tmp_path, monkeypatch):
+    # run_measurements shells out to `git rev-parse HEAD` only to stamp the report;
+    # a fixed string keeps this test independent of a git binary being on PATH.
+    monkeypatch.setattr(perf_check.subprocess, 'check_output', lambda *a, **k: 'deadbeefcafe')
+    report = run_measurements(tmp_path, iterations=1)
+    assert report['commit'] == 'deadbeefcafe'
+    gate = report['journey_gate']
+    assert set(gate) == {'cold_journey_median_ms', 'cold_overview_median_ms', 'ratio', 'limit', 'within_limit'}
+    assert gate['limit'] == 1.5
